@@ -1,0 +1,35 @@
+[
+  {
+    "id": "A1-USER-01",
+    "text": "Kto jest użytkownikiem tego rozwiązania?",
+    "group_code": "A",
+    "mode_code": 1,
+    "category_code": "USER",
+    "intent_code": "UNLOCK",
+    "difficulty": 1,
+    "priority": 50,
+    "tags": ["user", "persona"]
+  },
+  {
+    "id": "B1-USAGE-01",
+    "text": "W jakiej sytuacji produkt jest faktycznie używany?",
+    "group_code": "B",
+    "mode_code": 1,
+    "category_code": "USAGE",
+    "intent_code": "CLARIFY",
+    "difficulty": 2,
+    "priority": 50,
+    "tags": ["usage", "context"]
+  },
+  {
+    "id": "C2-TECH-01",
+    "text": "Czy technologia potrzebna do tego rozwiązania istnieje dziś?",
+    "group_code": "C",
+    "mode_code": 2,
+    "category_code": "TECHNOLOGY",
+    "intent_code": "FEASIBILITY",
+    "difficulty": 3,
+    "priority": 60,
+    "tags": ["technology", "feasibility"]
+  }
+]

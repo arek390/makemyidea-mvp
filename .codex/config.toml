@@ -1,0 +1,11 @@
+# Do not ask for approval on every write
+approval_policy = "never"
+
+# Allow writing directly into workspace
+sandbox_mode = "workspace-write"
+
+[sandbox_workspace_write]
+writable_roots = ["/Users/arkadiuszlupierz/dev/makemyideawork"]
+
+[projects."/Users/arkadiuszlupierz/dev/makemyideawork"]
+trust_level = "trusted"
