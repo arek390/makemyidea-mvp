@@ -168,23 +168,34 @@ const scoreWithRules = <T extends string>(
   normalized: string,
   rules: { key: T; weight: number; keywords: string[] }[],
   base: Record<T, number>
-) =>
-  rules.reduce<{ scores: Record<T, number>; matches: Record<T, string[]> }>(
-    (acc, rule) => {
-      const matched = rule.keywords.filter((keyword) => fuzzyIncludes(normalized, keyword))
-      acc.scores[rule.key] = matched.length * rule.weight
-      acc.matches[rule.key] = matched
+) => {
+  const scores: Record<T, number> = { ...base }
+  const matches = Object.keys(base).reduce(
+    (acc, key) => {
+      acc[key as T] = []
       return acc
     },
-    { scores: { ...base }, matches: { ...base } as Record<T, string[]> }
+    {} as Record<T, string[]>
   )
+
+  rules.forEach((rule) => {
+    const matched = rule.keywords.filter((keyword) => fuzzyIncludes(normalized, keyword))
+    scores[rule.key] = matched.length * rule.weight
+    matches[rule.key] = matched
+  })
+
+  return { scores, matches }
+}
 
 const pickWithTieBreak = <T extends string>(
   scores: Record<T, number>,
   priority: T[],
   fallback: T
 ) => {
-  const maxScore = Math.max(...Object.values(scores))
+  const maxScore = Object.keys(scores).reduce(
+    (max, key) => Math.max(max, scores[key as T]),
+    0
+  )
   if (maxScore === 0) return fallback
   return priority.find((key) => scores[key] === maxScore) ?? fallback
 }

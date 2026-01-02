@@ -1,16 +1,28 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import './App.css'
-import {
-  MATRIX_COLS,
-  MATRIX_ROWS,
-  cellKey,
-  computeMappingDetails,
-  mapEntryToCell,
-  pickGravityTarget,
-  type MatrixColKey,
-  type MatrixRowKey,
-} from './engineDebug/matrixHeuristics'
+type MatrixRowKey = 'world' | 'product' | 'elements'
+type MatrixColKey = 'as_is' | 'not_working' | 'should_be'
+type MatrixCell = { row: MatrixRowKey; col: MatrixColKey }
+type DebugMatrixModule = {
+  MATRIX_COLS: { key: MatrixColKey; label: string }[]
+  MATRIX_ROWS: { key: MatrixRowKey; label: string }[]
+  cellKey: (row: MatrixRowKey, col: MatrixColKey) => string
+  computeMappingDetails: (text: string) => {
+    row: MatrixRowKey
+    col: MatrixColKey
+    normalized: string
+    rowScores: Record<MatrixRowKey, number>
+    colScores: Record<MatrixColKey, number>
+    rowMatches: Record<MatrixRowKey, string[]>
+    colMatches: Record<MatrixColKey, string[]>
+  }
+  mapEntryToCell: (text: string) => { row: MatrixRowKey; col: MatrixColKey }
+  pickGravityTarget: (
+    currentCell: MatrixCell,
+    counts: Record<string, number>
+  ) => { targetCell: MatrixCell; reason: 'empty' | 'lowest_count' }
+}
 
 type StepId = 1 | 2 | 3 | 4
 type SpaceSlot = 'supersystem' | 'subsystem'
@@ -321,7 +333,7 @@ type Translations = {
   cellLabel: (spaceLabel: string, timeLabel: string) => string
 }
 
-const translations: Record<Language, Translations> = {
+const translations: Partial<Record<Language, Partial<Translations>>> & { Polish: Translations } = {
   English: {
     stepLabel: 'Step',
     appTitle: 'Idea Clarity Grid',
@@ -2216,8 +2228,40 @@ const translations: Record<Language, Translations> = {
   },
 }
 
-translations.Spanish = translations.English
-translations.Hindi = translations.English
+const polishTranslations: Translations = translations.Polish
+const languageFallbacks: Partial<Record<Language, Language>> = {
+  Spanish: 'English',
+  Hindi: 'English',
+}
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+
+const withFallback = <T extends Record<string, unknown>>(base: T, override?: Partial<T>): T => {
+  if (!override) return base
+  const result: T = { ...base }
+  ;(Object.keys(override) as (keyof T)[]).forEach((key) => {
+    const overrideValue = override[key]
+    if (overrideValue === undefined) return
+    const baseValue = base[key]
+    if (isPlainObject(baseValue) && isPlainObject(overrideValue)) {
+      result[key] = withFallback(
+        baseValue as Record<string, unknown>,
+        overrideValue as Record<string, unknown>
+      ) as T[keyof T]
+    } else {
+      result[key] = overrideValue as T[keyof T]
+    }
+  })
+  return result
+}
+
+const getTranslations = (language: Language): Translations => {
+  const fallbackLanguage = languageFallbacks[language]
+  const fallbackTranslations = fallbackLanguage ? translations[fallbackLanguage] : undefined
+  const mergedFallback = withFallback(polishTranslations, fallbackTranslations)
+  return withFallback(mergedFallback, translations[language])
+}
 
 const stepOrder: StepId[] = [1, 2, 3, 4]
 const DEFAULT_LLM_API_BASE = 'http://localhost:8787'
@@ -2448,12 +2492,6 @@ const buildNameSuggestions = (description: string, fallback: string) => {
 const capitalize = (value: string) =>
   value ? value.charAt(0).toUpperCase() + value.slice(1) : value
 
-const countWords = (value: string) => {
-  const trimmed = value.trim()
-  if (!trimmed) return 0
-  return trimmed.split(/\s+/).length
-}
-
 const IconReport = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path
@@ -2557,8 +2595,8 @@ function App() {
   const [productNameSuggestions, setProductNameSuggestions] = useState<string[]>([])
   const [productConfirmed, setProductConfirmed] = useState(false)
   const [spaceOptions, setSpaceOptions] = useState<OptionItem[]>(() => {
-    const world = buildWorldSuggestions('', translations.Polish).slice(0, 10)
-    const elements = buildElementSuggestions('', translations.Polish, 'Polish').slice(0, 10)
+    const world = buildWorldSuggestions('', polishTranslations).slice(0, 10)
+    const elements = buildElementSuggestions('', polishTranslations, 'Polish').slice(0, 10)
     return [
       ...world.map((label, index) => ({ id: index, label, kind: 'world' as const })),
       ...elements.map((label, index) => ({
@@ -2569,7 +2607,7 @@ function App() {
     ]
   })
   const [timeOptions, setTimeOptions] = useState<TimeOptionItem[]>(
-    translations.Polish.timeSuggestions.map((label, index) => ({ id: index, label }))
+    polishTranslations.timeSuggestions.map((label, index) => ({ id: index, label }))
   )
   const [spaceAssignments, setSpaceAssignments] = useState<Record<SpaceSlot, number | null>>({
     supersystem: null,
@@ -2661,6 +2699,7 @@ function App() {
   const engineLabelCache = useRef<Record<string, string | null>>({})
   const didLogMappingSelfTestRef = useRef(false)
   const lastGravitySuggestionRef = useRef<string | null>(null)
+  const [debugMatrixModule, setDebugMatrixModule] = useState<DebugMatrixModule | null>(null)
 
   const languageOptions: Language[] = [
     'English',
@@ -2680,6 +2719,18 @@ function App() {
     }
     return import.meta.env.VITE_DEBUG_UI === 'true'
   }
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    if (!isDebugEnabled()) return
+    void import('./engineDebug/matrixHeuristics')
+      .then((mod) => {
+        setDebugMatrixModule(mod as DebugMatrixModule)
+      })
+      .catch(() => {
+        setDebugMatrixModule(null)
+      })
+  }, [])
 
   const isE2EEnabled = () => {
     if (typeof window !== 'undefined') {
@@ -2816,6 +2867,7 @@ function App() {
 
   useEffect(() => {
     if (!isDebugEnabled() || didLogMappingSelfTestRef.current) return
+    if (!debugMatrixModule) return
     didLogMappingSelfTestRef.current = true
     const examples = [
       'funkcja musialaby cos poprawic',
@@ -2824,7 +2876,7 @@ function App() {
       'Powinny byc testy',
     ]
     examples.forEach((example) => {
-      const details = computeMappingDetails(example)
+      const details = debugMatrixModule.computeMappingDetails(example)
       console.log(
         JSON.stringify({
           event: 'matrix_mapping_self_test',
@@ -2836,7 +2888,7 @@ function App() {
         })
       )
     })
-  }, [])
+  }, [debugMatrixModule])
 
   useEffect(() => {
     if (!engineLabelEditorId) return
@@ -3150,6 +3202,8 @@ function App() {
 
 
   const debugMatrixData = useMemo(() => {
+    if (!debugMatrixModule) return null
+    const { mapEntryToCell, MATRIX_ROWS, MATRIX_COLS, cellKey, pickGravityTarget } = debugMatrixModule
     const entries = enginePreviewItems.map((item) => {
       const mapped = mapEntryToCell(item.text)
       return {
@@ -3192,11 +3246,15 @@ function App() {
       currentCell,
       targetCell: gravity.targetCell,
       targetReason: gravity.reason,
+      rows: MATRIX_ROWS,
+      cols: MATRIX_COLS,
+      cellKey,
     }
-  }, [enginePreviewItems])
+  }, [enginePreviewItems, debugMatrixModule])
 
   useEffect(() => {
     if (!isDebugEnabled()) return
+    if (!debugMatrixData) return
     const key = `${debugMatrixData.currentCell.row}:${debugMatrixData.currentCell.col}->${debugMatrixData.targetCell.row}:${debugMatrixData.targetCell.col}`
     if (lastGravitySuggestionRef.current === key) return
     lastGravitySuggestionRef.current = key
@@ -3251,7 +3309,7 @@ function App() {
     return () => observer.disconnect()
   }, [showLanding])
 
-  const copy = translations[reportLanguage]
+  const copy = getTranslations(reportLanguage)
   const stepTitle = (stepId: StepId) => copy.steps[stepId]
   const stepHeading = (stepId: StepId) =>
     `${copy.stepLabel}${stepId} | ${stepTitle(stepId)}`
@@ -3321,14 +3379,6 @@ function App() {
       setEngineStrongSignals((prev) => prev + 1)
       setEngineLastStrongKind(kind)
     }
-  }
-
-  const chooseSuggestedPromptType = (): FacilitationType => {
-    if (engineStrongSignals > 0 && engineLastStrongKind) return 'RESET'
-    if (engineLastMediumKind === 'idle') return 'NEXT'
-    if (engineLastMediumKind === 'vague') return 'PERSPECTIVE'
-    if (engineLastWeakKind === 'short' || engineLastWeakKind === 'short_burst') return 'DEEPEN'
-    return 'NEXT'
   }
 
   useEffect(() => {
@@ -3967,8 +4017,8 @@ function App() {
   const handleEnginePreviewAdd = async (nameOverride?: string) => {
     const text = enginePreviewInput.trim()
     if (!text) return
-    if (isDebugEnabled()) {
-      const details = computeMappingDetails(text)
+    if (isDebugEnabled() && debugMatrixModule) {
+      const details = debugMatrixModule.computeMappingDetails(text)
       console.log(
         JSON.stringify({
           event: 'matrix_mapping_entry',
@@ -4649,38 +4699,42 @@ function App() {
             </section>
           )}
 
-          <section className="engine-panel">
-            <div className="engine-panel-header">
-              <h2>Matryca</h2>
-            </div>
-            <div className="engine-debug-matrix" data-testid="debug-matrix">
-              <input
-                type="checkbox"
-                className="sr-only"
-                data-testid="debug-matrix-toggle"
-                checked
-                readOnly
-              />
-              <div className="engine-debug-meta" data-testid="matrix-coverage">
-                Coverage: {debugMatrixData.coverage}/9
+          {debugMatrixData && (
+            <section className="engine-panel">
+              <div className="engine-panel-header">
+                <h2>Matryca</h2>
               </div>
-              <div className="engine-debug-meta">
-                Gravity suggests next input toward:{' '}
-                {MATRIX_ROWS.find((row) => row.key === debugMatrixData.targetCell.row)?.label} ×{' '}
-                {MATRIX_COLS.find((col) => col.key === debugMatrixData.targetCell.col)?.label}
-              </div>
-              <div className="engine-debug-grid">
-                <div className="engine-debug-corner" />
-                  {MATRIX_COLS.map((col) => (
+              <div className="engine-debug-matrix" data-testid="debug-matrix">
+                <input
+                  type="checkbox"
+                  className="sr-only"
+                  data-testid="debug-matrix-toggle"
+                  checked
+                  readOnly
+                />
+                <div className="engine-debug-meta" data-testid="matrix-coverage">
+                  Coverage: {debugMatrixData.coverage}/9
+                </div>
+                <div className="engine-debug-meta">
+                  Gravity suggests next input toward:{' '}
+                  {debugMatrixData.rows.find((row) => row.key === debugMatrixData.targetCell.row)
+                    ?.label}{' '}
+                  ×{' '}
+                  {debugMatrixData.cols.find((col) => col.key === debugMatrixData.targetCell.col)
+                    ?.label}
+                </div>
+                <div className="engine-debug-grid">
+                  <div className="engine-debug-corner" />
+                  {debugMatrixData.cols.map((col) => (
                     <div key={col.key} className="engine-debug-col-label">
                       {col.label}
                     </div>
                   ))}
-                  {MATRIX_ROWS.map((row) => (
+                  {debugMatrixData.rows.map((row) => (
                     <div key={row.key} className="engine-debug-row">
                       <div className="engine-debug-row-label">{row.label}</div>
-                      {MATRIX_COLS.map((col) => {
-                        const matrixKey = cellKey(row.key, col.key)
+                      {debugMatrixData.cols.map((col) => {
+                        const matrixKey = debugMatrixData.cellKey(row.key, col.key)
                         const cell = debugMatrixData.cells.get(matrixKey)
                         const isTarget =
                           debugMatrixData.targetCell.row === row.key &&
@@ -4692,21 +4746,22 @@ function App() {
                             data-testid={`matrix-cell-${row.key}-${col.key}`}
                           >
                             <div className="engine-debug-count">{cell?.count ?? 0}</div>
-                          <div className="engine-debug-items">
-                            {(cell?.entries ?? []).map((entry) => (
-                              <div key={entry.id} className="engine-debug-item" title={entry.text}>
-                                {entry.text}
-                              </div>
-                            ))}
+                            <div className="engine-debug-items">
+                              {(cell?.entries ?? []).map((entry) => (
+                                <div key={entry.id} className="engine-debug-item" title={entry.text}>
+                                  {entry.text}
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ))}
+                        )
+                      })}
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-          </section>
+            </section>
+          )}
 
           <section className="engine-panel">
             <div className="engine-panel-header">
