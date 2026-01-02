@@ -2,6 +2,16 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import './App.css'
 import {
+  MATRIX_COLS,
+  MATRIX_ROWS,
+  cellKey,
+  computeMappingDetails,
+  mapEntryToCell,
+  pickGravityTarget,
+  type MatrixColKey,
+  type MatrixRowKey,
+} from './engineMatrix/matrixHeuristics'
+import {
   createSession,
   deleteSession,
   exportSessions,
@@ -16,28 +26,6 @@ import {
   type EngineSessionDetail,
   type EngineSessionSummary,
 } from './storage/sessionStore'
-type MatrixRowKey = 'world' | 'product' | 'elements'
-type MatrixColKey = 'as_is' | 'not_working' | 'should_be'
-type MatrixCell = { row: MatrixRowKey; col: MatrixColKey }
-type DebugMatrixModule = {
-  MATRIX_COLS: { key: MatrixColKey; label: string }[]
-  MATRIX_ROWS: { key: MatrixRowKey; label: string }[]
-  cellKey: (row: MatrixRowKey, col: MatrixColKey) => string
-  computeMappingDetails: (text: string) => {
-    row: MatrixRowKey
-    col: MatrixColKey
-    normalized: string
-    rowScores: Record<MatrixRowKey, number>
-    colScores: Record<MatrixColKey, number>
-    rowMatches: Record<MatrixRowKey, string[]>
-    colMatches: Record<MatrixColKey, string[]>
-  }
-  mapEntryToCell: (text: string) => { row: MatrixRowKey; col: MatrixColKey }
-  pickGravityTarget: (
-    currentCell: MatrixCell,
-    counts: Record<string, number>
-  ) => { targetCell: MatrixCell; reason: 'empty' | 'lowest_count' }
-}
 
 type StepId = 1 | 2 | 3 | 4
 type SpaceSlot = 'supersystem' | 'subsystem'
@@ -93,6 +81,16 @@ const ENGINE_ENTRY_LABELS = [
   'następny krok (action)',
 ]
 
+const ENGINE_ENTRY_LABEL_COLORS: Record<string, string> = {
+  'pomysł': '#FFD9B3',
+  'problem do rozwiązania': '#FFBDBD',
+  'ryzyko / blokada': '#FFC9E3',
+  'pytanie do klienta': '#CFE8FF',
+  'pytanie do dostawcy / partnera': '#D7F5E0',
+  'założenie do weryfikacji': '#E9D7FF',
+  'decyzja': '#FFF1B8',
+  'następny krok (action)': '#C7F0E0',
+}
 
 type Language =
   | 'English'
@@ -895,9 +893,9 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingBeforeLead: 'Jeśli choć jedno brzmi znajomo — jesteś w dobrym miejscu.',
     landingBeforeList: ['❌ Chaos', '❌ Zgubione notatki', '❌ Brak decyzji'],
     landingBeforeEmphasis: {
-      strong: 'Dużo energii.',
-      medium: 'Mało decyzji.',
-      rest: 'Zero realnego postępu.',
+      strong: '',
+      medium: '',
+      rest: '',
     },
     landingAfterLead: 'Teraz proces pracuje dla Ciebie.',
     landingAfterList: ['✅ Proces', '✅ Ustrukturyzowane pytania', '✅ Raport'],
@@ -1034,7 +1032,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewSessionIdLabel: 'ID sesji',
     enginePreviewSessionEmpty: 'Jeszcze nie utworzono',
     enginePreviewCreateSession: 'Utwórz sesję',
-    enginePreviewReset: 'Zamknij sesję',
+    enginePreviewReset: 'Zapisz i zamknij sesję',
     enginePreviewBoardItemsTitle: 'Tablica',
     enginePreviewBoardItemPlaceholder: 'Opisz element tablicy...',
     enginePreviewAddItem: 'Dodaj',
@@ -2680,12 +2678,15 @@ function App() {
   const [engineEditItemId, setEngineEditItemId] = useState<string | null>(null)
   const [engineEditText, setEngineEditText] = useState('')
   const [engineEditLoading, setEngineEditLoading] = useState(false)
+  const [engineMatrixVisible, setEngineMatrixVisible] = useState(false)
   const [engineLabelEditorId, setEngineLabelEditorId] = useState<string | null>(null)
   const engineLabelEditorRef = useRef<HTMLDivElement | null>(null)
   const engineLabelCache = useRef<Record<string, string | null>>({})
+  const engineInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const enginePendingFocusRef = useRef(false)
+  const enginePendingArmingRef = useRef(false)
   const didLogMappingSelfTestRef = useRef(false)
   const lastGravitySuggestionRef = useRef<string | null>(null)
-  const [debugMatrixModule, setDebugMatrixModule] = useState<DebugMatrixModule | null>(null)
   const engineImportInputRef = useRef<HTMLInputElement | null>(null)
 
   const languageOptions: Language[] = [
@@ -2706,18 +2707,6 @@ function App() {
     }
     return import.meta.env.VITE_DEBUG_UI === 'true'
   }
-
-  useEffect(() => {
-    if (!import.meta.env.DEV) return
-    if (!isDebugEnabled()) return
-    void import('./engineDebug/matrixHeuristics')
-      .then((mod) => {
-        setDebugMatrixModule(mod as DebugMatrixModule)
-      })
-      .catch(() => {
-        setDebugMatrixModule(null)
-      })
-  }, [])
 
   const isE2EEnabled = () => {
     if (typeof window !== 'undefined') {
@@ -2833,6 +2822,10 @@ function App() {
   const postAddGraceMs = isE2EEnabled() ? 200 : 7000
   const isEnginePreview =
     typeof window !== 'undefined' && window.location.pathname === '/engine'
+  const isWorkInProgress =
+    typeof window !== 'undefined' && window.location.pathname === '/wip'
+  const isIdeaGrid =
+    typeof window !== 'undefined' && window.location.pathname === '/grid'
 
   useEffect(() => {
     engineLatestInput.current = enginePreviewInput
@@ -2846,6 +2839,22 @@ function App() {
   useEffect(() => {
     engineLatestFocus.current = engineInputFocused
   }, [engineInputFocused])
+
+  useEffect(() => {
+    if (!isEnginePreview) return
+    if (!enginePreviewSessionId) return
+    if (enginePendingFocusRef.current && engineInputRef.current) {
+      enginePendingFocusRef.current = false
+      engineInputRef.current.focus()
+      setEngineInputFocused(true)
+      setEngineLastInputActivityAt(Date.now())
+    }
+    if (enginePendingArmingRef.current) {
+      enginePendingArmingRef.current = false
+      engineInteractionBySession.current[enginePreviewSessionId] = true
+      setEngineLastInputActivityAt(Date.now())
+    }
+  }, [isEnginePreview, enginePreviewSessionId])
 
   useEffect(() => {
     const sessionKey = getEngineSessionKey()
@@ -2888,7 +2897,6 @@ function App() {
 
   useEffect(() => {
     if (!isDebugEnabled() || didLogMappingSelfTestRef.current) return
-    if (!debugMatrixModule) return
     didLogMappingSelfTestRef.current = true
     const examples = [
       'funkcja musialaby cos poprawic',
@@ -2897,7 +2905,7 @@ function App() {
       'Powinny byc testy',
     ]
     examples.forEach((example) => {
-      const details = debugMatrixModule.computeMappingDetails(example)
+      const details = computeMappingDetails(example)
       console.log(
         JSON.stringify({
           event: 'matrix_mapping_self_test',
@@ -2909,7 +2917,7 @@ function App() {
         })
       )
     })
-  }, [debugMatrixModule])
+  }, [])
 
   useEffect(() => {
     if (!engineLabelEditorId) return
@@ -3223,8 +3231,6 @@ function App() {
 
 
   const debugMatrixData = useMemo(() => {
-    if (!debugMatrixModule) return null
-    const { mapEntryToCell, MATRIX_ROWS, MATRIX_COLS, cellKey, pickGravityTarget } = debugMatrixModule
     const entries = enginePreviewItems.map((item) => {
       const mapped = mapEntryToCell(item.text)
       return {
@@ -3271,7 +3277,7 @@ function App() {
       cols: MATRIX_COLS,
       cellKey,
     }
-  }, [enginePreviewItems, debugMatrixModule])
+  }, [enginePreviewItems])
 
   useEffect(() => {
     if (!isDebugEnabled()) return
@@ -3328,6 +3334,22 @@ function App() {
     )
     sections.forEach((section) => observer.observe(section))
     return () => observer.disconnect()
+  }, [showLanding])
+
+  useEffect(() => {
+    if (!isIdeaGrid) return
+    setShowLanding(false)
+    setLandingView('main')
+    setActiveStep(3)
+  }, [isIdeaGrid])
+
+  useEffect(() => {
+    if (!showLanding) return
+    if (typeof window === 'undefined') return
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('view') === 'threeSteps') {
+      setLandingView('threeSteps')
+    }
   }, [showLanding])
 
   const copy = getTranslations(reportLanguage)
@@ -4017,8 +4039,8 @@ function App() {
   const handleEnginePreviewAdd = async (nameOverride?: string) => {
     const text = enginePreviewInput.trim()
     if (!text) return
-    if (isDebugEnabled() && debugMatrixModule) {
-      const details = debugMatrixModule.computeMappingDetails(text)
+    if (isDebugEnabled()) {
+      const details = computeMappingDetails(text)
       console.log(
         JSON.stringify({
           event: 'matrix_mapping_entry',
@@ -4039,6 +4061,7 @@ function App() {
     }
     const sessionId = await ensureEnginePreviewSession()
     if (!sessionId) return
+    engineInteractionBySession.current[sessionId] = true
 
     const now = Date.now()
     const wordCount = countWords(text)
@@ -4082,6 +4105,7 @@ function App() {
       setEnginePreviewItems((prev) => [newItem, ...prev])
       setEnginePreviewInput('')
       setEngineLastInputActivityAt(now)
+      setEngineInputFocused(true)
       engineLastAddAtBySession.current[sessionId] = now
       engineIdleTriggered.current = false
       clearEngineIdleTimer('post_add')
@@ -4140,6 +4164,7 @@ function App() {
       })
       setEngineLastEntryAt(now)
       setEngineLastEntryShort(isShort)
+      engineInputRef.current?.focus()
     } catch {
       setEnginePreviewError('Unable to add board item.')
       logSessionStore('engine_preview_add_failed', { sessionId })
@@ -4454,7 +4479,13 @@ function App() {
           : 'Kontynuuj — możesz doprecyzować, dodać coś nowego albo zmienić wątek.'
 
     const formatSessionLabel = (name: string | null | undefined, id: string) => {
-      if (name && name.trim()) return `${name} · ${id}`
+      if (name && name.trim()) {
+        return (
+          <>
+            <span className="engine-session-name">{name}</span> · {id}
+          </>
+        )
+      }
       const shortId = id.slice(0, 8)
       return `Session ${shortId}`
     }
@@ -4466,10 +4497,19 @@ function App() {
       <div className="app engine-preview" data-testid="active-session">
         <header className="engine-header">
           <div>
-            <div className="engine-kicker">makemyidea.work</div>
-            <div className="engine-title">{copy.enginePreviewTitle}</div>
+            <a className="engine-kicker" href="/">
+              makemyidea.work
+            </a>
           </div>
           <div className="engine-header-actions">
+            <label className="engine-field">
+              <span>Matryca</span>
+              <input
+                type="checkbox"
+                checked={engineMatrixVisible}
+                onChange={(event) => setEngineMatrixVisible(event.target.checked)}
+              />
+            </label>
             <label className="engine-field">
               <span>{copy.languageLabel}</span>
               <select
@@ -4484,17 +4524,6 @@ function App() {
                 ))}
               </select>
             </label>
-            <label className="engine-field">
-              <span>{copy.llmApiBaseLabel}</span>
-              <input
-                value={llmApiBase}
-                onChange={(event) => setLlmApiBase(normalizeApiBase(event.target.value))}
-                placeholder={DEFAULT_LLM_API_BASE}
-              />
-            </label>
-            <button type="button" className="ghost" onClick={() => (window.location.href = '/')}> 
-              {copy.enginePreviewBackToApp}
-            </button>
           </div>
         </header>
         <main className="engine-main">
@@ -4502,33 +4531,55 @@ function App() {
             <div className="engine-panel-header">
               <h1>{copy.enginePreviewSessionTitle}</h1>
               <div className="engine-actions">
-                <button
-                  type="button"
-                  className="primary"
+                {!enginePreviewSessionId && (
+                  <button
+                    type="button"
+                    className="primary"
                   data-testid="session-create"
                   onClick={async () => {
+                    markUserInitiatedInteraction('pointer')
+                    setEngineLastInputActivityAt(Date.now())
+                    enginePendingFocusRef.current = true
+                    enginePendingArmingRef.current = true
                     await flushEngineEntryLabels()
-                    await ensureEnginePreviewSession()
+                    const sessionId = await ensureEnginePreviewSession()
+                    setEngineUiState('FREE_FLOW')
+                    setEngineOfferReason(null)
+                    setEngineInputFocused(true)
+                    engineInputRef.current?.focus()
+                    if (sessionId) {
+                      engineInteractionBySession.current[sessionId] = true
+                      setEngineLastInputActivityAt(Date.now())
+                    }
                   }}
                 >
-                  {copy.enginePreviewCreateSession}
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  data-testid="session-close"
-                  onClick={closeEnginePreviewSession}
-                >
-                  {copy.enginePreviewReset}
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  data-testid="session-list-toggle"
-                  onClick={() => {
-                    const next = !engineSessionsOpen
-                    const openList = async () => {
-                      if (next) await flushEngineEntryLabels()
+                    {copy.enginePreviewCreateSession}
+                  </button>
+                )}
+                {enginePreviewSessionId && (
+                  <button
+                    type="button"
+                    className="ghost"
+                    data-testid="session-close"
+                    onClick={() => {
+                      markUserInitiatedInteraction('pointer')
+                      setEngineLastInputActivityAt(Date.now())
+                      closeEnginePreviewSession()
+                    }}
+                  >
+                    {copy.enginePreviewReset}
+                  </button>
+                )}
+                  <button
+                    type="button"
+                    className="ghost"
+                    data-testid="session-list-toggle"
+                    onClick={() => {
+                      markUserInitiatedInteraction('pointer')
+                      setEngineLastInputActivityAt(Date.now())
+                      const next = !engineSessionsOpen
+                      const openList = async () => {
+                        if (next) await flushEngineEntryLabels()
                       setEngineSessionsOpen(next)
                       if (next) fetchEngineSessions()
                     }
@@ -4541,7 +4592,7 @@ function App() {
             </div>
             <div className="engine-meta">
               <span>{copy.enginePreviewSessionIdLabel}:</span>
-              <span className="engine-meta-value">
+              <span className="engine-meta-value engine-meta-value--muted">
                 {enginePreviewSessionId ? formatSessionLabel(enginePreviewSessionName, enginePreviewSessionId) : copy.enginePreviewSessionEmpty}
               </span>
             </div>
@@ -4560,7 +4611,15 @@ function App() {
                   >
                     {engineSessionsLoading ? '...' : 'Odśwież'}
                   </button>
-                  <button type="button" className="ghost" onClick={handleExportSessions}>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => {
+                      markUserInitiatedInteraction('pointer')
+                      setEngineLastInputActivityAt(Date.now())
+                      handleExportSessions()
+                    }}
+                  >
                     Eksportuj sesje
                   </button>
                   <button
@@ -4716,7 +4775,7 @@ function App() {
             </section>
           )}
 
-          {debugMatrixData && (
+          {debugMatrixData && engineMatrixVisible && (
             <section className="engine-panel">
               <div className="engine-panel-header">
                 <h2>Matryca</h2>
@@ -4780,205 +4839,260 @@ function App() {
             </section>
           )}
 
-          <section className="engine-panel">
-            <div className="engine-panel-header">
-              <h2>{copy.enginePreviewBoardItemsTitle}</h2>
-              {showFacilitationOffer && (
-                <div className="engine-helper engine-facilitation-note">
-                  Jeśli chcesz, mogę pomóc spojrzeć na to z innej strony.
-                </div>
-              )}
-              {showFacilitationOffer && (
-                <div
-                  className="engine-facilitation-actions engine-facilitation-actions--fade"
-                  data-testid="facilitation-buttons"
-                >
-                  <button
-                    type="button"
-                    className="ghost"
-                    data-testid="facilitation-next"
-                    onClick={() => {
-                      setFacilitationCooldown('NEXT')
-                      activateFacilitationPrompt('NEXT')
-                    }}
-                  >
-                    Następne pytanie
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    data-testid="facilitation-deepen"
-                    onClick={() => {
-                      setFacilitationCooldown('DEEPEN')
-                      activateFacilitationPrompt('DEEPEN')
-                    }}
-                  >
-                    Pogłęb
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    data-testid="facilitation-perspective"
-                    onClick={() => {
-                      setFacilitationCooldown('PERSPECTIVE')
-                      activateFacilitationPrompt('PERSPECTIVE')
-                    }}
-                  >
-                    Zmień perspektywę
-                  </button>
-                </div>
-              )}
-            </div>
-            {enginePreviewError && <div className="engine-error">{enginePreviewError}</div>}
-            <div className="engine-board-input">
-              {engineNamePromptOpen && (
-                <div className="engine-name-prompt">
-                  <div className="engine-helper">Nadaj nazwę tej sesji, żeby łatwiej do niej wrócić.</div>
-                  <label>
-                    <span>Nazwa sesji</span>
-                    <input
-                      data-testid="session-name-input"
-                      value={engineNameDraft}
-                      onChange={(event) => setEngineNameDraft(event.target.value.slice(0, 40))}
-                      placeholder="Nazwa sesji"
-                    />
-                  </label>
-                  <div className="engine-facilitation-actions">
-                    <button
-                      type="button"
-                      className="primary"
-                      data-testid="session-name-save"
-                      onClick={() => {
-                        const name = engineNameDraft.trim().replace(/\s+/g, ' ')
-                        if (!name) return
-                        setEnginePreviewSessionName(name)
-                        setEngineNamePromptOpen(false)
-                        handleEnginePreviewAdd(name)
-                      }}
-                    >
-                      Zapisz i kontynuuj
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => setEngineNamePromptOpen(false)}
-                    >
-                      Anuluj
-                    </button>
-                  </div>
-                </div>
-              )}
-              <textarea
-                data-testid="engine-input"
-                value={enginePreviewInput}
-                onChange={(event) => {
-                  handleEnginePreviewInputChange(event)
-                  engineIdleTriggered.current = false
-                  clearEngineIdleTimer('input_change')
-                  setEngineLastInputActivityAt(Date.now())
-                  logFacilitationEvent('idle_timer_reset', { reason: 'input_change', at: Date.now() })
-                }}
-                onPointerDown={() => {
-                  markUserInitiatedInteraction('pointer')
-                  if (engineUiState === 'INIT') {
-                    setEngineUiState('FREE_FLOW')
-                  }
-                  engineIdleTriggered.current = false
-                  clearEngineIdleTimer('pointer')
-                  setEngineLastInputActivityAt(Date.now())
-                  logFacilitationEvent('idle_timer_reset', { reason: 'pointer', at: Date.now() })
-                }}
-                onKeyDown={() => {
-                  markUserInitiatedInteraction('keystroke')
-                  if (engineUiState === 'INIT') {
-                    setEngineUiState('FREE_FLOW')
-                  }
-                  engineIdleTriggered.current = false
-                  clearEngineIdleTimer('keystroke')
-                  setEngineLastInputActivityAt(Date.now())
-                  logFacilitationEvent('idle_timer_reset', { reason: 'keystroke', at: Date.now() })
-                }}
-                onFocus={() => {
-                  setEngineInputFocused(true)
-                  logFacilitationEvent('input_focus', { sessionId: getEngineSessionKey() })
-                }}
-                onBlur={() => {
-                  setEngineInputFocused(false)
-                  clearEngineIdleTimer('input_blur')
-                  logFacilitationEvent('input_blur', { sessionId: getEngineSessionKey() })
-                }}
-                placeholder={enginePlaceholder}
-                rows={3}
-              />
-              <div className="engine-input-footer">
-                <span className="engine-word-count">Pozostało {engineRemainingWords} słów</span>
+          {enginePreviewSessionId && (
+            <section className="engine-panel">
+              <div className="engine-panel-header">
+                <h2>{copy.enginePreviewBoardItemsTitle}</h2>
+              <div
+                className={`engine-helper engine-facilitation-note ${
+                  showFacilitationOffer ? 'is-visible' : 'is-hidden'
+                }`}
+                aria-hidden={!showFacilitationOffer}
+              >
+                Jeśli chcesz, mogę pomóc spojrzeć na to z innej strony.
+              </div>
+              <div
+                className={`engine-facilitation-actions engine-facilitation-actions--fade ${
+                  showFacilitationOffer ? 'is-visible' : 'is-hidden'
+                }`}
+                data-testid="facilitation-buttons"
+                aria-hidden={!showFacilitationOffer}
+              >
                 <button
                   type="button"
-                  className="primary"
-                  data-testid="add-entry"
-                  onClick={() => void handleEnginePreviewAdd()}
-                  disabled={!enginePreviewInput.trim()}
+                  className="ghost"
+                  data-testid="facilitation-next"
+                  onClick={() => {
+                    setFacilitationCooldown('NEXT')
+                    activateFacilitationPrompt('NEXT')
+                  }}
+                  disabled={!showFacilitationOffer}
                 >
-                  {copy.enginePreviewAddItem}
+                  Następne pytanie
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  data-testid="facilitation-deepen"
+                  onClick={() => {
+                    setFacilitationCooldown('DEEPEN')
+                    activateFacilitationPrompt('DEEPEN')
+                  }}
+                  disabled={!showFacilitationOffer}
+                >
+                  Pogłęb
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  data-testid="facilitation-perspective"
+                  onClick={() => {
+                    setFacilitationCooldown('PERSPECTIVE')
+                    activateFacilitationPrompt('PERSPECTIVE')
+                  }}
+                  disabled={!showFacilitationOffer}
+                >
+                  Zmień perspektywę
                 </button>
               </div>
-            </div>
-            <ul className="engine-entry-list">
-              {enginePreviewItems.length === 0 && (
-                <li className="engine-empty">{copy.enginePreviewBoardItemsEmpty}</li>
-              )}
-              {enginePreviewItems.map((item) => (
-                <li
-                  key={item.id}
-                  className="engine-entry"
-                  data-testid={`entry-row-${item.id}`}
-                  onClick={() =>
-                    setEngineLabelEditorId((prev) => (prev === item.id ? null : item.id))
-                  }
-                >
-                  <div className="engine-entry-main">
-                    <div className="engine-entry-text">{item.text}</div>
-                    {item.label && (
-                      <span className="engine-entry-label" data-testid={`entry-label-${item.id}`}>
-                        {item.label}
-                      </span>
-                    )}
+              </div>
+              {enginePreviewError && <div className="engine-error">{enginePreviewError}</div>}
+              <div className="engine-board-input">
+                {engineNamePromptOpen && (
+                  <div className="engine-name-prompt">
+                    <div className="engine-helper">Nadaj nazwę tej sesji, żeby łatwiej do niej wrócić.</div>
+                    <label>
+                      <span>Nazwa sesji</span>
+                      <input
+                        data-testid="session-name-input"
+                        value={engineNameDraft}
+                        onChange={(event) => setEngineNameDraft(event.target.value.slice(0, 40))}
+                        placeholder="Nazwa sesji"
+                      />
+                    </label>
+                    <div className="engine-facilitation-actions">
+                      <button
+                        type="button"
+                        className="primary"
+                      data-testid="session-name-save"
+                      onClick={async () => {
+                        markUserInitiatedInteraction('pointer')
+                        setEngineLastInputActivityAt(Date.now())
+                        const name = engineNameDraft.trim().replace(/\s+/g, ' ')
+                        if (!name) return
+                        engineInteractionBySession.current['new'] = true
+                        setEngineInputFocused(true)
+                        setEngineUiState('FREE_FLOW')
+                        enginePendingArmingRef.current = true
+                        enginePendingFocusRef.current = true
+                        setEnginePreviewSessionName(name)
+                        setEngineNamePromptOpen(false)
+                        const sessionId = await ensureEnginePreviewSession()
+                        if (sessionId) {
+                          engineInteractionBySession.current[sessionId] = true
+                          setEngineLastInputActivityAt(Date.now())
+                        }
+                        await handleEnginePreviewAdd(name)
+                        engineInputRef.current?.focus()
+                        markUserInitiatedInteraction('pointer')
+                        setEngineLastInputActivityAt(Date.now())
+                      }}
+                      >
+                        Zapisz i kontynuuj
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => setEngineNamePromptOpen(false)}
+                      >
+                        Anuluj
+                      </button>
+                    </div>
                   </div>
-                  {engineLabelEditorId === item.id && (
-                    <div
-                      ref={engineLabelEditorRef}
-                      className="engine-entry-label-editor"
-                      onClick={(event) => event.stopPropagation()}
-                    >
-                      <label className="engine-entry-label-field">
-                        <span className="sr-only">Etykieta wpisu</span>
-                        <select
-                          data-testid={`entry-label-select-${item.id}`}
-                          value={item.label ?? ''}
-                          onChange={(event) => {
-                            const nextValue = event.target.value || null
-                            void updateEngineEntryLabel(item.id, nextValue)
-                            setEngineLabelEditorId(null)
+                )}
+                <textarea
+                  data-testid="engine-input"
+                  ref={engineInputRef}
+                  value={enginePreviewInput}
+                  onChange={(event) => {
+                    handleEnginePreviewInputChange(event)
+                    engineIdleTriggered.current = false
+                    clearEngineIdleTimer('input_change')
+                    setEngineLastInputActivityAt(Date.now())
+                    logFacilitationEvent('idle_timer_reset', { reason: 'input_change', at: Date.now() })
+                  }}
+                  onPointerDown={() => {
+                    markUserInitiatedInteraction('pointer')
+                    if (engineUiState === 'INIT') {
+                      setEngineUiState('FREE_FLOW')
+                    }
+                    engineIdleTriggered.current = false
+                    clearEngineIdleTimer('pointer')
+                    setEngineLastInputActivityAt(Date.now())
+                    logFacilitationEvent('idle_timer_reset', { reason: 'pointer', at: Date.now() })
+                  }}
+                  onKeyDown={() => {
+                    markUserInitiatedInteraction('keystroke')
+                    if (engineUiState === 'INIT') {
+                      setEngineUiState('FREE_FLOW')
+                    }
+                    engineIdleTriggered.current = false
+                    clearEngineIdleTimer('keystroke')
+                    setEngineLastInputActivityAt(Date.now())
+                    logFacilitationEvent('idle_timer_reset', { reason: 'keystroke', at: Date.now() })
+                  }}
+                  onFocus={() => {
+                    setEngineInputFocused(true)
+                    logFacilitationEvent('input_focus', { sessionId: getEngineSessionKey() })
+                  }}
+                  onBlur={() => {
+                    setEngineInputFocused(false)
+                    clearEngineIdleTimer('input_blur')
+                    logFacilitationEvent('input_blur', { sessionId: getEngineSessionKey() })
+                  }}
+                  placeholder={enginePlaceholder}
+                  rows={3}
+                />
+                <div className="engine-input-footer">
+                  <span className="engine-word-count">Pozostało {engineRemainingWords} słów</span>
+                  <button
+                    type="button"
+                    className="primary"
+                    data-testid="add-entry"
+                    onClick={() => void handleEnginePreviewAdd()}
+                    disabled={!enginePreviewInput.trim()}
+                  >
+                    {copy.enginePreviewAddItem}
+                  </button>
+                </div>
+              </div>
+              <ul className="engine-entry-list">
+                {enginePreviewItems.length === 0 && (
+                  <li className="engine-empty">{copy.enginePreviewBoardItemsEmpty}</li>
+                )}
+                {enginePreviewItems.map((item) => (
+                  <li
+                    key={item.id}
+                    className="engine-entry"
+                    data-testid={`entry-row-${item.id}`}
+                    onClick={() =>
+                      setEngineLabelEditorId((prev) => (prev === item.id ? null : item.id))
+                    }
+                  >
+                    <div className="engine-entry-main">
+                      <div className="engine-entry-text">{item.text}</div>
+                      {item.label && (
+                        <span
+                          className="engine-entry-label"
+                          data-testid={`entry-label-${item.id}`}
+                          style={{
+                            backgroundColor:
+                              ENGINE_ENTRY_LABEL_COLORS[item.label] || '#e7ebf0',
+                            color: '#000000',
                           }}
                         >
-                          <option value="">Brak</option>
-                          {ENGINE_ENTRY_LABELS.map((label) => (
-                            <option key={label} value={label}>
-                              {label}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
+                          {item.label}
+                        </span>
+                      )}
                     </div>
-                  )}
-                  <div className="engine-entry-meta">
-                    {new Date(item.created_at || Date.now()).toLocaleString()}
-                  </div>
-                </li>
-              ))}
-            </ul>
-          </section>
+                    {engineLabelEditorId === item.id && (
+                      <div
+                        ref={engineLabelEditorRef}
+                        className="engine-entry-label-editor"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <label className="engine-entry-label-field">
+                          <span className="sr-only">Etykieta wpisu</span>
+                          <select
+                            data-testid={`entry-label-select-${item.id}`}
+                            value={item.label ?? ''}
+                            onChange={(event) => {
+                              const nextValue = event.target.value || null
+                              void updateEngineEntryLabel(item.id, nextValue)
+                              setEngineLabelEditorId(null)
+                            }}
+                          >
+                            <option value="">Brak</option>
+                            {ENGINE_ENTRY_LABELS.map((label) => (
+                              <option key={label} value={label}>
+                                {label}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                      </div>
+                    )}
+                    <div className="engine-entry-meta">
+                      {new Date(item.created_at || Date.now()).toLocaleString()}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
         </main>
+      </div>
+    )
+  }
+
+  if (isWorkInProgress) {
+    return (
+      <div className="app">
+        <div className="topbar-links">
+          <a className="ghost topbar-link" href="/">
+            Home page
+          </a>
+        </div>
+        <div className="landing-section hero in-view">
+          <div className="landing-inner">
+            <a className="primary landing-cta" href="/?view=threeSteps">
+              {copy.landingThreeStepsCta}
+            </a>
+            <button type="button" className="primary landing-cta">
+              Watch 60-second demo
+            </button>
+          </div>
+        </div>
       </div>
     )
   }
@@ -5032,12 +5146,16 @@ function App() {
           </button>
         )}
         <div className="topbar-links">
-          <a className="ghost topbar-link" href="/">
-            Landing page
-          </a>
-          <a className="ghost topbar-link" href="/engine">
-            Engine preview
-          </a>
+          {!showLanding && (
+            <a className="ghost topbar-link" href="/">
+              Landing page
+            </a>
+          )}
+          {showLanding && (
+            <a className="ghost topbar-link topbar-link--wip" href="/wip">
+              Work in progress
+            </a>
+          )}
         </div>
         {!showLanding && activeStep !== 1 && (
           <button className="report-button" type="button" onClick={() => setReportOpen(true)}>
@@ -5059,9 +5177,6 @@ function App() {
               <div className="landing-inner">
                 <h1>{copy.landingHeroTitle}</h1>
                 <p>{copy.landingHeroSubtitle}</p>
-                <button type="button" className="primary landing-cta" onClick={openThreeSteps}>
-                  {copy.landingThreeStepsCta}
-                </button>
               </div>
             </div>
 
@@ -5092,9 +5207,11 @@ function App() {
                       )}
                   </span>
                 </p>
-                <button type="button" className="primary landing-cta">
-                  Watch 60-second demo
-                </button>
+                <div className="intro-cta">
+                  <a className="primary landing-cta" href="/engine">
+                    {copy.landingCta}
+                  </a>
+                </div>
               </div>
             </div>
 
@@ -5153,9 +5270,9 @@ function App() {
                 <div className="landing-final">
                   <p>{copy.landingFinalLines[0]}</p>
                   <p className="final-shift">{copy.landingFinalLines[1]}</p>
-                  <button type="button" className="primary landing-cta" onClick={startGrid}>
+                  <a className="primary landing-cta" href="/engine">
                     {copy.landingCta}
-                  </button>
+                  </a>
                 </div>
               </div>
             </div>
@@ -5201,9 +5318,9 @@ function App() {
                       )}
                   </span>
                 </p>
-                <button type="button" className="primary landing-cta" onClick={startGrid}>
+                <a className="primary landing-cta" href="/engine">
                   {copy.landingCta}
-                </button>
+                </a>
               </div>
             </div>
 
