@@ -81,6 +81,17 @@ const ENGINE_ENTRY_LABELS = [
   'następny krok (action)',
 ]
 
+const ENGINE_ENTRY_LABEL_TRANSLATIONS: Record<string, string> = {
+  'pomysł': 'idea',
+  'problem do rozwiązania': 'problem to solve',
+  'ryzyko / blokada': 'risk / blocker',
+  'pytanie do klienta': 'question to customer',
+  'pytanie do dostawcy / partnera': 'question to supplier / partner',
+  'założenie do weryfikacji': 'assumption to validate',
+  'decyzja': 'decision',
+  'następny krok (action)': 'next step (action)',
+}
+
 const ENGINE_ENTRY_LABEL_COLORS: Record<string, string> = {
   'pomysł': '#FFD9B3',
   'problem do rozwiązania': '#FFBDBD',
@@ -107,10 +118,11 @@ type Language =
 type FacilitationType = 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET'
 type FacilitationPrompt = { type: FacilitationType; text: string }
 
-const WORD_LIMIT = 80
+const WORD_LIMIT = 40
 const SHORT_ENTRY_WORDS = 12
 const DEFAULT_IDLE_THRESHOLD_MS = 15000
 const ERASE_EMPTY_SECONDS_STRONG = 10
+const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
 
 const facilitationPrompts: Record<FacilitationType, string[]> = {
   NEXT: [
@@ -161,6 +173,7 @@ type Translations = {
   landingWhoTitle: string
   landingWhoList: string[]
   landingFinalLines: [string, string]
+  workInProgressLink: string
   impulseButtonLabel: string
   impulseTitle: string
   impulseEmpty: string
@@ -271,6 +284,37 @@ type Translations = {
   enginePreviewMetaMode: string
   enginePreviewMetaCategory: string
   enginePreviewMetaDifficulty: string
+  engineMatrixToggleLabel: string
+  engineMatrixTitle: string
+  engineSessionsToggle: string
+  engineSessionsTitle: string
+  engineSessionsRefresh: string
+  engineSessionsExport: string
+  engineSessionsImport: string
+  engineSessionsEmpty: string
+  engineSessionsOpen: string
+  engineSessionsDelete: string
+  engineSessionsDeleting: string
+  engineSessionDetailsTitle: string
+  engineSessionDetailsIdLabel: string
+  engineSessionDetailsNameLabel: string
+  engineSessionDetailsUpdatedLabel: string
+  engineSessionDetailsQuestionsLabel: string
+  engineSessionDetailsBoardTitle: string
+  engineSessionDetailsBoardEmpty: string
+  engineFacilitationNote: string
+  engineFacilitationNext: string
+  engineFacilitationDeepen: string
+  engineFacilitationPerspective: string
+  engineNamePrompt: string
+  engineNameLabel: string
+  engineNamePlaceholder: string
+  engineNameSave: string
+  engineWordCountRemaining: (count: number) => string
+  engineQuestionsWipNote: string
+  enginePlaceholderInitial: string
+  enginePlaceholderContinue: string
+  engineWordLimitReached: string
   openReportPanel: string
   reportSnapshotTitle: string
   close: string
@@ -341,9 +385,9 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingBeforeLead: 'If any of this sounds familiar — you are in the right place.',
     landingBeforeList: ['❌ Chaos', '❌ Lost notes', '❌ No decisions'],
     landingBeforeEmphasis: {
-      strong: 'Lots of energy.',
-      medium: 'Few decisions.',
-      rest: 'Zero real progress.',
+      strong: '',
+      medium: '',
+      rest: '',
     },
     landingAfterLead: 'Now the process works for you.',
     landingAfterList: ['✅ Process', '✅ Structured questions', '✅ Report'],
@@ -364,6 +408,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       '⏱️ You want results now, not after three workshops',
     ],
     landingFinalLines: ['You don’t need a perfect idea.', 'You need a solid process.'],
+    workInProgressLink: 'Work in progress',
     impulseButtonLabel: 'Give me an impulse',
     impulseTitle: 'Suggested question',
     impulseEmpty: 'No question available yet.',
@@ -465,7 +510,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewSessionEmpty: 'Not created yet',
     enginePreviewCreateSession: 'Create session',
     enginePreviewReset: 'Close session',
-    enginePreviewBoardItemsTitle: 'Board items',
+    enginePreviewBoardItemsTitle: 'Board',
     enginePreviewBoardItemPlaceholder: 'Describe a board item...',
     enginePreviewAddItem: 'Add item',
     enginePreviewBoardItemsEmpty: 'No board items yet.',
@@ -484,6 +529,39 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewMetaMode: 'Mode',
     enginePreviewMetaCategory: 'Category',
     enginePreviewMetaDifficulty: 'Difficulty',
+    engineMatrixToggleLabel: 'Matrix',
+    engineMatrixTitle: 'Matrix',
+    engineSessionsToggle: 'Sessions',
+    engineSessionsTitle: 'Sessions',
+    engineSessionsRefresh: 'Refresh',
+    engineSessionsExport: 'Export sessions',
+    engineSessionsImport: 'Import sessions',
+    engineSessionsEmpty: 'No saved sessions.',
+    engineSessionsOpen: 'Open session',
+    engineSessionsDelete: 'Delete session',
+    engineSessionsDeleting: 'Deleting...',
+    engineSessionDetailsTitle: 'Session details',
+    engineSessionDetailsIdLabel: 'ID',
+    engineSessionDetailsNameLabel: 'Name',
+    engineSessionDetailsUpdatedLabel: 'Last activity',
+    engineSessionDetailsQuestionsLabel: 'Questions',
+    engineSessionDetailsBoardTitle: 'Idea board',
+    engineSessionDetailsBoardEmpty: 'No items.',
+    engineFacilitationNote: 'If you want, I can help you look at this from another angle.',
+    engineFacilitationNext: 'Next question',
+    engineFacilitationDeepen: 'Deepen',
+    engineFacilitationPerspective: 'Change perspective',
+    engineNamePrompt: 'Give this session a name so it’s easier to return to.',
+    engineNameLabel: 'Session name',
+    engineNamePlaceholder: 'Session name',
+    engineNameSave: 'Save and continue',
+    engineWordCountRemaining: (count) => `Remaining ${count} words`,
+    engineQuestionsWipNote: '',
+    enginePlaceholderInitial:
+      'What do you know about your product, or what you don’t know yet — start however you like.',
+    enginePlaceholderContinue:
+      'Continue — you can clarify, add something new, or change the thread.',
+    engineWordLimitReached: 'Word limit reached.',
     openReportPanel: 'Open report panel',
     reportSnapshotTitle: 'Workshop report snapshot',
     close: 'Close',
@@ -916,6 +994,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       '⏱️ Chcesz efektów teraz, a nie po 3 warsztatach',
     ],
     landingFinalLines: ['Nie potrzebujesz idealnego pomysłu.', 'Potrzebujesz dobrego procesu.'],
+    workInProgressLink: 'Work in progress',
     impulseButtonLabel: 'Daj mi impuls',
     impulseTitle: 'Sugerowane pytanie',
     impulseEmpty: 'Brak pytania na ten moment.',
@@ -1052,6 +1131,39 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewMetaMode: 'Tryb',
     enginePreviewMetaCategory: 'Kategoria',
     enginePreviewMetaDifficulty: 'Trudność',
+    engineMatrixToggleLabel: 'Matryca',
+    engineMatrixTitle: 'Matryca',
+    engineSessionsToggle: 'Lista sesji',
+    engineSessionsTitle: 'Sesje',
+    engineSessionsRefresh: 'Odśwież',
+    engineSessionsExport: 'Eksportuj sesje',
+    engineSessionsImport: 'Importuj sesje',
+    engineSessionsEmpty: 'Brak zapisanych sesji.',
+    engineSessionsOpen: 'Otwórz sesję',
+    engineSessionsDelete: 'Usuń sesję',
+    engineSessionsDeleting: 'Usuwanie...',
+    engineSessionDetailsTitle: 'Szczegóły sesji',
+    engineSessionDetailsIdLabel: 'ID',
+    engineSessionDetailsNameLabel: 'Nazwa',
+    engineSessionDetailsUpdatedLabel: 'Ostatnia aktywność',
+    engineSessionDetailsQuestionsLabel: 'Zapytania',
+    engineSessionDetailsBoardTitle: 'Tablica opisująca twój pomysł',
+    engineSessionDetailsBoardEmpty: 'Brak elementów.',
+    engineFacilitationNote: 'Jeśli chcesz, mogę pomóc spojrzeć na to z innej strony.',
+    engineFacilitationNext: 'Następne pytanie',
+    engineFacilitationDeepen: 'Pogłęb',
+    engineFacilitationPerspective: 'Zmień perspektywę',
+    engineNamePrompt: 'Nadaj nazwę tej sesji, żeby łatwiej do niej wrócić.',
+    engineNameLabel: 'Nazwa sesji',
+    engineNamePlaceholder: 'Nazwa sesji',
+    engineNameSave: 'Zapisz i kontynuuj',
+    engineWordCountRemaining: (count) => `Pozostało ${count} słów`,
+    engineQuestionsWipNote: '',
+    engineWordLimitReached: 'Osiągnięto limit słów.',
+    enginePlaceholderInitial:
+      'Co wiesz o swoim produkcie albo czego nie wiesz — zacznij tak, jak wolisz.',
+    enginePlaceholderContinue:
+      'Kontynuuj — możesz doprecyzować, dodać coś nowego albo zmienić wątek.',
     llmSettingsTitle: 'Ustawienia serwera OpenAI',
     llmSettingsIntro:
       'Połącz swój serwer z OpenAI (OPENAI_API_KEY) i podaj adres API.',
@@ -2633,6 +2745,11 @@ function App() {
   const [postItEdit, setPostItEdit] = useState<Idea | null>(null)
   const [postItEditCell, setPostItEditCell] = useState<string | null>(null)
   const [reportLanguage, setReportLanguage] = useState<Language>('Polish')
+  const [uiLanguage, setUiLanguage] = useState<Language>(() => {
+    if (typeof window === 'undefined') return 'Polish'
+    const saved = window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY)
+    return saved === 'English' ? 'English' : 'Polish'
+  })
   const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
   const [enginePreviewSessionName, setEnginePreviewSessionName] = useState('')
   const [engineNamePromptOpen, setEngineNamePromptOpen] = useState(false)
@@ -2685,6 +2802,7 @@ function App() {
   const engineInputRef = useRef<HTMLTextAreaElement | null>(null)
   const enginePendingFocusRef = useRef(false)
   const enginePendingArmingRef = useRef(false)
+  const engineAllowIdleWithoutFocusRef = useRef(false)
   const didLogMappingSelfTestRef = useRef(false)
   const lastGravitySuggestionRef = useRef<string | null>(null)
   const engineImportInputRef = useRef<HTMLInputElement | null>(null)
@@ -2698,7 +2816,7 @@ function App() {
     'German',
   ]
 
-  const languageLocked = true
+  const uiLanguageOptions: Language[] = ['Polish', 'English']
 
   const isDebugEnabled = () => {
     if (typeof window !== 'undefined') {
@@ -3094,6 +3212,11 @@ function App() {
   }, [llmEnabled, llmApiBase])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, uiLanguage)
+  }, [uiLanguage])
+
+  useEffect(() => {
     if (!showLanding) return
     const updateProgress = () => {
       const scrollTop = window.scrollY
@@ -3153,7 +3276,7 @@ function App() {
     const hasUserInteraction = engineInteractionBySession.current[sessionKey]
     const lastAddAt = engineLastAddAtBySession.current[sessionKey] || 0
 
-    if (!engineInputFocused) {
+    if (!engineInputFocused && !engineAllowIdleWithoutFocusRef.current) {
       clearEngineIdleTimer('input_blur')
       return
     }
@@ -3199,12 +3322,13 @@ function App() {
       if (!canShowFacilitation('idle')) return
       if (engineIdleTriggered.current) return
       registerSignal('medium', 'idle')
-      engineIdleTriggered.current = true
-      setEngineOfferReason('idle')
-      setEngineUiState('FACILITATION_OFFER')
-      logFacilitationEvent('facilitation_offered', {
-        sessionId: latestSession,
-        reason: 'idle',
+                    engineIdleTriggered.current = true
+                    setEngineOfferReason('idle')
+                    setEngineUiState('FACILITATION_OFFER')
+                    engineAllowIdleWithoutFocusRef.current = false
+                    logFacilitationEvent('facilitation_offered', {
+                      sessionId: latestSession,
+                      reason: 'idle',
         uiState: engineLatestUiState.current,
       })
     }, remaining)
@@ -3352,7 +3476,7 @@ function App() {
     }
   }, [showLanding])
 
-  const copy = getTranslations(reportLanguage)
+  const copy = getTranslations(uiLanguage)
   const stepTitle = (stepId: StepId) => copy.steps[stepId]
   const stepHeading = (stepId: StepId) =>
     `${copy.stepLabel}${stepId} | ${stepTitle(stepId)}`
@@ -3976,7 +4100,14 @@ function App() {
   }
 
   const handleEnginePreviewInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    const next = limitWords(event.target.value, WORD_LIMIT)
+    const rawNext = event.target.value
+    const prev = enginePreviewInput
+    const nextWordCount = countWords(rawNext)
+    const isDeletion = rawNext.length < prev.length
+    if (nextWordCount > WORD_LIMIT && !isDeletion) {
+      return
+    }
+    const next = limitWords(rawNext, WORD_LIMIT)
     setEnginePreviewInput(next)
     setEngineLastInputActivityAt(Date.now())
     engineIdleTriggered.current = false
@@ -3995,10 +4126,10 @@ function App() {
       engineEraseTimer.current = null
     }
 
-    const prev = enginePreviousInput.current
+    const prevInput = enginePreviousInput.current
     enginePreviousInput.current = next
 
-    if (prev.trim() && !next.trim()) {
+    if (prevInput.trim() && !next.trim()) {
       engineEraseTimer.current = window.setTimeout(() => {
         if (engineInputFocused && !enginePreviousInput.current.trim()) {
           registerSignal('strong', 'erase')
@@ -4467,8 +4598,8 @@ function App() {
       engineUiState === 'FACILITATED_INPUT' && engineActivePrompt
         ? engineActivePrompt.text
         : enginePreviewItems.length === 0
-          ? 'Co wiesz o swoim produkcie albo czego nie wiesz — zacznij tak, jak wolisz.'
-          : 'Kontynuuj — możesz doprecyzować, dodać coś nowego albo zmienić wątek.'
+          ? copy.enginePlaceholderInitial
+          : copy.enginePlaceholderContinue
 
     const formatSessionLabel = (name: string | null | undefined, id: string) => {
       if (name && name.trim()) {
@@ -4483,6 +4614,8 @@ function App() {
     }
 
     const engineRemainingWords = Math.max(0, WORD_LIMIT - countWords(enginePreviewInput))
+    const isEngineWordLimitReached =
+      enginePreviewInput.trim().length > 0 && countWords(enginePreviewInput) >= WORD_LIMIT
     const showFacilitationOffer = engineUiState === 'FACILITATION_OFFER'
 
     return (
@@ -4495,26 +4628,12 @@ function App() {
           </div>
           <div className="engine-header-actions">
             <label className="engine-field">
-              <span>Matryca</span>
+              <span>{copy.engineMatrixToggleLabel}</span>
               <input
                 type="checkbox"
                 checked={engineMatrixVisible}
                 onChange={(event) => setEngineMatrixVisible(event.target.checked)}
               />
-            </label>
-            <label className="engine-field">
-              <span>{copy.languageLabel}</span>
-              <select
-                value={reportLanguage}
-                onChange={(event) => setReportLanguage(event.target.value as Language)}
-                disabled={languageLocked}
-              >
-                {languageOptions.map((language) => (
-                  <option key={language} value={language}>
-                    {language}
-                  </option>
-                ))}
-              </select>
             </label>
           </div>
         </header>
@@ -4562,14 +4681,14 @@ function App() {
                     {copy.enginePreviewReset}
                   </button>
                 )}
-                  <button
-                    type="button"
-                    className="ghost"
-                    data-testid="session-list-toggle"
-                    onClick={() => {
-                      markUserInitiatedInteraction('pointer')
-                      setEngineLastInputActivityAt(Date.now())
-                      const next = !engineSessionsOpen
+                <button
+                  type="button"
+                  className="ghost"
+                  data-testid="session-list-toggle"
+                  onClick={() => {
+                    markUserInitiatedInteraction('pointer')
+                    setEngineLastInputActivityAt(Date.now())
+                    const next = !engineSessionsOpen
                       const openList = async () => {
                         if (next) await flushEngineEntryLabels()
                       setEngineSessionsOpen(next)
@@ -4578,7 +4697,7 @@ function App() {
                     void openList()
                   }}
                 >
-                  Lista sesji
+                  {copy.engineSessionsToggle}
                 </button>
               </div>
             </div>
@@ -4593,7 +4712,7 @@ function App() {
           {engineSessionsOpen && (
             <section className="engine-panel engine-sessions">
               <div className="engine-panel-header">
-                <h2>Sesje</h2>
+                <h2>{copy.engineSessionsTitle}</h2>
                 <div className="engine-actions">
                   <button
                     type="button"
@@ -4601,7 +4720,7 @@ function App() {
                     onClick={fetchEngineSessions}
                     disabled={engineSessionsLoading}
                   >
-                    {engineSessionsLoading ? '...' : 'Odśwież'}
+                    {engineSessionsLoading ? '...' : copy.engineSessionsRefresh}
                   </button>
                   <button
                     type="button"
@@ -4612,14 +4731,14 @@ function App() {
                       handleExportSessions()
                     }}
                   >
-                    Eksportuj sesje
+                    {copy.engineSessionsExport}
                   </button>
                   <button
                     type="button"
                     className="ghost"
                     onClick={() => engineImportInputRef.current?.click()}
                   >
-                    Importuj sesje
+                    {copy.engineSessionsImport}
                   </button>
                   <input
                     ref={engineImportInputRef}
@@ -4630,22 +4749,11 @@ function App() {
                   />
                 </div>
               </div>
-              {import.meta.env.DEV && (
-                <div className="engine-debug-meta">
-                  <strong>Debug storage</strong> • origin: {window.location.origin} • key: {STORAGE_KEY}{' '}
-                  • sessions: {getStorageSessionCount()} • lastError:{' '}
-                  {getLastStorageError() || 'none'}
-                  <div>localStorage keys: {Object.keys(window.localStorage).join(', ') || 'none'}</div>
-                  <button type="button" className="ghost" onClick={seedSampleSession}>
-                    Seed sample session
-                  </button>
-                </div>
-              )}
               {engineSessionsError && (
                 <div className="engine-error">{engineSessionsError}</div>
               )}
               {!engineSessionsError && engineSessions.length === 0 && (
-                <div className="engine-empty">Brak zapisanych sesji.</div>
+                <div className="engine-empty">{copy.engineSessionsEmpty}</div>
               )}
               <ul className="engine-list">
                 {engineSessions.map((session) => (
@@ -4667,7 +4775,7 @@ function App() {
                         setEngineSessionsOpen(false)
                       }}
                     >
-                      Otwórz sesję
+                      {copy.engineSessionsOpen}
                     </button>
                     <button
                       type="button"
@@ -4675,34 +4783,36 @@ function App() {
                       onClick={() => deleteEngineSession(session.id)}
                       disabled={engineDeleteLoadingId === session.id}
                     >
-                      {engineDeleteLoadingId === session.id ? 'Usuwanie...' : 'Usuń sesję'}
+                      {engineDeleteLoadingId === session.id
+                        ? copy.engineSessionsDeleting
+                        : copy.engineSessionsDelete}
                     </button>
                   </li>
                 ))}
               </ul>
               {engineSessionDetail?.session && (
                 <div className="engine-session-detail">
-                  <h3>Szczegóły sesji</h3>
+                  <h3>{copy.engineSessionDetailsTitle}</h3>
                   <div className="engine-meta">
-                    <span>ID:</span>
+                    <span>{copy.engineSessionDetailsIdLabel}:</span>
                     <span className="engine-meta-value">{engineSessionDetail.session.id}</span>
                   </div>
                   <div className="engine-meta">
-                    <span>Nazwa:</span>
+                    <span>{copy.engineSessionDetailsNameLabel}:</span>
                     <span className="engine-meta-value">{engineSessionDetail.session.name || '—'}</span>
                   </div>
                   <div className="engine-meta">
-                    <span>Ostatnia aktywność:</span>
+                    <span>{copy.engineSessionDetailsUpdatedLabel}:</span>
                     <span className="engine-meta-value">{new Date(engineSessionDetail.session.updated_at).toLocaleString()}</span>
                   </div>
                   <div className="engine-meta">
-                    <span>Zapytania:</span>
+                    <span>{copy.engineSessionDetailsQuestionsLabel}:</span>
                     <span className="engine-meta-value">{engineSessionDetail.askedQuestionIds.length}</span>
                   </div>
                   <div className="engine-session-board">
-                    <h4>Tablica opisujaca twoj pomysł</h4>
+                    <h4>{copy.engineSessionDetailsBoardTitle}</h4>
                     {engineSessionDetail.boardItems.length === 0 ? (
-                      <div className="engine-empty">Brak elementów.</div>
+                      <div className="engine-empty">{copy.engineSessionDetailsBoardEmpty}</div>
                     ) : (
                       <ul className="engine-list">
                         {engineSessionDetail.boardItems.map((item) => {
@@ -4770,7 +4880,7 @@ function App() {
           {debugMatrixData && engineMatrixVisible && (
             <section className="engine-panel">
               <div className="engine-panel-header">
-                <h2>Matryca</h2>
+                <h2>{copy.engineMatrixTitle}</h2>
               </div>
               <div className="engine-debug-matrix" data-testid="debug-matrix">
                 <input
@@ -4841,8 +4951,11 @@ function App() {
                 }`}
                 aria-hidden={!showFacilitationOffer}
               >
-                Jeśli chcesz, mogę pomóc spojrzeć na to z innej strony.
+                {copy.engineFacilitationNote}
               </div>
+              {uiLanguage === 'English' && copy.engineQuestionsWipNote && (
+                <div className="engine-helper">{copy.engineQuestionsWipNote}</div>
+              )}
               <div
                 className={`engine-facilitation-actions engine-facilitation-actions--fade ${
                   showFacilitationOffer ? 'is-visible' : 'is-hidden'
@@ -4860,7 +4973,7 @@ function App() {
                   }}
                   disabled={!showFacilitationOffer}
                 >
-                  Następne pytanie
+                  {copy.engineFacilitationNext}
                 </button>
                 <button
                   type="button"
@@ -4872,7 +4985,7 @@ function App() {
                   }}
                   disabled={!showFacilitationOffer}
                 >
-                  Pogłęb
+                  {copy.engineFacilitationDeepen}
                 </button>
                 <button
                   type="button"
@@ -4884,7 +4997,7 @@ function App() {
                   }}
                   disabled={!showFacilitationOffer}
                 >
-                  Zmień perspektywę
+                  {copy.engineFacilitationPerspective}
                 </button>
               </div>
               </div>
@@ -4892,20 +5005,20 @@ function App() {
               <div className="engine-board-input">
                 {engineNamePromptOpen && (
                   <div className="engine-name-prompt">
-                    <div className="engine-helper">Nadaj nazwę tej sesji, żeby łatwiej do niej wrócić.</div>
-                    <label>
-                      <span>Nazwa sesji</span>
-                      <input
-                        data-testid="session-name-input"
-                        value={engineNameDraft}
-                        onChange={(event) => setEngineNameDraft(event.target.value.slice(0, 40))}
-                        placeholder="Nazwa sesji"
-                      />
-                    </label>
-                    <div className="engine-facilitation-actions">
-                      <button
-                        type="button"
-                        className="primary"
+                  <div className="engine-helper">{copy.engineNamePrompt}</div>
+                  <label>
+                    <span>{copy.engineNameLabel}</span>
+                    <input
+                      data-testid="session-name-input"
+                      value={engineNameDraft}
+                      onChange={(event) => setEngineNameDraft(event.target.value.slice(0, 40))}
+                      placeholder={copy.engineNamePlaceholder}
+                    />
+                  </label>
+                  <div className="engine-facilitation-actions">
+                    <button
+                      type="button"
+                      className="primary"
                       data-testid="session-name-save"
                       onClick={async () => {
                         markUserInitiatedInteraction('pointer')
@@ -4929,19 +5042,19 @@ function App() {
                         markUserInitiatedInteraction('pointer')
                         setEngineLastInputActivityAt(Date.now())
                       }}
-                      >
-                        Zapisz i kontynuuj
-                      </button>
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={() => setEngineNamePromptOpen(false)}
-                      >
-                        Anuluj
-                      </button>
-                    </div>
+                    >
+                      {copy.engineNameSave}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => setEngineNamePromptOpen(false)}
+                    >
+                      {copy.cancel}
+                    </button>
                   </div>
-                )}
+                </div>
+              )}
                 <textarea
                   data-testid="engine-input"
                   ref={engineInputRef}
@@ -4955,6 +5068,7 @@ function App() {
                   }}
                   onPointerDown={() => {
                     markUserInitiatedInteraction('pointer')
+                    engineAllowIdleWithoutFocusRef.current = false
                     if (engineUiState === 'INIT') {
                       setEngineUiState('FREE_FLOW')
                     }
@@ -4965,6 +5079,7 @@ function App() {
                   }}
                   onKeyDown={() => {
                     markUserInitiatedInteraction('keystroke')
+                    engineAllowIdleWithoutFocusRef.current = false
                     if (engineUiState === 'INIT') {
                       setEngineUiState('FREE_FLOW')
                     }
@@ -4975,6 +5090,7 @@ function App() {
                   }}
                   onFocus={() => {
                     setEngineInputFocused(true)
+                    engineAllowIdleWithoutFocusRef.current = false
                     logFacilitationEvent('input_focus', { sessionId: getEngineSessionKey() })
                   }}
                   onBlur={() => {
@@ -4986,16 +5102,27 @@ function App() {
                   rows={3}
                 />
                 <div className="engine-input-footer">
-                  <span className="engine-word-count">Pozostało {engineRemainingWords} słów</span>
-                  <button
-                    type="button"
-                    className="primary"
-                    data-testid="add-entry"
-                    onClick={() => void handleEnginePreviewAdd()}
-                    disabled={!enginePreviewInput.trim()}
-                  >
-                    {copy.enginePreviewAddItem}
-                  </button>
+                <span className="engine-word-count">
+                  {isEngineWordLimitReached
+                    ? copy.engineWordLimitReached
+                    : copy.engineWordCountRemaining(engineRemainingWords)}
+                </span>
+                <button
+                  type="button"
+                  className="primary"
+                  data-testid="add-entry"
+                  onClick={() => {
+                    markUserInitiatedInteraction('pointer')
+                    setEngineLastInputActivityAt(Date.now())
+                    setEngineInputFocused(true)
+                    engineAllowIdleWithoutFocusRef.current = true
+                    engineInputRef.current?.focus()
+                    void handleEnginePreviewAdd()
+                  }}
+                  disabled={!enginePreviewInput.trim()}
+                >
+                  {copy.enginePreviewAddItem}
+                </button>
                 </div>
               </div>
               <ul className="engine-entry-list">
@@ -5023,7 +5150,9 @@ function App() {
                             color: '#000000',
                           }}
                         >
-                          {item.label}
+                      {uiLanguage === 'English'
+                        ? ENGINE_ENTRY_LABEL_TRANSLATIONS[item.label] || item.label
+                        : item.label}
                         </span>
                       )}
                     </div>
@@ -5044,12 +5173,14 @@ function App() {
                               setEngineLabelEditorId(null)
                             }}
                           >
-                            <option value="">Brak</option>
-                            {ENGINE_ENTRY_LABELS.map((label) => (
-                              <option key={label} value={label}>
-                                {label}
-                              </option>
-                            ))}
+                          <option value="">{copy.noLabelText}</option>
+                          {ENGINE_ENTRY_LABELS.map((label) => (
+                            <option key={label} value={label}>
+                              {uiLanguage === 'English'
+                                ? ENGINE_ENTRY_LABEL_TRANSLATIONS[label] || label
+                                : label}
+                            </option>
+                          ))}
                           </select>
                         </label>
                       </div>
@@ -5079,6 +5210,9 @@ function App() {
           <div className="landing-inner">
             <a className="primary landing-cta" href="/?view=threeSteps">
               {copy.landingThreeStepsCta}
+            </a>
+            <a className="primary landing-cta" href="/grid">
+              Grid
             </a>
             <button type="button" className="primary landing-cta">
               Watch 60-second demo
@@ -5116,11 +5250,10 @@ function App() {
           <label className="topbar-language">
             <span>{copy.languageLabel}</span>
             <select
-              value={reportLanguage}
-              onChange={(event) => setReportLanguage(event.target.value as Language)}
-              disabled={languageLocked}
+              value={uiLanguage}
+              onChange={(event) => setUiLanguage(event.target.value as Language)}
             >
-              {languageOptions.map((language) => (
+              {uiLanguageOptions.map((language) => (
                 <option key={language} value={language}>
                   {language}
                 </option>
@@ -5145,7 +5278,7 @@ function App() {
           )}
           {showLanding && (
             <a className="ghost topbar-link topbar-link--wip" href="/wip">
-              Work in progress
+              {copy.workInProgressLink}
             </a>
           )}
         </div>
