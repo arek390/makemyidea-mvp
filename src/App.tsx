@@ -15,12 +15,9 @@ import {
   createSession,
   deleteSession,
   exportSessions,
-  getLastStorageError,
-  getStorageSessionCount,
   getSession,
   importSessions,
   listSessions,
-  STORAGE_KEY,
   updateSession,
   type EngineBoardItem,
   type EngineSessionDetail,
@@ -2843,34 +2840,6 @@ function App() {
   const logSessionStore = (event: string, payload: Record<string, unknown>) => {
     if (!import.meta.env.DEV) return
     console.log(JSON.stringify({ event, ...payload }))
-  }
-
-  const seedSampleSession = async () => {
-    try {
-      const sample = await createSession({ name: 'Sample session' })
-      if (sample.session?.id) {
-        const updated: EngineSessionDetail = {
-          ...sample,
-          boardItems: [
-            {
-              id: `seed-${Date.now()}`,
-              type: 'idea',
-              text: 'Przykładowy wpis do testu zapisu.',
-              label: null,
-              created_at: Date.now(),
-              entry_type: 'free_input',
-              prompt_type: null,
-            },
-          ],
-        }
-        await updateSession(updated)
-      }
-      setEngineSessions(await listSessions())
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(`Nie udało się utworzyć sesji testowej. ${message}`)
-      logSessionStore('engine_seed_failed', { message })
-    }
   }
 
 
