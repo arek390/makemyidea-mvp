@@ -3954,14 +3954,6 @@ function App() {
     productConfirmed && areSpaceSlotsComplete && areTimeSlotsComplete
 
   const canProceedToStep3 = selectedScenarioId !== null
-  const startGrid = () => {
-    setShowLanding(false)
-    setActiveStep(1)
-  }
-  const openThreeSteps = () => {
-    setLandingView('threeSteps')
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }
   const openMainLanding = () => {
     setLandingView('main')
     window.scrollTo({ top: 0, behavior: 'smooth' })
