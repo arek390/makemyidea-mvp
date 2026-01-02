@@ -526,7 +526,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewMetaMode: 'Mode',
     enginePreviewMetaCategory: 'Category',
     enginePreviewMetaDifficulty: 'Difficulty',
-    engineMatrixToggleLabel: 'Matrix',
+    engineMatrixToggleLabel: 'Diagnostic matrix',
     engineMatrixTitle: 'Matrix',
     engineSessionsToggle: 'Sessions',
     engineSessionsTitle: 'Sessions',
@@ -1128,7 +1128,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewMetaMode: 'Tryb',
     enginePreviewMetaCategory: 'Kategoria',
     enginePreviewMetaDifficulty: 'Trudność',
-    engineMatrixToggleLabel: 'Matryca',
+    engineMatrixToggleLabel: 'Matryca diagnostyczna',
     engineMatrixTitle: 'Matryca',
     engineSessionsToggle: 'Lista sesji',
     engineSessionsTitle: 'Sesje',
@@ -4596,13 +4596,17 @@ function App() {
             </a>
           </div>
           <div className="engine-header-actions">
-            <label className="engine-field">
+            <label className="engine-field engine-field--toggle">
               <span>{copy.engineMatrixToggleLabel}</span>
-              <input
-                type="checkbox"
-                checked={engineMatrixVisible}
-                onChange={(event) => setEngineMatrixVisible(event.target.checked)}
-              />
+              <span className="engine-toggle">
+                <input
+                  type="checkbox"
+                  checked={engineMatrixVisible}
+                  onChange={(event) => setEngineMatrixVisible(event.target.checked)}
+                  aria-label={copy.engineMatrixToggleLabel}
+                />
+                <span className="engine-toggle-track" />
+              </span>
             </label>
           </div>
         </header>

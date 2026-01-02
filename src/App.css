@@ -1662,6 +1662,12 @@
   color: var(--muted);
 }
 
+.engine-field--toggle {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+}
+
 .engine-field input,
 .engine-field select {
   padding: 0.44rem 0.64rem;
@@ -1670,6 +1676,52 @@
   background: var(--panel);
   font-size: 0.95rem;
   min-width: 200px;
+}
+
+.engine-toggle {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.engine-toggle input {
+  position: absolute;
+  opacity: 0;
+  width: 44px;
+  height: 24px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.engine-toggle-track {
+  width: 44px;
+  height: 24px;
+  border-radius: 999px;
+  background: var(--line);
+  position: relative;
+  transition: background 0.2s ease;
+}
+
+.engine-toggle-track::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  transition: transform 0.2s ease;
+}
+
+.engine-toggle input:checked + .engine-toggle-track {
+  background: #1f6feb;
+}
+
+.engine-toggle input:checked + .engine-toggle-track::after {
+  transform: translateX(20px);
 }
 
 .engine-main {
@@ -2133,8 +2185,8 @@ button.ghost.danger:hover {
   color: #c0352b;
   border: 1px solid rgba(192, 53, 43, 0.25);
   position: absolute;
-  top: 0.4rem;
-  right: 0.6rem;
+  top: calc(0.4rem - 10px);
+  right: calc(0.6rem - 10px);
   max-width: calc(100% - 1.2rem);
   white-space: nowrap;
   overflow: hidden;
