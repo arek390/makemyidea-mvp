@@ -1,6 +1,21 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
 import './App.css'
+import {
+  createSession,
+  deleteSession,
+  exportSessions,
+  getLastStorageError,
+  getStorageSessionCount,
+  getSession,
+  importSessions,
+  listSessions,
+  STORAGE_KEY,
+  updateSession,
+  type EngineBoardItem,
+  type EngineSessionDetail,
+  type EngineSessionSummary,
+} from './storage/sessionStore'
 type MatrixRowKey = 'world' | 'product' | 'elements'
 type MatrixColKey = 'as_is' | 'not_working' | 'should_be'
 type MatrixCell = { row: MatrixRowKey; col: MatrixColKey }
@@ -48,35 +63,6 @@ type Idea = {
   id: string
   text: string
   source: 'user' | 'llm'
-}
-
-type EngineBoardItem = {
-  id: string
-  type: 'idea' | 'observation' | 'doubt' | 'question'
-  text: string
-  label?: string | null
-  created_at?: number
-  entry_type?: 'free_input' | 'facilitated_input'
-  prompt_type?: FacilitationType | null
-  matrix_row?: string | null
-  matrix_col?: string | null
-}
-
-type EngineSessionSummary = {
-  id: string
-  name?: string | null
-  created_at: number
-  updated_at: number
-  last_group_code: string | null
-  last_mode_code: number | null
-  last_category_code: string | null
-  stuck_counter: number
-}
-
-type EngineSessionDetail = {
-  session: EngineSessionSummary | null
-  boardItems: EngineBoardItem[]
-  askedQuestionIds: string[]
 }
 
 type OptionItem = {
@@ -2700,6 +2686,7 @@ function App() {
   const didLogMappingSelfTestRef = useRef(false)
   const lastGravitySuggestionRef = useRef<string | null>(null)
   const [debugMatrixModule, setDebugMatrixModule] = useState<DebugMatrixModule | null>(null)
+  const engineImportInputRef = useRef<HTMLInputElement | null>(null)
 
   const languageOptions: Language[] = [
     'English',
@@ -2744,6 +2731,39 @@ function App() {
     if (!isDebugEnabled()) return
     const ts = Date.now()
     console.log(JSON.stringify({ event, ts, ...payload }))
+  }
+
+  const logSessionStore = (event: string, payload: Record<string, unknown>) => {
+    if (!import.meta.env.DEV) return
+    console.log(JSON.stringify({ event, ...payload }))
+  }
+
+  const seedSampleSession = async () => {
+    try {
+      const sample = await createSession({ name: 'Sample session' })
+      if (sample.session?.id) {
+        const updated: EngineSessionDetail = {
+          ...sample,
+          boardItems: [
+            {
+              id: `seed-${Date.now()}`,
+              type: 'idea',
+              text: 'Przykładowy wpis do testu zapisu.',
+              label: null,
+              created_at: Date.now(),
+              entry_type: 'free_input',
+              prompt_type: null,
+            },
+          ],
+        }
+        await updateSession(updated)
+      }
+      setEngineSessions(await listSessions())
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Request failed'
+      setEngineSessionsError(`Nie udało się utworzyć sesji testowej. ${message}`)
+      logSessionStore('engine_seed_failed', { message })
+    }
   }
 
 
@@ -2817,6 +2837,7 @@ function App() {
   useEffect(() => {
     engineLatestInput.current = enginePreviewInput
   }, [enginePreviewInput])
+
 
   useEffect(() => {
     engineLatestUiState.current = engineUiState
@@ -3924,28 +3945,6 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const loadEnginePreviewItems = async (sessionId: string) => {
-    try {
-      const response = await fetch(`${llmApiBase}/api/engine/sessions/${sessionId}`)
-      if (!response.ok) {
-        const msg = await response.text()
-        throw new Error(msg || 'Request failed')
-      }
-      const data = (await response.json()) as EngineSessionDetail
-      if (Array.isArray(data.boardItems)) {
-        const items = [...data.boardItems]
-          .map((item) => ({ ...item, label: item.label ?? null }))
-          .sort((a, b) => (b.created_at || 0) - (a.created_at || 0))
-        setEnginePreviewItems(items)
-        syncEngineLabelCache(items)
-        const hasInteraction = engineInteractionBySession.current[sessionId]
-        setEngineUiState(items.length || hasInteraction ? 'FREE_FLOW' : 'INIT')
-      }
-    } catch {
-      setEnginePreviewError('Unable to load board items.')
-    }
-  }
-
   const activateFacilitationPrompt = (type: FacilitationType) => {
     const seed = enginePreviewItems.length + engineWeakSignals + engineMediumSignals + engineStrongSignals
     const text = pickFacilitationPrompt(type, seed)
@@ -3997,19 +3996,20 @@ function App() {
   const ensureEnginePreviewSession = async () => {
     if (enginePreviewSessionId) return enginePreviewSessionId
     try {
-      const response = await fetch(`${llmApiBase}/api/engine/sessions`, { method: 'POST' })
-      if (!response.ok) {
-        const msg = await response.text()
-        throw new Error(msg || 'Request failed')
-      }
-      const data = (await response.json()) as { sessionId?: string }
-      if (data.sessionId) {
-        setEnginePreviewSessionId(data.sessionId)
-        await loadEnginePreviewItems(data.sessionId)
-        return data.sessionId
+      const sessionDetail = await createSession({
+        name: enginePreviewSessionName?.trim() || null,
+      })
+      if (sessionDetail.session?.id) {
+        setEnginePreviewSessionId(sessionDetail.session.id)
+        setEnginePreviewSessionName(sessionDetail.session.name ?? '')
+        setEnginePreviewItems([])
+        setEngineSessionDetail(sessionDetail)
+        setEngineSessions(await listSessions())
+        return sessionDetail.session.id
       }
     } catch {
       setEnginePreviewError('Unable to create engine session.')
+      logSessionStore('engine_preview_create_failed', {})
     }
     return null
   }
@@ -4066,32 +4066,20 @@ function App() {
 
     setEnginePreviewError(null)
     try {
-      const response = await fetch(`${llmApiBase}/api/engine/board-items`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          sessionId,
-          type: 'idea',
-          entryType,
-          promptType: engineActivePrompt?.type || null,
-          sessionName: nameToUse || null,
-          text,
-        }),
-      })
-      if (!response.ok) throw new Error('Request failed')
-      const data = (await response.json()) as { id?: string }
-      setEnginePreviewItems((prev) => [
-        {
-          id: data?.id || `${Date.now()}`,
-          type: 'idea',
-          text,
-          label: null,
-          created_at: now,
-          entry_type: entryType,
-          prompt_type: engineActivePrompt?.type || null,
-        },
-        ...prev,
-      ])
+      const itemId =
+        typeof crypto !== 'undefined' && 'randomUUID' in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      const newItem: EngineBoardItem = {
+        id: itemId,
+        type: 'idea',
+        text,
+        label: null,
+        created_at: now,
+        entry_type: entryType,
+        prompt_type: engineActivePrompt?.type || null,
+      }
+      setEnginePreviewItems((prev) => [newItem, ...prev])
       setEnginePreviewInput('')
       setEngineLastInputActivityAt(now)
       engineLastAddAtBySession.current[sessionId] = now
@@ -4103,24 +4091,40 @@ function App() {
         sessionId,
         until: now + postAddGraceMs,
       })
+      const currentDetail = await getSession(sessionId)
+      const sessionDetail = currentDetail ?? {
+        session: {
+          id: sessionId,
+          name: nameToUse || null,
+          created_at: now,
+          updated_at: now,
+          last_group_code: null,
+          last_mode_code: null,
+          last_category_code: null,
+          stuck_counter: 0,
+        },
+        boardItems: [],
+        askedQuestionIds: [],
+      }
+      const nextSessionName = sessionDetail.session?.name || nameToUse || null
+      const updatedDetail: EngineSessionDetail = {
+        ...sessionDetail,
+        session: sessionDetail.session
+          ? {
+              ...sessionDetail.session,
+              name: nextSessionName,
+              updated_at: now,
+            }
+          : null,
+        boardItems: [newItem, ...(sessionDetail.boardItems || [])],
+      }
+      await updateSession(updatedDetail)
       if (engineSessionDetail?.session?.id === sessionId) {
-        setEngineSessionDetail((prev) =>
-          prev
-            ? {
-                ...prev,
-                boardItems: [
-                  {
-                    id: data?.id || `${Date.now()}`,
-                    type: 'idea',
-                    text,
-                    label: null,
-                    created_at: now,
-                  },
-                  ...prev.boardItems,
-                ],
-              }
-            : prev
-        )
+        setEngineSessionDetail(updatedDetail)
+      }
+      setEnginePreviewSessionName(nextSessionName ?? '')
+      if (engineSessionsOpen) {
+        setEngineSessions(await listSessions())
       }
       enginePreviousInput.current = ''
       setEngineUiState('FREE_FLOW')
@@ -4138,6 +4142,7 @@ function App() {
       setEngineLastEntryShort(isShort)
     } catch {
       setEnginePreviewError('Unable to add board item.')
+      logSessionStore('engine_preview_add_failed', { sessionId })
     }
   }
 
@@ -4178,49 +4183,27 @@ function App() {
     setEngineSessionsError(null)
     setEngineSessionsLoading(true)
     try {
-      const response = await fetch(`${llmApiBase}/api/engine/sessions?limit=100`)
-      if (!response.ok) {
-        const text = await response.text()
-        let message = text
-        try {
-          const parsed = JSON.parse(text)
-          message = parsed?.error || text
-        } catch {
-          // Keep raw text
-        }
-        throw new Error(`HTTP ${response.status}: ${message}`)
-      }
-      const data = (await response.json()) as { sessions?: EngineSessionSummary[] }
-      if (!Array.isArray(data.sessions)) {
-        throw new Error('Invalid response format')
-      }
-      setEngineSessions(data.sessions)
+      const sessions = await listSessions()
+      setEngineSessions(sessions)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się pobrać listy sesji. ${message}`)
+      logSessionStore('engine_sessions_list_failed', { message })
     } finally {
       setEngineSessionsLoading(false)
     }
   }
 
+  useEffect(() => {
+    if (!isEnginePreview) return
+    void fetchEngineSessions()
+  }, [isEnginePreview])
+
   const deleteEngineSession = async (sessionId: string) => {
     setEngineSessionsError(null)
     setEngineDeleteLoadingId(sessionId)
     try {
-      const response = await fetch(`${llmApiBase}/api/engine/sessions/${sessionId}`, {
-        method: 'DELETE',
-      })
-      if (!response.ok) {
-        const text = await response.text()
-        let message = text
-        try {
-          const parsed = JSON.parse(text)
-          message = parsed?.error || text
-        } catch {
-          // Keep raw text
-        }
-        throw new Error(`HTTP ${response.status}: ${message}`)
-      }
+      await deleteSession(sessionId)
       setEngineSessions((prev) => prev.filter((session) => session.id !== sessionId))
       if (engineSessionDetail?.session?.id === sessionId) {
         setEngineSessionDetail(null)
@@ -4231,6 +4214,7 @@ function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się usunąć sesji. ${message}`)
+      logSessionStore('engine_session_delete_failed', { sessionId, message })
     } finally {
       setEngineDeleteLoadingId(null)
     }
@@ -4254,44 +4238,23 @@ function App() {
       )
     }
     try {
-      const response = await fetch(`${llmApiBase}/api/engine/entries/${entryId}/label`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ label }),
-      })
-      if (!response.ok) {
-        const text = await response.text()
-        let message = text
-        try {
-          const parsed = JSON.parse(text)
-          message = parsed?.error || text
-        } catch {
-          // Keep raw text
-        }
-        throw new Error(`HTTP ${response.status}: ${message}`)
+      const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id
+      if (!sessionId) return
+      const detail = await getSession(sessionId)
+      if (!detail?.session) return
+      const updated: EngineSessionDetail = {
+        ...detail,
+        boardItems: detail.boardItems.map((item) =>
+          item.id === entryId ? { ...item, label } : item
+        ),
+        session: { ...detail.session, updated_at: Date.now() },
       }
-      const data = (await response.json()) as { entry?: EngineBoardItem | null }
-      if (data?.entry) {
-        engineLabelCache.current[entryId] = data.entry?.label ?? null
-        setEnginePreviewItems((prev) =>
-          prev.map((item) => (item.id === entryId ? { ...item, label: data.entry?.label ?? null } : item))
-        )
-        if (engineSessionDetail?.session) {
-          setEngineSessionDetail((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  boardItems: prev.boardItems.map((item) =>
-                    item.id === entryId ? { ...item, label: data.entry?.label ?? null } : item
-                  ),
-                }
-              : prev
-          )
-        }
-      }
+      await updateSession(updated)
+      engineLabelCache.current[entryId] = label ?? null
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się zapisać etykiety. ${message}`)
+      logSessionStore('engine_entry_label_failed', { entryId, message })
     }
   }
 
@@ -4310,23 +4273,13 @@ function App() {
     setEngineEditItemId(null)
     setEngineEditText('')
     try {
-      const response = await fetch(`${llmApiBase}/api/engine/sessions/${sessionId}`)
-      if (!response.ok) {
-        const text = await response.text()
-        let message = text
-        try {
-          const parsed = JSON.parse(text)
-          message = parsed?.error || text
-        } catch {
-          // Keep raw text
-        }
-        throw new Error(`HTTP ${response.status}: ${message}`)
-      }
-      const data = (await response.json()) as EngineSessionDetail
+      const data = await getSession(sessionId)
+      if (!data) throw new Error('Missing session')
       setEngineSessionDetail(data)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się pobrać szczegółów sesji. ${message}`)
+      logSessionStore('engine_session_detail_failed', { sessionId, message })
     }
   }
 
@@ -4335,19 +4288,8 @@ function App() {
     setEngineEditItemId(null)
     setEngineEditText('')
     try {
-      const response = await fetch(`${llmApiBase}/api/engine/sessions/${sessionId}`)
-      if (!response.ok) {
-        const text = await response.text()
-        let message = text
-        try {
-          const parsed = JSON.parse(text)
-          message = parsed?.error || text
-        } catch {
-          // Keep raw text
-        }
-        throw new Error(`HTTP ${response.status}: ${message}`)
-      }
-      const data = (await response.json()) as EngineSessionDetail
+      const data = await getSession(sessionId)
+      if (!data) throw new Error('Missing session')
       engineResetOnSessionChange.current = true
       const normalizedItems = (data.boardItems ?? []).map((item) => ({
         ...item,
@@ -4368,6 +4310,7 @@ function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się pobrać szczegółów sesji. ${message}`)
+      logSessionStore('engine_session_open_failed', { sessionId, message })
     }
   }
 
@@ -4394,22 +4337,16 @@ function App() {
     setEngineEditLoading(true)
     setEngineSessionsError(null)
     try {
-      const response = await fetch(`${llmApiBase}/api/engine/board-items/${targetId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: nextText }),
-      })
-      if (!response.ok) {
-        const text = await response.text()
-        let message = text
-        try {
-          const parsed = JSON.parse(text)
-          message = parsed?.error || text
-        } catch {
-          // Keep raw text
-        }
-        throw new Error(`HTTP ${response.status}: ${message}`)
+      const detail = await getSession(sessionId)
+      if (!detail?.session) throw new Error('Missing session')
+      const updatedDetail: EngineSessionDetail = {
+        ...detail,
+        boardItems: detail.boardItems.map((item) =>
+          item.id === targetId ? { ...item, text: nextText } : item
+        ),
+        session: { ...detail.session, updated_at: Date.now() },
       }
+      await updateSession(updatedDetail)
       setEngineSessionDetail((prev) => {
         if (!prev) return prev
         return {
@@ -4424,6 +4361,7 @@ function App() {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się zapisać zmian. ${message}`)
+      logSessionStore('engine_item_save_failed', { sessionId, message })
     } finally {
       setEngineEditLoading(false)
     }
@@ -4434,27 +4372,76 @@ function App() {
     setEngineEditLoading(true)
     setEngineSessionsError(null)
     try {
-      const response = await fetch(`${llmApiBase}/api/engine/board-items/${itemId}`, {
-        method: 'DELETE',
-      })
-      if (!response.ok) {
-        const text = await response.text()
-        let message = text
-        try {
-          const parsed = JSON.parse(text)
-          message = parsed?.error || text
-        } catch {
-          // Keep raw text
-        }
-        throw new Error(`HTTP ${response.status}: ${message}`)
+      const detail = await getSession(engineSessionDetail.session.id)
+      if (!detail?.session) throw new Error('Missing session')
+      const updatedDetail: EngineSessionDetail = {
+        ...detail,
+        boardItems: detail.boardItems.filter((item) => item.id !== itemId),
+        session: { ...detail.session, updated_at: Date.now() },
       }
+      await updateSession(updatedDetail)
       if (engineEditItemId === itemId) cancelEditEngineItem()
       await fetchEngineSessionDetail(engineSessionDetail.session.id)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się usunąć elementu. ${message}`)
+      logSessionStore('engine_item_delete_failed', { itemId, message })
     } finally {
       setEngineEditLoading(false)
+    }
+  }
+
+  const handleExportSessions = async () => {
+    try {
+      const sessions = await exportSessions()
+      const payload = {
+        exportedAt: Date.now(),
+        sessions,
+      }
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {
+        type: 'application/json',
+      })
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'engine-sessions.json'
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(url)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Request failed'
+      setEngineSessionsError(`Nie udało się wyeksportować sesji. ${message}`)
+      logSessionStore('engine_export_failed', { message })
+    }
+  }
+
+  const handleImportSessions = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      const parsed = JSON.parse(text) as { sessions?: unknown } | unknown[]
+      const sessions = Array.isArray(parsed)
+        ? parsed
+        : Array.isArray((parsed as { sessions?: unknown }).sessions)
+          ? (parsed as { sessions: unknown[] }).sessions
+          : null
+      if (!sessions) {
+        throw new Error('Nieprawidłowy format pliku.')
+      }
+      const result = await importSessions(sessions as Parameters<typeof importSessions>[0])
+      setEngineSessionsError(null)
+      setEngineSessions(await listSessions())
+      logSessionStore('engine_import_done', { imported: result.imported })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Request failed'
+      setEngineSessionsError(`Nie udało się zaimportować sesji. ${message}`)
+      logSessionStore('engine_import_failed', { message })
+    } finally {
+      if (engineImportInputRef.current) {
+        engineImportInputRef.current.value = ''
+      }
     }
   }
 
@@ -4564,15 +4551,45 @@ function App() {
             <section className="engine-panel engine-sessions">
               <div className="engine-panel-header">
                 <h2>Sesje</h2>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={fetchEngineSessions}
-                  disabled={engineSessionsLoading}
-                >
-                  {engineSessionsLoading ? '...' : 'Odśwież'}
-                </button>
+                <div className="engine-actions">
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={fetchEngineSessions}
+                    disabled={engineSessionsLoading}
+                  >
+                    {engineSessionsLoading ? '...' : 'Odśwież'}
+                  </button>
+                  <button type="button" className="ghost" onClick={handleExportSessions}>
+                    Eksportuj sesje
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => engineImportInputRef.current?.click()}
+                  >
+                    Importuj sesje
+                  </button>
+                  <input
+                    ref={engineImportInputRef}
+                    type="file"
+                    accept="application/json"
+                    className="sr-only"
+                    onChange={handleImportSessions}
+                  />
+                </div>
               </div>
+              {import.meta.env.DEV && (
+                <div className="engine-debug-meta">
+                  <strong>Debug storage</strong> • origin: {window.location.origin} • key: {STORAGE_KEY}{' '}
+                  • sessions: {getStorageSessionCount()} • lastError:{' '}
+                  {getLastStorageError() || 'none'}
+                  <div>localStorage keys: {Object.keys(window.localStorage).join(', ') || 'none'}</div>
+                  <button type="button" className="ghost" onClick={seedSampleSession}>
+                    Seed sample session
+                  </button>
+                </div>
+              )}
               {engineSessionsError && (
                 <div className="engine-error">{engineSessionsError}</div>
               )}
