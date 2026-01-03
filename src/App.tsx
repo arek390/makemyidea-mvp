@@ -308,6 +308,7 @@ type Translations = {
   enginePreviewCreateSession: string
   enginePreviewReset: string
   enginePreviewBoardItemsTitle: string
+  engineEntryLabelHint: string
   feedbackButtonLabel: string
   feedbackTitle: string
   feedbackDoingLabel: string
@@ -569,6 +570,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewCreateSession: 'Create session',
     enginePreviewReset: 'Save and close session',
     enginePreviewBoardItemsTitle: 'Board',
+    engineEntryLabelHint: 'Click to add or change label',
     feedbackButtonLabel: 'Feedback',
     feedbackTitle: 'Feedback',
     feedbackDoingLabel: 'What were you doing?',
@@ -1188,6 +1190,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewCreateSession: 'Utwórz sesję',
     enginePreviewReset: 'Zapisz i zamknij sesję',
     enginePreviewBoardItemsTitle: 'Tablica',
+    engineEntryLabelHint: 'Kliknij żeby dodać lub zmienić etykietę',
     feedbackButtonLabel: 'Feedback',
     feedbackTitle: 'Feedback',
     feedbackDoingLabel: 'Co robiłeś/aś?',
@@ -2894,6 +2897,11 @@ function App() {
   const [engineEditItemId, setEngineEditItemId] = useState<string | null>(null)
   const [engineEditText, setEngineEditText] = useState('')
   const [engineEditLoading, setEngineEditLoading] = useState(false)
+  const [engineEntryHint, setEngineEntryHint] = useState<{
+    x: number
+    y: number
+    visible: boolean
+  }>({ x: 0, y: 0, visible: false })
   const [engineMatrixVisible, setEngineMatrixVisible] = useState(false)
   const [engineLabelEditorId, setEngineLabelEditorId] = useState<string | null>(null)
   const engineLabelEditorRef = useRef<HTMLDivElement | null>(null)
@@ -4972,20 +4980,6 @@ function App() {
               makemyidea.work
             </a>
           </div>
-          <div className="engine-header-actions">
-            <label className="engine-field engine-field--toggle">
-              <span>{copy.engineMatrixToggleLabel}</span>
-              <span className="engine-toggle">
-                <input
-                  type="checkbox"
-                  checked={engineMatrixVisible}
-                  onChange={(event) => setEngineMatrixVisible(event.target.checked)}
-                  aria-label={copy.engineMatrixToggleLabel}
-                />
-                <span className="engine-toggle-track" />
-              </span>
-            </label>
-          </div>
         </header>
         <main className="engine-main">
           {feedbackReminderBanner}
@@ -5516,6 +5510,16 @@ function App() {
                     onClick={() =>
                       setEngineLabelEditorId((prev) => (prev === item.id ? null : item.id))
                     }
+                    onMouseMove={(event) => {
+                      setEngineEntryHint({
+                        x: event.clientX + 12,
+                        y: event.clientY + 12,
+                        visible: true,
+                      })
+                    }}
+                    onMouseLeave={() =>
+                      setEngineEntryHint((prev) => ({ ...prev, visible: false }))
+                    }
                   >
                     <div className="engine-entry-main">
                       <div className="engine-entry-text">{item.text}</div>
@@ -5572,6 +5576,13 @@ function App() {
                   </li>
                 ))}
               </ul>
+              <div
+                className={`engine-entry-hint ${engineEntryHint.visible ? 'is-visible' : ''}`}
+                style={{ left: engineEntryHint.x, top: engineEntryHint.y }}
+                aria-hidden={!engineEntryHint.visible}
+              >
+                {copy.engineEntryLabelHint}
+              </div>
             </section>
           )}
           {feedbackPanel}
@@ -5657,11 +5668,6 @@ function App() {
           {!showLanding && (
             <a className="ghost topbar-link" href="/">
               Landing page
-            </a>
-          )}
-          {showLanding && (
-            <a className="ghost topbar-link topbar-link--wip" href="/wip">
-              {copy.workInProgressLink}
             </a>
           )}
         </div>

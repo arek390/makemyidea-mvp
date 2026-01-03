@@ -2413,6 +2413,24 @@ button.ghost.danger:hover {
   color: var(--muted);
 }
 
+.engine-entry-hint {
+  position: fixed;
+  z-index: 70;
+  background: #6b7280;
+  color: #ffffff;
+  font-size: 0.8rem;
+  padding: 0.35rem 0.6rem;
+  border-radius: 10px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  white-space: nowrap;
+}
+
+.engine-entry-hint.is-visible {
+  opacity: 1;
+}
+
 
 .actions.llm-toggle {
   margin-top: 1rem;
