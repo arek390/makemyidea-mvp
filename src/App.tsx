@@ -61,6 +61,25 @@ type TimeOptionItem = {
   label: string
 }
 
+type FeedbackEntry = {
+  id: string
+  timestamp: string
+  context: {
+    language: string
+    route: string
+    sessionId?: string
+    matrixCell?: { row: string; col: string }
+    questionId?: string
+  }
+  feedback: {
+    doing: string
+    unclear: string
+    workaround: string
+    suggestion: string
+    keywords: string
+  }
+}
+
 type LabelItem = {
   id: string
   text: string
@@ -117,9 +136,10 @@ type FacilitationPrompt = { type: FacilitationType; text: string }
 
 const WORD_LIMIT = 40
 const SHORT_ENTRY_WORDS = 12
-const DEFAULT_IDLE_THRESHOLD_MS = 3000
+const DEFAULT_IDLE_THRESHOLD_MS = 15000
 const ERASE_EMPTY_SECONDS_STRONG = 10
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
+const FEEDBACK_STORAGE_KEY = 'makemyidea.feedback.v1'
 
 const facilitationPromptsPl: Record<FacilitationType, string[]> = {
   NEXT: [
@@ -288,6 +308,19 @@ type Translations = {
   enginePreviewCreateSession: string
   enginePreviewReset: string
   enginePreviewBoardItemsTitle: string
+  feedbackButtonLabel: string
+  feedbackTitle: string
+  feedbackDoingLabel: string
+  feedbackUnclearLabel: string
+  feedbackWorkaroundLabel: string
+  feedbackSuggestionLabel: string
+  feedbackKeywordsLabel: string
+  feedbackSave: string
+  feedbackCancel: string
+  feedbackExport: string
+  feedbackReminderText: string
+  feedbackReminderSend: string
+  feedbackReminderDismiss: string
   engineHelpButtonLabel: string
   enginePreviewBoardItemPlaceholder: string
   enginePreviewAddItem: string
@@ -536,6 +569,20 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewCreateSession: 'Create session',
     enginePreviewReset: 'Save and close session',
     enginePreviewBoardItemsTitle: 'Board',
+    feedbackButtonLabel: 'Feedback',
+    feedbackTitle: 'Feedback',
+    feedbackDoingLabel: 'What were you doing?',
+    feedbackUnclearLabel: 'What was unclear or difficult?',
+    feedbackWorkaroundLabel: 'What did you do instead?',
+    feedbackSuggestionLabel: 'What would help most?',
+    feedbackKeywordsLabel: 'Words or phrases you used (if relevant)',
+    feedbackSave: 'Save feedback',
+    feedbackCancel: 'Cancel',
+    feedbackExport: 'Export feedback',
+    feedbackReminderText:
+      'If you have a moment, please send feedback from this session — it really helps us improve.',
+    feedbackReminderSend: 'Send feedback via email',
+    feedbackReminderDismiss: 'Dismiss',
     engineHelpButtonLabel: 'Show helper actions',
     enginePreviewBoardItemPlaceholder: 'Describe a board item...',
     enginePreviewAddItem: 'Add item',
@@ -1141,6 +1188,20 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewCreateSession: 'Utwórz sesję',
     enginePreviewReset: 'Zapisz i zamknij sesję',
     enginePreviewBoardItemsTitle: 'Tablica',
+    feedbackButtonLabel: 'Feedback',
+    feedbackTitle: 'Feedback',
+    feedbackDoingLabel: 'Co robiłeś/aś?',
+    feedbackUnclearLabel: 'Co było niejasne lub trudne?',
+    feedbackWorkaroundLabel: 'Co zrobiłeś/aś zamiast tego?',
+    feedbackSuggestionLabel: 'Co najbardziej by pomogło?',
+    feedbackKeywordsLabel: 'Słowa lub frazy, których użyłeś/aś (jeśli dotyczy)',
+    feedbackSave: 'Zapisz feedback',
+    feedbackCancel: 'Anuluj',
+    feedbackExport: 'Eksportuj feedback',
+    feedbackReminderText:
+      'Jeśli masz chwilę, wyślij nam feedback z tej sesji — bardzo pomoże w dalszym rozwoju.',
+    feedbackReminderSend: 'Wyślij feedback e-mailem',
+    feedbackReminderDismiss: 'Pomiń',
     engineHelpButtonLabel: 'Pokaż działania pomocnicze',
     enginePreviewBoardItemPlaceholder: 'Opisz element tablicy...',
     enginePreviewAddItem: 'Dodaj',
@@ -2779,7 +2840,14 @@ function App() {
   const [uiLanguage, setUiLanguage] = useState<Language>(() => {
     if (typeof window === 'undefined') return 'Polish'
     const saved = window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY)
-    return saved === 'English' ? 'English' : 'Polish'
+    if (saved === 'English' || saved === 'Polish') return saved
+    const languages = window.navigator?.languages ?? []
+    const fallback = window.navigator?.language ? [window.navigator.language] : []
+    const candidates = [...languages, ...fallback].filter(Boolean)
+    const prefersPolish = candidates.some((lang) => lang.toLowerCase().startsWith('pl'))
+    const defaultLanguage: Language = prefersPolish ? 'Polish' : 'English'
+    window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, defaultLanguage)
+    return defaultLanguage
   })
   const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
   const [enginePreviewSessionName, setEnginePreviewSessionName] = useState('')
@@ -2839,6 +2907,18 @@ function App() {
   const didLogMappingSelfTestRef = useRef(false)
   const lastGravitySuggestionRef = useRef<string | null>(null)
   const engineImportInputRef = useRef<HTMLInputElement | null>(null)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackForm, setFeedbackForm] = useState({
+    doing: '',
+    unclear: '',
+    workaround: '',
+    suggestion: '',
+    keywords: '',
+  })
+  const [feedbackReminder, setFeedbackReminder] = useState<{
+    sessionId: string | null
+    visible: boolean
+  } | null>(null)
 
   const languageOptions: Language[] = [
     'English',
@@ -2877,6 +2957,35 @@ function App() {
     if (!import.meta.env.DEV) return
     console.log(JSON.stringify({ event, ...payload }))
   }
+
+  const readFeedbackEntries = (): FeedbackEntry[] => {
+    if (typeof window === 'undefined') return []
+    try {
+      const raw = window.localStorage.getItem(FEEDBACK_STORAGE_KEY)
+      if (!raw) return []
+      const parsed = JSON.parse(raw)
+      return Array.isArray(parsed) ? parsed : []
+    } catch {
+      return []
+    }
+  }
+
+  const writeFeedbackEntries = (entries: FeedbackEntry[]) => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(entries))
+    } catch {
+      // no-op
+    }
+  }
+
+  const createFeedbackId = () => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID()
+    }
+    return `feedback-${Date.now()}-${Math.random().toString(16).slice(2)}`
+  }
+
 
 
   const getEngineSessionKey = () => enginePreviewSessionId ?? 'new'
@@ -3435,6 +3544,50 @@ function App() {
     }
   }, [enginePreviewItems])
 
+  const feedbackContext = useMemo(() => {
+    const route = typeof window !== 'undefined' ? window.location.pathname : ''
+    const sessionId = enginePreviewSessionId || undefined
+    const matrixCell = isEnginePreview
+      ? {
+          row: debugMatrixData?.currentCell?.row ?? 'world',
+          col: debugMatrixData?.currentCell?.col ?? 'as_is',
+        }
+      : undefined
+    return { route, sessionId, matrixCell }
+  }, [debugMatrixData, enginePreviewSessionId, isEnginePreview])
+
+  const sendFeedbackEmail = (sessionId: string | null) => {
+    if (typeof window === 'undefined') return
+    const subject = encodeURIComponent('Makemyidea.work feedback')
+    const note =
+      uiLanguage === 'English'
+        ? 'The JSON file has been downloaded. Please attach it to this email.'
+        : 'Plik JSON został pobrany. Dołącz go proszę do tej wiadomości.'
+    const body = encodeURIComponent(
+      `Feedback from session:\n` +
+        `Session ID: ${sessionId ?? 'n/a'}\n` +
+        `Route: ${feedbackContext.route}\n` +
+        `Language: ${uiLanguage}\n` +
+        `Timestamp: ${new Date().toISOString()}\n\n` +
+        `${note}`
+    )
+    window.location.href = `mailto:areklupierz@gmail.com?subject=${subject}&body=${body}`
+  }
+
+  const exportFeedbackJson = () => {
+    if (typeof window === 'undefined') return
+    const entries = readFeedbackEntries()
+    const payload = JSON.stringify(entries, null, 2)
+    const blob = new Blob([payload], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    const date = new Date().toISOString().slice(0, 10)
+    link.href = url
+    link.download = `makemyidea-feedback-${date}.json`
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
   useEffect(() => {
     if (!isDebugEnabled()) return
     if (!debugMatrixData) return
@@ -3522,6 +3675,150 @@ function App() {
     now: copy.axisNow,
     future: copy.axisFuture,
   }
+
+  const feedbackPanel = (
+    <>
+      <button
+        type="button"
+        className="feedback-fab"
+        onClick={() => setFeedbackOpen(true)}
+      >
+        {copy.feedbackButtonLabel}
+      </button>
+      {feedbackOpen && (
+        <div className="feedback-panel" role="dialog" aria-modal="false">
+          <div className="feedback-panel-header">
+            <h3>{copy.feedbackTitle}</h3>
+            <button type="button" className="ghost" onClick={() => setFeedbackOpen(false)}>
+              {copy.feedbackCancel}
+            </button>
+          </div>
+          <div className="feedback-panel-body">
+            <label>
+              <span>{copy.feedbackDoingLabel}</span>
+              <textarea
+                rows={2}
+                value={feedbackForm.doing}
+                onChange={(event) =>
+                  setFeedbackForm((prev) => ({ ...prev, doing: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              <span>{copy.feedbackUnclearLabel}</span>
+              <textarea
+                rows={2}
+                value={feedbackForm.unclear}
+                onChange={(event) =>
+                  setFeedbackForm((prev) => ({ ...prev, unclear: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              <span>{copy.feedbackWorkaroundLabel}</span>
+              <textarea
+                rows={2}
+                value={feedbackForm.workaround}
+                onChange={(event) =>
+                  setFeedbackForm((prev) => ({ ...prev, workaround: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              <span>{copy.feedbackSuggestionLabel}</span>
+              <textarea
+                rows={2}
+                value={feedbackForm.suggestion}
+                onChange={(event) =>
+                  setFeedbackForm((prev) => ({ ...prev, suggestion: event.target.value }))
+                }
+              />
+            </label>
+            <label>
+              <span>{copy.feedbackKeywordsLabel}</span>
+              <textarea
+                rows={1}
+                value={feedbackForm.keywords}
+                onChange={(event) =>
+                  setFeedbackForm((prev) => ({ ...prev, keywords: event.target.value }))
+                }
+              />
+            </label>
+          </div>
+            <div className="feedback-panel-actions">
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  exportFeedbackJson()
+                }}
+              >
+                {copy.feedbackExport}
+              </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                const entry: FeedbackEntry = {
+                  id: createFeedbackId(),
+                  timestamp: new Date().toISOString(),
+                  context: {
+                    language: uiLanguage,
+                    route: feedbackContext.route,
+                    sessionId: feedbackContext.sessionId,
+                    matrixCell: feedbackContext.matrixCell,
+                  },
+                  feedback: { ...feedbackForm },
+                }
+                const entries = readFeedbackEntries()
+                entries.push(entry)
+                writeFeedbackEntries(entries)
+                setFeedbackForm({
+                  doing: '',
+                  unclear: '',
+                  workaround: '',
+                  suggestion: '',
+                  keywords: '',
+                })
+                setFeedbackOpen(false)
+              }}
+            >
+              {copy.feedbackSave}
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+
+  const feedbackReminderBanner =
+    feedbackReminder?.visible && isEnginePreview ? (
+      <div className="feedback-reminder" role="status">
+        <span>{copy.feedbackReminderText}</span>
+        <div className="feedback-reminder-actions">
+          <button
+            type="button"
+            className="primary"
+            onClick={() => {
+              exportFeedbackJson()
+              window.setTimeout(() => {
+                sendFeedbackEmail(feedbackReminder.sessionId)
+              }, 350)
+              setFeedbackReminder((prev) => (prev ? { ...prev, visible: false } : prev))
+            }}
+          >
+            {copy.feedbackReminderSend}
+          </button>
+          <button
+            type="button"
+            className="ghost"
+            onClick={() => setFeedbackReminder((prev) => (prev ? { ...prev, visible: false } : prev))}
+          >
+            {copy.feedbackReminderDismiss}
+          </button>
+        </div>
+      </div>
+    ) : null
 
   const spaceSectionsStep2 = ['supersystem', 'system', 'subsystem'] as const
   const spaceSectionsStep3 = ['supersystem', 'system', 'subsystem'] as const
@@ -4188,6 +4485,7 @@ function App() {
         setEnginePreviewItems([])
         setEngineSessionDetail(sessionDetail)
         setEngineSessions(await listSessions())
+        setFeedbackReminder(null)
         return sessionDetail.session.id
       }
     } catch {
@@ -4358,12 +4656,16 @@ function App() {
 
   const closeEnginePreviewSession = async () => {
     await flushEngineEntryLabels()
+    const closingSessionId = enginePreviewSessionId
     logFacilitationEvent('session_closed', {
       sessionId: enginePreviewSessionId || 'unknown',
       sessionName: enginePreviewSessionName || null,
       items: enginePreviewItems.length,
     })
     resetEnginePreview()
+    if (closingSessionId) {
+      setFeedbackReminder({ sessionId: closingSessionId, visible: true })
+    }
   }
 
   const fetchEngineSessions = async () => {
@@ -4491,6 +4793,7 @@ function App() {
       setEnginePreviewError(null)
       setEngineNamePromptOpen(false)
       setEngineNameDraft('')
+      setFeedbackReminder(null)
       setEngineUiState('FREE_FLOW')
       setEngineActivePrompt(null)
       setEngineOfferReason(null)
@@ -4685,6 +4988,7 @@ function App() {
           </div>
         </header>
         <main className="engine-main">
+          {feedbackReminderBanner}
           <section className="engine-panel">
             <div className="engine-panel-header">
               <h1>{copy.enginePreviewSessionTitle}</h1>
@@ -5270,6 +5574,7 @@ function App() {
               </ul>
             </section>
           )}
+          {feedbackPanel}
         </main>
       </div>
     )
@@ -5296,6 +5601,7 @@ function App() {
             </button>
           </div>
         </div>
+        {feedbackPanel}
       </div>
     )
   }
@@ -6173,6 +6479,7 @@ function App() {
           </section>
         )}
       </main>
+      {feedbackPanel}
 
       {activeIdeaCell && (
         <div className="modal" role="dialog" aria-modal="true">
