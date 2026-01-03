@@ -20,6 +20,13 @@ const insertQuestion = (db) =>
 const insertTag = (db) =>
   db.prepare(`INSERT OR IGNORE INTO question_tags (question_id, tag) VALUES (@question_id, @tag)`)
 
+const insertQuestionText = (db) =>
+  db.prepare(
+    `INSERT INTO question_texts (question_id, lang, text)
+     VALUES (@question_id, @lang, @text)
+     ON CONFLICT(question_id, lang) DO UPDATE SET
+       text = excluded.text`
+  )
 
 
 
@@ -27,9 +34,25 @@ const insertTag = (db) =>
 
 export const insertQuestions = (questions) => {
   const db = getEngineDb()
-  const tx = db.transaction((items) => {
+  const baseById = new Map()
+  const texts = []
+
+  questions.forEach((q) => {
+    if (!q?.id || !q?.text) return
+    const lang = String(q.lang || 'pl').toLowerCase()
+    texts.push({ question_id: q.id, lang, text: q.text })
+    const current = baseById.get(q.id)
+    if (!current || (current.lang !== 'pl' && lang === 'pl')) {
+      baseById.set(q.id, { ...q, lang })
+    }
+  })
+
+  const baseQuestions = Array.from(baseById.values())
+
+  const tx = db.transaction((items, translations) => {
     const insertQ = insertQuestion(db)
     const insertT = insertTag(db)
+    const insertText = insertQuestionText(db)
     items.forEach((q) => {
       insertQ.run({
         id: q.id,
@@ -47,9 +70,12 @@ export const insertQuestions = (questions) => {
         q.tags.forEach((tag) => insertT.run({ question_id: q.id, tag }))
       }
     })
+    translations.forEach((entry) => {
+      insertText.run(entry)
+    })
   })
-  tx(questions)
-  return { inserted: questions.length }
+  tx(baseQuestions, texts)
+  return { inserted: baseQuestions.length }
 }
 
 export const getQuestionById = (id) => {
@@ -69,9 +95,17 @@ export const listQuestions = ({ lang }) => {
   const db = getEngineDb()
   const rows = db
     .prepare(
-      `SELECT id, text, group_code, mode_code, category_code, intent_code, difficulty, priority, is_active, lang
-       FROM questions
-       WHERE is_active = 1 AND lang = @lang`
+      `SELECT
+         q.id,
+         COALESCE(t_lang.text, t_pl.text, q.text) AS text,
+         q.group_code, q.mode_code, q.category_code, q.intent_code,
+         q.difficulty, q.priority, q.is_active, q.lang
+       FROM questions q
+       LEFT JOIN question_texts t_lang
+         ON t_lang.question_id = q.id AND t_lang.lang = @lang
+       LEFT JOIN question_texts t_pl
+         ON t_pl.question_id = q.id AND t_pl.lang = 'pl'
+       WHERE q.is_active = 1`
     )
     .all({ lang })
   return rows.map((row) => ({
@@ -90,12 +124,18 @@ export const listQuestionsWithTags = ({ lang }) => {
   const db = getEngineDb()
   const rows = db.prepare(
     `SELECT
-        q.id, q.text, q.group_code, q.mode_code, q.category_code, q.intent_code,
+        q.id,
+        COALESCE(t_lang.text, t_pl.text, q.text) AS text,
+        q.group_code, q.mode_code, q.category_code, q.intent_code,
         q.difficulty, q.priority, q.is_active, q.lang,
         COALESCE(GROUP_CONCAT(t.tag), '') AS tags_csv
      FROM questions q
+     LEFT JOIN question_texts t_lang
+       ON t_lang.question_id = q.id AND t_lang.lang = @lang
+     LEFT JOIN question_texts t_pl
+       ON t_pl.question_id = q.id AND t_pl.lang = 'pl'
      LEFT JOIN question_tags t ON t.question_id = q.id
-     WHERE q.is_active = 1 AND q.lang = @lang
+     WHERE q.is_active = 1
      GROUP BY q.id`
   ).all({ lang })
 

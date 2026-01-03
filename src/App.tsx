@@ -117,11 +117,11 @@ type FacilitationPrompt = { type: FacilitationType; text: string }
 
 const WORD_LIMIT = 40
 const SHORT_ENTRY_WORDS = 12
-const DEFAULT_IDLE_THRESHOLD_MS = 15000
+const DEFAULT_IDLE_THRESHOLD_MS = 3000
 const ERASE_EMPTY_SECONDS_STRONG = 10
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
 
-const facilitationPrompts: Record<FacilitationType, string[]> = {
+const facilitationPromptsPl: Record<FacilitationType, string[]> = {
   NEXT: [
     'Co w tym wszystkim jest dziś najbardziej niejasne?',
     'Który fragment tego tematu wydaje się najważniejszy na ten moment?',
@@ -144,8 +144,33 @@ const facilitationPrompts: Record<FacilitationType, string[]> = {
   ],
 }
 
-const pickFacilitationPrompt = (type: FacilitationType, seed: number) => {
-  const options = facilitationPrompts[type]
+const facilitationPromptsEn: Record<FacilitationType, string[]> = {
+  NEXT: [
+    'What is the most unclear part of this right now?',
+    'Which part of this topic feels most important at the moment?',
+    'What is worth naming directly, even if you do not have the answer yet?',
+  ],
+  DEEPEN: [
+    'What exactly makes this a problem?',
+    'What does this depend on the most?',
+    'What would change if this element disappeared?',
+  ],
+  PERSPECTIVE: [
+    'What would this look like from someone outside the team?',
+    'What would someone see who uses the product for the first time?',
+    'How would you describe this to someone who does not know the topic at all?',
+  ],
+  RESET: [
+    'If you had to point to one area you have not touched at all yet — what is it?',
+    'What are you guessing right now instead of knowing?',
+    'Which assumption might be the weakest here?',
+  ],
+}
+
+const pickFacilitationPrompt = (type: FacilitationType, seed: number, language: Language) => {
+  const base = language === 'English' ? facilitationPromptsEn : facilitationPromptsPl
+  const fallback = facilitationPromptsPl
+  const options = base[type] || fallback[type]
   return options[seed % options.length]
 }
 
@@ -263,6 +288,7 @@ type Translations = {
   enginePreviewCreateSession: string
   enginePreviewReset: string
   enginePreviewBoardItemsTitle: string
+  engineHelpButtonLabel: string
   enginePreviewBoardItemPlaceholder: string
   enginePreviewAddItem: string
   enginePreviewBoardItemsEmpty: string
@@ -284,6 +310,8 @@ type Translations = {
   engineMatrixToggleLabel: string
   engineMatrixTitle: string
   engineSessionsToggle: string
+  engineSessionsToggleOpen: string
+  engineSessionsToggleClose: string
   engineSessionsTitle: string
   engineSessionsRefresh: string
   engineSessionsExport: string
@@ -506,8 +534,9 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewSessionIdLabel: 'Session ID',
     enginePreviewSessionEmpty: 'Not created yet',
     enginePreviewCreateSession: 'Create session',
-    enginePreviewReset: 'Close session',
+    enginePreviewReset: 'Save and close session',
     enginePreviewBoardItemsTitle: 'Board',
+    engineHelpButtonLabel: 'Show helper actions',
     enginePreviewBoardItemPlaceholder: 'Describe a board item...',
     enginePreviewAddItem: 'Add item',
     enginePreviewBoardItemsEmpty: 'No board items yet.',
@@ -529,6 +558,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineMatrixToggleLabel: 'Diagnostic matrix',
     engineMatrixTitle: 'Matrix',
     engineSessionsToggle: 'Sessions',
+    engineSessionsToggleOpen: 'Open session list',
+    engineSessionsToggleClose: 'Close session list',
     engineSessionsTitle: 'Sessions',
     engineSessionsRefresh: 'Refresh',
     engineSessionsExport: 'Export sessions',
@@ -1110,6 +1141,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewCreateSession: 'Utwórz sesję',
     enginePreviewReset: 'Zapisz i zamknij sesję',
     enginePreviewBoardItemsTitle: 'Tablica',
+    engineHelpButtonLabel: 'Pokaż działania pomocnicze',
     enginePreviewBoardItemPlaceholder: 'Opisz element tablicy...',
     enginePreviewAddItem: 'Dodaj',
     enginePreviewBoardItemsEmpty: 'Brak elementów.',
@@ -1131,6 +1163,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineMatrixToggleLabel: 'Matryca diagnostyczna',
     engineMatrixTitle: 'Matryca',
     engineSessionsToggle: 'Lista sesji',
+    engineSessionsToggleOpen: 'Otwórz listę sesji',
+    engineSessionsToggleClose: 'Zamknij listę sesji',
     engineSessionsTitle: 'Sesje',
     engineSessionsRefresh: 'Odśwież',
     engineSessionsExport: 'Eksportuj sesje',
@@ -2800,6 +2834,8 @@ function App() {
   const enginePendingFocusRef = useRef(false)
   const enginePendingArmingRef = useRef(false)
   const engineAllowIdleWithoutFocusRef = useRef(false)
+  const engineIdleArmedRef = useRef(false)
+  const engineIdleLastArmReasonRef = useRef<string | null>(null)
   const didLogMappingSelfTestRef = useRef(false)
   const lastGravitySuggestionRef = useRef<string | null>(null)
   const engineImportInputRef = useRef<HTMLInputElement | null>(null)
@@ -2851,6 +2887,15 @@ function App() {
       engineIdleTimer.current = null
       logFacilitationEvent('idle_timer_cleared', { reason })
     }
+  }
+
+  const armIdleWatch = (reason: string) => {
+    engineIdleArmedRef.current = true
+    engineIdleLastArmReasonRef.current = reason
+    engineAllowIdleWithoutFocusRef.current = true
+    engineIdleTriggered.current = false
+    setEngineLastInputActivityAt(Date.now())
+    logFacilitationEvent('idle_watch_armed', { reason })
   }
 
   const markUserInitiatedInteraction = (source: 'pointer' | 'keystroke') => {
@@ -2905,7 +2950,11 @@ function App() {
   }
 
   const normalizeApiBase = (value: string) => value.trim().replace(/\/+$/, '')
-  const idleThresholdMs = isE2EEnabled() ? 800 : DEFAULT_IDLE_THRESHOLD_MS
+  const idleThresholdMs = isE2EEnabled()
+    ? 800
+    : isDebugEnabled()
+      ? 5000
+      : DEFAULT_IDLE_THRESHOLD_MS
   const postAddGraceMs = isE2EEnabled() ? 200 : 7000
   const isEnginePreview =
     typeof window !== 'undefined' && window.location.pathname === '/engine'
@@ -2965,7 +3014,7 @@ function App() {
     engineIdleTriggered.current = false
     engineInteractionBySession.current[sessionKey] = transferInteraction
     engineInteractionBySession.current['new'] = false
-    if (!transferInteraction) {
+    if (!transferInteraction && !engineIdleArmedRef.current) {
       setEngineLastInputActivityAt(null)
     }
     setEngineOfferReason(null)
@@ -2992,7 +3041,7 @@ function App() {
       'Powinny byc testy',
     ]
     examples.forEach((example) => {
-      const details = computeMappingDetails(example)
+      const details = computeMappingDetails(example, 'Polish')
       console.log(
         JSON.stringify({
           event: 'matrix_mapping_self_test',
@@ -3204,6 +3253,21 @@ function App() {
 
   useEffect(() => {
     if (!isEnginePreview) return
+    const handleActivity = () => {
+      if (!engineIdleArmedRef.current) return
+      engineIdleTriggered.current = false
+      setEngineLastInputActivityAt(Date.now())
+    }
+    window.addEventListener('pointerdown', handleActivity, { passive: true })
+    window.addEventListener('keydown', handleActivity)
+    return () => {
+      window.removeEventListener('pointerdown', handleActivity)
+      window.removeEventListener('keydown', handleActivity)
+    }
+  }, [isEnginePreview])
+
+  useEffect(() => {
+    if (!isEnginePreview) return
     if (engineUiState !== 'FREE_FLOW') return
     const sessionKey = getEngineSessionKey()
     const lastAddAt = engineLastAddAtBySession.current[sessionKey] || 0
@@ -3241,28 +3305,21 @@ function App() {
 
   useEffect(() => {
     if (!isEnginePreview) return
-    const sessionKey = getEngineSessionKey()
-    const hasUserInteraction = engineInteractionBySession.current[sessionKey]
-    const lastAddAt = engineLastAddAtBySession.current[sessionKey] || 0
-
-    if (!engineInputFocused && !engineAllowIdleWithoutFocusRef.current) {
-      clearEngineIdleTimer('input_blur')
+    if (!enginePreviewSessionId) {
+      clearEngineIdleTimer('no_session')
       return
     }
-    if (!hasUserInteraction) {
-      clearEngineIdleTimer('not_armed')
+    const sessionKey = getEngineSessionKey()
+    if (!engineIdleArmedRef.current) {
+      clearEngineIdleTimer('idle_not_armed')
       return
     }
     if (!engineLastInputActivityAt) {
       clearEngineIdleTimer('no_activity_baseline')
       return
     }
-    if (engineUiState !== 'FREE_FLOW') {
+    if (engineUiState !== 'FREE_FLOW' && engineUiState !== 'FACILITATED_INPUT') {
       clearEngineIdleTimer('ui_state_blocked')
-      return
-    }
-    if (Date.now() - lastAddAt < postAddGraceMs) {
-      clearEngineIdleTimer('post_add_grace')
       return
     }
 
@@ -3276,28 +3333,35 @@ function App() {
     })
     engineIdleTimer.current = window.setTimeout(() => {
       const latestSession = getEngineSessionKey()
-      const latestInteraction = engineInteractionBySession.current[latestSession]
-      const latestLastAddAt = engineLastAddAtBySession.current[latestSession] || 0
       const now = Date.now()
       const idleFor = engineLastInputActivityAt ? now - engineLastInputActivityAt : 0
       logFacilitationEvent('idle_timer_fired', {
         sessionId: latestSession,
         idleFor,
       })
-      if (!engineLatestFocus.current) return
-      if (engineLatestUiState.current !== 'FREE_FLOW') return
-      if (!latestInteraction) return
-      if (now - latestLastAddAt < postAddGraceMs) return
-      if (!canShowFacilitation('idle')) return
+      if (!engineIdleArmedRef.current) return
+      if (
+        engineLatestUiState.current !== 'FREE_FLOW' &&
+        engineLatestUiState.current !== 'FACILITATED_INPUT'
+      ) {
+        return
+      }
+      const armReason = engineIdleLastArmReasonRef.current
+      const ignoreCooldown = Boolean(armReason && armReason.startsWith('facilitation_'))
+      if (!ignoreCooldown && !canShowFacilitation('idle')) return
       if (engineIdleTriggered.current) return
       registerSignal('medium', 'idle')
-                    engineIdleTriggered.current = true
-                    setEngineOfferReason('idle')
-                    setEngineUiState('FACILITATION_OFFER')
-                    engineAllowIdleWithoutFocusRef.current = false
-                    logFacilitationEvent('facilitation_offered', {
-                      sessionId: latestSession,
-                      reason: 'idle',
+      engineIdleTriggered.current = true
+      engineIdleArmedRef.current = false
+      engineIdleLastArmReasonRef.current = null
+      setEngineOfferReason('idle')
+      if (engineLatestUiState.current !== 'FACILITATED_INPUT') {
+        setEngineUiState('FACILITATION_OFFER')
+      }
+      engineAllowIdleWithoutFocusRef.current = false
+      logFacilitationEvent('facilitation_offered', {
+        sessionId: latestSession,
+        reason: 'idle',
         uiState: engineLatestUiState.current,
       })
     }, remaining)
@@ -3309,7 +3373,6 @@ function App() {
     engineUiState,
     enginePreviewSessionId,
     idleThresholdMs,
-    postAddGraceMs,
   ])
 
   useEffect(() => {
@@ -3325,7 +3388,7 @@ function App() {
 
   const debugMatrixData = useMemo(() => {
     const entries = enginePreviewItems.map((item) => {
-      const mapped = mapEntryToCell(item.text)
+      const mapped = mapEntryToCell(item.text, uiLanguage)
       return {
         id: item.id,
         text: item.text,
@@ -3445,7 +3508,7 @@ function App() {
     }
   }, [showLanding])
 
-  const copy = getTranslations(uiLanguage)
+  const copy = useMemo(() => getTranslations(uiLanguage), [uiLanguage])
   const stepTitle = (stepId: StepId) => copy.steps[stepId]
   const stepHeading = (stepId: StepId) =>
     `${copy.stepLabel}${stepId} | ${stepTitle(stepId)}`
@@ -4054,7 +4117,7 @@ function App() {
 
   const activateFacilitationPrompt = (type: FacilitationType) => {
     const seed = enginePreviewItems.length + engineWeakSignals + engineMediumSignals + engineStrongSignals
-    const text = pickFacilitationPrompt(type, seed)
+    const text = pickFacilitationPrompt(type, seed, uiLanguage)
     setEngineActivePrompt({ type, text })
     setEnginePreviewInput('')
     enginePreviousInput.current = ''
@@ -4081,13 +4144,15 @@ function App() {
     setEngineLastInputActivityAt(Date.now())
     engineIdleTriggered.current = false
 
-    if (engineUiState === 'FACILITATION_OFFER') {
+    if (engineOfferReason) {
       logFacilitationEvent('facilitation_ignored', {
         sessionId: enginePreviewSessionId || 'unknown',
         reason: engineOfferReason || resolveOfferReason(),
       })
       setEngineOfferReason(null)
-      setEngineUiState('FREE_FLOW')
+      if (engineUiState === 'FACILITATION_OFFER') {
+        setEngineUiState('FREE_FLOW')
+      }
     }
 
     if (engineEraseTimer.current) {
@@ -4107,11 +4172,15 @@ function App() {
     }
   }
 
-  const ensureEnginePreviewSession = async () => {
+  const ensureEnginePreviewSession = async (nameOverride?: string) => {
     if (enginePreviewSessionId) return enginePreviewSessionId
+    const name = (nameOverride ?? enginePreviewSessionName)?.trim()
+    if (!name) {
+      return null
+    }
     try {
       const sessionDetail = await createSession({
-        name: enginePreviewSessionName?.trim() || null,
+        name,
       })
       if (sessionDetail.session?.id) {
         setEnginePreviewSessionId(sessionDetail.session.id)
@@ -4132,7 +4201,7 @@ function App() {
     const text = enginePreviewInput.trim()
     if (!text) return
     if (isDebugEnabled()) {
-      const details = computeMappingDetails(text)
+      const details = computeMappingDetails(text, uiLanguage)
       console.log(
         JSON.stringify({
           event: 'matrix_mapping_entry',
@@ -4267,6 +4336,7 @@ function App() {
   const resetEnginePreview = () => {
     engineResetOnSessionChange.current = true
     engineInteractionBySession.current = {}
+    engineIdleArmedRef.current = false
     setEnginePreviewSessionId(null)
     setEnginePreviewItems([])
     setEnginePreviewError(null)
@@ -4585,7 +4655,11 @@ function App() {
     const engineRemainingWords = Math.max(0, WORD_LIMIT - countWords(enginePreviewInput))
     const isEngineWordLimitReached =
       enginePreviewInput.trim().length > 0 && countWords(enginePreviewInput) >= WORD_LIMIT
-    const showFacilitationOffer = engineUiState === 'FACILITATION_OFFER'
+    const showFacilitationOffer =
+      engineUiState === 'FACILITATION_OFFER' ||
+      engineOfferReason === 'idle' ||
+      engineOfferReason === 'manual'
+    const showHelpButton = !showFacilitationOffer
 
     return (
       <div className="app engine-preview" data-testid="active-session">
@@ -4615,7 +4689,7 @@ function App() {
             <div className="engine-panel-header">
               <h1>{copy.enginePreviewSessionTitle}</h1>
               <div className="engine-actions">
-                {!enginePreviewSessionId && (
+                {!enginePreviewSessionId && !engineSessionsOpen && (
                   <button
                     type="button"
                     className="primary"
@@ -4623,18 +4697,9 @@ function App() {
                   onClick={async () => {
                     markUserInitiatedInteraction('pointer')
                     setEngineLastInputActivityAt(Date.now())
-                    enginePendingFocusRef.current = true
-                    enginePendingArmingRef.current = true
-                    await flushEngineEntryLabels()
-                    const sessionId = await ensureEnginePreviewSession()
-                    setEngineUiState('FREE_FLOW')
-                    setEngineOfferReason(null)
-                    setEngineInputFocused(true)
-                    engineInputRef.current?.focus()
-                    if (sessionId) {
-                      engineInteractionBySession.current[sessionId] = true
-                      setEngineLastInputActivityAt(Date.now())
-                    }
+                    armIdleWatch('create_session')
+                    setEngineNameDraft('')
+                    setEngineNamePromptOpen(true)
                   }}
                 >
                     {copy.enginePreviewCreateSession}
@@ -4654,24 +4719,28 @@ function App() {
                     {copy.enginePreviewReset}
                   </button>
                 )}
-                <button
-                  type="button"
-                  className="ghost"
-                  data-testid="session-list-toggle"
-                  onClick={() => {
-                    markUserInitiatedInteraction('pointer')
-                    setEngineLastInputActivityAt(Date.now())
-                    const next = !engineSessionsOpen
+                {!enginePreviewSessionId && (
+                  <button
+                    type="button"
+                    className="ghost"
+                    data-testid="session-list-toggle"
+                    onClick={() => {
+                      markUserInitiatedInteraction('pointer')
+                      setEngineLastInputActivityAt(Date.now())
+                      const next = !engineSessionsOpen
                       const openList = async () => {
                         if (next) await flushEngineEntryLabels()
-                      setEngineSessionsOpen(next)
-                      if (next) fetchEngineSessions()
-                    }
-                    void openList()
-                  }}
-                >
-                  {copy.engineSessionsToggle}
-                </button>
+                        setEngineSessionsOpen(next)
+                        if (next) fetchEngineSessions()
+                      }
+                      void openList()
+                    }}
+                  >
+                    {engineSessionsOpen
+                      ? copy.engineSessionsToggleClose
+                      : copy.engineSessionsToggleOpen}
+                  </button>
+                )}
               </div>
             </div>
             <div className="engine-meta">
@@ -4744,6 +4813,7 @@ function App() {
                       className="ghost"
                       data-testid={`session-open-${session.id}`}
                       onClick={() => {
+                        armIdleWatch('open_session')
                         openEngineSession(session.id)
                         setEngineSessionsOpen(false)
                       }}
@@ -4914,10 +4984,84 @@ function App() {
             </section>
           )}
 
+          {engineNamePromptOpen && !enginePreviewSessionId && (
+            <section className="engine-panel">
+              <div className="engine-name-prompt">
+                <div className="engine-helper">{copy.engineNamePrompt}</div>
+                <label>
+                  <span>{copy.engineNameLabel}</span>
+                  <input
+                    data-testid="session-name-input"
+                    value={engineNameDraft}
+                    onChange={(event) => setEngineNameDraft(event.target.value.slice(0, 40))}
+                    placeholder={copy.engineNamePlaceholder}
+                  />
+                </label>
+                <div className="engine-facilitation-actions">
+                  <button
+                    type="button"
+                    className="primary"
+                    data-testid="session-name-save"
+                    onClick={async () => {
+                      markUserInitiatedInteraction('pointer')
+                      setEngineLastInputActivityAt(Date.now())
+                      const name = engineNameDraft.trim().replace(/\s+/g, ' ')
+                      if (!name) return
+                      armIdleWatch('save_and_continue')
+                      engineInteractionBySession.current['new'] = true
+                      setEngineInputFocused(true)
+                      setEngineUiState('FREE_FLOW')
+                      enginePendingArmingRef.current = true
+                      enginePendingFocusRef.current = true
+                      setEnginePreviewSessionName(name)
+                      setEngineNamePromptOpen(false)
+                      const sessionId = await ensureEnginePreviewSession(name)
+                      if (sessionId) {
+                        engineInteractionBySession.current[sessionId] = true
+                        setEngineLastInputActivityAt(Date.now())
+                      }
+                      engineInputRef.current?.focus()
+                      markUserInitiatedInteraction('pointer')
+                      setEngineLastInputActivityAt(Date.now())
+                    }}
+                  >
+                    {copy.engineNameSave}
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={() => setEngineNamePromptOpen(false)}
+                  >
+                    {copy.cancel}
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+
           {enginePreviewSessionId && (
             <section className="engine-panel">
               <div className="engine-panel-header">
                 <h2>{copy.enginePreviewBoardItemsTitle}</h2>
+                <button
+                  type="button"
+                  className={`ghost engine-help-trigger engine-facilitation-actions--fade ${
+                    showHelpButton ? 'is-visible' : 'is-hidden'
+                  }`}
+                  aria-label={copy.engineHelpButtonLabel}
+                  onClick={() => {
+                    clearEngineIdleTimer('manual_help')
+                    engineIdleTriggered.current = false
+                    engineIdleArmedRef.current = false
+                    setEngineLastInputActivityAt(Date.now())
+                    setEngineOfferReason('manual')
+                    if (engineUiState !== 'FACILITATED_INPUT') {
+                      setEngineUiState('FACILITATION_OFFER')
+                    }
+                  }}
+                >
+                  ?
+                </button>
               <div
                 className={`engine-helper engine-facilitation-note ${
                   showFacilitationOffer ? 'is-visible' : 'is-hidden'
@@ -4942,6 +5086,7 @@ function App() {
                   data-testid="facilitation-next"
                   onClick={() => {
                     setFacilitationCooldown('NEXT')
+                    armIdleWatch('facilitation_next')
                     activateFacilitationPrompt('NEXT')
                   }}
                   disabled={!showFacilitationOffer}
@@ -4954,6 +5099,7 @@ function App() {
                   data-testid="facilitation-deepen"
                   onClick={() => {
                     setFacilitationCooldown('DEEPEN')
+                    armIdleWatch('facilitation_deepen')
                     activateFacilitationPrompt('DEEPEN')
                   }}
                   disabled={!showFacilitationOffer}
@@ -4966,6 +5112,7 @@ function App() {
                   data-testid="facilitation-perspective"
                   onClick={() => {
                     setFacilitationCooldown('PERSPECTIVE')
+                    armIdleWatch('facilitation_perspective')
                     activateFacilitationPrompt('PERSPECTIVE')
                   }}
                   disabled={!showFacilitationOffer}
@@ -4976,58 +5123,6 @@ function App() {
               </div>
               {enginePreviewError && <div className="engine-error">{enginePreviewError}</div>}
               <div className="engine-board-input">
-                {engineNamePromptOpen && (
-                  <div className="engine-name-prompt">
-                  <div className="engine-helper">{copy.engineNamePrompt}</div>
-                  <label>
-                    <span>{copy.engineNameLabel}</span>
-                    <input
-                      data-testid="session-name-input"
-                      value={engineNameDraft}
-                      onChange={(event) => setEngineNameDraft(event.target.value.slice(0, 40))}
-                      placeholder={copy.engineNamePlaceholder}
-                    />
-                  </label>
-                  <div className="engine-facilitation-actions">
-                    <button
-                      type="button"
-                      className="primary"
-                      data-testid="session-name-save"
-                      onClick={async () => {
-                        markUserInitiatedInteraction('pointer')
-                        setEngineLastInputActivityAt(Date.now())
-                        const name = engineNameDraft.trim().replace(/\s+/g, ' ')
-                        if (!name) return
-                        engineInteractionBySession.current['new'] = true
-                        setEngineInputFocused(true)
-                        setEngineUiState('FREE_FLOW')
-                        enginePendingArmingRef.current = true
-                        enginePendingFocusRef.current = true
-                        setEnginePreviewSessionName(name)
-                        setEngineNamePromptOpen(false)
-                        const sessionId = await ensureEnginePreviewSession()
-                        if (sessionId) {
-                          engineInteractionBySession.current[sessionId] = true
-                          setEngineLastInputActivityAt(Date.now())
-                        }
-                        await handleEnginePreviewAdd(name)
-                        engineInputRef.current?.focus()
-                        markUserInitiatedInteraction('pointer')
-                        setEngineLastInputActivityAt(Date.now())
-                      }}
-                    >
-                      {copy.engineNameSave}
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => setEngineNamePromptOpen(false)}
-                    >
-                      {copy.cancel}
-                    </button>
-                  </div>
-                </div>
-              )}
                 <textarea
                   data-testid="engine-input"
                   ref={engineInputRef}
@@ -5053,6 +5148,12 @@ function App() {
                   onKeyDown={() => {
                     markUserInitiatedInteraction('keystroke')
                     engineAllowIdleWithoutFocusRef.current = false
+                    if (engineOfferReason) {
+                      setEngineOfferReason(null)
+                      if (engineUiState === 'FACILITATION_OFFER') {
+                        setEngineUiState('FREE_FLOW')
+                      }
+                    }
                     if (engineUiState === 'INIT') {
                       setEngineUiState('FREE_FLOW')
                     }
@@ -5089,6 +5190,7 @@ function App() {
                     setEngineLastInputActivityAt(Date.now())
                     setEngineInputFocused(true)
                     engineAllowIdleWithoutFocusRef.current = true
+                    armIdleWatch('add_item')
                     engineInputRef.current?.focus()
                     void handleEnginePreviewAdd()
                   }}
@@ -5142,6 +5244,8 @@ function App() {
                             value={item.label ?? ''}
                             onChange={(event) => {
                               const nextValue = event.target.value || null
+                              armIdleWatch('label_change')
+                              setEngineLastInputActivityAt(Date.now())
                               void updateEngineEntryLabel(item.id, nextValue)
                               setEngineLabelEditorId(null)
                             }}

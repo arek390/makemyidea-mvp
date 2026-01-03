@@ -23,6 +23,14 @@ CREATE TABLE IF NOT EXISTS questions (
 CREATE INDEX IF NOT EXISTS idx_questions_group_mode
 ON questions(group_code, mode_code);
 
+CREATE TABLE IF NOT EXISTS question_texts (
+  question_id TEXT NOT NULL,
+  lang TEXT NOT NULL,
+  text TEXT NOT NULL,
+  PRIMARY KEY (question_id, lang),
+  FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+);
+
 -- =========================
 -- QUESTION TAGS
 -- =========================

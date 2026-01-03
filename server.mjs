@@ -202,10 +202,7 @@ const buildQuestionQuery = (filters) => {
   const where = ['q.is_active = 1']
   const params = {}
 
-  if (filters.lang) {
-    where.push('q.lang = @lang')
-    params.lang = filters.lang
-  }
+  params.lang = filters.lang || 'pl'
   if (filters.groupCode) {
     where.push('q.group_code = @groupCode')
     params.groupCode = filters.groupCode
@@ -242,7 +239,16 @@ const buildQuestionQuery = (filters) => {
 
   return {
     sql: `
-      SELECT q.* FROM questions q
+      SELECT
+        q.id,
+        COALESCE(t_lang.text, t_pl.text, q.text) AS text,
+        q.group_code, q.mode_code, q.category_code, q.intent_code,
+        q.difficulty, q.priority, q.is_active, q.lang
+      FROM questions q
+      LEFT JOIN question_texts t_lang
+        ON t_lang.question_id = q.id AND t_lang.lang = @lang
+      LEFT JOIN question_texts t_pl
+        ON t_pl.question_id = q.id AND t_pl.lang = 'pl'
       ${join}
       WHERE ${where.join(' AND ')}
       ORDER BY q.priority DESC, q.difficulty ASC

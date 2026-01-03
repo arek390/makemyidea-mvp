@@ -1746,6 +1746,7 @@
   align-items: center;
   gap: 1rem;
   margin-bottom: 1rem;
+  position: relative;
 }
 
 .engine-panel h1,
@@ -1758,6 +1759,12 @@
   display: flex;
   gap: 0.75rem;
   align-items: center;
+}
+
+.engine-sessions .engine-actions {
+  margin-left: auto;
+  padding-right: 10px;
+  transform: translateX(320px);
 }
 
 .engine-meta {
@@ -2127,6 +2134,13 @@ button.ghost.danger:hover {
 
 .engine-facilitation-note.is-hidden {
   opacity: 0;
+}
+
+.engine-help-trigger {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
 }
 
 @keyframes facilitation-fade-in {

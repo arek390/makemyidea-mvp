@@ -16,7 +16,7 @@ export const MATRIX_COLS: { key: MatrixColKey; label: string }[] = [
   { key: 'should_be', label: 'Jak powinno być' },
 ]
 
-const MATRIX_COL_RULES = [
+const MATRIX_COL_RULES_PL = [
   {
     key: 'not_working' as MatrixColKey,
     weight: 3,
@@ -60,7 +60,7 @@ const MATRIX_COL_RULES = [
   },
 ]
 
-const MATRIX_ROW_RULES = [
+const MATRIX_ROW_RULES_PL = [
   {
     key: 'product' as MatrixRowKey,
     weight: 3,
@@ -118,7 +118,7 @@ const MATRIX_ROW_RULES = [
   },
 ]
 
-const fuzzyTokens = new Set([
+const fuzzyTokensPL = new Set([
   'powinn',
   'problem',
   'ryzyk',
@@ -127,11 +127,155 @@ const fuzzyTokens = new Set([
   'nie dzial',
 ])
 
-const normalizeText = (value: string) =>
+const MATRIX_COL_RULES_EN = [
+  {
+    key: 'not_working' as MatrixColKey,
+    weight: 3,
+    keywords: [
+      'not working',
+      'problem',
+      'issue',
+      'bug',
+      'risk',
+      'blocker',
+      'blocked',
+      'obstacle',
+      'hindrance',
+      'missing',
+      'cant',
+      'cannot',
+      'too much',
+      'too little',
+      'lack',
+      'fails',
+      'broken',
+      'delay',
+    ],
+  },
+  {
+    key: 'should_be' as MatrixColKey,
+    weight: 4,
+    keywords: [
+      'should',
+      'should be',
+      'must',
+      'need',
+      'want',
+      'would',
+      'ideally',
+      'goal',
+      'desired',
+      'prefer',
+      'ought',
+    ],
+  },
+  {
+    key: 'as_is' as MatrixColKey,
+    weight: 2,
+    keywords: [
+      'currently',
+      'now',
+      'today',
+      'is',
+      'are',
+      'we have',
+      'we use',
+      'works',
+      'process',
+      'state',
+      'existing',
+    ],
+  },
+]
+
+const MATRIX_ROW_RULES_EN = [
+  {
+    key: 'product' as MatrixRowKey,
+    weight: 3,
+    keywords: [
+      'product',
+      'feature',
+      'function',
+      'requirement',
+      'user',
+      'customer',
+      'mvp',
+      'value',
+      'use case',
+      'pricing',
+      'onboarding',
+    ],
+  },
+  {
+    key: 'elements' as MatrixRowKey,
+    weight: 3,
+    keywords: [
+      'element',
+      'part',
+      'component',
+      'module',
+      'ui',
+      'screen',
+      'form',
+      'button',
+      'api',
+      'endpoint',
+      'database',
+      'db',
+      'timer',
+      'logic',
+      'session',
+      'integration',
+      'connection',
+    ],
+  },
+  {
+    key: 'world' as MatrixRowKey,
+    weight: 2,
+    keywords: [
+      'market',
+      'client',
+      'customer',
+      'competition',
+      'law',
+      'regulation',
+      'supplier',
+      'partner',
+      'deployment',
+      'context',
+      'environment',
+    ],
+  },
+]
+
+const fuzzyTokensEN = new Set([
+  'problem',
+  'issue',
+  'risk',
+  'blocker',
+  'should',
+  'need',
+  'want',
+  'product',
+  'feature',
+  'component',
+  'customer',
+  'market',
+])
+
+const normalizeTextPL = (value: string) =>
   value
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
+    .trim()
+    .replace(/\s+/g, ' ')
+
+const normalizeTextEN = (value: string) =>
+  value
+    .toLowerCase()
+    .replace(/['’]/g, '')
+    .replace(/[^a-z0-9\s]/g, ' ')
     .trim()
     .replace(/\s+/g, ' ')
 
@@ -152,22 +296,42 @@ const levenshtein = (a: string, b: string) => {
   return matrix[a.length][b.length]
 }
 
-const fuzzyIncludes = (haystack: string, needle: string) => {
+const stemEnglishWord = (word: string) => {
+  if (word.length <= 3) return word
+  if (word.endsWith('ing') && word.length > 5) return word.slice(0, -3)
+  if (word.endsWith('ed') && word.length > 4) return word.slice(0, -2)
+  if (word.endsWith('es') && word.length > 4) return word.slice(0, -2)
+  if (word.endsWith('s') && word.length > 3) return word.slice(0, -1)
+  return word
+}
+
+const normalizeEnglishToken = (value: string) => stemEnglishWord(value)
+
+const fuzzyIncludes = (
+  haystack: string,
+  needle: string,
+  tokens: string[],
+  fuzzyTokens: Set<string>,
+  normalizeToken: (value: string) => string
+) => {
   if (haystack.includes(needle)) return true
   if (!fuzzyTokens.has(needle)) return false
   if (needle.length < 5) return false
-  const words = haystack.split(' ')
-  return words.some((word) => {
-    const distance = levenshtein(word, needle)
-    if (needle.length >= 8) return distance <= 2
+  const normalizedNeedle = normalizeToken(needle)
+  return tokens.some((word) => {
+    const distance = levenshtein(word, normalizedNeedle)
+    if (normalizedNeedle.length >= 8) return distance <= 2
     return distance <= 1
   })
 }
 
 const scoreWithRules = <T extends string>(
   normalized: string,
+  tokens: string[],
   rules: { key: T; weight: number; keywords: string[] }[],
-  base: Record<T, number>
+  base: Record<T, number>,
+  fuzzyTokens: Set<string>,
+  normalizeToken: (value: string) => string
 ) => {
   const scores: Record<T, number> = { ...base }
   const matches = Object.keys(base).reduce(
@@ -179,7 +343,9 @@ const scoreWithRules = <T extends string>(
   )
 
   rules.forEach((rule) => {
-    const matched = rule.keywords.filter((keyword) => fuzzyIncludes(normalized, keyword))
+    const matched = rule.keywords.filter((keyword) =>
+      fuzzyIncludes(normalized, keyword, tokens, fuzzyTokens, normalizeToken)
+    )
     scores[rule.key] = matched.length * rule.weight
     matches[rule.key] = matched
   })
@@ -210,19 +376,49 @@ export type MappingDetails = {
   colMatches: Record<MatrixColKey, string[]>
 }
 
-export const computeMappingDetails = (text: string): MappingDetails => {
-  const normalized = normalizeText(text)
+const resolveLanguageCode = (language?: string) => {
+  if (!language) return 'pl'
+  const normalized = language.toLowerCase()
+  if (normalized.startsWith('en')) return 'en'
+  if (normalized.includes('english')) return 'en'
+  return 'pl'
+}
 
-  const colResult = scoreWithRules<MatrixColKey>(normalized, MATRIX_COL_RULES, {
-    as_is: 0,
-    not_working: 0,
-    should_be: 0,
-  })
-  const rowResult = scoreWithRules<MatrixRowKey>(normalized, MATRIX_ROW_RULES, {
-    world: 0,
-    product: 0,
-    elements: 0,
-  })
+export const computeMappingDetails = (text: string, language?: string): MappingDetails => {
+  const lang = resolveLanguageCode(language)
+  const normalized = lang === 'en' ? normalizeTextEN(text) : normalizeTextPL(text)
+  const tokens =
+    lang === 'en'
+      ? normalized
+          .split(' ')
+          .map((token) => normalizeEnglishToken(token))
+          .filter(Boolean)
+      : normalized.split(' ')
+
+  const colResult = scoreWithRules<MatrixColKey>(
+    normalized,
+    tokens,
+    lang === 'en' ? MATRIX_COL_RULES_EN : MATRIX_COL_RULES_PL,
+    {
+      as_is: 0,
+      not_working: 0,
+      should_be: 0,
+    },
+    lang === 'en' ? fuzzyTokensEN : fuzzyTokensPL,
+    lang === 'en' ? normalizeEnglishToken : (value) => value
+  )
+  const rowResult = scoreWithRules<MatrixRowKey>(
+    normalized,
+    tokens,
+    lang === 'en' ? MATRIX_ROW_RULES_EN : MATRIX_ROW_RULES_PL,
+    {
+      world: 0,
+      product: 0,
+      elements: 0,
+    },
+    lang === 'en' ? fuzzyTokensEN : fuzzyTokensPL,
+    lang === 'en' ? normalizeEnglishToken : (value) => value
+  )
 
   const colPriority: MatrixColKey[] = ['should_be', 'not_working', 'as_is']
   const rowPriority: MatrixRowKey[] = ['elements', 'product', 'world']
@@ -241,8 +437,8 @@ export const computeMappingDetails = (text: string): MappingDetails => {
   }
 }
 
-export const mapEntryToCell = (text: string) => {
-  const details = computeMappingDetails(text)
+export const mapEntryToCell = (text: string, language?: string) => {
+  const details = computeMappingDetails(text, language)
   return {
     row: details.row,
     col: details.col,
