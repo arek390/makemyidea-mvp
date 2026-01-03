@@ -2902,7 +2902,7 @@ function App() {
     y: number
     visible: boolean
   }>({ x: 0, y: 0, visible: false })
-  const [engineMatrixVisible, setEngineMatrixVisible] = useState(false)
+  const [engineMatrixVisible] = useState(false)
   const [engineLabelEditorId, setEngineLabelEditorId] = useState<string | null>(null)
   const engineLabelEditorRef = useRef<HTMLDivElement | null>(null)
   const engineLabelCache = useRef<Record<string, string | null>>({})
