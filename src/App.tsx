@@ -141,52 +141,6 @@ const ERASE_EMPTY_SECONDS_STRONG = 10
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
 const FEEDBACK_STORAGE_KEY = 'makemyidea.feedback.v1'
 
-const facilitationPromptsPl: Record<FacilitationType, string[]> = {
-  NEXT: [
-    'Co w tym wszystkim jest dziś najbardziej niejasne?',
-    'Który fragment tego tematu wydaje się najważniejszy na ten moment?',
-    'Co warto tu nazwać wprost, nawet jeśli nie masz jeszcze odpowiedzi?',
-  ],
-  DEEPEN: [
-    'Co dokładnie sprawia, że to jest problemem?',
-    'Od czego to najbardziej zależy?',
-    'Co by się zmieniło, gdyby ten element zniknął?',
-  ],
-  PERSPECTIVE: [
-    'Jak wyglądałoby to z perspektywy kogoś spoza zespołu?',
-    'Co zobaczyłby tu ktoś, kto używa produktu po raz pierwszy?',
-    'Jak byś to opisał komuś, kto kompletnie nie zna tego tematu?',
-  ],
-  RESET: [
-    'Jeśli miałbyś wskazać jeden obszar, którego w ogóle jeszcze nie dotknąłeś — co to jest?',
-    'Co w tej chwili zgadujesz, zamiast wiedzieć?',
-    'Które założenie może być tu najsłabsze?',
-  ],
-}
-
-const facilitationPromptsEn: Record<FacilitationType, string[]> = {
-  NEXT: [
-    'What is the most unclear part of this right now?',
-    'Which part of this topic feels most important at the moment?',
-    'What is worth naming directly, even if you do not have the answer yet?',
-  ],
-  DEEPEN: [
-    'What exactly makes this a problem?',
-    'What does this depend on the most?',
-    'What would change if this element disappeared?',
-  ],
-  PERSPECTIVE: [
-    'What would this look like from someone outside the team?',
-    'What would someone see who uses the product for the first time?',
-    'How would you describe this to someone who does not know the topic at all?',
-  ],
-  RESET: [
-    'If you had to point to one area you have not touched at all yet — what is it?',
-    'What are you guessing right now instead of knowing?',
-    'Which assumption might be the weakest here?',
-  ],
-}
-
 type Translations = {
   stepLabel: string
   appTitle: string
@@ -2910,14 +2864,6 @@ function App() {
   const didLogMappingSelfTestRef = useRef(false)
   const lastGravitySuggestionRef = useRef<string | null>(null)
   const engineImportInputRef = useRef<HTMLInputElement | null>(null)
-  const [feedbackOpen, setFeedbackOpen] = useState(false)
-  const [feedbackForm, setFeedbackForm] = useState({
-    doing: '',
-    unclear: '',
-    workaround: '',
-    suggestion: '',
-    keywords: '',
-  })
   const [feedbackReminder, setFeedbackReminder] = useState<{
     sessionId: string | null
     visible: boolean
@@ -2972,24 +2918,6 @@ function App() {
       return []
     }
   }
-
-  const writeFeedbackEntries = (entries: FeedbackEntry[]) => {
-    if (typeof window === 'undefined') return
-    try {
-      window.localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(entries))
-    } catch {
-      // no-op
-    }
-  }
-
-  const createFeedbackId = () => {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-      return crypto.randomUUID()
-    }
-    return `feedback-${Date.now()}-${Math.random().toString(16).slice(2)}`
-  }
-
-
 
   const getEngineSessionKey = () => enginePreviewSessionId ?? 'new'
 
