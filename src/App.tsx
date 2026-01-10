@@ -187,13 +187,6 @@ const facilitationPromptsEn: Record<FacilitationType, string[]> = {
   ],
 }
 
-const pickFacilitationPrompt = (type: FacilitationType, seed: number, language: Language) => {
-  const base = language === 'English' ? facilitationPromptsEn : facilitationPromptsPl
-  const fallback = facilitationPromptsPl
-  const options = base[type] || fallback[type]
-  return options[seed % options.length]
-}
-
 type Translations = {
   stepLabel: string
   appTitle: string
@@ -3686,120 +3679,6 @@ function App() {
     future: copy.axisFuture,
   }
 
-  const feedbackPanel = (
-    <>
-      <button
-        type="button"
-        className="feedback-fab"
-        onClick={() => setFeedbackOpen(true)}
-      >
-        {copy.feedbackButtonLabel}
-      </button>
-      {feedbackOpen && (
-        <div className="feedback-panel" role="dialog" aria-modal="false">
-          <div className="feedback-panel-header">
-            <h3>{copy.feedbackTitle}</h3>
-            <button type="button" className="ghost" onClick={() => setFeedbackOpen(false)}>
-              {copy.feedbackCancel}
-            </button>
-          </div>
-          <div className="feedback-panel-body">
-            <label>
-              <span>{copy.feedbackDoingLabel}</span>
-              <textarea
-                rows={2}
-                value={feedbackForm.doing}
-                onChange={(event) =>
-                  setFeedbackForm((prev) => ({ ...prev, doing: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              <span>{copy.feedbackUnclearLabel}</span>
-              <textarea
-                rows={2}
-                value={feedbackForm.unclear}
-                onChange={(event) =>
-                  setFeedbackForm((prev) => ({ ...prev, unclear: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              <span>{copy.feedbackWorkaroundLabel}</span>
-              <textarea
-                rows={2}
-                value={feedbackForm.workaround}
-                onChange={(event) =>
-                  setFeedbackForm((prev) => ({ ...prev, workaround: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              <span>{copy.feedbackSuggestionLabel}</span>
-              <textarea
-                rows={2}
-                value={feedbackForm.suggestion}
-                onChange={(event) =>
-                  setFeedbackForm((prev) => ({ ...prev, suggestion: event.target.value }))
-                }
-              />
-            </label>
-            <label>
-              <span>{copy.feedbackKeywordsLabel}</span>
-              <textarea
-                rows={1}
-                value={feedbackForm.keywords}
-                onChange={(event) =>
-                  setFeedbackForm((prev) => ({ ...prev, keywords: event.target.value }))
-                }
-              />
-            </label>
-          </div>
-            <div className="feedback-panel-actions">
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => {
-                  exportFeedbackJson()
-                }}
-              >
-                {copy.feedbackExport}
-              </button>
-            <button
-              type="button"
-              className="primary"
-              onClick={() => {
-                const entry: FeedbackEntry = {
-                  id: createFeedbackId(),
-                  timestamp: new Date().toISOString(),
-                  context: {
-                    language: uiLanguage,
-                    route: feedbackContext.route,
-                    sessionId: feedbackContext.sessionId,
-                    matrixCell: feedbackContext.matrixCell,
-                  },
-                  feedback: { ...feedbackForm },
-                }
-                const entries = readFeedbackEntries()
-                entries.push(entry)
-                writeFeedbackEntries(entries)
-                setFeedbackForm({
-                  doing: '',
-                  unclear: '',
-                  workaround: '',
-                  suggestion: '',
-                  keywords: '',
-                })
-                setFeedbackOpen(false)
-              }}
-            >
-              {copy.feedbackSave}
-            </button>
-          </div>
-        </div>
-      )}
-    </>
-  )
 
   const feedbackReminderBanner =
     feedbackReminder?.visible && isEnginePreview ? (
