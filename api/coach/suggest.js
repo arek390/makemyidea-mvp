@@ -105,7 +105,7 @@ module.exports = async (req, res) => {
 
     res.statusCode = 200
     res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ question }))
+    res.end(JSON.stringify({ ok: true, question }))
   } catch (error) {
     if (error?.message?.startsWith('CSV_')) {
       res.statusCode = 500
@@ -121,6 +121,13 @@ module.exports = async (req, res) => {
     }
     res.statusCode = 500
     res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ ok: false, error: error?.message || 'Server error' }))
+    res.end(
+      JSON.stringify({
+        ok: false,
+        error: 'EXCEPTION',
+        message: error?.message || 'Server error',
+        stack: error?.stack || null,
+      })
+    )
   }
 }

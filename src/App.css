@@ -2503,6 +2503,22 @@ button.ghost.danger:hover {
   color: var(--muted);
 }
 
+.engine-debug-panel {
+  margin-top: 0.6rem;
+  padding: 0.6rem 0.75rem;
+  border-radius: 10px;
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  font-size: 0.8rem;
+  color: #1f2937;
+}
+
+.engine-debug-panel pre {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
 .engine-entry-hint {
   position: fixed;
   z-index: 70;

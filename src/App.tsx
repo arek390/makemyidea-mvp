@@ -2859,6 +2859,12 @@ function App() {
   const [enginePreviewEditId, setEnginePreviewEditId] = useState<string | null>(null)
   const [enginePreviewEditText, setEnginePreviewEditText] = useState('')
   const [engineEntryDeleteId, setEngineEntryDeleteId] = useState<string | null>(null)
+  const [engineApiDebug, setEngineApiDebug] = useState<{
+    endpoint: string
+    status: number
+    response: unknown
+    rawText: string
+  } | null>(null)
   const [engineEntryHint, setEngineEntryHint] = useState<{
     x: number
     y: number
@@ -4145,8 +4151,9 @@ function App() {
     const boardItems = Object.values(workshopIdeas)
       .flat()
       .map((idea) => ({ type: 'idea', text: idea.text }))
+    const endpoint = '/api/coach/suggest'
     try {
-      const response = await fetch(`/api/coach/suggest`, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4155,11 +4162,21 @@ function App() {
           language: reportLanguage,
         }),
       })
-      if (!response.ok) {
-        const msg = await response.text()
-        throw new Error(msg || 'Request failed')
+      const rawText = await response.text()
+      let data: { question?: { text?: string } | null; ok?: boolean } | null = null
+      try {
+        data = JSON.parse(rawText)
+      } catch {
+        data = null
       }
-      const data = (await response.json()) as { question?: { text?: string } | null }
+      if (!response.ok || !data) {
+        setEngineApiDebug(
+          import.meta.env.VITE_DEBUG_ENGINE === '1'
+            ? { endpoint, status: response.status, response: data, rawText }
+            : null
+        )
+        throw new Error('Request failed')
+      }
       if (!data.question || !data.question.text) {
         setImpulseQuestion(copy.impulseEmpty)
       } else {
@@ -4245,8 +4262,9 @@ function App() {
   const activateFacilitationPrompt = async (type: FacilitationType) => {
     if (!enginePreviewSessionId) return
     setEnginePreviewError(null)
+    const endpoint = '/api/coach/suggest'
     try {
-      const response = await fetch(`/api/coach/suggest`, {
+      const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4255,18 +4273,38 @@ function App() {
           action: type,
         }),
       })
-      if (!response.ok) {
-        const msg = await response.text()
-        throw new Error(msg || 'Request failed')
+      const rawText = await response.text()
+      let data: { question?: { text?: string } | null; ok?: boolean } | null = null
+      try {
+        data = JSON.parse(rawText)
+      } catch {
+        data = null
       }
-      const data = (await response.json()) as { question?: { text?: string } | null }
+      if (!response.ok || !data) {
+        setEngineApiDebug(
+          import.meta.env.VITE_DEBUG_ENGINE === '1'
+            ? { endpoint, status: response.status, response: data, rawText }
+            : null
+        )
+        throw new Error('Request failed')
+      }
       const nextText = data.question?.text?.trim()
       if (!nextText) {
+        setEngineApiDebug(
+          import.meta.env.VITE_DEBUG_ENGINE === '1'
+            ? { endpoint, status: response.status, response: data, rawText }
+            : null
+        )
         setEngineActivePrompt(null)
         setEngineUiState('FREE_FLOW')
         setEngineOfferReason(null)
         setEnginePreviewError(copy.enginePreviewQuestionEmpty)
         return
+      }
+      if (import.meta.env.VITE_DEBUG_ENGINE === '1') {
+        setEngineApiDebug({ endpoint, status: response.status, response: data, rawText })
+      } else {
+        setEngineApiDebug(null)
       }
       setEngineActivePrompt({ type, text: nextText })
       setEnginePreviewInput('')
@@ -4280,6 +4318,9 @@ function App() {
       })
       resetStuckSignals()
     } catch {
+      if (import.meta.env.VITE_DEBUG_ENGINE !== '1') {
+        setEngineApiDebug(null)
+      }
       setEngineActivePrompt(null)
       setEngineUiState('FREE_FLOW')
       setEngineOfferReason(null)
@@ -5377,6 +5418,13 @@ function App() {
               </div>
               </div>
               {enginePreviewError && <div className="engine-error">{enginePreviewError}</div>}
+              {import.meta.env.VITE_DEBUG_ENGINE === '1' && engineApiDebug && (
+                <div className="engine-debug-panel">
+                  <div>Endpoint: {engineApiDebug.endpoint}</div>
+                  <div>Status: {engineApiDebug.status}</div>
+                  <pre>{JSON.stringify(engineApiDebug.response, null, 2)}</pre>
+                </div>
+              )}
               <div className="engine-board-input">
                 <textarea
                   data-testid="engine-input"
