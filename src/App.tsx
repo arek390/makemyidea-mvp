@@ -4133,7 +4133,7 @@ function App() {
       .flat()
       .map((idea) => ({ type: 'idea', text: idea.text }))
     try {
-      const response = await fetch(`${llmApiBase}/coach/suggest`, {
+      const response = await fetch(`/api/coach/suggest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4233,7 +4233,7 @@ function App() {
     if (!enginePreviewSessionId) return
     setEnginePreviewError(null)
     try {
-      const response = await fetch(`${llmApiBase}/coach/suggest`, {
+      const response = await fetch(`/api/coach/suggest`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
