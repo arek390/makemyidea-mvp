@@ -52,13 +52,15 @@ const pickRandom = (items) => {
   return items[index]
 }
 
-const resolveCurrentCell = ({ sessionState, groupCode, modeCode }) => {
+const resolveCurrentCell = ({ sessionState, groupCode, modeCode, lookupQuestionById }) => {
   if (groupCode && modeCode) {
     return { group: groupCode, mode: modeCode }
   }
   const lastQuestionId = sessionState?.last_question_id
   if (lastQuestionId) {
-    const lastQuestion = getQuestionById(lastQuestionId)
+    const lastQuestion = lookupQuestionById
+      ? lookupQuestionById(lastQuestionId)
+      : getQuestionById(lastQuestionId)
     if (lastQuestion?.group_code && lastQuestion?.mode_code) {
       return { group: lastQuestion.group_code, mode: lastQuestion.mode_code }
     }
@@ -200,7 +202,7 @@ const choosePerspective = ({ candidates, askedSet, currentCell }) => {
   return { chosen: null, exhausted: null, candidatesInCell: 0, askedInCell: 0, cellKey: null }
 }
 
-export const selectQuestion = ({
+const selectQuestionWithList = ({
   sessionId,
   lang,
   action = 'AUTO',
@@ -211,6 +213,8 @@ export const selectQuestion = ({
   tags,
   minDifficulty,
   maxDifficulty,
+  all,
+  lookupQuestionById,
 }) => {
   ensureSession(sessionId)
   ensureSessionState(sessionId)
@@ -222,13 +226,13 @@ export const selectQuestion = ({
 
   const normalizedAction = normalizeSelectionAction(action)
 
-  const all = listQuestionsWithTags({ lang })
+  const allCandidates = all || listQuestionsWithTags({ lang })
   const difficultyMax =
     maxDifficulty != null ? Number(maxDifficulty) : clamp(sessionState?.depth_level ?? 3, 1, 5)
   const difficultyMin = minDifficulty != null ? Number(minDifficulty) : 1
 
   const candidatesBase = filterCandidates({
-    all,
+    all: allCandidates,
     tags,
     categoryCode,
     intentCode,
@@ -246,7 +250,7 @@ export const selectQuestion = ({
   const baseMeta = {
     action: normalizedAction,
     lang,
-    totalCandidates: all.length,
+    totalCandidates: allCandidates.length,
     candidatesAfterFilters: candidates.length,
     askedIdsCount: askedIds.length,
   }
@@ -255,7 +259,12 @@ export const selectQuestion = ({
     return { question: null, meta: baseMeta }
   }
 
-  const currentCell = resolveCurrentCell({ sessionState, groupCode, modeCode })
+  const currentCell = resolveCurrentCell({
+    sessionState,
+    groupCode,
+    modeCode,
+    lookupQuestionById,
+  })
 
   if (normalizedAction === 'DEEPEN') {
     if (!currentCell) {
@@ -415,6 +424,15 @@ export const selectQuestion = ({
     },
   }
 }
+
+export const selectQuestion = (params) =>
+  selectQuestionWithList({
+    ...params,
+    all: listQuestionsWithTags({ lang: params.lang }),
+    lookupQuestionById: getQuestionById,
+  })
+
+export const selectQuestionFromList = (params) => selectQuestionWithList(params)
 
 export const finalizeSelection = ({ sessionId, question }) => {
   if (!question) return

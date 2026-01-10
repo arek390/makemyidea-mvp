@@ -1,0 +1,1681 @@
+id;text;group_code;mode_code;category_code;intent_code;difficulty;priority;is_active;lang
+a1_001;Jak wygląda obecny krajobraz rynku w tej kategorii?;A;1;GENERAL;prompt;1;70;1;pl
+a1_002;Jakie typy rozwiązań są dziś najbardziej rozpowszechnione?;A;1;GENERAL;prompt;3;70;1;pl
+a1_003;Jak długo istnieją dominujące rozwiązania na rynku?;A;1;GENERAL;prompt;2;70;1;pl
+a1_004;Czy rynek jest raczej stabilny czy w fazie zmian?;A;1;GENERAL;prompt;3;90;1;pl
+a1_005;Jak szybko pojawiają się nowe rozwiązania w tej kategorii?;A;1;GENERAL;prompt;2;70;1;pl
+a1_006;Jakie trendy są obecnie najbardziej widoczne?;A;1;GENERAL;prompt;3;70;1;pl
+a1_007;Jak rynek reaguje na nowe podejścia lub innowacje?;A;1;GENERAL;prompt;2;90;1;pl
+a1_008;Jak bardzo rynek jest podzielony na segmenty?;A;1;GENERAL;prompt;2;90;1;pl
+a1_009;Jakie grupy klientów są dziś najbardziej aktywne?;A;1;GENERAL;prompt;3;80;1;pl
+a1_010;Jak rynek opisuje sam siebie (język branży, narracje)?;A;1;GENERAL;prompt;2;90;1;pl
+a1_011;Kim są typowi użytkownicy tego typu rozwiązań?;A;1;GENERAL;prompt;3;50;1;pl
+a1_012;Jakie role są zaangażowane w korzystanie z rozwiązania?;A;1;GENERAL;prompt;3;70;1;pl
+a1_013;Czy użytkownik końcowy i decydent to ta sama osoba?;A;1;GENERAL;prompt;3;50;1;pl
+a1_014;Jakie kompetencje użytkownika są dziś zakładane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_015;Jak użytkownicy tra ają na tego typu rozwiązania?;A;1;GENERAL;prompt;2;70;1;pl
+a1_016;Jakie zachowania użytkowników są dziś normą?;A;1;GENERAL;prompt;3;70;1;pl
+a1_017;Jak użytkownicy uczą się korzystać z rozwiązań?;A;1;GENERAL;prompt;2;70;1;pl
+a1_018;Jak użytkownicy adaptują się do ograniczeń istniejących rozwiązań?;A;1;GENERAL;prompt;2;70;1;pl
+a1_019;Jak wygląda typowy poziom zaangażowania użytkownika?;A;1;GENERAL;prompt;1;70;1;pl
+a1_020;Jak użytkownicy opisują swoje doświadczenia własnymi słowami?;A;1;GENERAL;prompt;2;70;1;pl
+a1_021;W jakich sytuacjach użytkownik korzysta z tego rozwiązania?;A;1;GENERAL;prompt;3;70;1;pl
+a1_022;Jak często dochodzi do interakcji z rozwiązaniem?;A;1;GENERAL;prompt;2;70;1;pl
+a1_023;Jak długo trwa typowe użycie?;A;1;GENERAL;prompt;2;70;1;pl
+a1_024;Czy użycie jest zaplanowane czy spontaniczne?;A;1;GENERAL;prompt;3;50;1;pl
+a1_025;Jak wygląda początek kontaktu z rozwiązaniem?;A;1;GENERAL;prompt;1;70;1;pl
+a1_026;Jak wygląda zakończenie typowej interakcji?;A;1;GENERAL;prompt;1;70;1;pl
+a1_027;Jakie kroki są najczęściej powtarzane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_028;Jak wygląda korzystanie w warunkach niestandardowych?;A;1;GENERAL;prompt;1;70;1;pl
+a1_029;Jak użytkownik radzi sobie z przerwami lub błędami?;A;1;GENERAL;prompt;2;70;1;pl
+a1_030;Jak użytkownik wraca do rozwiązania po pierwszym użyciu?;A;1;GENERAL;prompt;2;70;1;pl
+a1_031;Jakie inne produkty lub usługi współistnieją z tym rozwiązaniem?;A;1;GENERAL;prompt;3;70;1;pl
+a1_032;Z jakimi systemami rozwiązanie jest dziś powiązane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_033;Jakie narzędzia są używane równolegle?;A;1;GENERAL;prompt;3;70;1;pl
+a1_034;Jakie integracje są powszechnie spotykane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_035;Jakie kanały dostępu lub dystrybucji dominują?;A;1;GENERAL;prompt;3;70;1;pl
+a1_036;Jakie technologie są uznawane za standard?;A;1;GENERAL;prompt;3;70;1;pl
+a1_037;Jakie zależności zewnętrzne są oczywiste dla rynku?;A;1;GENERAL;prompt;3;70;1;pl
+a1_038;Jakie elementy spoza produktu wpływają na jego użycie?;A;1;GENERAL;prompt;3;70;1;pl
+a1_039;Jak stabilny jest obecny ekosystem?;A;1;GENERAL;prompt;2;70;1;pl
+a1_040;Jak rynek reaguje na zmiany w ekosystemie?;A;1;GENERAL;prompt;2;90;1;pl
+a1_041;Jak użytkownicy dziś płacą za tego typu rozwiązania?;A;1;GENERAL;prompt;2;70;1;pl
+a1_042;Jakie modele cenowe są najczęściej spotykane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_043;Jak wygląda typowy proces zakupu?;A;1;GENERAL;prompt;1;70;1;pl
+a1_044;Jak długo trwa podjęcie decyzji zakupowej?;A;1;GENERAL;prompt;2;70;1;pl
+a1_045;Jakie koszty są dziś powszechnie akceptowane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_046;Jakie elementy są uznawane za standard w cenie?;A;1;GENERAL;prompt;3;70;1;pl
+a1_047;Jakie elementy są traktowane jako dodatki?;A;1;GENERAL;prompt;2;70;1;pl
+a1_048;Jak rynek komunikuje wartość tych rozwiązań?;A;1;GENERAL;prompt;2;90;1;pl
+a1_049;Jak użytkownicy porównują cenę do wartości?;A;1;GENERAL;prompt;2;70;1;pl
+a1_050;Jakie koszty są „niewidzialne” dla użytkownika?;A;1;GENERAL;prompt;3;70;1;pl
+a1_051;Jak użytkownicy opisują tę kategorię własnymi słowami?;A;1;GENERAL;prompt;2;70;1;pl
+a1_052;Jakie uproszczenia myślowe są powszechne?;A;1;GENERAL;prompt;3;70;1;pl
+a1_053;Jakie porównania lub analogie są często używane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_054;Jakie założenia są rzadko kwestionowane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_055;Co jest uznawane za „normalne” w tej kategorii?;A;1;GENERAL;prompt;3;50;1;pl
+a1_056;Jakie kompromisy są powszechnie akceptowane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_057;Jakie oczekiwania wobec tej kategorii są niskie?;A;1;GENERAL;prompt;3;70;1;pl
+a1_058;Jakie obietnice rynku są traktowane sceptycznie?;A;1;GENERAL;prompt;2;70;1;pl
+a1_059;Jak użytkownicy tłumaczą sobie ograniczenia rozwiązań?;A;1;GENERAL;prompt;2;70;1;pl
+a1_060;Jak rynek reaguje na nowe narracje?;A;1;GENERAL;prompt;2;90;1;pl
+a1_061;Jakie regulacje prawne dotyczą tej kategorii?;A;1;GENERAL;prompt;3;70;1;pl
+a1_062;Jakie normy lub standardy są powszechnie znane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_063;Jakie ograniczenia technologiczne są dziś akceptowane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_064;Jakie ograniczenia zyczne lub środowiskowe występują?;A;1;GENERAL;prompt;3;70;1;pl
+a1_065;Jakie procesy organizacyjne wpływają na użycie rozwiązań?;A;1;GENERAL;prompt;3;70;1;pl
+a1_066;Jakie ograniczenia czasowe są typowe?;A;1;GENERAL;prompt;3;70;1;pl
+a1_067;Jakie ograniczenia budżetowe są standardem?;A;1;GENERAL;prompt;3;70;1;pl
+a1_068;Jakie reguły rynku są niepisane, ale powszechne?;A;1;GENERAL;prompt;3;70;1;pl
+a1_069;Jakie wymagania są narzucane przez otoczenie?;A;1;GENERAL;prompt;3;70;1;pl
+a1_070;Jak rynek adaptuje się do tych ograniczeń?;A;1;GENERAL;prompt;2;90;1;pl
+a1_071;Jakie dane są dziś dostępne użytkownikom?;A;1;GENERAL;prompt;3;70;1;pl
+a1_072;Jakie informacje są kluczowe do korzystania z rozwiązania?;A;1;GENERAL;prompt;3;70;1;pl
+a1_073;Jak użytkownicy pozyskują potrzebne informacje?;A;1;GENERAL;prompt;2;70;1;pl
+a1_074;Jak wiarygodne są dostępne dane?;A;1;GENERAL;prompt;2;70;1;pl
+a1_075;Jakie informacje są rozproszone?;A;1;GENERAL;prompt;3;70;1;pl
+a1_076;Jakie dane są trudne do zdobycia?;A;1;GENERAL;prompt;3;70;1;pl
+a1_077;Jakie luki informacyjne są powszechne?;A;1;GENERAL;prompt;3;70;1;pl
+a1_078;Jak użytkownicy radzą sobie z brakiem informacji?;A;1;GENERAL;prompt;2;70;1;pl
+a1_079;Jakie informacje są ignorowane lub pomijane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_080;Jak dane wpływają na decyzje użytkowników?;A;1;GENERAL;prompt;2;70;1;pl
+a1_081;Kto poza użytkownikiem ma wpływ na to rozwiązanie?;A;1;GENERAL;prompt;2;50;1;pl
+a1_082;Jakie role decyzyjne są zaangażowane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_083;Kto zatwierdza wybór lub użycie rozwiązania?;A;1;GENERAL;prompt;2;50;1;pl
+a1_084;Kto ponosi konsekwencje decyzji?;A;1;GENERAL;prompt;2;50;1;pl
+a1_085;Jakie działy lub instytucje są pośrednio zaangażowane?;A;1;GENERAL;prompt;3;70;1;pl
+a1_086;Jakie interesy różnych stron się tu spotykają?;A;1;GENERAL;prompt;3;70;1;pl
+a1_087;Kto może blokować wdrożenie rozwiązania?;A;1;GENERAL;prompt;2;50;1;pl
+a1_088;Kto może je przyspieszyć lub ułatwić?;A;1;GENERAL;prompt;2;50;1;pl
+a1_089;Jakie relacje między interesariuszami są typowe?;A;1;GENERAL;prompt;3;70;1;pl
+a1_090;Jak interesariusze komunikują swoje oczekiwania?;A;1;GENERAL;prompt;2;70;1;pl
+a2_001;W których obszarach rynek nie nadąża za rzeczywistymi potrzebami?;A;2;GENERAL;prompt;3;90;1;pl
+a2_002;Gdzie rynek oferuje rozwiązania nieadekwatne do problemów?;A;2;GENERAL;prompt;2;90;1;pl
+a2_003;Jakie problemy są znane, ale pozostają nierozwiązane?;A;2;GENERAL;prompt;3;90;1;pl
+a2_004;Gdzie innowacje są powierzchowne lub pozorne?;A;2;GENERAL;prompt;2;50;1;pl
+a2_005;Jakie segmenty rynku są systemowo zaniedbane?;A;2;GENERAL;prompt;3;70;1;pl
+a2_006;Gdzie rynek reaguje zbyt wolno na zmiany?;A;2;GENERAL;prompt;2;90;1;pl
+a2_007;Jakie sprzeczne sygnały wysyła dziś rynek?;A;2;GENERAL;prompt;3;90;1;pl
+a2_008;Gdzie występuje nadmiar podobnych, nieróżniących się rozwiązań?;A;2;GENERAL;prompt;2;50;1;pl
+a2_009;Jakie potrzeby są ignorowane, bo są „niewygodne”?;A;2;GENERAL;prompt;3;70;1;pl
+a2_010;Gdzie rynek utknął w przestarzałych schematach?;A;2;GENERAL;prompt;2;90;1;pl
+a2_011;W jakich sytuacjach użytkownik czuje się zagubiony?;A;2;GENERAL;prompt;3;70;1;pl
+a2_012;Gdzie użytkownik musi się dopasować do rozwiązania, zamiast odwrotnie?;A;2;GENERAL;prompt;2;50;1;pl
+a2_013;Jakie działania wymagają od użytkownika nadmiernego wysiłku?;A;2;GENERAL;prompt;3;70;1;pl
+a2_014;Gdzie użytkownik popełnia błędy nie z własnej winy?;A;2;GENERAL;prompt;2;50;1;pl
+a2_015;Jakie oczekiwania użytkownika nie są spełniane?;A;2;GENERAL;prompt;3;70;1;pl
+a2_016;W jakich momentach użytkownik traci zaufanie?;A;2;GENERAL;prompt;3;70;1;pl
+a2_017;Jakie zachowania użytkownika są wymuszone przez ograniczenia rynku?;A;2;GENERAL;prompt;3;70;1;pl
+a2_018;Gdzie użytkownik musi stosować obejścia lub skróty?;A;2;GENERAL;prompt;2;50;1;pl
+a2_019;Jakie kompetencje są dziś wymagane niepotrzebnie?;A;2;GENERAL;prompt;3;70;1;pl
+a2_020;W których momentach użytkownik rezygnuje lub odkłada działanie?;A;2;GENERAL;prompt;3;50;1;pl
+a2_021;Które etapy korzystania są najbardziej problematyczne?;A;2;GENERAL;prompt;3;90;1;pl
+a2_022;Gdzie proces użycia jest zbyt złożony?;A;2;GENERAL;prompt;2;50;1;pl
+a2_023;Jakie kroki są zbędne, ale nieuniknione?;A;2;GENERAL;prompt;3;70;1;pl
+a2_024;W których momentach najczęściej dochodzi do przerwań?;A;2;GENERAL;prompt;3;50;1;pl
+a2_025;Gdzie użycie rozwiązania nie pasuje do realnych warunków?;A;2;GENERAL;prompt;2;50;1;pl
+a2_026;Jakie sytuacje skrajne nie są obsłużone?;A;2;GENERAL;prompt;3;70;1;pl
+a2_027;Gdzie użytkownik traci czas bez wartości?;A;2;GENERAL;prompt;2;50;1;pl
+a2_028;Jakie elementy wymagają nadmiernej uwagi?;A;2;GENERAL;prompt;3;70;1;pl
+a2_029;Gdzie brak ciągłości doświadczenia?;A;2;GENERAL;prompt;2;50;1;pl
+a2_030;Jakie błędy powtarzają się systemowo?;A;2;GENERAL;prompt;3;70;1;pl
+a2_031;Gdzie rozwiązania nie współpracują ze sobą?;A;2;GENERAL;prompt;2;50;1;pl
+a2_032;Jakie integracje są problematyczne lub kruche?;A;2;GENERAL;prompt;3;90;1;pl
+a2_033;Gdzie użytkownik musi ręcznie łączyć elementy ekosystemu?;A;2;GENERAL;prompt;2;50;1;pl
+a2_034;Jakie zależności zewnętrzne generują problemy?;A;2;GENERAL;prompt;3;90;1;pl
+a2_035;Gdzie zmiany w jednym elemencie psują inne?;A;2;GENERAL;prompt;2;50;1;pl
+a2_036;Jakie standardy utrudniają rozwój?;A;2;GENERAL;prompt;3;70;1;pl
+a2_037;Gdzie brakuje spójności między narzędziami?;A;2;GENERAL;prompt;2;50;1;pl
+a2_038;Jakie elementy ekosystemu są wąskimi gardłami?;A;2;GENERAL;prompt;3;70;1;pl
+a2_039;Gdzie ekosystem jest zbyt sztywny?;A;2;GENERAL;prompt;2;50;1;pl
+a2_040;Jakie zależności są nieczytelne dla użytkownika?;A;2;GENERAL;prompt;3;70;1;pl
+a2_041;Gdzie model cenowy jest niejasny lub mylący?;A;2;GENERAL;prompt;2;50;1;pl
+a2_042;Jakie koszty są nieproporcjonalne do wartości?;A;2;GENERAL;prompt;3;70;1;pl
+a2_043;Gdzie użytkownik płaci za coś, czego nie potrzebuje?;A;2;GENERAL;prompt;2;50;1;pl
+a2_044;Jakie elementy są trudne do porównania cenowo?;A;2;GENERAL;prompt;3;70;1;pl
+a2_045;Gdzie proces zakupu jest zbyt skomplikowany?;A;2;GENERAL;prompt;2;50;1;pl
+a2_046;Jakie bariery wejścia są sztuczne?;A;2;GENERAL;prompt;3;70;1;pl
+a2_047;Gdzie relacja cena–wartość budzi wątpliwości?;A;2;GENERAL;prompt;2;80;1;pl
+a2_048;Jakie koszty ujawniają się zbyt późno?;A;2;GENERAL;prompt;3;70;1;pl
+a2_049;Gdzie model rynkowy zniechęca do adopcji?;A;2;GENERAL;prompt;2;50;1;pl
+a2_050;Jakie zachęty rynkowe działają przeciw użytkownikowi?;A;2;GENERAL;prompt;3;70;1;pl
+a2_051;Jakie błędne założenia są powszechne?;A;2;GENERAL;prompt;3;70;1;pl
+a2_052;Gdzie uproszczenia myślowe prowadzą do złych decyzji?;A;2;GENERAL;prompt;2;50;1;pl
+a2_053;Jakie mity utrudniają zmianę?;A;2;GENERAL;prompt;3;70;1;pl
+a2_054;Gdzie narracje rynkowe rozmijają się z rzeczywistością?;A;2;GENERAL;prompt;2;50;1;pl
+a2_055;Jakie problemy są bagatelizowane?;A;2;GENERAL;prompt;3;90;1;pl
+a2_056;Gdzie „tak było zawsze” blokuje postęp?;A;2;GENERAL;prompt;2;50;1;pl
+a2_057;Jakie sprzeczne oczekiwania funkcjonują równolegle?;A;2;GENERAL;prompt;3;70;1;pl
+a2_058;Jakie obietnice są nadużywane?;A;2;GENERAL;prompt;3;70;1;pl
+a2_059;Gdzie użytkownicy nie rozumieją, dlaczego coś nie działa?;A;2;GENERAL;prompt;2;70;1;pl
+a2_060;Jakie tematy są tabu lub omijane?;A;2;GENERAL;prompt;3;70;1;pl
+a2_061;Które regulacje są nieadekwatne do realiów?;A;2;GENERAL;prompt;3;50;1;pl
+a2_062;Jakie normy utrudniają rozwój rozwiązań?;A;2;GENERAL;prompt;3;70;1;pl
+a2_063;Gdzie procedury są zbyt sztywne?;A;2;GENERAL;prompt;2;50;1;pl
+a2_064;Jakie ograniczenia technologiczne są przestarzałe?;A;2;GENERAL;prompt;3;70;1;pl
+a2_065;Gdzie ograniczenia organizacyjne blokują działanie?;A;2;GENERAL;prompt;2;50;1;pl
+a2_066;Jakie reguły są interpretowane sprzecznie?;A;2;GENERAL;prompt;3;70;1;pl
+a2_067;Gdzie brakuje elastyczności w ramach zasad?;A;2;GENERAL;prompt;2;50;1;pl
+a2_068;Jakie wymagania są nadmierne?;A;2;GENERAL;prompt;3;70;1;pl
+a2_069;Gdzie reguły chronią status quo kosztem użytkownika?;A;2;GENERAL;prompt;2;50;1;pl
+a2_070;Jak rynek obchodzi te ograniczenia?;A;2;GENERAL;prompt;2;90;1;pl
+a2_071;Jakich informacji użytkownikom najbardziej brakuje?;A;2;GENERAL;prompt;3;70;1;pl
+a2_072;Gdzie dane są niepełne lub niespójne?;A;2;GENERAL;prompt;2;50;1;pl
+a2_073;Jakie informacje są trudne do zinterpretowania?;A;2;GENERAL;prompt;3;70;1;pl
+a2_074;Gdzie nadmiar danych utrudnia decyzje?;A;2;GENERAL;prompt;2;50;1;pl
+a2_075;Jakie dane są niewiarygodne lub przestarzałe?;A;2;GENERAL;prompt;3;70;1;pl
+a2_076;Gdzie informacje są dostępne zbyt późno?;A;2;GENERAL;prompt;2;50;1;pl
+a2_077;Jakie luki informacyjne powodują błędy?;A;2;GENERAL;prompt;3;70;1;pl
+a2_078;Gdzie użytkownicy polegają na domysłach?;A;2;GENERAL;prompt;2;50;1;pl
+a2_079;Jakie dane są ignorowane mimo swojej wartości?;A;2;GENERAL;prompt;3;70;1;pl
+a2_080;Jak brak informacji wpływa na decyzje rynkowe?;A;2;GENERAL;prompt;2;70;1;pl
+a2_081;Którzy interesariusze mają sprzeczne cele?;A;2;GENERAL;prompt;3;90;1;pl
+a2_082;Gdzie proces decyzyjny jest rozmyty?;A;2;GENERAL;prompt;2;50;1;pl
+a2_083;Kto blokuje zmiany i dlaczego?;A;2;GENERAL;prompt;2;70;1;pl
+a2_084;Gdzie odpowiedzialność jest niejasna?;A;2;GENERAL;prompt;2;50;1;pl
+a2_085;Jakie kon ikty interesów są powszechne?;A;2;GENERAL;prompt;3;70;1;pl
+a2_086;Kto narzuca wymagania bez ponoszenia konsekwencji?;A;2;GENERAL;prompt;2;50;1;pl
+a2_087;Gdzie komunikacja między interesariuszami zawodzi?;A;2;GENERAL;prompt;2;50;1;pl
+a2_088;Jakie decyzje są odkładane w nieskończoność?;A;2;GENERAL;prompt;3;70;1;pl
+a2_089;Kto jest pomijany mimo realnego wpływu?;A;2;GENERAL;prompt;2;50;1;pl
+a2_090;Jakie interesy dominują kosztem użytkownika?;A;2;GENERAL;prompt;3;70;1;pl
+a3_001;Jak powinien wyglądać dojrzały rynek w tej kategorii?;A;3;GENERAL;prompt;2;90;1;pl
+a3_002;Jak rynek powinien reagować na realne potrzeby użytkowników?;A;3;GENERAL;prompt;2;90;1;pl
+a3_003;Jakie problemy rynku powinny być uznane za priorytetowe?;A;3;GENERAL;prompt;3;90;1;pl
+a3_004;Jak powinna wyglądać zdrowa różnorodność rozwiązań?;A;3;GENERAL;prompt;2;70;1;pl
+a3_005;Jak rynek powinien wspierać innowacje, a nie je blokować?;A;3;GENERAL;prompt;2;90;1;pl
+a3_006;Jak szybko rynek powinien adaptować się do zmian?;A;3;GENERAL;prompt;2;90;1;pl
+a3_007;Jakie praktyki rynkowe powinny odejść w przeszłość?;A;3;GENERAL;prompt;3;70;1;pl
+a3_008;Jak powinny wyglądać relacje między konkurującymi rozwiązaniami?;A;3;GENERAL;prompt;2;80;1;pl
+a3_009;Jak rynek powinien komunikować swoją wartość?;A;3;GENERAL;prompt;2;90;1;pl
+a3_010;Jakie standardy dojrzałości powinny obowiązywać w tej kategorii?;A;3;GENERAL;prompt;3;70;1;pl
+a3_011;Jak użytkownik powinien doświadczać kontaktu z tą kategorią?;A;3;GENERAL;prompt;2;70;1;pl
+a3_012;Jakie kompetencje użytkownika nie powinny być już wymagane?;A;3;GENERAL;prompt;3;70;1;pl
+a3_013;Jak użytkownik powinien być wspierany w działaniu?;A;3;GENERAL;prompt;2;70;1;pl
+a3_014;Jakie frustracje użytkownika powinny zniknąć?;A;3;GENERAL;prompt;3;70;1;pl
+a3_015;Jak użytkownik powinien rozumieć to, z czego korzysta?;A;3;GENERAL;prompt;2;70;1;pl
+a3_016;Jakie decyzje użytkownika powinny być prostsze?;A;3;GENERAL;prompt;3;70;1;pl
+a3_017;Jak użytkownik powinien budować zaufanie do rozwiązań?;A;3;GENERAL;prompt;2;70;1;pl
+a3_018;Jak użytkownik powinien być chroniony przed błędami?;A;3;GENERAL;prompt;2;70;1;pl
+a3_019;Jak powinien wyglądać zdrowy poziom zaangażowania użytkownika?;A;3;GENERAL;prompt;2;70;1;pl
+a3_020;Jak użytkownik powinien opisywać swoje doświadczenia?;A;3;GENERAL;prompt;2;70;1;pl
+a3_021;Jak powinno wyglądać typowe użycie rozwiązania?;A;3;GENERAL;prompt;2;70;1;pl
+a3_022;Jak bardzo proces korzystania powinien być prosty?;A;3;GENERAL;prompt;2;70;1;pl
+a3_023;Jakie kroki powinny być naturalne i intuicyjne?;A;3;GENERAL;prompt;3;70;1;pl
+a3_024;Jak rozwiązanie powinno reagować na sytuacje niestandardowe?;A;3;GENERAL;prompt;2;70;1;pl
+a3_025;Jak użytkownik powinien przechodzić przez cały proces?;A;3;GENERAL;prompt;2;70;1;pl
+a3_026;Jakie przerwy lub błędy powinny być nieodczuwalne?;A;3;GENERAL;prompt;3;70;1;pl
+a3_027;Jak rozwiązanie powinno dopasowywać się do kontekstu użycia?;A;3;GENERAL;prompt;2;70;1;pl
+a3_028;Jak użytkownik powinien wracać do rozwiązania?;A;3;GENERAL;prompt;2;70;1;pl
+a3_029;Jak korzystanie powinno wyglądać przy ograniczonej uwadze?;A;3;GENERAL;prompt;2;70;1;pl
+a3_030;Jak użycie powinno wspierać ciągłość działania?;A;3;GENERAL;prompt;2;70;1;pl
+a3_031;Jak elementy ekosystemu powinny ze sobą współpracować?;A;3;GENERAL;prompt;2;70;1;pl
+a3_032;Jakie integracje powinny być oczywiste i bezproblemowe?;A;3;GENERAL;prompt;3;90;1;pl
+a3_033;Jak ekosystem powinien reagować na zmiany?;A;3;GENERAL;prompt;2;70;1;pl
+a3_034;Jakie zależności powinny być uproszczone lub zniknąć?;A;3;GENERAL;prompt;3;70;1;pl
+a3_035;Jak użytkownik powinien postrzegać granice między systemami?;A;3;GENERAL;prompt;2;70;1;pl
+a3_036;Jakie standardy interoperacyjności powinny obowiązywać?;A;3;GENERAL;prompt;3;70;1;pl
+a3_037;Jak ekosystem powinien wspierać rozwój, a nie go hamować?;A;3;GENERAL;prompt;2;70;1;pl
+a3_038;Jakie elementy ekosystemu powinny być wymienne?;A;3;GENERAL;prompt;3;70;1;pl
+a3_039;Jak stabilność i elastyczność powinny się równoważyć?;A;3;GENERAL;prompt;2;70;1;pl
+a3_040;Jak ekosystem powinien skalować się w czasie?;A;3;GENERAL;prompt;2;70;1;pl
+a3_041;Jak użytkownik powinien rozumieć, za co płaci?;A;3;GENERAL;prompt;2;70;1;pl
+a3_042;Jak relacja cena–wartość powinna być odczuwana?;A;3;GENERAL;prompt;2;80;1;pl
+a3_043;Jakie koszty powinny być przewidywalne?;A;3;GENERAL;prompt;3;70;1;pl
+a3_044;Jak proces zakupu powinien wyglądać w idealnym świecie?;A;3;GENERAL;prompt;2;70;1;pl
+a3_045;Jak model rynkowy powinien wspierać adopcję?;A;3;GENERAL;prompt;2;70;1;pl
+a3_046;Jakie bariery wejścia powinny zniknąć?;A;3;GENERAL;prompt;3;70;1;pl
+a3_047;Jak model powinien nagradzać długoterminową wartość?;A;3;GENERAL;prompt;2;80;1;pl
+a3_048;Jakie zachęty rynkowe powinny działać na korzyść użytkownika?;A;3;GENERAL;prompt;3;70;1;pl
+a3_049;Jak użytkownik powinien móc porównywać oferty?;A;3;GENERAL;prompt;2;70;1;pl
+a3_050;Jak model rynkowy powinien reagować na zmiany potrzeb?;A;3;GENERAL;prompt;2;70;1;pl
+a3_051;Jakie założenia powinny zostać zakwestionowane?;A;3;GENERAL;prompt;3;70;1;pl
+a3_052;Jak użytkownicy powinni rozumieć sens tej kategorii?;A;3;GENERAL;prompt;2;70;1;pl
+a3_053;Jakie mity powinny zniknąć?;A;3;GENERAL;prompt;3;70;1;pl
+a3_054;Jak narracje rynkowe powinny być uczciwsze?;A;3;GENERAL;prompt;2;70;1;pl
+a3_055;Jakie kompromisy nie powinny być już akceptowane?;A;3;GENERAL;prompt;3;70;1;pl
+a3_056;Jakie oczekiwania użytkowników powinny wzrosnąć?;A;3;GENERAL;prompt;3;70;1;pl
+a3_057;Jak użytkownicy powinni oceniać jakość rozwiązań?;A;3;GENERAL;prompt;2;70;1;pl
+a3_058;Jak powinno wyglądać zaufanie do tej kategorii?;A;3;GENERAL;prompt;2;70;1;pl
+a3_059;Jak użytkownicy powinni reagować na nowości?;A;3;GENERAL;prompt;2;70;1;pl
+a3_060;Jak mentalny obraz tej kategorii powinien się zmienić?;A;3;GENERAL;prompt;2;70;1;pl
+a3_061;Jakie regulacje powinny lepiej odzwierciedlać rzeczywistość?;A;3;GENERAL;prompt;3;70;1;pl
+a3_062;Jak normy powinny wspierać jakość, a nie blokować zmian?;A;3;GENERAL;prompt;2;70;1;pl
+a3_063;Jakie reguły powinny być uproszczone?;A;3;GENERAL;prompt;3;70;1;pl
+a3_064;Jak ograniczenia technologiczne powinny ewoluować?;A;3;GENERAL;prompt;2;70;1;pl
+a3_065;Jak procesy organizacyjne powinny się zmienić?;A;3;GENERAL;prompt;2;70;1;pl
+a3_066;Jakie zasady powinny chronić użytkownika?;A;3;GENERAL;prompt;3;70;1;pl
+a3_067;Jakie reguły powinny być bardziej elastyczne?;A;3;GENERAL;prompt;3;70;1;pl
+a3_068;Jakie wymagania powinny być proporcjonalne?;A;3;GENERAL;prompt;3;70;1;pl
+a3_069;Jak reguły powinny wspierać innowacje?;A;3;GENERAL;prompt;2;70;1;pl
+a3_070;Jak rynek powinien adaptować się do nowych zasad?;A;3;GENERAL;prompt;2;90;1;pl
+a3_071;Jakie informacje powinny być łatwo dostępne?;A;3;GENERAL;prompt;3;70;1;pl
+a3_072;Jak dane powinny wspierać decyzje użytkowników?;A;3;GENERAL;prompt;2;70;1;pl
+a3_073;Jakie informacje powinny być jasne i zrozumiałe?;A;3;GENERAL;prompt;3;70;1;pl
+a3_074;Jak dane powinny być prezentowane?;A;3;GENERAL;prompt;2;70;1;pl
+a3_075;Jakie luki informacyjne powinny zniknąć?;A;3;GENERAL;prompt;3;70;1;pl
+a3_076;Jak użytkownicy powinni ufać danym?;A;3;GENERAL;prompt;2;70;1;pl
+a3_077;Jak informacje powinny być aktualizowane?;A;3;GENERAL;prompt;2;70;1;pl
+a3_078;Jak dane powinny redukować niepewność?;A;3;GENERAL;prompt;2;70;1;pl
+a3_079;Jakie informacje powinny być dostępne w odpowiednim momencie?;A;3;GENERAL;prompt;3;70;1;pl
+a3_080;Jak wiedza powinna wspierać odpowiedzialne decyzje?;A;3;GENERAL;prompt;2;70;1;pl
+a3_081;Jak role interesariuszy powinny być jasno określone?;A;3;GENERAL;prompt;2;70;1;pl
+a3_082;Jak proces decyzyjny powinien być uproszczony?;A;3;GENERAL;prompt;2;70;1;pl
+a3_083;Jak odpowiedzialność powinna być rozdzielona?;A;3;GENERAL;prompt;2;70;1;pl
+a3_084;Jak interesariusze powinni współpracować?;A;3;GENERAL;prompt;2;70;1;pl
+a3_085;Jak kon ikty interesów powinny być rozwiązywane?;A;3;GENERAL;prompt;2;70;1;pl
+a3_086;Jak komunikacja między interesariuszami powinna wyglądać?;A;3;GENERAL;prompt;2;70;1;pl
+a3_087;Jak interesariusze powinni być włączani w zmiany?;A;3;GENERAL;prompt;2;70;1;pl
+a3_088;Jak decyzje powinny być podejmowane terminowo?;A;3;GENERAL;prompt;2;70;1;pl
+a3_089;Jak interesy użytkownika powinny być reprezentowane?;A;3;GENERAL;prompt;2;70;1;pl
+a3_090;Jak relacje między interesariuszami powinny budować wartość?;A;3;GENERAL;prompt;2;80;1;pl
+b1_001;Jaką rolę pełni produkt/usługa w obecnym rynku?;B;1;GENERAL;prompt;3;70;1;pl
+b1_002;Jak jest dziś pozycjonowany względem alternatyw?;B;1;GENERAL;prompt;2;70;1;pl
+b1_003;W jakich sytuacjach jest najczęściej wybierany?;B;1;GENERAL;prompt;3;70;1;pl
+b1_004;Jakie problemy deklaratywnie adresuje?;B;1;GENERAL;prompt;3;90;1;pl
+b1_005;Jak długo produkt/usługa istnieje w obecnej formie?;B;1;GENERAL;prompt;2;70;1;pl
+b1_006;Jak często produkt jest aktualizowany lub zmieniany?;B;1;GENERAL;prompt;2;70;1;pl
+b1_007;Jak produkt jest opisywany w komunikacji rynkowej?;B;1;GENERAL;prompt;2;70;1;pl
+b1_008;Jakie obietnice są z nim dziś kojarzone?;B;1;GENERAL;prompt;3;70;1;pl
+b1_009;Jak produkt jest postrzegany na tle konkurencji?;B;1;GENERAL;prompt;2;80;1;pl
+b1_010;Jakie segmenty rynku faktycznie z niego korzystają?;B;1;GENERAL;prompt;3;70;1;pl
+b1_011;Kim jest typowy użytkownik tego produktu/usługi?;B;1;GENERAL;prompt;3;50;1;pl
+b1_012;Jakie role użytkowników są zaangażowane w jego użycie?;B;1;GENERAL;prompt;3;70;1;pl
+b1_013;Jak użytkownik tra a na ten produkt?;B;1;GENERAL;prompt;2;70;1;pl
+b1_014;Jakie kompetencje użytkownika są dziś zakładane?;B;1;GENERAL;prompt;3;70;1;pl
+b1_015;Jak użytkownik uczy się korzystać z produktu?;B;1;GENERAL;prompt;2;70;1;pl
+b1_016;Jak wygląda pierwszy kontakt użytkownika z produktem?;B;1;GENERAL;prompt;1;70;1;pl
+b1_017;Jak użytkownik adaptuje się do ograniczeń produktu?;B;1;GENERAL;prompt;2;70;1;pl
+b1_018;Jakie zachowania użytkownika są dziś typowe?;B;1;GENERAL;prompt;3;70;1;pl
+b1_019;Jak wygląda poziom zaangażowania użytkownika w czasie?;B;1;GENERAL;prompt;1;70;1;pl
+b1_020;Jak użytkownik opisuje produkt własnymi słowami?;B;1;GENERAL;prompt;2;70;1;pl
+b1_021;Jak wygląda typowy scenariusz użycia produktu?;B;1;GENERAL;prompt;1;70;1;pl
+b1_022;Jak często produkt jest używany?;B;1;GENERAL;prompt;2;70;1;pl
+b1_023;Jak długo trwa pojedyncze użycie?;B;1;GENERAL;prompt;2;70;1;pl
+b1_024;Jakie kroki użytkownik wykonuje najczęściej?;B;1;GENERAL;prompt;3;70;1;pl
+b1_025;Jak wygląda początek korzystania z produktu?;B;1;GENERAL;prompt;1;70;1;pl
+b1_026;Jak wygląda zakończenie typowego użycia?;B;1;GENERAL;prompt;1;70;1;pl
+b1_027;Jak produkt zachowuje się w warunkach niestandardowych?;B;1;GENERAL;prompt;2;70;1;pl
+b1_028;Jak użytkownik radzi sobie z przerwami lub błędami?;B;1;GENERAL;prompt;2;70;1;pl
+b1_029;Jak użytkownik wraca do produktu po przerwie?;B;1;GENERAL;prompt;2;70;1;pl
+b1_030;Jak wygląda korzystanie przy ograniczonym czasie lub uwadze?;B;1;GENERAL;prompt;1;70;1;pl
+b1_031;Z jakimi innymi produktami lub usługami produkt współistnieje?;B;1;GENERAL;prompt;3;70;1;pl
+b1_032;Jakie systemy są z nim dziś powiązane?;B;1;GENERAL;prompt;3;70;1;pl
+b1_033;Jakie integracje są wymagane do działania?;B;1;GENERAL;prompt;3;70;1;pl
+b1_034;Jakie narzędzia są używane równolegle z produktem?;B;1;GENERAL;prompt;3;70;1;pl
+b1_035;Jakie zależności zewnętrzne wpływają na działanie produktu?;B;1;GENERAL;prompt;3;70;1;pl
+b1_036;Jak produkt reaguje na zmiany w ekosystemie?;B;1;GENERAL;prompt;2;70;1;pl
+b1_037;Jak stabilne są powiązania z innymi elementami?;B;1;GENERAL;prompt;2;70;1;pl
+b1_038;Jakie elementy spoza produktu są krytyczne?;B;1;GENERAL;prompt;3;70;1;pl
+b1_039;Jak użytkownik postrzega granice produktu?;B;1;GENERAL;prompt;2;70;1;pl
+b1_040;Jak produkt wpisuje się w szerszy system użytkownika?;B;1;GENERAL;prompt;2;70;1;pl
+b1_041;Jak użytkownik płaci za produkt lub usługę?;B;1;GENERAL;prompt;2;70;1;pl
+b1_042;Jakie modele rozliczeń są dostępne?;B;1;GENERAL;prompt;3;70;1;pl
+b1_043;Jak wygląda proces zakupu lub dostępu?;B;1;GENERAL;prompt;1;70;1;pl
+b1_044;Jakie koszty są oczywiste dla użytkownika?;B;1;GENERAL;prompt;3;70;1;pl
+b1_045;Jakie koszty pojawiają się w trakcie korzystania?;B;1;GENERAL;prompt;3;70;1;pl
+b1_046;Jak użytkownik ocenia relację cena–wartość?;B;1;GENERAL;prompt;2;80;1;pl
+b1_047;Jakie elementy produktu są wliczone w cenę?;B;1;GENERAL;prompt;3;70;1;pl
+b1_048;Jakie elementy są traktowane jako dodatki?;B;1;GENERAL;prompt;2;70;1;pl
+b1_049;Jak wygląda utrzymanie produktu w czasie?;B;1;GENERAL;prompt;1;70;1;pl
+b1_050;Jak użytkownik porównuje ten produkt z innymi ofertami?;B;1;GENERAL;prompt;2;70;1;pl
+b1_051;Jak użytkownik tłumaczy sobie działanie produktu?;B;1;GENERAL;prompt;2;70;1;pl
+b1_052;Jakie uproszczenia użytkownik stosuje, myśląc o produkcie?;B;1;GENERAL;prompt;3;70;1;pl
+b1_053;Jakie założenia użytkownik uznaje za oczywiste?;B;1;GENERAL;prompt;3;70;1;pl
+b1_054;Jakie kompromisy użytkownik akceptuje?;B;1;GENERAL;prompt;3;70;1;pl
+b1_055;Jak użytkownik interpretuje ograniczenia produktu?;B;1;GENERAL;prompt;2;70;1;pl
+b1_056;Jakie oczekiwania użytkownik ma wobec produktu?;B;1;GENERAL;prompt;3;70;1;pl
+b1_057;Jak użytkownik ocenia jakość produktu?;B;1;GENERAL;prompt;2;70;1;pl
+b1_058;Jak użytkownik reaguje na zmiany w produkcie?;B;1;GENERAL;prompt;2;70;1;pl
+b1_059;Jak użytkownik buduje zaufanie do produktu?;B;1;GENERAL;prompt;2;70;1;pl
+b1_060;Jak produkt jest zapamiętywany po użyciu?;B;1;GENERAL;prompt;2;70;1;pl
+b1_061;Jakie regulacje wpływają na produkt/usługę?;B;1;GENERAL;prompt;3;70;1;pl
+b1_062;Jakie normy lub standardy musi spełniać produkt?;B;1;GENERAL;prompt;3;70;1;pl
+b1_063;Jakie ograniczenia technologiczne są dziś obecne?;B;1;GENERAL;prompt;3;70;1;pl
+b1_064;Jakie ograniczenia zyczne lub środowiskowe występują?;B;1;GENERAL;prompt;3;70;1;pl
+b1_065;Jakie procesy organizacyjne wpływają na produkt?;B;1;GENERAL;prompt;3;70;1;pl
+b1_066;Jakie ograniczenia czasowe są typowe?;B;1;GENERAL;prompt;3;70;1;pl
+b1_067;Jakie ograniczenia budżetowe dotyczą produktu?;B;1;GENERAL;prompt;3;70;1;pl
+b1_068;Jakie reguły są narzucone przez otoczenie?;B;1;GENERAL;prompt;3;70;1;pl
+b1_069;Jakie wymagania są nieelastyczne?;B;1;GENERAL;prompt;3;70;1;pl
+b1_070;Jak produkt funkcjonuje w ramach tych ograniczeń?;B;1;GENERAL;prompt;2;70;1;pl
+b1_071;Jakie dane produkt generuje?;B;1;GENERAL;prompt;3;70;1;pl
+b1_072;Jakie informacje są dostępne dla użytkownika?;B;1;GENERAL;prompt;3;70;1;pl
+b1_073;Jak użytkownik uzyskuje potrzebne informacje?;B;1;GENERAL;prompt;2;70;1;pl
+b1_074;Jak czytelne są dane prezentowane przez produkt?;B;1;GENERAL;prompt;2;70;1;pl
+b1_075;Jak aktualne są dostępne informacje?;B;1;GENERAL;prompt;2;70;1;pl
+b1_076;Jakie dane są dostępne tylko pośrednio?;B;1;GENERAL;prompt;3;70;1;pl
+b1_077;Jakie informacje są trudne do znalezienia?;B;1;GENERAL;prompt;3;70;1;pl
+b1_078;Jak użytkownik interpretuje dane z produktu?;B;1;GENERAL;prompt;2;70;1;pl
+b1_079;Jak dane wpływają na decyzje użytkownika?;B;1;GENERAL;prompt;2;70;1;pl
+b1_080;Jak produkt radzi sobie z brakiem informacji?;B;1;GENERAL;prompt;2;70;1;pl
+b1_081;Kto poza użytkownikiem wpływa na produkt?;B;1;GENERAL;prompt;2;50;1;pl
+b1_082;Kto decyduje o zmianach w produkcie?;B;1;GENERAL;prompt;2;50;1;pl
+b1_083;Kto odpowiada za utrzymanie produktu?;B;1;GENERAL;prompt;2;50;1;pl
+b1_084;Jakie działy lub role są zaangażowane?;B;1;GENERAL;prompt;3;70;1;pl
+b1_085;Jakie interesy spotykają się wokół produktu?;B;1;GENERAL;prompt;3;70;1;pl
+b1_086;Kto zatwierdza wybór lub wdrożenie produktu?;B;1;GENERAL;prompt;2;50;1;pl
+b1_087;Kto ponosi konsekwencje decyzji produktowych?;B;1;GENERAL;prompt;2;50;1;pl
+b1_088;Jak interesariusze komunikują swoje oczekiwania?;B;1;GENERAL;prompt;2;70;1;pl
+b1_089;Jak kon ikty interesów są dziś rozwiązywane?;B;1;GENERAL;prompt;2;70;1;pl
+b1_090;Jak produkt funkcjonuje w tej sieci relacji?;B;1;GENERAL;prompt;2;70;1;pl
+b2_001;W jakich sytuacjach produkt nie odpowiada realnym potrzebom rynku?;B;2;GENERAL;prompt;3;70;1;pl
+b2_002;Gdzie pozycjonowanie produktu jest nieczytelne?;B;2;GENERAL;prompt;2;50;1;pl
+b2_003;Jakie obietnice rynkowe nie są spełniane w praktyce?;B;2;GENERAL;prompt;3;70;1;pl
+b2_004;Gdzie produkt jest postrzegany jako „kolejny taki sam”?;B;2;GENERAL;prompt;2;70;1;pl
+b2_005;Jakie segmenty rynku są faktycznie pomijane?;B;2;GENERAL;prompt;3;70;1;pl
+b2_006;Gdzie produkt nie nadąża za zmianami rynkowymi?;B;2;GENERAL;prompt;2;50;1;pl
+b2_007;Jakie sygnały rynkowe są ignorowane?;B;2;GENERAL;prompt;3;70;1;pl
+b2_008;Gdzie produkt jest źle dopasowany do kontekstu użycia?;B;2;GENERAL;prompt;2;50;1;pl
+b2_009;Jakie oczekiwania rynku są błędnie interpretowane?;B;2;GENERAL;prompt;3;70;1;pl
+b2_010;Gdzie produkt traci wiarygodność rynkową?;B;2;GENERAL;prompt;2;50;1;pl
+b2_011;W jakich momentach użytkownik czuje frustrację?;B;2;GENERAL;prompt;3;70;1;pl
+b2_012;Gdzie produkt wymaga zbyt dużego wysiłku od użytkownika?;B;2;GENERAL;prompt;2;50;1;pl
+b2_013;Jakie błędy użytkownik popełnia systemowo?;B;2;GENERAL;prompt;3;70;1;pl
+b2_014;Gdzie produkt nie uwzględnia realnych kompetencji użytkownika?;B;2;GENERAL;prompt;2;50;1;pl
+b2_015;Jakie potrzeby użytkownika pozostają niezaspokojone?;B;2;GENERAL;prompt;3;70;1;pl
+b2_016;Gdzie użytkownik traci zaufanie do produktu?;B;2;GENERAL;prompt;2;50;1;pl
+b2_017;Jakie zachowania użytkownika są wymuszone przez wady produktu?;B;2;GENERAL;prompt;3;70;1;pl
+b2_018;Gdzie użytkownik musi stosować obejścia lub skróty?;B;2;GENERAL;prompt;2;50;1;pl
+b2_019;W jakich momentach użytkownik rezygnuje z użycia?;B;2;GENERAL;prompt;3;70;1;pl
+b2_020;Jakie elementy produktu są źródłem irytacji?;B;2;GENERAL;prompt;3;70;1;pl
+b2_021;Które etapy użycia są najbardziej problematyczne?;B;2;GENERAL;prompt;3;90;1;pl
+b2_022;Gdzie proces korzystania jest zbyt złożony?;B;2;GENERAL;prompt;2;50;1;pl
+b2_023;Jakie kroki są zbędne, ale konieczne?;B;2;GENERAL;prompt;3;70;1;pl
+b2_024;Gdzie produkt nie pasuje do realnych warunków pracy?;B;2;GENERAL;prompt;2;50;1;pl
+b2_025;Jakie sytuacje skrajne nie są obsługiwane?;B;2;GENERAL;prompt;3;70;1;pl
+b2_026;Gdzie dochodzi do przerwań lub błędów?;B;2;GENERAL;prompt;2;50;1;pl
+b2_027;Jakie działania powodują straty czasu?;B;2;GENERAL;prompt;3;70;1;pl
+b2_028;Gdzie brak ciągłości doświadczenia?;B;2;GENERAL;prompt;2;50;1;pl
+b2_029;Jakie interakcje są nielogiczne lub nieintuicyjne?;B;2;GENERAL;prompt;3;70;1;pl
+b2_030;Jakie problemy powtarzają się regularnie?;B;2;GENERAL;prompt;3;90;1;pl
+b2_031;Gdzie produkt nie współpracuje z innymi systemami?;B;2;GENERAL;prompt;2;50;1;pl
+b2_032;Jakie integracje są kruche lub awaryjne?;B;2;GENERAL;prompt;3;70;1;pl
+b2_033;Gdzie użytkownik musi ręcznie łączyć elementy?;B;2;GENERAL;prompt;2;50;1;pl
+b2_034;Jakie zależności zewnętrzne generują problemy?;B;2;GENERAL;prompt;3;90;1;pl
+b2_035;Gdzie zmiany w ekosystemie psują działanie produktu?;B;2;GENERAL;prompt;2;50;1;pl
+b2_036;Jakie standardy utrudniają integrację?;B;2;GENERAL;prompt;3;70;1;pl
+b2_037;Gdzie brak spójności między narzędziami?;B;2;GENERAL;prompt;2;50;1;pl
+b2_038;Jakie elementy ekosystemu są wąskimi gardłami?;B;2;GENERAL;prompt;3;70;1;pl
+b2_039;Gdzie produkt jest zbyt sztywny wobec otoczenia?;B;2;GENERAL;prompt;2;50;1;pl
+b2_040;Jakie zależności są nieczytelne dla użytkownika?;B;2;GENERAL;prompt;3;70;1;pl
+b2_041;Gdzie model cenowy jest niejasny lub frustrujący?;B;2;GENERAL;prompt;2;50;1;pl
+b2_042;Jakie koszty są nieproporcjonalne do wartości?;B;2;GENERAL;prompt;3;70;1;pl
+b2_043;Gdzie użytkownik płaci za funkcje, z których nie korzysta?;B;2;GENERAL;prompt;2;50;1;pl
+b2_044;Jakie elementy są trudne do porównania cenowo?;B;2;GENERAL;prompt;3;70;1;pl
+b2_045;Gdzie proces zakupu zniechęca do adaptacji?;B;2;GENERAL;prompt;2;50;1;pl
+b2_046;Jakie bariery wejścia są sztuczne lub niepotrzebne?;B;2;GENERAL;prompt;3;70;1;pl
+b2_047;Gdzie relacja cena–wartość budzi opór?;B;2;GENERAL;prompt;2;80;1;pl
+b2_048;Jakie koszty ujawniają się zbyt późno?;B;2;GENERAL;prompt;3;70;1;pl
+b2_049;Gdzie model rynkowy blokuje skalowanie?;B;2;GENERAL;prompt;2;50;1;pl
+b2_050;Jakie zachęty działają przeciw interesowi użytkownika?;B;2;GENERAL;prompt;3;70;1;pl
+b2_051;Jakie błędne założenia użytkownicy mają o produkcie?;B;2;GENERAL;prompt;3;70;1;pl
+b2_052;Gdzie uproszczenia myślowe prowadzą do rozczarowań?;B;2;GENERAL;prompt;2;50;1;pl
+b2_053;Jakie mity utrudniają zmianę produktu?;B;2;GENERAL;prompt;3;70;1;pl
+b2_054;Gdzie narracja produktu rozmija się z doświadczeniem?;B;2;GENERAL;prompt;2;50;1;pl
+b2_055;Jakie problemy są bagatelizowane?;B;2;GENERAL;prompt;3;90;1;pl
+b2_056;Gdzie „tak musi być” blokuje poprawę?;B;2;GENERAL;prompt;2;50;1;pl
+b2_057;Jakie sprzeczne oczekiwania współistnieją?;B;2;GENERAL;prompt;3;70;1;pl
+b2_058;Jakie obietnice są nadużywane?;B;2;GENERAL;prompt;3;70;1;pl
+b2_059;Gdzie użytkownik nie rozumie, dlaczego coś nie działa?;B;2;GENERAL;prompt;2;70;1;pl
+b2_060;Jakie tematy są omijane w komunikacji produktu?;B;2;GENERAL;prompt;3;70;1;pl
+b2_061;Które regulacje nadmiernie komplikują produkt?;B;2;GENERAL;prompt;3;50;1;pl
+b2_062;Jakie normy utrudniają rozwój produktu?;B;2;GENERAL;prompt;3;70;1;pl
+b2_063;Gdzie procedury są zbyt sztywne?;B;2;GENERAL;prompt;2;50;1;pl
+b2_064;Jakie ograniczenia technologiczne blokują poprawę?;B;2;GENERAL;prompt;3;70;1;pl
+b2_065;Gdzie ograniczenia organizacyjne paraliżują decyzje?;B;2;GENERAL;prompt;2;50;1;pl
+b2_066;Jakie reguły są interpretowane niespójnie?;B;2;GENERAL;prompt;3;70;1;pl
+b2_067;Gdzie brakuje elastyczności w ramach zasad?;B;2;GENERAL;prompt;2;50;1;pl
+b2_068;Jakie wymagania są nadmierne względem efektu?;B;2;GENERAL;prompt;3;70;1;pl
+b2_069;Gdzie reguły chronią status quo kosztem użytkownika?;B;2;GENERAL;prompt;2;50;1;pl
+b2_070;Jak produkt obchodzi te ograniczenia?;B;2;GENERAL;prompt;2;70;1;pl
+b2_071;Jakich danych produkt nie dostarcza, a powinien?;B;2;GENERAL;prompt;3;70;1;pl
+b2_072;Gdzie informacje są niepełne lub niespójne?;B;2;GENERAL;prompt;2;50;1;pl
+b2_073;Jakie dane są trudne do zrozumienia?;B;2;GENERAL;prompt;3;70;1;pl
+b2_074;Gdzie nadmiar informacji utrudnia decyzje?;B;2;GENERAL;prompt;2;50;1;pl
+b2_075;Jakie dane są nieaktualne lub niewiarygodne?;B;2;GENERAL;prompt;3;70;1;pl
+b2_076;Gdzie informacje pojawiają się zbyt późno?;B;2;GENERAL;prompt;2;50;1;pl
+b2_077;Jakie luki informacyjne prowadzą do błędów?;B;2;GENERAL;prompt;3;70;1;pl
+b2_078;Gdzie użytkownik musi zgadywać?;B;2;GENERAL;prompt;2;50;1;pl
+b2_079;Jakie dane są ignorowane mimo wartości?;B;2;GENERAL;prompt;3;70;1;pl
+b2_080;Jak brak informacji wpływa na użycie produktu?;B;2;GENERAL;prompt;2;70;1;pl
+b2_081;Którzy interesariusze mają sprzeczne cele?;B;2;GENERAL;prompt;3;90;1;pl
+b2_082;Gdzie proces decyzyjny jest rozmyty?;B;2;GENERAL;prompt;2;50;1;pl
+b2_083;Kto blokuje zmiany w produkcie?;B;2;GENERAL;prompt;2;50;1;pl
+b2_084;Gdzie odpowiedzialność jest niejasna?;B;2;GENERAL;prompt;2;50;1;pl
+b2_085;Jakie kon ikty interesów są powszechne?;B;2;GENERAL;prompt;3;70;1;pl
+b2_086;Kto narzuca wymagania bez ponoszenia konsekwencji?;B;2;GENERAL;prompt;2;50;1;pl
+b2_087;Gdzie komunikacja między interesariuszami zawodzi?;B;2;GENERAL;prompt;2;50;1;pl
+b2_088;Jakie decyzje są odkładane?;B;2;GENERAL;prompt;3;70;1;pl
+b2_089;Kto jest pomijany mimo realnego wpływu?;B;2;GENERAL;prompt;2;50;1;pl
+b2_090;Jak interesariusze hamują rozwój produktu?;B;2;GENERAL;prompt;2;70;1;pl
+b3_001;Jaką rolę produkt powinien pełnić na rynku docelowym?;B;3;GENERAL;prompt;3;90;1;pl
+b3_002;Jak produkt powinien być postrzegany względem alternatyw?;B;3;GENERAL;prompt;2;70;1;pl
+b3_003;Jakie potrzeby rynkowe powinien adresować w pierwszej kolejności?;B;3;GENERAL;prompt;3;70;1;pl
+b3_004;Jak produkt powinien reagować na zmiany rynkowe?;B;3;GENERAL;prompt;2;70;1;pl
+b3_005;Jaką unikalną wartość powinien konsekwentnie dostarczać?;B;3;GENERAL;prompt;3;80;1;pl
+b3_006;Jak produkt powinien budować swoją wiarygodność rynkową?;B;3;GENERAL;prompt;2;70;1;pl
+b3_007;Jak powinien różnicować się w sposób czytelny?;B;3;GENERAL;prompt;2;70;1;pl
+b3_008;Jak produkt powinien wspierać zdrową konkurencję?;B;3;GENERAL;prompt;2;80;1;pl
+b3_009;Jakie segmenty rynku powinien realnie obsługiwać?;B;3;GENERAL;prompt;3;70;1;pl
+b3_010;Jak produkt powinien ewoluować wraz z rynkiem?;B;3;GENERAL;prompt;2;70;1;pl
+b3_011;Jak użytkownik powinien się czuć podczas korzystania z produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_012;Jakie kompetencje użytkownika nie powinny być wymagane?;B;3;GENERAL;prompt;3;70;1;pl
+b3_013;Jak produkt powinien wspierać użytkownika w działaniu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_014;Jakie frustracje użytkownika powinny zniknąć?;B;3;GENERAL;prompt;3;70;1;pl
+b3_015;Jak użytkownik powinien rozumieć działanie produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_016;Jakie decyzje użytkownika powinny być prostsze?;B;3;GENERAL;prompt;3;70;1;pl
+b3_017;Jak produkt powinien budować zaufanie użytkownika?;B;3;GENERAL;prompt;2;70;1;pl
+b3_018;Jak użytkownik powinien być chroniony przed błędami?;B;3;GENERAL;prompt;2;70;1;pl
+b3_019;Jak powinien wyglądać zdrowy poziom zaangażowania?;B;3;GENERAL;prompt;2;70;1;pl
+b3_020;Jak użytkownik powinien opisywać produkt innym?;B;3;GENERAL;prompt;2;70;1;pl
+b3_021;Jak powinien wyglądać typowy scenariusz użycia produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_022;Jak prosty powinien być proces korzystania?;B;3;GENERAL;prompt;2;70;1;pl
+b3_023;Jakie kroki powinny być intuicyjne i naturalne?;B;3;GENERAL;prompt;3;70;1;pl
+b3_024;Jak produkt powinien reagować na sytuacje niestandardowe?;B;3;GENERAL;prompt;2;70;1;pl
+b3_025;Jak użytkownik powinien przechodzić przez cały proces?;B;3;GENERAL;prompt;2;70;1;pl
+b3_026;Jakie błędy lub przerwy powinny być nieodczuwalne?;B;3;GENERAL;prompt;3;70;1;pl
+b3_027;Jak produkt powinien dopasowywać się do kontekstu użycia?;B;3;GENERAL;prompt;2;70;1;pl
+b3_028;Jak użytkownik powinien wracać do produktu po przerwie?;B;3;GENERAL;prompt;2;70;1;pl
+b3_029;Jak korzystanie powinno wyglądać przy ograniczonej uwadze?;B;3;GENERAL;prompt;2;70;1;pl
+b3_030;Jak produkt powinien wspierać ciągłość działania?;B;3;GENERAL;prompt;2;70;1;pl
+b3_031;Jak produkt powinien współpracować z innymi systemami?;B;3;GENERAL;prompt;2;70;1;pl
+b3_032;Jakie integracje powinny być oczywiste i bezproblemowe?;B;3;GENERAL;prompt;3;90;1;pl
+b3_033;Jak produkt powinien reagować na zmiany w ekosystemie?;B;3;GENERAL;prompt;2;70;1;pl
+b3_034;Jakie zależności powinny być uproszczone lub zniknąć?;B;3;GENERAL;prompt;3;70;1;pl
+b3_035;Jak użytkownik powinien postrzegać granice produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_036;Jakie standardy interoperacyjności powinny być spełnione?;B;3;GENERAL;prompt;3;70;1;pl
+b3_037;Jak ekosystem powinien wspierać rozwój produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_038;Jakie elementy ekosystemu powinny być wymienne?;B;3;GENERAL;prompt;3;70;1;pl
+b3_039;Jak stabilność i elastyczność powinny się równoważyć?;B;3;GENERAL;prompt;2;70;1;pl
+b3_040;Jak produkt powinien skalować się w tym ekosystemie?;B;3;GENERAL;prompt;2;70;1;pl
+b3_041;Jak użytkownik powinien rozumieć, za co płaci?;B;3;GENERAL;prompt;2;70;1;pl
+b3_042;Jak relacja cena–wartość powinna być odczuwana?;B;3;GENERAL;prompt;2;80;1;pl
+b3_043;Jakie koszty powinny być przewidywalne?;B;3;GENERAL;prompt;3;70;1;pl
+b3_044;Jak proces zakupu lub dostępu powinien wyglądać?;B;3;GENERAL;prompt;2;70;1;pl
+b3_045;Jak model rynkowy powinien wspierać adopcję produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_046;Jakie bariery wejścia powinny zniknąć?;B;3;GENERAL;prompt;3;70;1;pl
+b3_047;Jak model powinien nagradzać długoterminową wartość?;B;3;GENERAL;prompt;2;80;1;pl
+b3_048;Jakie zachęty rynkowe powinny działać na korzyść użytkownika?;B;3;GENERAL;prompt;3;70;1;pl
+b3_049;Jak użytkownik powinien móc porównywać oferty?;B;3;GENERAL;prompt;2;70;1;pl
+b3_050;Jak model rynkowy powinien adaptować się do zmian potrzeb?;B;3;GENERAL;prompt;2;70;1;pl
+b3_051;Jakie założenia użytkownika powinny zostać zakwestionowane?;B;3;GENERAL;prompt;3;70;1;pl
+b3_052;Jak użytkownik powinien rozumieć sens istnienia produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_053;Jakie mity wokół produktu powinny zniknąć?;B;3;GENERAL;prompt;3;70;1;pl
+b3_054;Jak narracja produktu powinna być spójna z doświadczeniem?;B;3;GENERAL;prompt;2;70;1;pl
+b3_055;Jakie kompromisy nie powinny być już akceptowane?;B;3;GENERAL;prompt;3;70;1;pl
+b3_056;Jakie oczekiwania użytkownika powinny wzrosnąć?;B;3;GENERAL;prompt;3;70;1;pl
+b3_057;Jak użytkownik powinien oceniać jakość produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_058;Jak powinno wyglądać zaufanie do produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_059;Jak użytkownik powinien reagować na zmiany w produkcie?;B;3;GENERAL;prompt;2;70;1;pl
+b3_060;Jak produkt powinien pozostać w pamięci użytkownika?;B;3;GENERAL;prompt;2;70;1;pl
+b3_061;Jak regulacje powinny wspierać jakość produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_062;Jak normy powinny umożliwiać rozwój, a nie go blokować?;B;3;GENERAL;prompt;2;70;1;pl
+b3_063;Jakie reguły powinny być uproszczone?;B;3;GENERAL;prompt;3;70;1;pl
+b3_064;Jak ograniczenia technologiczne powinny ewoluować?;B;3;GENERAL;prompt;2;70;1;pl
+b3_065;Jak procesy organizacyjne powinny wspierać produkt?;B;3;GENERAL;prompt;2;70;1;pl
+b3_066;Jakie zasady powinny chronić użytkownika?;B;3;GENERAL;prompt;3;70;1;pl
+b3_067;Jakie reguły powinny być bardziej elastyczne?;B;3;GENERAL;prompt;3;70;1;pl
+b3_068;Jak wymagania powinny być proporcjonalne do efektu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_069;Jak reguły powinny wspierać innowacje produktowe?;B;3;GENERAL;prompt;2;70;1;pl
+b3_070;Jak produkt powinien funkcjonować w ramach tych zasad?;B;3;GENERAL;prompt;2;70;1;pl
+b3_071;Jakie dane produkt powinien dostarczać użytkownikowi?;B;3;GENERAL;prompt;3;70;1;pl
+b3_072;Jak informacje powinny wspierać decyzje użytkownika?;B;3;GENERAL;prompt;2;70;1;pl
+b3_073;Jak dane powinny być prezentowane, aby były zrozumiałe?;B;3;GENERAL;prompt;2;70;1;pl
+b3_074;Jakie informacje powinny być dostępne we właściwym momencie?;B;3;GENERAL;prompt;3;70;1;pl
+b3_075;Jakie luki informacyjne powinny zniknąć?;B;3;GENERAL;prompt;3;70;1;pl
+b3_076;Jak użytkownik powinien ufać danym z produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_077;Jak informacje powinny być aktualizowane?;B;3;GENERAL;prompt;2;70;1;pl
+b3_078;Jak dane powinny redukować niepewność?;B;3;GENERAL;prompt;2;70;1;pl
+b3_079;Jakie informacje powinny wspierać odpowiedzialne decyzje?;B;3;GENERAL;prompt;3;70;1;pl
+b3_080;Jak wiedza z produktu powinna budować kompetencje użytkownika?;B;3;GENERAL;prompt;2;70;1;pl
+b3_081;Jak role interesariuszy powinny być jasno określone?;B;3;GENERAL;prompt;2;70;1;pl
+b3_082;Jak proces decyzyjny powinien być uproszczony?;B;3;GENERAL;prompt;2;70;1;pl
+b3_083;Jak odpowiedzialność powinna być jasno przypisana?;B;3;GENERAL;prompt;2;70;1;pl
+b3_084;Jak interesariusze powinni współpracować przy zmianach?;B;3;GENERAL;prompt;2;70;1;pl
+b3_085;Jak kon ikty interesów powinny być rozwiązywane?;B;3;GENERAL;prompt;2;70;1;pl
+b3_086;Jak komunikacja między interesariuszami powinna wyglądać?;B;3;GENERAL;prompt;2;70;1;pl
+b3_087;Jak interesariusze powinni być włączani w rozwój produktu?;B;3;GENERAL;prompt;2;70;1;pl
+b3_088;Jak decyzje powinny być podejmowane terminowo?;B;3;GENERAL;prompt;2;70;1;pl
+b3_089;Jak interes użytkownika powinien być reprezentowany?;B;3;GENERAL;prompt;2;70;1;pl
+b3_090;Jak relacje interesariuszy powinny wzmacniać wartość produktu?;B;3;GENERAL;prompt;2;80;1;pl
+c1_001;Jaką funkcję pełni ten element w całym produkcie?;C;1;GENERAL;prompt;3;70;1;pl
+c1_002;Czy element jest standardem rynkowym czy czymś specy cznym?;C;1;GENERAL;prompt;3;50;1;pl
+c1_003;Jak powszechny jest ten element w podobnych rozwiązaniach?;C;1;GENERAL;prompt;2;70;1;pl
+c1_004;Jak długo ten element występuje w tej formie?;C;1;GENERAL;prompt;2;70;1;pl
+c1_005;Jak rynek opisuje ten element?;C;1;GENERAL;prompt;2;90;1;pl
+c1_006;Jakie alternatywy dla tego elementu istnieją?;C;1;GENERAL;prompt;3;70;1;pl
+c1_007;Jak istotny jest ten element z punktu widzenia wartości produktu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_008;Jakie elementy są z nim bezpośrednio powiązane?;C;1;GENERAL;prompt;3;70;1;pl
+c1_009;Jak zmiany rynkowe wpływają na znaczenie tego elementu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_010;Jak element wpisuje się w ogólny kontekst produktu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_011;Czy użytkownik ma bezpośredni kontakt z tym elementem?;C;1;GENERAL;prompt;3;50;1;pl
+c1_012;W jakich sytuacjach użytkownik korzysta z tego elementu?;C;1;GENERAL;prompt;3;70;1;pl
+c1_013;Jak często użytkownik wchodzi w interakcję z tym elementem?;C;1;GENERAL;prompt;2;70;1;pl
+c1_014;Jakie kompetencje użytkownika są wymagane?;C;1;GENERAL;prompt;3;70;1;pl
+c1_015;Jak użytkownik uczy się korzystać z tego elementu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_016;Jak element wpływa na doświadczenie użytkownika?;C;1;GENERAL;prompt;2;70;1;pl
+c1_017;Jak użytkownik postrzega znaczenie tego elementu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_018;Jak użytkownik radzi sobie z ograniczeniami elementu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_019;Jakie zachowania użytkownika są z nim związane?;C;1;GENERAL;prompt;3;70;1;pl
+c1_020;Jak użytkownik opisuje ten element własnymi słowami?;C;1;GENERAL;prompt;2;70;1;pl
+c1_021;Jakie działania użytkownik wykonuje z użyciem tego elementu?;C;1;GENERAL;prompt;3;70;1;pl
+c1_022;Jak często element jest aktywowany lub wykorzystywany?;C;1;GENERAL;prompt;2;70;1;pl
+c1_023;Jak długo trwa typowe użycie elementu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_024;Jak element zachowuje się w normalnych warunkach?;C;1;GENERAL;prompt;2;70;1;pl
+c1_025;Jak element jest inicjowany i kończony w procesie użycia?;C;1;GENERAL;prompt;2;70;1;pl
+c1_026;Jakie inne elementy są wymagane do jego działania?;C;1;GENERAL;prompt;3;70;1;pl
+c1_027;Jak element reaguje na przerwy lub błędy?;C;1;GENERAL;prompt;2;70;1;pl
+c1_028;Jak wygląda korzystanie z elementu w warunkach niestandardowych?;C;1;GENERAL;prompt;1;70;1;pl
+c1_029;Jak element wpływa na płynność całego procesu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_030;Jak użytkownik wraca do korzystania z tego elementu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_031;Z jakimi innymi elementami produktowymi współpracuje ten element?;C;1;GENERAL;prompt;2;70;1;pl
+c1_032;Jakie systemy zewnętrzne są z nim powiązane?;C;1;GENERAL;prompt;3;70;1;pl
+c1_033;Jakie interfejsy są wymagane do jego działania?;C;1;GENERAL;prompt;3;70;1;pl
+c1_034;Jakie zależności techniczne są oczywiste?;C;1;GENERAL;prompt;3;70;1;pl
+c1_035;Jak stabilne są powiązania z innymi elementami?;C;1;GENERAL;prompt;2;70;1;pl
+c1_036;Jak element reaguje na zmiany w otoczeniu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_037;Jakie elementy zewnętrzne są krytyczne?;C;1;GENERAL;prompt;3;70;1;pl
+c1_038;Jak użytkownik postrzega granice tego elementu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_039;Jak element wpisuje się w szerszy system użytkownika?;C;1;GENERAL;prompt;2;70;1;pl
+c1_040;Jakie problemy wynikają z jego umiejscowienia w ekosystemie?;C;1;GENERAL;prompt;3;90;1;pl
+c1_041;Czy ten element generuje bezpośrednią wartość dla użytkownika?;C;1;GENERAL;prompt;3;80;1;pl
+c1_042;Czy koszt elementu jest widoczny dla użytkownika?;C;1;GENERAL;prompt;3;50;1;pl
+c1_043;Jak element wpływa na cenę produktu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_044;Czy element jest standardem czy dodatkiem?;C;1;GENERAL;prompt;3;50;1;pl
+c1_045;Jakie koszty utrzymania są z nim związane?;C;1;GENERAL;prompt;3;70;1;pl
+c1_046;Jak element wpływa na decyzję zakupową?;C;1;GENERAL;prompt;2;70;1;pl
+c1_047;Czy użytkownik rozumie wartość tego elementu?;C;1;GENERAL;prompt;3;80;1;pl
+c1_048;Jak element jest porównywany z alternatywami?;C;1;GENERAL;prompt;2;70;1;pl
+c1_049;Jakie kompromisy kosztowe są z nim związane?;C;1;GENERAL;prompt;3;70;1;pl
+c1_050;Jak element wpływa na długoterminową wartość produktu?;C;1;GENERAL;prompt;2;80;1;pl
+c1_051;Jak użytkownik tłumaczy sobie działanie tego elementu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_052;Jakie uproszczenia myślowe dotyczą tego elementu?;C;1;GENERAL;prompt;3;70;1;pl
+c1_053;Jakie założenia są z nim związane?;C;1;GENERAL;prompt;3;70;1;pl
+c1_054;Jakie kompromisy użytkownik akceptuje?;C;1;GENERAL;prompt;3;70;1;pl
+c1_055;Jak użytkownik interpretuje ograniczenia elementu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_056;Jak element wpływa na postrzeganą jakość produktu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_057;Jakie oczekiwania użytkownik ma wobec tego elementu?;C;1;GENERAL;prompt;3;70;1;pl
+c1_058;Jak użytkownik reaguje na zmiany w tym elemencie?;C;1;GENERAL;prompt;2;70;1;pl
+c1_059;Jak element jest zapamiętywany po użyciu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_060;Jakie mity lub przekonania go dotyczą?;C;1;GENERAL;prompt;3;70;1;pl
+c1_061;Jakie regulacje prawne dotyczą tego elementu?;C;1;GENERAL;prompt;3;70;1;pl
+c1_062;Jakie normy lub standardy musi spełniać?;C;1;GENERAL;prompt;3;70;1;pl
+c1_063;Jakie ograniczenia zyczne go dotyczą?;C;1;GENERAL;prompt;3;70;1;pl
+c1_064;Jakie ograniczenia technologiczne są znane?;C;1;GENERAL;prompt;3;70;1;pl
+c1_065;Jakie procesy organizacyjne wpływają na ten element?;C;1;GENERAL;prompt;3;70;1;pl
+c1_066;Jakie ograniczenia czasowe są z nim związane?;C;1;GENERAL;prompt;3;70;1;pl
+c1_067;Jakie ograniczenia kosztowe są narzucone?;C;1;GENERAL;prompt;3;70;1;pl
+c1_068;Jakie reguły są nieelastyczne?;C;1;GENERAL;prompt;3;70;1;pl
+c1_069;Jakie wymagania są narzucone z zewnątrz?;C;1;GENERAL;prompt;3;70;1;pl
+c1_070;Jak element funkcjonuje w ramach tych ograniczeń?;C;1;GENERAL;prompt;2;70;1;pl
+c1_071;Jakie dane ten element generuje?;C;1;GENERAL;prompt;3;70;1;pl
+c1_072;Jakie dane są potrzebne do jego działania?;C;1;GENERAL;prompt;3;70;1;pl
+c1_073;Jakie informacje są dostępne dla użytkownika?;C;1;GENERAL;prompt;3;70;1;pl
+c1_074;Jak czytelne są dane związane z tym elementem?;C;1;GENERAL;prompt;2;70;1;pl
+c1_075;Jak aktualne są te informacje?;C;1;GENERAL;prompt;2;70;1;pl
+c1_076;Jakie dane są dostępne tylko pośrednio?;C;1;GENERAL;prompt;3;70;1;pl
+c1_077;Jakie informacje są trudne do uzyskania?;C;1;GENERAL;prompt;3;70;1;pl
+c1_078;Jak użytkownik interpretuje dane z tego elementu?;C;1;GENERAL;prompt;2;70;1;pl
+c1_079;Jak dane wpływają na decyzje użytkownika?;C;1;GENERAL;prompt;2;70;1;pl
+c1_080;Jak element radzi sobie z brakiem informacji?;C;1;GENERAL;prompt;2;70;1;pl
+c1_081;Kto odpowiada za ten element?;C;1;GENERAL;prompt;2;50;1;pl
+c1_082;Kto podejmuje decyzje dotyczące tego elementu?;C;1;GENERAL;prompt;2;50;1;pl
+c1_083;Jakie role organizacyjne są zaangażowane?;C;1;GENERAL;prompt;3;70;1;pl
+c1_084;Kto utrzymuje lub serwisuje ten element?;C;1;GENERAL;prompt;2;50;1;pl
+c1_085;Jakie interesy spotykają się wokół tego elementu?;C;1;GENERAL;prompt;3;70;1;pl
+c1_086;Kto zatwierdza zmiany w tym elemencie?;C;1;GENERAL;prompt;2;50;1;pl
+c1_087;Kto ponosi konsekwencje decyzji?;C;1;GENERAL;prompt;2;50;1;pl
+c1_088;Jak interesariusze komunikują swoje oczekiwania?;C;1;GENERAL;prompt;2;70;1;pl
+c1_089;Jak kon ikty interesów są dziś rozwiązywane?;C;1;GENERAL;prompt;2;70;1;pl
+c1_090;Jak relacje interesariuszy wpływają na element?;C;1;GENERAL;prompt;2;70;1;pl
+c1_091;Czy technologia stojąca za tym elementem istnieje dziś?;C;1;GENERAL;prompt;3;50;1;pl
+c1_092;Jak dojrzała jest ta technologia?;C;1;GENERAL;prompt;2;70;1;pl
+c1_093;Czy technologia jest powszechnie dostępna?;C;1;GENERAL;prompt;3;50;1;pl
+c1_094;Czy użytkownik realnie dysponuje tą technologią?;C;1;GENERAL;prompt;3;50;1;pl
+c1_095;Jakie kompetencje techniczne są wymagane?;C;1;GENERAL;prompt;3;70;1;pl
+c1_096;Jak stabilna i niezawodna jest ta technologia?;C;1;GENERAL;prompt;2;70;1;pl
+c1_097;Jakie są znane ograniczenia technologiczne?;C;1;GENERAL;prompt;1;70;1;pl
+c1_098;Jak szybko ta technologia się rozwija?;C;1;GENERAL;prompt;2;70;1;pl
+c1_099;Czy innowacyjność elementu opiera się na nowej czy znanej technologii?;C;1;GENERAL;prompt;3;50;1;pl
+c1_100;Jak duże ryzyko wiąże się z użyciem tej technologii dziś?;C;1;GENERAL;prompt;2;70;1;pl
+c2_001;W jakich sytuacjach ten element nie odpowiada potrzebom rynku?;C;2;GENERAL;prompt;3;70;1;pl
+c2_002;Gdzie element jest przestarzały względem aktualnych oczekiwań?;C;2;GENERAL;prompt;2;50;1;pl
+c2_003;Jakie alternatywy rynkowe radzą sobie lepiej?;C;2;GENERAL;prompt;3;70;1;pl
+c2_004;Gdzie element traci na znaczeniu?;C;2;GENERAL;prompt;2;50;1;pl
+c2_005;Jakie zmiany rynkowe obnażają jego słabości?;C;2;GENERAL;prompt;3;70;1;pl
+c2_006;Gdzie element jest postrzegany jako zbędny?;C;2;GENERAL;prompt;2;70;1;pl
+c2_007;Jakie oczekiwania rynku nie są przez niego spełniane?;C;2;GENERAL;prompt;3;70;1;pl
+c2_008;Gdzie element ogranicza konkurencyjność produktu?;C;2;GENERAL;prompt;2;80;1;pl
+c2_009;Jakie sygnały rynkowe są ignorowane na poziomie elementu?;C;2;GENERAL;prompt;3;70;1;pl
+c2_010;Gdzie element nie skaluje się z rynkiem?;C;2;GENERAL;prompt;2;50;1;pl
+c2_011;W jakich momentach element frustruje użytkownika?;C;2;GENERAL;prompt;3;70;1;pl
+c2_012;Gdzie element wymaga zbyt dużych kompetencji?;C;2;GENERAL;prompt;2;50;1;pl
+c2_013;Jakie błędy użytkownika są systemowo wywoływane?;C;2;GENERAL;prompt;3;70;1;pl
+c2_014;Gdzie element nie pasuje do realnych zachowań użytkownika?;C;2;GENERAL;prompt;2;50;1;pl
+c2_015;Jakie potrzeby użytkownika pozostają niezaspokojone?;C;2;GENERAL;prompt;3;70;1;pl
+c2_016;Gdzie użytkownik traci zaufanie do elementu?;C;2;GENERAL;prompt;2;50;1;pl
+c2_017;Jakie obejścia użytkownik musi stosować?;C;2;GENERAL;prompt;3;70;1;pl
+c2_018;W jakich sytuacjach użytkownik unika tego elementu?;C;2;GENERAL;prompt;3;70;1;pl
+c2_019;Jak element obniża jakość doświadczenia?;C;2;GENERAL;prompt;2;70;1;pl
+c2_020;Jakie elementy są postrzegane jako najbardziej irytujące?;C;2;GENERAL;prompt;3;70;1;pl
+c2_021;Które etapy użycia elementu są problematyczne?;C;2;GENERAL;prompt;3;90;1;pl
+c2_022;Gdzie proces korzystania jest zbyt złożony?;C;2;GENERAL;prompt;2;50;1;pl
+c2_023;Jakie kroki są zbędne, ale nieuniknione?;C;2;GENERAL;prompt;3;70;1;pl
+c2_024;Gdzie element nie działa w realnych warunkach?;C;2;GENERAL;prompt;2;50;1;pl
+c2_025;Jakie sytuacje skrajne nie są obsłużone?;C;2;GENERAL;prompt;3;70;1;pl
+c2_026;Gdzie dochodzi do przerwań lub awarii?;C;2;GENERAL;prompt;2;50;1;pl
+c2_027;Jakie działania generują straty czasu?;C;2;GENERAL;prompt;3;70;1;pl
+c2_028;Gdzie brak ciągłości działania?;C;2;GENERAL;prompt;2;50;1;pl
+c2_029;Jakie interakcje są nielogiczne?;C;2;GENERAL;prompt;3;70;1;pl
+c2_030;Jakie problemy powtarzają się regularnie?;C;2;GENERAL;prompt;3;90;1;pl
+c2_031;Gdzie element nie współpracuje z innymi?;C;2;GENERAL;prompt;2;50;1;pl
+c2_032;Jakie integracje są kruche lub awaryjne?;C;2;GENERAL;prompt;3;70;1;pl
+c2_033;Gdzie użytkownik musi ręcznie łączyć elementy?;C;2;GENERAL;prompt;2;50;1;pl
+c2_034;Jakie zależności zewnętrzne generują problemy?;C;2;GENERAL;prompt;3;90;1;pl
+c2_035;Gdzie zmiany w ekosystemie psują działanie elementu?;C;2;GENERAL;prompt;2;50;1;pl
+c2_036;Jakie standardy utrudniają integrację?;C;2;GENERAL;prompt;3;70;1;pl
+c2_037;Gdzie brakuje spójności między elementami?;C;2;GENERAL;prompt;2;50;1;pl
+c2_038;Jakie elementy ekosystemu są wąskimi gardłami?;C;2;GENERAL;prompt;3;70;1;pl
+c2_039;Gdzie element jest zbyt sztywny wobec otoczenia?;C;2;GENERAL;prompt;2;50;1;pl
+c2_040;Jakie zależności są nieczytelne?;C;2;GENERAL;prompt;3;70;1;pl
+c2_041;Gdzie koszt elementu nie odpowiada jego wartości?;C;2;GENERAL;prompt;2;50;1;pl
+c2_042;Jakie koszty są nieakceptowalne dla użytkownika?;C;2;GENERAL;prompt;3;70;1;pl
+c2_043;Gdzie użytkownik płaci za coś, czego nie używa?;C;2;GENERAL;prompt;2;50;1;pl
+c2_044;Jak element komplikuje model cenowy produktu?;C;2;GENERAL;prompt;2;70;1;pl
+c2_045;Gdzie element utrudnia decyzję zakupową?;C;2;GENERAL;prompt;2;50;1;pl
+c2_046;Jakie kompromisy kosztowe są nie do obrony?;C;2;GENERAL;prompt;3;70;1;pl
+c2_047;Gdzie element obniża postrzeganą wartość produktu?;C;2;GENERAL;prompt;2;80;1;pl
+c2_048;Jakie koszty ujawniają się zbyt późno?;C;2;GENERAL;prompt;3;70;1;pl
+c2_049;Gdzie element blokuje skalowanie biznesowe?;C;2;GENERAL;prompt;2;50;1;pl
+c2_050;Jakie elementy są kandydatami do eliminacji kosztowej?;C;2;GENERAL;prompt;3;70;1;pl
+c2_051;Jakie błędne założenia dotyczą tego elementu?;C;2;GENERAL;prompt;3;70;1;pl
+c2_052;Gdzie uproszczenia myślowe prowadzą do problemów?;C;2;GENERAL;prompt;2;90;1;pl
+c2_053;Jakie mity utrudniają zmianę elementu?;C;2;GENERAL;prompt;3;70;1;pl
+c2_054;Gdzie narracja rozmija się z doświadczeniem?;C;2;GENERAL;prompt;2;50;1;pl
+c2_055;Jakie problemy są bagatelizowane?;C;2;GENERAL;prompt;3;90;1;pl
+c2_056;Gdzie „tak musi być” blokuje poprawę?;C;2;GENERAL;prompt;2;50;1;pl
+c2_057;Jakie sprzeczne oczekiwania istnieją?;C;2;GENERAL;prompt;3;70;1;pl
+c2_058;Jakie obietnice są nadużywane?;C;2;GENERAL;prompt;3;70;1;pl
+c2_059;Gdzie użytkownik nie rozumie, dlaczego coś nie działa?;C;2;GENERAL;prompt;2;70;1;pl
+c2_060;Jakie tematy są omijane w rozmowie o elemencie?;C;2;GENERAL;prompt;3;70;1;pl
+c2_061;Które regulacje nadmiernie komplikują element?;C;2;GENERAL;prompt;3;50;1;pl
+c2_062;Jakie normy utrudniają jego rozwój?;C;2;GENERAL;prompt;3;70;1;pl
+c2_063;Gdzie procedury są zbyt sztywne?;C;2;GENERAL;prompt;2;50;1;pl
+c2_064;Jakie ograniczenia zyczne są krytyczne?;C;2;GENERAL;prompt;3;70;1;pl
+c2_065;Gdzie ograniczenia organizacyjne blokują zmiany?;C;2;GENERAL;prompt;2;50;1;pl
+c2_066;Jakie reguły są interpretowane niespójnie?;C;2;GENERAL;prompt;3;70;1;pl
+c2_067;Gdzie brakuje elastyczności w ramach zasad?;C;2;GENERAL;prompt;2;50;1;pl
+c2_068;Jakie wymagania są nieproporcjonalne?;C;2;GENERAL;prompt;3;70;1;pl
+c2_069;Gdzie reguły chronią status quo kosztem wartości?;C;2;GENERAL;prompt;2;50;1;pl
+c2_070;Jak element obchodzi te ograniczenia?;C;2;GENERAL;prompt;2;70;1;pl
+c2_071;Jakich danych brakuje do poprawnego działania?;C;2;GENERAL;prompt;3;70;1;pl
+c2_072;Gdzie informacje są niepełne lub niespójne?;C;2;GENERAL;prompt;2;50;1;pl
+c2_073;Jakie dane są trudne do zinterpretowania?;C;2;GENERAL;prompt;3;70;1;pl
+c2_074;Gdzie nadmiar informacji utrudnia decyzje?;C;2;GENERAL;prompt;2;50;1;pl
+c2_075;Jakie dane są niewiarygodne lub nieaktualne?;C;2;GENERAL;prompt;3;70;1;pl
+c2_076;Gdzie informacje pojawiają się zbyt późno?;C;2;GENERAL;prompt;2;50;1;pl
+c2_077;Jakie luki informacyjne powodują błędy?;C;2;GENERAL;prompt;3;70;1;pl
+c2_078;Gdzie użytkownik musi zgadywać?;C;2;GENERAL;prompt;2;50;1;pl
+c2_079;Jakie dane są ignorowane mimo wartości?;C;2;GENERAL;prompt;3;70;1;pl
+c2_080;Jak brak informacji wpływa na cały system?;C;2;GENERAL;prompt;2;70;1;pl
+c2_081;Którzy interesariusze mają sprzeczne cele?;C;2;GENERAL;prompt;3;90;1;pl
+c2_082;Gdzie proces decyzyjny jest rozmyty?;C;2;GENERAL;prompt;2;50;1;pl
+c2_083;Kto blokuje zmiany w tym elemencie?;C;2;GENERAL;prompt;2;50;1;pl
+c2_084;Gdzie odpowiedzialność jest niejasna?;C;2;GENERAL;prompt;2;50;1;pl
+c2_085;Jakie kon ikty interesów są powszechne?;C;2;GENERAL;prompt;3;70;1;pl
+c2_086;Kto narzuca wymagania bez konsekwencji?;C;2;GENERAL;prompt;2;50;1;pl
+c2_087;Gdzie komunikacja zawodzi?;C;2;GENERAL;prompt;2;50;1;pl
+c2_088;Jakie decyzje są odkładane?;C;2;GENERAL;prompt;3;70;1;pl
+c2_089;Kto jest pomijany mimo wpływu?;C;2;GENERAL;prompt;2;50;1;pl
+c2_090;Jak relacje interesariuszy hamują rozwój?;C;2;GENERAL;prompt;2;70;1;pl
+c2_091;Czy technologia nie istnieje lub nie jest wystarczająco dojrzała?;C;2;GENERAL;prompt;3;50;1;pl
+c2_092;Gdzie technologia jest dostępna tylko teoretycznie?;C;2;GENERAL;prompt;2;50;1;pl
+c2_093;Jakie bariery technologiczne blokują realizację elementu?;C;2;GENERAL;prompt;3;70;1;pl
+c2_094;Czy użytkownik realnie nie dysponuje tą technologią?;C;2;GENERAL;prompt;3;50;1;pl
+c2_095;Jakie kompetencje techniczne są barierą?;C;2;GENERAL;prompt;3;70;1;pl
+c2_096;Gdzie technologia jest niestabilna lub zawodna?;C;2;GENERAL;prompt;2;50;1;pl
+c2_097;Jakie ograniczenia technologiczne są krytyczne?;C;2;GENERAL;prompt;3;70;1;pl
+c2_098;Gdzie innowacyjność opiera się na zbyt dużym ryzyku?;C;2;GENERAL;prompt;2;50;1;pl
+c2_099;Jakie założenia technologiczne są nierealne?;C;2;GENERAL;prompt;3;70;1;pl
+c2_100;Gdzie technologia nie skaluje się wraz z produktem?;C;2;GENERAL;prompt;2;50;1;pl
+c3_001;Jaką rolę ten element powinien pełnić w docelowym produkcie?;C;3;GENERAL;prompt;3;90;1;pl
+c3_002;Jak istotny powinien być dla wartości rynkowej produktu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_003;Jak element powinien reagować na zmiany rynkowe?;C;3;GENERAL;prompt;2;70;1;pl
+c3_004;Jak długo element powinien pozostać aktualny?;C;3;GENERAL;prompt;2;70;1;pl
+c3_005;Jakie alternatywy rynkowe powinny być realnie rozważalne?;C;3;GENERAL;prompt;3;70;1;pl
+c3_006;Jak element powinien wspierać konkurencyjność produktu?;C;3;GENERAL;prompt;2;80;1;pl
+c3_007;Jak jego znaczenie powinno zmieniać się w czasie?;C;3;GENERAL;prompt;2;70;1;pl
+c3_008;Jak element powinien skalować się z rynkiem?;C;3;GENERAL;prompt;2;70;1;pl
+c3_009;Jak powinien wpisywać się w docelowy kontekst użycia?;C;3;GENERAL;prompt;2;90;1;pl
+c3_010;Jaką elastyczność rynkową powinien zachować?;C;3;GENERAL;prompt;3;70;1;pl
+c3_011;Jak użytkownik powinien wchodzić w kontakt z tym elementem?;C;3;GENERAL;prompt;2;70;1;pl
+c3_012;Jakie kompetencje użytkownika nie powinny być wymagane?;C;3;GENERAL;prompt;3;70;1;pl
+c3_013;Jak element powinien wspierać użytkownika w działaniu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_014;Jakie frustracje użytkownika powinny zniknąć?;C;3;GENERAL;prompt;3;70;1;pl
+c3_015;Jak użytkownik powinien rozumieć działanie elementu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_016;Jak element powinien redukować ryzyko błędów użytkownika?;C;3;GENERAL;prompt;2;70;1;pl
+c3_017;Jak użytkownik powinien czuć się, korzystając z elementu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_018;Jak element powinien dopasowywać się do użytkownika?;C;3;GENERAL;prompt;2;70;1;pl
+c3_019;Jak użytkownik powinien ufać temu elementowi?;C;3;GENERAL;prompt;2;70;1;pl
+c3_020;Jak użytkownik powinien opisywać ten element innym?;C;3;GENERAL;prompt;2;70;1;pl
+c3_021;Jak powinno wyglądać typowe użycie tego elementu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_022;Jak prosty powinien być proces korzystania?;C;3;GENERAL;prompt;2;70;1;pl
+c3_023;Jakie kroki powinny być naturalne i intuicyjne?;C;3;GENERAL;prompt;3;70;1;pl
+c3_024;Jak element powinien reagować na sytuacje niestandardowe?;C;3;GENERAL;prompt;2;70;1;pl
+c3_025;Jak element powinien zachowywać się przy błędach?;C;3;GENERAL;prompt;2;70;1;pl
+c3_026;Jak element powinien wspierać ciągłość działania?;C;3;GENERAL;prompt;2;70;1;pl
+c3_027;Jak użytkownik powinien wracać do użycia elementu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_028;Jak element powinien działać przy ograniczonej uwadze?;C;3;GENERAL;prompt;2;70;1;pl
+c3_029;Jak element powinien minimalizować zakłócenia?;C;3;GENERAL;prompt;2;70;1;pl
+c3_030;Jak powinien współgrać z innymi elementami procesu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_031;Jak element powinien współpracować z innymi elementami produktu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_032;Jakie integracje powinny być oczywiste i stabilne?;C;3;GENERAL;prompt;3;70;1;pl
+c3_033;Jak element powinien reagować na zmiany w ekosystemie?;C;3;GENERAL;prompt;2;70;1;pl
+c3_034;Jakie zależności powinny zostać uproszczone lub usunięte?;C;3;GENERAL;prompt;3;70;1;pl
+c3_035;Jak użytkownik powinien postrzegać granice elementu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_036;Jakie standardy interoperacyjności powinien spełniać?;C;3;GENERAL;prompt;3;70;1;pl
+c3_037;Jak element powinien wspierać rozwój całego systemu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_038;Jakie elementy ekosystemu powinny być wymienne?;C;3;GENERAL;prompt;3;70;1;pl
+c3_039;Jak stabilność i elastyczność powinny się równoważyć?;C;3;GENERAL;prompt;2;70;1;pl
+c3_040;Jak element powinien skalować się w tym ekosystemie?;C;3;GENERAL;prompt;2;70;1;pl
+c3_041;Jaką wartość element powinien dostarczać użytkownikowi?;C;3;GENERAL;prompt;3;80;1;pl
+c3_042;Jak koszt elementu powinien być odczuwany?;C;3;GENERAL;prompt;2;70;1;pl
+c3_043;Jak element powinien wpływać na cenę produktu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_044;Jakie koszty powinny być przewidywalne?;C;3;GENERAL;prompt;3;70;1;pl
+c3_045;Jak element powinien wspierać decyzję zakupową?;C;3;GENERAL;prompt;2;70;1;pl
+c3_046;Jak kompromisy kosztowe powinny być akceptowalne?;C;3;GENERAL;prompt;2;70;1;pl
+c3_047;Jak element powinien budować długoterminową wartość?;C;3;GENERAL;prompt;2;80;1;pl
+c3_048;Jak jego wartość powinna być komunikowana?;C;3;GENERAL;prompt;2;80;1;pl
+c3_049;Jak element powinien wypadać w porównaniach rynkowych?;C;3;GENERAL;prompt;2;70;1;pl
+c3_050;Jak element powinien wspierać skalowanie biznesowe?;C;3;GENERAL;prompt;2;70;1;pl
+c3_051;Jak użytkownik powinien rozumieć sens tego elementu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_052;Jakie błędne założenia powinny zniknąć?;C;3;GENERAL;prompt;3;70;1;pl
+c3_053;Jak narracja wokół elementu powinna się zmienić?;C;3;GENERAL;prompt;2;70;1;pl
+c3_054;Jakie kompromisy nie powinny być już akceptowane?;C;3;GENERAL;prompt;3;70;1;pl
+c3_055;Jakie oczekiwania użytkownika powinny wzrosnąć?;C;3;GENERAL;prompt;3;70;1;pl
+c3_056;Jak użytkownik powinien oceniać jakość elementu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_057;Jak element powinien budować zaufanie?;C;3;GENERAL;prompt;2;70;1;pl
+c3_058;Jak użytkownik powinien reagować na zmiany elementu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_059;Jak element powinien zostać zapamiętany?;C;3;GENERAL;prompt;2;70;1;pl
+c3_060;Jakie mity powinny zostać przełamane?;C;3;GENERAL;prompt;3;70;1;pl
+c3_061;Jak regulacje powinny wspierać ten element?;C;3;GENERAL;prompt;2;70;1;pl
+c3_062;Jak normy powinny umożliwiać rozwój?;C;3;GENERAL;prompt;2;70;1;pl
+c3_063;Jakie reguły powinny być uproszczone?;C;3;GENERAL;prompt;3;70;1;pl
+c3_064;Jak ograniczenia technologiczne powinny ewoluować?;C;3;GENERAL;prompt;2;70;1;pl
+c3_065;Jak procesy organizacyjne powinny wspierać element?;C;3;GENERAL;prompt;2;70;1;pl
+c3_066;Jakie zasady powinny chronić użytkownika?;C;3;GENERAL;prompt;3;70;1;pl
+c3_067;Jak reguły powinny być bardziej elastyczne?;C;3;GENERAL;prompt;2;70;1;pl
+c3_068;Jak wymagania powinny być proporcjonalne?;C;3;GENERAL;prompt;2;70;1;pl
+c3_069;Jak reguły powinny wspierać innowacje?;C;3;GENERAL;prompt;2;70;1;pl
+c3_070;Jak element powinien funkcjonować w tych ramach?;C;3;GENERAL;prompt;2;70;1;pl
+c3_071;Jakie dane element powinien dostarczać?;C;3;GENERAL;prompt;3;70;1;pl
+c3_072;Jak informacje powinny wspierać decyzje użytkownika?;C;3;GENERAL;prompt;2;70;1;pl
+c3_073;Jak dane powinny być prezentowane?;C;3;GENERAL;prompt;2;70;1;pl
+c3_074;Jakie informacje powinny być dostępne w odpowiednim momencie?;C;3;GENERAL;prompt;3;70;1;pl
+c3_075;Jakie luki informacyjne powinny zniknąć?;C;3;GENERAL;prompt;3;70;1;pl
+c3_076;Jak użytkownik powinien ufać danym z elementu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_077;Jak informacje powinny być aktualizowane?;C;3;GENERAL;prompt;2;70;1;pl
+c3_078;Jak dane powinny redukować niepewność?;C;3;GENERAL;prompt;2;70;1;pl
+c3_079;Jak wiedza powinna budować kompetencje użytkownika?;C;3;GENERAL;prompt;2;70;1;pl
+c3_080;Jak informacje powinny wspierać odpowiedzialne decyzje?;C;3;GENERAL;prompt;2;70;1;pl
+c3_081;Jak role interesariuszy powinny być jasno określone?;C;3;GENERAL;prompt;2;70;1;pl
+c3_082;Jak decyzje dotyczące elementu powinny być podejmowane?;C;3;GENERAL;prompt;2;70;1;pl
+c3_083;Jak odpowiedzialność powinna być przypisana?;C;3;GENERAL;prompt;2;70;1;pl
+c3_084;Jak interesariusze powinni współpracować przy zmianach?;C;3;GENERAL;prompt;2;70;1;pl
+c3_085;Jak kon ikty interesów powinny być rozwiązywane?;C;3;GENERAL;prompt;2;70;1;pl
+c3_086;Jak komunikacja powinna wyglądać?;C;3;GENERAL;prompt;2;70;1;pl
+c3_087;Jak interesariusze powinni być włączani w rozwój?;C;3;GENERAL;prompt;2;70;1;pl
+c3_088;Jak decyzje powinny być podejmowane terminowo?;C;3;GENERAL;prompt;2;70;1;pl
+c3_089;Jak interes użytkownika powinien być reprezentowany?;C;3;GENERAL;prompt;2;70;1;pl
+c3_090;Jak relacje interesariuszy powinny wzmacniać wartość?;C;3;GENERAL;prompt;2;80;1;pl
+c3_091;Czy technologia powinna już istnieć, czy może dopiero dojrzewać?;C;3;GENERAL;prompt;3;50;1;pl
+c3_092;Jak dojrzała technologicznie powinna być realizacja elementu?;C;3;GENERAL;prompt;2;70;1;pl
+c3_093;Jak dostępna powinna być ta technologia dla użytkownika?;C;3;GENERAL;prompt;2;70;1;pl
+c3_094;Jakie kompetencje techniczne nie powinny być wymagane?;C;3;GENERAL;prompt;3;70;1;pl
+c3_095;Jakie ryzyko technologiczne jest akceptowalne?;C;3;GENERAL;prompt;3;70;1;pl
+c3_096;Jak stabilna i niezawodna powinna być technologia?;C;3;GENERAL;prompt;2;70;1;pl
+c3_097;Jak technologia powinna skalować się z produktem?;C;3;GENERAL;prompt;2;70;1;pl
+c3_098;Jak innowacyjny technologicznie powinien być ten element?;C;3;GENERAL;prompt;2;70;1;pl
+c3_099;Gdzie granica między innowacją a ryzykiem powinna przebiegać?;C;3;GENERAL;prompt;2;50;1;pl
+c3_100;Jak technologia powinna wspierać wykonalność całego produktu?;C;3;GENERAL;prompt;2;70;1;pl
+a1_001;What does the current market landscape look like in this category?;A;1;GENERAL;prompt;1;70;1;en
+a1_002;What types of solutions are most prevalent today?;A;1;GENERAL;prompt;3;70;1;en
+a1_003;How long have the dominant solutions been on the market?;A;1;GENERAL;prompt;2;70;1;en
+a1_004;Is the market relatively stable or undergoing change?;A;1;GENERAL;prompt;3;90;1;en
+a1_005;How quickly do new solutions emerge in this category?;A;1;GENERAL;prompt;2;70;1;en
+a1_006;What trends are most visible today?;A;1;GENERAL;prompt;3;70;1;en
+a1_007;How does the market respond to new approaches or innovations?;A;1;GENERAL;prompt;2;90;1;en
+a1_008;How segmented is the market?;A;1;GENERAL;prompt;2;90;1;en
+a1_009;Which customer groups are most active today?;A;1;GENERAL;prompt;3;80;1;en
+a1_010;How does the market describe itself (industry language, narratives)?;A;1;GENERAL;prompt;2;90;1;en
+a1_011;Who are the typical users of this type of solution?;A;1;GENERAL;prompt;3;50;1;en
+a1_012;What roles are involved in using the solution?;A;1;GENERAL;prompt;3;70;1;en
+a1_013;Are the end user and the decision maker the same person?;A;1;GENERAL;prompt;3;50;1;en
+a1_014;What user competencies are assumed today?;A;1;GENERAL;prompt;3;70;1;en
+a1_015;How do users interact with this type of solution?;A;1;GENERAL;prompt;2;70;1;en
+a1_016;What user behaviors are the norm today?;A;1;GENERAL;prompt;3;70;1;en
+a1_017;How do users learn to use the solutions?;A;1;GENERAL;prompt;2;70;1;en
+a1_018;How do users adapt to the limitations of existing solutions?;A;1;GENERAL;prompt;2;70;1;en
+a1_019;What is the typical level of user engagement?;A;1;GENERAL;prompt;1;70;1;en
+a1_020;How do users describe their experiences in their own words?;A;1;GENERAL;prompt;2;70;1;en
+a1_021;In what situations does the user use this solution?;A;1;GENERAL;prompt;3;70;1;en
+a1_022;How often does interaction with the solution occur?;A;1;GENERAL;prompt;2;70;1;en
+a1_023;How long does typical use last?;A;1;GENERAL;prompt;2;70;1;en
+a1_024;Is use planned or spontaneous?;A;1;GENERAL;prompt;3;50;1;en
+a1_025;What does the initial contact with the solution look like?;A;1;GENERAL;prompt;1;70;1;en
+a1_026;What does the end of a typical interaction look like?;A;1;GENERAL;prompt;1;70;1;en
+a1_027;What steps are most often repeated?;A;1;GENERAL;prompt;3;70;1;en
+a1_028;What does usage look like in non-standard conditions?;A;1;GENERAL;prompt;1;70;1;en
+a1_029;How does the user deal with interruptions or errors?;A;1;GENERAL;prompt;2;70;1;en
+a1_030;How does the user return to the solution after the first use?;A;1;GENERAL;prompt;2;70;1;en
+a1_031;What other products or services coexist with this solution?;A;1;GENERAL;prompt;3;70;1;en
+a1_032;What systems is the solution currently linked to?;A;1;GENERAL;prompt;3;70;1;en
+a1_033;What tools are used in parallel?;A;1;GENERAL;prompt;3;70;1;en
+a1_034;What integrations are commonly found?;A;1;GENERAL;prompt;3;70;1;en
+a1_035;What access or distribution channels dominate?;A;1;GENERAL;prompt;3;70;1;en
+a1_036;What technologies are considered standard?;A;1;GENERAL;prompt;3;70;1;en
+a1_037;What external dependencies are obvious to the market?;A;1;GENERAL;prompt;3;70;1;en
+a1_038;What elements outside the product influence its use?;A;1;GENERAL;prompt;3;70;1;en
+a1_039;How stable is the current ecosystem?;A;1;GENERAL;prompt;2;70;1;en
+a1_040;How does the market react to changes in the ecosystem?;A;1;GENERAL;prompt;2;90;1;en
+a1_041;How do users pay for these types of solutions today?;A;1;GENERAL;prompt;2;70;1;en
+a1_042;What pricing models are most common?;A;1;GENERAL;prompt;3;70;1;en
+a1_043;What does a typical purchase process look like?;A;1;GENERAL;prompt;1;70;1;en
+a1_044;How long does it take to make a purchase decision?;A;1;GENERAL;prompt;2;70;1;en
+a1_045;What costs are commonly accepted today?;A;1;GENERAL;prompt;3;70;1;en
+a1_046;What elements are considered standard in the price?;A;1;GENERAL;prompt;3;70;1;en
+a1_047;What elements are treated as extras?;A;1;GENERAL;prompt;2;70;1;en
+a1_048;How does the market communicate the value of these solutions?;A;1;GENERAL;prompt;2;90;1;en
+a1_049;How do users compare price to value?;A;1;GENERAL;prompt;2;70;1;en
+a1_050;What costs are “invisible” to the user?;A;1;GENERAL;prompt;3;70;1;en
+a1_051;How do users describe this category in their own words?;A;1;GENERAL;prompt;2;70;1;en
+a1_052;What simplifications are common?;A;1;GENERAL;prompt;3;70;1;en
+a1_053;What comparisons or analogies are often used?;A;1;GENERAL;prompt;3;70;1;en
+a1_054;What assumptions are rarely questioned?;A;1;GENERAL;prompt;3;70;1;en
+a1_055;What is considered “normal” in this category?;A;1;GENERAL;prompt;3;50;1;en
+a1_056;What compromises are widely accepted?;A;1;GENERAL;prompt;3;70;1;en
+a1_057;What expectations for this category are low?;A;1;GENERAL;prompt;3;70;1;en
+a1_058;What market promises are viewed with skepticism?;A;1;GENERAL;prompt;2;70;1;en
+a1_059;How do users explain the limitations of solutions to themselves?;A;1;GENERAL;prompt;2;70;1;en
+a1_060;How does the market respond to new narratives?;A;1;GENERAL;prompt;2;90;1;en
+a1_061;What legal regulations apply to this category?;A;1;GENERAL;prompt;3;70;1;en
+a1_062;What norms or standards are commonly known?;A;1;GENERAL;prompt;3;70;1;en
+a1_063;What technological limitations are accepted today?;A;1;GENERAL;prompt;3;70;1;en
+a1_064;What physical or environmental limitations exist?;A;1;GENERAL;prompt;3;70;1;en
+a1_065;What organizational processes influence the use of solutions?;A;1;GENERAL;prompt;3;70;1;en
+a1_066;What time constraints are typical?;A;1;GENERAL;prompt;3;70;1;en
+a1_067;What budget constraints are standard?;A;1;GENERAL;prompt;3;70;1;en
+a1_068;What market rules are unwritten but common?;A;1;GENERAL;prompt;3;70;1;en
+a1_069;What requirements are imposed by the environment?;A;1;GENERAL;prompt;3;70;1;en
+a1_070;How does the market adapt to these limitations?;A;1;GENERAL;prompt;2;90;1;en
+a1_071;What data is available to users today?;A;1;GENERAL;prompt;3;70;1;en
+a1_072;What information is essential for using the solution?;A;1;GENERAL;prompt;3;70;1;en
+a1_073;How do users obtain the information they need?;A;1;GENERAL;prompt;2;70;1;en
+a1_074;How reliable is the available data?;A;1;GENERAL;prompt;2;70;1;en
+a1_075;What information is scattered?;A;1;GENERAL;prompt;3;70;1;en
+a1_076;What data is difficult to obtain?;A;1;GENERAL;prompt;3;70;1;en
+a1_077;What information gaps are common?;A;1;GENERAL;prompt;3;70;1;en
+a1_078;How do users cope with the lack of information?;A;1;GENERAL;prompt;2;70;1;en
+a1_079;What information is ignored or overlooked?;A;1;GENERAL;prompt;3;70;1;en
+a1_080;How does the data influence users' decisions?;A;1;GENERAL;prompt;2;70;1;en
+a1_081;Who else besides the user has an influence on this solution?;A;1;GENERAL;prompt;2;50;1;en
+a1_082;What decision-making roles are involved?;A;1;GENERAL;prompt;3;70;1;en
+a1_083;Who approves the selection or use of the solution?;A;1;GENERAL;prompt;2;50;1;en
+a1_084;Who bears the consequences of the decision?;A;1;GENERAL;prompt;2;50;1;en
+a1_085;Which departments or institutions are indirectly involved?;A;1;GENERAL;prompt;3;70;1;en
+a1_086;What interests of different parties converge here?;A;1;GENERAL;prompt;3;70;1;en
+a1_087;Who can block the implementation of the solution?;A;1;GENERAL;prompt;2;50;1;en
+a1_088;Who can accelerate or facilitate it?;A;1;GENERAL;prompt;2;50;1;en
+a1_089;What relationships between stakeholders are typical?;A;1;GENERAL;prompt;3;70;1;en
+a1_090;How do stakeholders communicate their expectations?;A;1;GENERAL;prompt;2;70;1;en
+a2_001;In which areas is the market failing to keep pace with actual needs?;A;2;GENERAL;prompt;3;90;1;en
+a2_002;Where does the market offer solutions that are inadequate to the problems?;A;2;GENERAL;prompt;2;90;1;en
+a2_003;What problems are known but remain unresolved?;A;2;GENERAL;prompt;3;90;1;en
+a2_004;Where are innovations superficial or illusory?;A;2;GENERAL;prompt;2;50;1;en
+a2_005;Which market segments are systematically neglected?;A;2;GENERAL;prompt;3;70;1;en
+a2_006;Where is the market responding too slowly to change?;A;2;GENERAL;prompt;2;90;1;en
+a2_007;What conflicting signals is the market sending today?;A;2;GENERAL;prompt;3;90;1;en
+a2_008;Where is there an excess of similar, indistinguishable solutions?;A;2;GENERAL;prompt;2;50;1;en
+a2_009;What needs are being ignored because they are “inconvenient”?;A;2;GENERAL;prompt;3;70;1;en
+a2_010;Where is the market stuck in outdated patterns?;A;2;GENERAL;prompt;2;90;1;en
+a2_011;In what situations does the user feel lost?;A;2;GENERAL;prompt;3;70;1;en
+a2_012;Where does the user have to adapt to the solution, rather than the other way around?;A;2;GENERAL;prompt;2;50;1;en
+a2_013;What actions require excessive effort from the user?;A;2;GENERAL;prompt;3;70;1;en
+a2_014;Where does the user make mistakes through no fault of their own?;A;2;GENERAL;prompt;2;50;1;en
+a2_015;What user expectations are not being met?;A;2;GENERAL;prompt;3;70;1;en
+a2_016;At what points do users lose trust?;A;2;GENERAL;prompt;3;70;1;en
+a2_017;What user behaviors are forced by market limitations?;A;2;GENERAL;prompt;3;70;1;en
+a2_018;Where do users have to use workarounds or shortcuts?;A;2;GENERAL;prompt;2;50;1;en
+a2_019;What skills are unnecessarily required today?;A;2;GENERAL;prompt;3;70;1;en
+a2_020;At what points do users give up or postpone action?;A;2;GENERAL;prompt;3;50;1;en
+a2_021;Which stages of use are the most problematic?;A;2;GENERAL;prompt;3;90;1;en
+a2_022;Where is the usage process too complex?;A;2;GENERAL;prompt;2;50;1;en
+a2_023;Which steps are unnecessary but unavoidable?;A;2;GENERAL;prompt;3;70;1;en
+a2_024;At which points do interruptions occur most often?;A;2;GENERAL;prompt;3;50;1;en
+a2_025;Where does the use of the solution not fit the real conditions?;A;2;GENERAL;prompt;2;50;1;en
+a2_026;Which extreme situations are not handled?;A;2;GENERAL;prompt;3;70;1;en
+a2_027;Where does the user waste time without value?;A;2;GENERAL;prompt;2;50;1;en
+a2_028;Which elements require excessive attention?;A;2;GENERAL;prompt;3;70;1;en
+a2_029;Where is there a lack of continuity in the experience?;A;2;GENERAL;prompt;2;50;1;en
+a2_030;Which errors are repeated systematically?;A;2;GENERAL;prompt;3;70;1;en
+a2_031;Where do solutions not work together?;A;2;GENERAL;prompt;2;50;1;en
+a2_032;Which integrations are problematic or fragile?;A;2;GENERAL;prompt;3;90;1;en
+a2_033;Where does the user have to manually connect elements of the ecosystem?;A;2;GENERAL;prompt;2;50;1;en
+a2_034;What external dependencies generate problems?;A;2;GENERAL;prompt;3;90;1;en
+a2_035;Where do changes in one element break others?;A;2;GENERAL;prompt;2;50;1;en
+a2_036;What standards hinder development?;A;2;GENERAL;prompt;3;70;1;en
+a2_037;Where is there a lack of consistency between tools?;A;2;GENERAL;prompt;2;50;1;en
+a2_038;What elements of the ecosystem are bottlenecks?;A;2;GENERAL;prompt;3;70;1;en
+a2_039;Where is the ecosystem too rigid?;A;2;GENERAL;prompt;2;50;1;en
+a2_040;What dependencies are unclear to the user?;A;2;GENERAL;prompt;3;70;1;en
+a2_041;Where is the pricing model unclear or misleading?;A;2;GENERAL;prompt;2;50;1;en
+a2_042;What costs are disproportionate to value?;A;2;GENERAL;prompt;3;70;1;en
+a2_043;Where is the user paying for something they don't need?;A;2;GENERAL;prompt;2;50;1;en
+a2_044;What elements are difficult to compare in terms of price?;A;2;GENERAL;prompt;3;70;1;en
+a2_045;Where is the purchasing process too complicated?;A;2;GENERAL;prompt;2;50;1;en
+a2_046;What barriers to entry are artificial?;A;2;GENERAL;prompt;3;70;1;en
+a2_047;Where is the price-value relationship questionable?;A;2;GENERAL;prompt;2;80;1;en
+a2_048;What costs are revealed too late?;A;2;GENERAL;prompt;3;70;1;en
+a2_049;Where does the market model discourage adoption?;A;2;GENERAL;prompt;2;50;1;en
+a2_050;What market incentives work against the user?;A;2;GENERAL;prompt;3;70;1;en
+a2_051;What misconceptions are common?;A;2;GENERAL;prompt;3;70;1;en
+a2_052;Where do mental shortcuts lead to bad decisions?;A;2;GENERAL;prompt;2;50;1;en
+a2_053;What myths hinder change?;A;2;GENERAL;prompt;3;70;1;en
+a2_054;Where do market narratives diverge from reality?;A;2;GENERAL;prompt;2;50;1;en
+a2_055;What problems are downplayed?;A;2;GENERAL;prompt;3;90;1;en
+a2_056;Where does “it's always been this way” block progress?;A;2;GENERAL;prompt;2;50;1;en
+a2_057;What conflicting expectations exist in parallel?;A;2;GENERAL;prompt;3;70;1;en
+a2_058;What promises are overused?;A;2;GENERAL;prompt;3;70;1;en
+a2_059;Where do users not understand why something doesn't work?;A;2;GENERAL;prompt;2;70;1;en
+a2_060;What topics are taboo or avoided?;A;2;GENERAL;prompt;3;70;1;en
+a2_061;Which regulations are inadequate for the current situation?;A;2;GENERAL;prompt;3;50;1;en
+a2_062;Which standards hinder the development of solutions?;A;2;GENERAL;prompt;3;70;1;en
+a2_063;Where are procedures too rigid?;A;2;GENERAL;prompt;2;50;1;en
+a2_064;Which technological restrictions are outdated?;A;2;GENERAL;prompt;3;70;1;en
+a2_065;Where do organizational restrictions block operations?;A;2;GENERAL;prompt;2;50;1;en
+a2_066;Which rules are interpreted inconsistently?;A;2;GENERAL;prompt;3;70;1;en
+a2_067;Where is there a lack of flexibility within the rules?;A;2;GENERAL;prompt;2;50;1;en
+a2_068;What requirements are excessive?;A;2;GENERAL;prompt;3;70;1;en
+a2_069;Where do rules protect the status quo at the expense of the user?;A;2;GENERAL;prompt;2;50;1;en
+a2_070;How does the market circumvent these restrictions?;A;2;GENERAL;prompt;2;90;1;en
+a2_071;What information do users lack the most?;A;2;GENERAL;prompt;3;70;1;en
+a2_072;Where is data incomplete or inconsistent?;A;2;GENERAL;prompt;2;50;1;en
+a2_073;What information is difficult to interpret?;A;2;GENERAL;prompt;3;70;1;en
+a2_074;Where does excess data hinder decisions?;A;2;GENERAL;prompt;2;50;1;en
+a2_075;What data is unreliable or outdated?;A;2;GENERAL;prompt;3;70;1;en
+a2_076;Where is information available too late?;A;2;GENERAL;prompt;2;50;1;en
+a2_077;What information gaps cause errors?;A;2;GENERAL;prompt;3;70;1;en
+a2_078;Where do users rely on guesswork?;A;2;GENERAL;prompt;2;50;1;en
+a2_079;What data is ignored despite its value?;A;2;GENERAL;prompt;3;70;1;en
+a2_080;How does the lack of information affect market decisions?;A;2;GENERAL;prompt;2;70;1;en
+a2_081;Which stakeholders have conflicting goals?;A;2;GENERAL;prompt;3;90;1;en
+a2_082;Where is the decision-making process unclear?;A;2;GENERAL;prompt;2;50;1;en
+a2_083;Who is blocking change and why?;A;2;GENERAL;prompt;2;70;1;en
+a2_084;Where is responsibility unclear?;A;2;GENERAL;prompt;2;50;1;en
+a2_085;What conflicts of interest are common?;A;2;GENERAL;prompt;3;70;1;en
+a2_086;Who imposes requirements without bearing the consequences?;A;2;GENERAL;prompt;2;50;1;en
+a2_087;Where does communication between stakeholders fail?;A;2;GENERAL;prompt;2;50;1;en
+a2_088;What decisions are postponed indefinitely?;A;2;GENERAL;prompt;3;70;1;en
+a2_089;Who is overlooked despite having real influence?;A;2;GENERAL;prompt;2;50;1;en
+a2_090;What interests dominate at the expense of the user?;A;2;GENERAL;prompt;3;70;1;en
+a3_001;What should a mature market in this category look like?;A;3;GENERAL;prompt;2;90;1;en
+a3_002;How should the market respond to the real needs of users?;A;3;GENERAL;prompt;2;90;1;en
+a3_003;What market issues should be considered a priority?;A;3;GENERAL;prompt;3;90;1;en
+a3_004;What should healthy diversity of solutions look like?;A;3;GENERAL;prompt;2;70;1;en
+a3_005;How should the market support innovation rather than block it?;A;3;GENERAL;prompt;2;90;1;en
+a3_006;How quickly should the market adapt to change?;A;3;GENERAL;prompt;2;90;1;en
+a3_007;What market practices should be a thing of the past?;A;3;GENERAL;prompt;3;70;1;en
+a3_008;What should the relationship between competing solutions look like?;A;3;GENERAL;prompt;2;80;1;en
+a3_009;How should the market communicate its value?;A;3;GENERAL;prompt;2;90;1;en
+a3_010;What maturity standards should apply in this category?;A;3;GENERAL;prompt;3;70;1;en
+a3_011;How should the user experience contact with this category?;A;3;GENERAL;prompt;2;70;1;en
+a3_012;What user competencies should no longer be required?;A;3;GENERAL;prompt;3;70;1;en
+a3_013;How should the user be supported in their actions?;A;3;GENERAL;prompt;2;70;1;en
+a3_014;What user frustrations should disappear?;A;3;GENERAL;prompt;3;70;1;en
+a3_015;How should users understand what they are using?;A;3;GENERAL;prompt;2;70;1;en
+a3_016;What user decisions should be simpler?;A;3;GENERAL;prompt;3;70;1;en
+a3_017;How should users build trust in solutions?;A;3;GENERAL;prompt;2;70;1;en
+a3_018;How should users be protected from errors?;A;3;GENERAL;prompt;2;70;1;en
+a3_019;What should a healthy level of user engagement look like?;A;3;GENERAL;prompt;2;70;1;en
+a3_020;How should users describe their experiences?;A;3;GENERAL;prompt;2;70;1;en
+a3_021;What should typical use of the solution look like?;A;3;GENERAL;prompt;2;70;1;en
+a3_022;How simple should the process of use be?;A;3;GENERAL;prompt;2;70;1;en
+a3_023;What steps should be natural and intuitive?;A;3;GENERAL;prompt;3;70;1;en
+a3_024;How should the solution respond to non-standard situations?;A;3;GENERAL;prompt;2;70;1;en
+a3_025;How should the user go through the entire process?;A;3;GENERAL;prompt;2;70;1;en
+a3_026;What interruptions or errors should be imperceptible?;A;3;GENERAL;prompt;3;70;1;en
+a3_027;How should the solution adapt to the context of use?;A;3;GENERAL;prompt;2;70;1;en
+a3_028;How should the user return to the solution?;A;3;GENERAL;prompt;2;70;1;en
+a3_029;What should usage look like with limited attention?;A;3;GENERAL;prompt;2;70;1;en
+a3_030;How should usage support continuity of action?;A;3;GENERAL;prompt;2;70;1;en
+a3_031;How should the elements of the ecosystem work together?;A;3;GENERAL;prompt;2;70;1;en
+a3_032;What integrations should be obvious and seamless?;A;3;GENERAL;prompt;3;90;1;en
+a3_033;How should the ecosystem respond to change?;A;3;GENERAL;prompt;2;70;1;en
+a3_034;What dependencies should be simplified or eliminated?;A;3;GENERAL;prompt;3;70;1;en
+a3_035;How should the user perceive the boundaries between systems?;A;3;GENERAL;prompt;2;70;1;en
+a3_036;What interoperability standards should apply?;A;3;GENERAL;prompt;3;70;1;en
+a3_037;How should the ecosystem support development rather than hinder it?;A;3;GENERAL;prompt;2;70;1;en
+a3_038;Which elements of the ecosystem should be interchangeable?;A;3;GENERAL;prompt;3;70;1;en
+a3_039;How should stability and flexibility be balanced?;A;3;GENERAL;prompt;2;70;1;en
+a3_040;How should the ecosystem scale over time?;A;3;GENERAL;prompt;2;70;1;en
+a3_041;How should users understand what they are paying for?;A;3;GENERAL;prompt;2;70;1;en
+a3_042;How should the price-value relationship be perceived?;A;3;GENERAL;prompt;2;80;1;en
+a3_043;Which costs should be predictable?;A;3;GENERAL;prompt;3;70;1;en
+a3_044;What should the purchasing process look like in an ideal world?;A;3;GENERAL;prompt;2;70;1;en
+a3_045;How should the market model support adoption?;A;3;GENERAL;prompt;2;70;1;en
+a3_046;What barriers to entry should disappear?;A;3;GENERAL;prompt;3;70;1;en
+a3_047;How should the model reward long-term value?;A;3;GENERAL;prompt;2;80;1;en
+a3_048;What market incentives should work in the user's favor?;A;3;GENERAL;prompt;3;70;1;en
+a3_049;How should users be able to compare offers?;A;3;GENERAL;prompt;2;70;1;en
+a3_050;How should the market model respond to changing needs?;A;3;GENERAL;prompt;2;70;1;en
+a3_051;What assumptions should be challenged?;A;3;GENERAL;prompt;3;70;1;en
+a3_052;How should users understand the meaning of this category?;A;3;GENERAL;prompt;2;70;1;en
+a3_053;What myths should disappear?;A;3;GENERAL;prompt;3;70;1;en
+a3_054;How should market narratives be more honest?;A;3;GENERAL;prompt;2;70;1;en
+a3_055;What compromises should no longer be accepted?;A;3;GENERAL;prompt;3;70;1;en
+a3_056;What user expectations should increase?;A;3;GENERAL;prompt;3;70;1;en
+a3_057;How should users evaluate the quality of solutions?;A;3;GENERAL;prompt;2;70;1;en
+a3_058;What should trust in this category look like?;A;3;GENERAL;prompt;2;70;1;en
+a3_059;How should users respond to new developments?;A;3;GENERAL;prompt;2;70;1;en
+a3_060;How should the mental image of this category change?;A;3;GENERAL;prompt;2;70;1;en
+a3_061;What regulations should better reflect reality?;A;3;GENERAL;prompt;3;70;1;en
+a3_062;How should standards support quality rather than block change?;A;3;GENERAL;prompt;2;70;1;en
+a3_063;What rules should be simplified?;A;3;GENERAL;prompt;3;70;1;en
+a3_064;How should technological limitations evolve?;A;3;GENERAL;prompt;2;70;1;en
+a3_065;How should organizational processes change?;A;3;GENERAL;prompt;2;70;1;en
+a3_066;What rules should protect users?;A;3;GENERAL;prompt;3;70;1;en
+a3_067;What rules should be more flexible?;A;3;GENERAL;prompt;3;70;1;en
+a3_068;What requirements should be proportionate?;A;3;GENERAL;prompt;3;70;1;en
+a3_069;How should rules support innovation?;A;3;GENERAL;prompt;2;70;1;en
+a3_070;How should the market adapt to new rules?;A;3;GENERAL;prompt;2;90;1;en
+a3_071;What information should be easily accessible?;A;3;GENERAL;prompt;3;70;1;en
+a3_072;How should data support user decisions?;A;3;GENERAL;prompt;2;70;1;en
+a3_073;What information should be clear and understandable?;A;3;GENERAL;prompt;3;70;1;en
+a3_074;How should data be presented?;A;3;GENERAL;prompt;2;70;1;en
+a3_075;What information gaps should be closed?;A;3;GENERAL;prompt;3;70;1;en
+a3_076;How should users trust the data?;A;3;GENERAL;prompt;2;70;1;en
+a3_077;How should information be updated?;A;3;GENERAL;prompt;2;70;1;en
+a3_078;How should data reduce uncertainty?;A;3;GENERAL;prompt;2;70;1;en
+a3_079;What information should be available at the right time?;A;3;GENERAL;prompt;3;70;1;en
+a3_080;How should knowledge support responsible decisions?;A;3;GENERAL;prompt;2;70;1;en
+a3_081;How should stakeholder roles be clearly defined?;A;3;GENERAL;prompt;2;70;1;en
+a3_082;How should the decision-making process be simplified?;A;3;GENERAL;prompt;2;70;1;en
+a3_083;How should responsibility be distributed?;A;3;GENERAL;prompt;2;70;1;en
+a3_084;How should stakeholders cooperate?;A;3;GENERAL;prompt;2;70;1;en
+a3_085;How should conflicts of interest be resolved?;A;3;GENERAL;prompt;2;70;1;en
+a3_086;How should communication between stakeholders look?;A;3;GENERAL;prompt;2;70;1;en
+a3_087;How should stakeholders be involved in changes?;A;3;GENERAL;prompt;2;70;1;en
+a3_088;How should decisions be made in a timely manner?;A;3;GENERAL;prompt;2;70;1;en
+a3_089;How should user interests be represented?;A;3;GENERAL;prompt;2;70;1;en
+a3_090;How should relationships between stakeholders build value?;A;3;GENERAL;prompt;2;80;1;en
+b1_001;What role does the product/service play in the current market?;B;1;GENERAL;prompt;3;70;1;en
+b1_002;How is it positioned today relative to alternatives?;B;1;GENERAL;prompt;2;70;1;en
+b1_003;In what situations is it most often chosen?;B;1;GENERAL;prompt;3;70;1;en
+b1_004;What problems does it claim to address?;B;1;GENERAL;prompt;3;90;1;en
+b1_005;How long has the product/service existed in its current form?;B;1;GENERAL;prompt;2;70;1;en
+b1_006;How often is the product updated or changed?;B;1;GENERAL;prompt;2;70;1;en
+b1_007;How is the product described in market communications?;B;1;GENERAL;prompt;2;70;1;en
+b1_008;What promises are associated with it today?;B;1;GENERAL;prompt;3;70;1;en
+b1_009;How is the product perceived against the competition?;B;1;GENERAL;prompt;2;80;1;en
+b1_010;Which market segments actually use it?;B;1;GENERAL;prompt;3;70;1;en
+b1_011;Who is the typical user of this product/service?;B;1;GENERAL;prompt;3;50;1;en
+b1_012;What user roles are involved in its use?;B;1;GENERAL;prompt;3;70;1;en
+b1_013;How does the user find out about this product?;B;1;GENERAL;prompt;2;70;1;en
+b1_014;What user competencies are assumed today?;B;1;GENERAL;prompt;3;70;1;en
+b1_015;How does the user learn to use the product?;B;1;GENERAL;prompt;2;70;1;en
+b1_016;What does the user's first contact with the product look like?;B;1;GENERAL;prompt;1;70;1;en
+b1_017;How does the user adapt to the product's limitations?;B;1;GENERAL;prompt;2;70;1;en
+b1_018;What user behaviors are typical today?;B;1;GENERAL;prompt;3;70;1;en
+b1_019;What is the level of user engagement over time?;B;1;GENERAL;prompt;1;70;1;en
+b1_020;How does the user describe the product in their own words?;B;1;GENERAL;prompt;2;70;1;en
+b1_021;What is a typical scenario for using the product?;B;1;GENERAL;prompt;1;70;1;en
+b1_022;How often is the product used?;B;1;GENERAL;prompt;2;70;1;en
+b1_023;How long does a single use last?;B;1;GENERAL;prompt;2;70;1;en
+b1_024;What steps does the user perform most often?;B;1;GENERAL;prompt;3;70;1;en
+b1_025;What does the beginning of product use look like?;B;1;GENERAL;prompt;1;70;1;en
+b1_026;What does the end of typical use look like?;B;1;GENERAL;prompt;1;70;1;en
+b1_027;How does the product behave in non-standard conditions?;B;1;GENERAL;prompt;2;70;1;en
+b1_028;How does the user deal with interruptions or errors?;B;1;GENERAL;prompt;2;70;1;en
+b1_029;How does the user return to the product after an interruption?;B;1;GENERAL;prompt;2;70;1;en
+b1_030;What does usage look like when time or attention is limited?;B;1;GENERAL;prompt;1;70;1;en
+b1_031;What other products or services does the product coexist with?;B;1;GENERAL;prompt;3;70;1;en
+b1_032;What systems are currently connected to it?;B;1;GENERAL;prompt;3;70;1;en
+b1_033;What integrations are required for it to function?;B;1;GENERAL;prompt;3;70;1;en
+b1_034;What tools are used in parallel with the product?;B;1;GENERAL;prompt;3;70;1;en
+b1_035;What external dependencies affect the product's performance?;B;1;GENERAL;prompt;3;70;1;en
+b1_036;How does the product respond to changes in the ecosystem?;B;1;GENERAL;prompt;2;70;1;en
+b1_037;How stable are the links with other elements?;B;1;GENERAL;prompt;2;70;1;en
+b1_038;What elements outside the product are critical?;B;1;GENERAL;prompt;3;70;1;en
+b1_039;How does the user perceive the boundaries of the product?;B;1;GENERAL;prompt;2;70;1;en
+b1_040;How does the product fit into the user's broader system?;B;1;GENERAL;prompt;2;70;1;en
+b1_041;How does the user pay for the product or service?;B;1;GENERAL;prompt;2;70;1;en
+b1_042;What billing models are available?;B;1;GENERAL;prompt;3;70;1;en
+b1_043;What does the purchase or access process look like?;B;1;GENERAL;prompt;1;70;1;en
+b1_044;What costs are obvious to the user?;B;1;GENERAL;prompt;3;70;1;en
+b1_045;What costs arise during use?;B;1;GENERAL;prompt;3;70;1;en
+b1_046;How does the user assess the price-value relationship?;B;1;GENERAL;prompt;2;80;1;en
+b1_047;What elements of the product are included in the price?;B;1;GENERAL;prompt;3;70;1;en
+b1_048;What elements are considered extras?;B;1;GENERAL;prompt;2;70;1;en
+b1_049;What does product maintenance look like over time?;B;1;GENERAL;prompt;1;70;1;en
+b1_050;How does the user compare this product with other offers?;B;1;GENERAL;prompt;2;70;1;en
+b1_051;How does the user explain the product's operation to themselves?;B;1;GENERAL;prompt;2;70;1;en
+b1_052;What simplifications does the user apply when thinking about the product?;B;1;GENERAL;prompt;3;70;1;en
+b1_053;What assumptions does the user take for granted?;B;1;GENERAL;prompt;3;70;1;en
+b1_054;What compromises does the user accept?;B;1;GENERAL;prompt;3;70;1;en
+b1_055;How does the user interpret the product's limitations?;B;1;GENERAL;prompt;2;70;1;en
+b1_056;What expectations does the user have of the product?;B;1;GENERAL;prompt;3;70;1;en
+b1_057;How does the user assess the quality of the product?;B;1;GENERAL;prompt;2;70;1;en
+b1_058;How does the user react to changes in the product?;B;1;GENERAL;prompt;2;70;1;en
+b1_059;How does the user build trust in the product?;B;1;GENERAL;prompt;2;70;1;en
+b1_060;How is the product remembered after use?;B;1;GENERAL;prompt;2;70;1;en
+b1_061;What regulations affect the product/service?;B;1;GENERAL;prompt;3;70;1;en
+b1_062;What norms or standards must the product meet?;B;1;GENERAL;prompt;3;70;1;en
+b1_063;What technological limitations exist today?;B;1;GENERAL;prompt;3;70;1;en
+b1_064;What physical or environmental limitations exist?;B;1;GENERAL;prompt;3;70;1;en
+b1_065;What organizational processes affect the product?;B;1;GENERAL;prompt;3;70;1;en
+b1_066;What time constraints are typical?;B;1;GENERAL;prompt;3;70;1;en
+b1_067;What budget constraints apply to the product?;B;1;GENERAL;prompt;3;70;1;en
+b1_068;What rules are imposed by the environment?;B;1;GENERAL;prompt;3;70;1;en
+b1_069;What requirements are inflexible?;B;1;GENERAL;prompt;3;70;1;en
+b1_070;How does the product function within these constraints?;B;1;GENERAL;prompt;2;70;1;en
+b1_071;What data does the product generate?;B;1;GENERAL;prompt;3;70;1;en
+b1_072;What information is available to the user?;B;1;GENERAL;prompt;3;70;1;en
+b1_073;How does the user obtain the necessary information?;B;1;GENERAL;prompt;2;70;1;en
+b1_074;How readable is the data presented by the product?;B;1;GENERAL;prompt;2;70;1;en
+b1_075;How up-to-date is the available information?;B;1;GENERAL;prompt;2;70;1;en
+b1_076;What data is only available indirectly?;B;1;GENERAL;prompt;3;70;1;en
+b1_077;What information is difficult to find?;B;1;GENERAL;prompt;3;70;1;en
+b1_078;How does the user interpret the data from the product?;B;1;GENERAL;prompt;2;70;1;en
+b1_079;How does the data influence the user's decisions?;B;1;GENERAL;prompt;2;70;1;en
+b1_080;How does the product deal with a lack of information?;B;1;GENERAL;prompt;2;70;1;en
+b1_081;Who else besides the user influences the product?;B;1;GENERAL;prompt;2;50;1;en
+b1_082;Who decides on changes to the product?;B;1;GENERAL;prompt;2;50;1;en
+b1_083;Who is responsible for maintaining the product?;B;1;GENERAL;prompt;2;50;1;en
+b1_084;What departments or roles are involved?;B;1;GENERAL;prompt;3;70;1;en
+b1_085;What interests converge around the product?;B;1;GENERAL;prompt;3;70;1;en
+b1_086;Who approves the selection or implementation of the product?;B;1;GENERAL;prompt;2;50;1;en
+b1_087;Who bears the consequences of product decisions?;B;1;GENERAL;prompt;2;50;1;en
+b1_088;How do stakeholders communicate their expectations?;B;1;GENERAL;prompt;2;70;1;en
+b1_089;How are conflicts of interest resolved today?;B;1;GENERAL;prompt;2;70;1;en
+b1_090;How does the product function within this network of relationships?;B;1;GENERAL;prompt;2;70;1;en
+b2_001;In what situations does the product fail to meet the real needs of the market?;B;2;GENERAL;prompt;3;70;1;en
+b2_002;Where is the product positioning unclear?;B;2;GENERAL;prompt;2;50;1;en
+b2_003;What market promises are not fulfilled in practice?;B;2;GENERAL;prompt;3;70;1;en
+b2_004;Where is the product perceived as “just another one of the same”?;B;2;GENERAL;prompt;2;70;1;en
+b2_005;Which market segments are actually being overlooked?;B;2;GENERAL;prompt;3;70;1;en
+b2_006;Where is the product failing to keep up with market changes?;B;2;GENERAL;prompt;2;50;1;en
+b2_007;What market signals are being ignored?;B;2;GENERAL;prompt;3;70;1;en
+b2_008;Where is the product poorly suited to the context of use?;B;2;GENERAL;prompt;2;50;1;en
+b2_009;What market expectations are being misinterpreted?;B;2;GENERAL;prompt;3;70;1;en
+b2_010;Where is the product losing market credibility?;B;2;GENERAL;prompt;2;50;1;en
+b2_011;At what points does the user feel frustrated?;B;2;GENERAL;prompt;3;70;1;en
+b2_012;Where does the product require too much effort from the user?;B;2;GENERAL;prompt;2;50;1;en
+b2_013;What mistakes does the user make systematically?;B;2;GENERAL;prompt;3;70;1;en
+b2_014;Where does the product fail to take into account the user's actual competencies?;B;2;GENERAL;prompt;2;50;1;en
+b2_015;What user needs remain unmet?;B;2;GENERAL;prompt;3;70;1;en
+b2_016;Where does the user lose confidence in the product?;B;2;GENERAL;prompt;2;50;1;en
+b2_017;What user behaviors are forced by product flaws?;B;2;GENERAL;prompt;3;70;1;en
+b2_018;Where does the user have to use workarounds or shortcuts?;B;2;GENERAL;prompt;2;50;1;en
+b2_019;At what points does the user give up on using the product?;B;2;GENERAL;prompt;3;70;1;en
+b2_020;What elements of the product are a source of irritation?;B;2;GENERAL;prompt;3;70;1;en
+b2_021;Which stages of use are the most problematic?;B;2;GENERAL;prompt;3;90;1;en
+b2_022;Where is the usage process too complex?;B;2;GENERAL;prompt;2;50;1;en
+b2_023;Which steps are unnecessary but necessary?;B;2;GENERAL;prompt;3;70;1;en
+b2_024;Where does the product not fit the real working conditions?;B;2;GENERAL;prompt;2;50;1;en
+b2_025;Which extreme situations are not supported?;B;2;GENERAL;prompt;3;70;1;en
+b2_026;Where do interruptions or errors occur?;B;2;GENERAL;prompt;2;50;1;en
+b2_027;Which actions cause time losses?;B;2;GENERAL;prompt;3;70;1;en
+b2_028;Where is there a lack of continuity in the experience?;B;2;GENERAL;prompt;2;50;1;en
+b2_029;What interactions are illogical or counterintuitive?;B;2;GENERAL;prompt;3;70;1;en
+b2_030;What problems recur regularly?;B;2;GENERAL;prompt;3;90;1;en
+b2_031;Where does the product fail to work with other systems?;B;2;GENERAL;prompt;2;50;1;en
+b2_032;What integrations are fragile or unreliable?;B;2;GENERAL;prompt;3;70;1;en
+b2_033;Where does the user have to manually connect elements?;B;2;GENERAL;prompt;2;50;1;en
+b2_034;What external dependencies cause problems?;B;2;GENERAL;prompt;3;90;1;en
+b2_035;Where do changes in the ecosystem disrupt the product's performance?;B;2;GENERAL;prompt;2;50;1;en
+b2_036;What standards hinder integration?;B;2;GENERAL;prompt;3;70;1;en
+b2_037;Where is there a lack of consistency between tools?;B;2;GENERAL;prompt;2;50;1;en
+b2_038;What elements of the ecosystem are bottlenecks?;B;2;GENERAL;prompt;3;70;1;en
+b2_039;Where is the product too rigid in relation to its environment?;B;2;GENERAL;prompt;2;50;1;en
+b2_040;What dependencies are unclear to the user?;B;2;GENERAL;prompt;3;70;1;en
+b2_041;Where is the pricing model unclear or frustrating?;B;2;GENERAL;prompt;2;50;1;en
+b2_042;What costs are disproportionate to value?;B;2;GENERAL;prompt;3;70;1;en
+b2_043;Where does the user pay for features they don't use?;B;2;GENERAL;prompt;2;50;1;en
+b2_044;Which elements are difficult to compare in terms of price?;B;2;GENERAL;prompt;3;70;1;en
+b2_045;Where does the purchasing process discourage adoption?;B;2;GENERAL;prompt;2;50;1;en
+b2_046;What barriers to entry are artificial or unnecessary?;B;2;GENERAL;prompt;3;70;1;en
+b2_047;Where does the price-value ratio cause resistance?;B;2;GENERAL;prompt;2;80;1;en
+b2_048;What costs are revealed too late?;B;2;GENERAL;prompt;3;70;1;en
+b2_049;Where does the market model block scaling?;B;2;GENERAL;prompt;2;50;1;en
+b2_050;What incentives work against the user's interests?;B;2;GENERAL;prompt;3;70;1;en
+b2_051;What misconceptions do users have about the product?;B;2;GENERAL;prompt;3;70;1;en
+b2_052;Where do simplifications lead to disappointment?;B;2;GENERAL;prompt;2;50;1;en
+b2_053;What myths hinder product change?;B;2;GENERAL;prompt;3;70;1;en
+b2_054;Where does the product narrative diverge from the experience?;B;2;GENERAL;prompt;2;50;1;en
+b2_055;What problems are downplayed?;B;2;GENERAL;prompt;3;90;1;en
+b2_056;Where does “that's how it has to be” block improvement?;B;2;GENERAL;prompt;2;50;1;en
+b2_057;What conflicting expectations coexist?;B;2;GENERAL;prompt;3;70;1;en
+b2_058;What promises are overused?;B;2;GENERAL;prompt;3;70;1;en
+b2_059;Where does the user not understand why something doesn't work?;B;2;GENERAL;prompt;2;70;1;en
+b2_060;What topics are avoided in product communication?;B;2;GENERAL;prompt;3;70;1;en
+b2_061;Which regulations overly complicate the product?;B;2;GENERAL;prompt;3;50;1;en
+b2_062;What standards hinder product development?;B;2;GENERAL;prompt;3;70;1;en
+b2_063;Where are procedures too rigid?;B;2;GENERAL;prompt;2;50;1;en
+b2_064;What technological limitations block improvement?;B;2;GENERAL;prompt;3;70;1;en
+b2_065;Where do organizational constraints paralyze decisions?;B;2;GENERAL;prompt;2;50;1;en
+b2_066;What rules are interpreted inconsistently?;B;2;GENERAL;prompt;3;70;1;en
+b2_067;Where is there a lack of flexibility within the rules?;B;2;GENERAL;prompt;2;50;1;en
+b2_068;What requirements are excessive in relation to the effect?;B;2;GENERAL;prompt;3;70;1;en
+b2_069;Where do rules protect the status quo at the expense of the user?;B;2;GENERAL;prompt;2;50;1;en
+b2_070;How does the product circumvent these limitations?;B;2;GENERAL;prompt;2;70;1;en
+b2_071;What data does the product not provide, but should?;B;2;GENERAL;prompt;3;70;1;en
+b2_072;Where is the information incomplete or inconsistent?;B;2;GENERAL;prompt;2;50;1;en
+b2_073;What data is difficult to understand?;B;2;GENERAL;prompt;3;70;1;en
+b2_074;Where does information overload hinder decision-making?;B;2;GENERAL;prompt;2;50;1;en
+b2_075;What data is outdated or unreliable?;B;2;GENERAL;prompt;3;70;1;en
+b2_076;Where does information arrive too late?;B;2;GENERAL;prompt;2;50;1;en
+b2_077;What information gaps lead to errors?;B;2;GENERAL;prompt;3;70;1;en
+b2_078;Where does the user have to guess?;B;2;GENERAL;prompt;2;50;1;en
+b2_079;What data is ignored despite its value?;B;2;GENERAL;prompt;3;70;1;en
+b2_080;How does the lack of information affect product usage?;B;2;GENERAL;prompt;2;70;1;en
+b2_081;Which stakeholders have conflicting goals?;B;2;GENERAL;prompt;3;90;1;en
+b2_082;Where is the decision-making process unclear?;B;2;GENERAL;prompt;2;50;1;en
+b2_083;Who is blocking changes to the product?;B;2;GENERAL;prompt;2;50;1;en
+b2_084;Where is responsibility unclear?;B;2;GENERAL;prompt;2;50;1;en
+b2_085;What conflicts of interest are common?;B;2;GENERAL;prompt;3;70;1;en
+b2_086;Who imposes requirements without bearing the consequences?;B;2;GENERAL;prompt;2;50;1;en
+b2_087;Where does communication between stakeholders fail?;B;2;GENERAL;prompt;2;50;1;en
+b2_088;What decisions are postponed?;B;2;GENERAL;prompt;3;70;1;en
+b2_089;Who is overlooked despite having real influence?;B;2;GENERAL;prompt;2;50;1;en
+b2_090;How do stakeholders hinder product development?;B;2;GENERAL;prompt;2;70;1;en
+b3_001;What role should the product play in the target market?;B;3;GENERAL;prompt;3;90;1;en
+b3_002;How should the product be perceived relative to alternatives?;B;3;GENERAL;prompt;2;70;1;en
+b3_003;What market needs should it address first?;B;3;GENERAL;prompt;3;70;1;en
+b3_004;How should the product respond to market changes?;B;3;GENERAL;prompt;2;70;1;en
+b3_005;What unique value should it consistently deliver?;B;3;GENERAL;prompt;3;80;1;en
+b3_006;How should the product build its market credibility?;B;3;GENERAL;prompt;2;70;1;en
+b3_007;How should it differentiate itself in a clear way?;B;3;GENERAL;prompt;2;70;1;en
+b3_008;How should the product support healthy competition?;B;3;GENERAL;prompt;2;80;1;en
+b3_009;What market segments should it realistically serve?;B;3;GENERAL;prompt;3;70;1;en
+b3_010;How should the product evolve with the market?;B;3;GENERAL;prompt;2;70;1;en
+b3_011;How should the user feel when using the product?;B;3;GENERAL;prompt;2;70;1;en
+b3_012;What user skills should not be required?;B;3;GENERAL;prompt;3;70;1;en
+b3_013;How should the product support the user in their actions?;B;3;GENERAL;prompt;2;70;1;en
+b3_014;What user frustrations should disappear?;B;3;GENERAL;prompt;3;70;1;en
+b3_015;How should the user understand how the product works?;B;3;GENERAL;prompt;2;70;1;en
+b3_016;What user decisions should be simpler?;B;3;GENERAL;prompt;3;70;1;en
+b3_017;How should the product build user trust?;B;3;GENERAL;prompt;2;70;1;en
+b3_018;How should the user be protected from errors?;B;3;GENERAL;prompt;2;70;1;en
+b3_019;What should a healthy level of engagement look like?;B;3;GENERAL;prompt;2;70;1;en
+b3_020;How should the user describe the product to others?;B;3;GENERAL;prompt;2;70;1;en
+b3_021;What should a typical scenario for using the product look like?;B;3;GENERAL;prompt;2;70;1;en
+b3_022;How simple should the process of using it be?;B;3;GENERAL;prompt;2;70;1;en
+b3_023;What steps should be intuitive and natural?;B;3;GENERAL;prompt;3;70;1;en
+b3_024;How should the product respond to non-standard situations?;B;3;GENERAL;prompt;2;70;1;en
+b3_025;How should the user go through the entire process?;B;3;GENERAL;prompt;2;70;1;en
+b3_026;What errors or interruptions should be imperceptible?;B;3;GENERAL;prompt;3;70;1;en
+b3_027;How should the product adapt to the context of use?;B;3;GENERAL;prompt;2;70;1;en
+b3_028;How should the user return to the product after an interruption?;B;3;GENERAL;prompt;2;70;1;en
+b3_029;What should the experience be like when attention is limited?;B;3;GENERAL;prompt;2;70;1;en
+b3_030;How should the product support continuity of action?;B;3;GENERAL;prompt;2;70;1;en
+b3_031;How should the product work with other systems?;B;3;GENERAL;prompt;2;70;1;en
+b3_032;What integrations should be obvious and seamless?;B;3;GENERAL;prompt;3;90;1;en
+b3_033;How should the product respond to changes in the ecosystem?;B;3;GENERAL;prompt;2;70;1;en
+b3_034;What dependencies should be simplified or eliminated?;B;3;GENERAL;prompt;3;70;1;en
+b3_035;How should the user perceive the boundaries of the product?;B;3;GENERAL;prompt;2;70;1;en
+b3_036;What interoperability standards should be met?;B;3;GENERAL;prompt;3;70;1;en
+b3_037;How should the ecosystem support product development?;B;3;GENERAL;prompt;2;70;1;en
+b3_038;What elements of the ecosystem should be interchangeable?;B;3;GENERAL;prompt;3;70;1;en
+b3_039;How should stability and flexibility be balanced?;B;3;GENERAL;prompt;2;70;1;en
+b3_040;How should the product scale within this ecosystem?;B;3;GENERAL;prompt;2;70;1;en
+b3_041;How should the user understand what they are paying for?;B;3;GENERAL;prompt;2;70;1;en
+b3_042;How should the price-value relationship be perceived?;B;3;GENERAL;prompt;2;80;1;en
+b3_043;What costs should be predictable?;B;3;GENERAL;prompt;3;70;1;en
+b3_044;What should the purchase or access process look like?;B;3;GENERAL;prompt;2;70;1;en
+b3_045;How should the market model support product adoption?;B;3;GENERAL;prompt;2;70;1;en
+b3_046;What barriers to entry should be removed?;B;3;GENERAL;prompt;3;70;1;en
+b3_047;How should the model reward long-term value?;B;3;GENERAL;prompt;2;80;1;en
+b3_048;What market incentives should work in the user's favor?;B;3;GENERAL;prompt;3;70;1;en
+b3_049;How should the user be able to compare offers?;B;3;GENERAL;prompt;2;70;1;en
+b3_050;How should the market model adapt to changing needs?;B;3;GENERAL;prompt;2;70;1;en
+b3_051;What user assumptions should be challenged?;B;3;GENERAL;prompt;3;70;1;en
+b3_052;How should the user understand the purpose of the product?;B;3;GENERAL;prompt;2;70;1;en
+b3_053;What myths surrounding the product should disappear?;B;3;GENERAL;prompt;3;70;1;en
+b3_054;How should the product narrative be consistent with the experience?;B;3;GENERAL;prompt;2;70;1;en
+b3_055;What compromises should no longer be accepted?;B;3;GENERAL;prompt;3;70;1;en
+b3_056;What user expectations should increase?;B;3;GENERAL;prompt;3;70;1;en
+b3_057;How should users evaluate product quality?;B;3;GENERAL;prompt;2;70;1;en
+b3_058;What should trust in a product look like?;B;3;GENERAL;prompt;2;70;1;en
+b3_059;How should users respond to changes in a product?;B;3;GENERAL;prompt;2;70;1;en
+b3_060;How should a product remain in the user's memory?;B;3;GENERAL;prompt;2;70;1;en
+b3_061;How should regulations support product quality?;B;3;GENERAL;prompt;2;70;1;en
+b3_062;How should standards enable development rather than block it?;B;3;GENERAL;prompt;2;70;1;en
+b3_063;What rules should be simplified?;B;3;GENERAL;prompt;3;70;1;en
+b3_064;How should technological limitations evolve?;B;3;GENERAL;prompt;2;70;1;en
+b3_065;How should organizational processes support the product?;B;3;GENERAL;prompt;2;70;1;en
+b3_066;What rules should protect the user?;B;3;GENERAL;prompt;3;70;1;en
+b3_067;What rules should be more flexible?;B;3;GENERAL;prompt;3;70;1;en
+b3_068;How should requirements be proportionate to the effect?;B;3;GENERAL;prompt;2;70;1;en
+b3_069;How should rules support product innovation?;B;3;GENERAL;prompt;2;70;1;en
+b3_070;How should the product function within these rules?;B;3;GENERAL;prompt;2;70;1;en
+b3_071;What data should the product provide to the user?;B;3;GENERAL;prompt;3;70;1;en
+b3_072;How should information support user decisions?;B;3;GENERAL;prompt;2;70;1;en
+b3_073;How should data be presented to be understandable?;B;3;GENERAL;prompt;2;70;1;en
+b3_074;What information should be available at the right time?;B;3;GENERAL;prompt;3;70;1;en
+b3_075;What information gaps should be eliminated?;B;3;GENERAL;prompt;3;70;1;en
+b3_076;How should the user trust the data from the product?;B;3;GENERAL;prompt;2;70;1;en
+b3_077;How should the information be updated?;B;3;GENERAL;prompt;2;70;1;en
+b3_078;How should the data reduce uncertainty?;B;3;GENERAL;prompt;2;70;1;en
+b3_079;What information should support responsible decisions?;B;3;GENERAL;prompt;3;70;1;en
+b3_080;How should knowledge from the product build user competence?;B;3;GENERAL;prompt;2;70;1;en
+b3_081;How should stakeholder roles be clearly defined?;B;3;GENERAL;prompt;2;70;1;en
+b3_082;How should the decision-making process be simplified?;B;3;GENERAL;prompt;2;70;1;en
+b3_083;How should responsibility be clearly assigned?;B;3;GENERAL;prompt;2;70;1;en
+b3_084;How should stakeholders cooperate on changes?;B;3;GENERAL;prompt;2;70;1;en
+b3_085;How should conflicts of interest be resolved?;B;3;GENERAL;prompt;2;70;1;en
+b3_086;How should communication between stakeholders look?;B;3;GENERAL;prompt;2;70;1;en
+b3_087;How should stakeholders be involved in product development?;B;3;GENERAL;prompt;2;70;1;en
+b3_088;How should decisions be made in a timely manner?;B;3;GENERAL;prompt;2;70;1;en
+b3_089;How should user interests be represented?;B;3;GENERAL;prompt;2;70;1;en
+b3_090;How should stakeholder relationships enhance product value?;B;3;GENERAL;prompt;2;80;1;en
+c1_001;What function does this element serve in the overall product?;C;1;GENERAL;prompt;3;70;1;en
+c1_002;Is the element a market standard or something specific?;C;1;GENERAL;prompt;3;50;1;en
+c1_003;How common is this element in similar solutions?;C;1;GENERAL;prompt;2;70;1;en
+c1_004;How long has this element been in this form?;C;1;GENERAL;prompt;2;70;1;en
+c1_005;How does the market describe this element?;C;1;GENERAL;prompt;2;90;1;en
+c1_006;What alternatives to this element exist?;C;1;GENERAL;prompt;3;70;1;en
+c1_007;How important is this element in terms of product value?;C;1;GENERAL;prompt;2;70;1;en
+c1_008;What elements are directly related to it?;C;1;GENERAL;prompt;3;70;1;en
+c1_009;How do market changes affect the importance of this element?;C;1;GENERAL;prompt;2;70;1;en
+c1_010;How does the element fit into the overall context of the product?;C;1;GENERAL;prompt;2;70;1;en
+c1_011;Does the user have direct contact with this element?;C;1;GENERAL;prompt;3;50;1;en
+c1_012;In what situations does the user use this element?;C;1;GENERAL;prompt;3;70;1;en
+c1_013;How often does the user interact with this element?;C;1;GENERAL;prompt;2;70;1;en
+c1_014;What user skills are required?;C;1;GENERAL;prompt;3;70;1;en
+c1_015;How does the user learn to use this element?;C;1;GENERAL;prompt;2;70;1;en
+c1_016;How does the element affect the user experience?;C;1;GENERAL;prompt;2;70;1;en
+c1_017;How does the user perceive the significance of this element?;C;1;GENERAL;prompt;2;70;1;en
+c1_018;How does the user cope with the limitations of the element?;C;1;GENERAL;prompt;2;70;1;en
+c1_019;What user behaviors are associated with it?;C;1;GENERAL;prompt;3;70;1;en
+c1_020;How does the user describe this element in their own words?;C;1;GENERAL;prompt;2;70;1;en
+c1_021;What actions does the user perform using this element?;C;1;GENERAL;prompt;3;70;1;en
+c1_022;How often is the element activated or used?;C;1;GENERAL;prompt;2;70;1;en
+c1_023;How long does typical use of the element last?;C;1;GENERAL;prompt;2;70;1;en
+c1_024;How does the element behave under normal conditions?;C;1;GENERAL;prompt;2;70;1;en
+c1_025;How is the element initiated and terminated during use?;C;1;GENERAL;prompt;2;70;1;en
+c1_026;What other elements are required for it to function?;C;1;GENERAL;prompt;3;70;1;en
+c1_027;How does the element respond to interruptions or errors?;C;1;GENERAL;prompt;2;70;1;en
+c1_028;What does the use of the element look like in non-standard conditions?;C;1;GENERAL;prompt;1;70;1;en
+c1_029;How does the element affect the smoothness of the entire process?;C;1;GENERAL;prompt;2;70;1;en
+c1_030;How does the user return to using this element?;C;1;GENERAL;prompt;2;70;1;en
+c1_031;What other product elements does this element work with?;C;1;GENERAL;prompt;2;70;1;en
+c1_032;What external systems are associated with it?;C;1;GENERAL;prompt;3;70;1;en
+c1_033;What interfaces are required for it to function?;C;1;GENERAL;prompt;3;70;1;en
+c1_034;What technical dependencies are obvious?;C;1;GENERAL;prompt;3;70;1;en
+c1_035;How stable are the connections with other elements?;C;1;GENERAL;prompt;2;70;1;en
+c1_036;How does the element respond to changes in its environment?;C;1;GENERAL;prompt;2;70;1;en
+c1_037;What external elements are critical?;C;1;GENERAL;prompt;3;70;1;en
+c1_038;How does the user perceive the boundaries of this element?;C;1;GENERAL;prompt;2;70;1;en
+c1_039;How does the element fit into the user's broader system?;C;1;GENERAL;prompt;2;70;1;en
+c1_040;What problems arise from its location in the ecosystem?;C;1;GENERAL;prompt;3;90;1;en
+c1_041;Does this element generate direct value for the user?;C;1;GENERAL;prompt;3;80;1;en
+c1_042;Is the cost of the element visible to the user?;C;1;GENERAL;prompt;3;50;1;en
+c1_043;How does the element affect the price of the product?;C;1;GENERAL;prompt;2;70;1;en
+c1_044;Is the element standard or an add-on?;C;1;GENERAL;prompt;3;50;1;en
+c1_045;What maintenance costs are associated with it?;C;1;GENERAL;prompt;3;70;1;en
+c1_046;How does the element affect the purchase decision?;C;1;GENERAL;prompt;2;70;1;en
+c1_047;Does the user understand the value of this element?;C;1;GENERAL;prompt;3;80;1;en
+c1_048;How is the element compared to alternatives?;C;1;GENERAL;prompt;2;70;1;en
+c1_049;What cost compromises are associated with it?;C;1;GENERAL;prompt;3;70;1;en
+c1_050;How does the element affect the long-term value of the product?;C;1;GENERAL;prompt;2;80;1;en
+c1_051;How does the user explain the functioning of this element?;C;1;GENERAL;prompt;2;70;1;en
+c1_052;What mental simplifications apply to this element?;C;1;GENERAL;prompt;3;70;1;en
+c1_053;What assumptions are associated with it?;C;1;GENERAL;prompt;3;70;1;en
+c1_054;What compromises does the user accept?;C;1;GENERAL;prompt;3;70;1;en
+c1_055;How does the user interpret the limitations of the element?;C;1;GENERAL;prompt;2;70;1;en
+c1_056;How does the element affect the perceived quality of the product?;C;1;GENERAL;prompt;2;70;1;en
+c1_057;What expectations does the user have of this element?;C;1;GENERAL;prompt;3;70;1;en
+c1_058;How does the user react to changes in this element?;C;1;GENERAL;prompt;2;70;1;en
+c1_059;How is the element remembered after use?;C;1;GENERAL;prompt;2;70;1;en
+c1_060;What myths or beliefs are associated with it?;C;1;GENERAL;prompt;3;70;1;en
+c1_061;What legal regulations apply to this element?;C;1;GENERAL;prompt;3;70;1;en
+c1_062;What norms or standards must it meet?;C;1;GENERAL;prompt;3;70;1;en
+c1_063;What physical limitations apply to it?;C;1;GENERAL;prompt;3;70;1;en
+c1_064;What technological limitations are known?;C;1;GENERAL;prompt;3;70;1;en
+c1_065;What organizational processes affect this element?;C;1;GENERAL;prompt;3;70;1;en
+c1_066;What time constraints are associated with it?;C;1;GENERAL;prompt;3;70;1;en
+c1_067;What cost constraints are imposed?;C;1;GENERAL;prompt;3;70;1;en
+c1_068;What rules are inflexible?;C;1;GENERAL;prompt;3;70;1;en
+c1_069;What requirements are imposed from outside?;C;1;GENERAL;prompt;3;70;1;en
+c1_070;How does the element function within these constraints?;C;1;GENERAL;prompt;2;70;1;en
+c1_071;What data does this element generate?;C;1;GENERAL;prompt;3;70;1;en
+c1_072;What data is needed for it to function?;C;1;GENERAL;prompt;3;70;1;en
+c1_073;What information is available to the user?;C;1;GENERAL;prompt;3;70;1;en
+c1_074;How readable is the data associated with this element?;C;1;GENERAL;prompt;2;70;1;en
+c1_075;How up-to-date is this information?;C;1;GENERAL;prompt;2;70;1;en
+c1_076;What data is only available indirectly?;C;1;GENERAL;prompt;3;70;1;en
+c1_077;What information is difficult to obtain?;C;1;GENERAL;prompt;3;70;1;en
+c1_078;How does the user interpret data from this element?;C;1;GENERAL;prompt;2;70;1;en
+c1_079;How does the data influence the user's decisions?;C;1;GENERAL;prompt;2;70;1;en
+c1_080;How does the element cope with a lack of information?;C;1;GENERAL;prompt;2;70;1;en
+c1_081;Who is responsible for this element?;C;1;GENERAL;prompt;2;50;1;en
+c1_082;Who makes decisions about this element?;C;1;GENERAL;prompt;2;50;1;en
+c1_083;What organizational roles are involved?;C;1;GENERAL;prompt;3;70;1;en
+c1_084;Who maintains or services this element?;C;1;GENERAL;prompt;2;50;1;en
+c1_085;What interests converge around this element?;C;1;GENERAL;prompt;3;70;1;en
+c1_086;Who approves changes to this element?;C;1;GENERAL;prompt;2;50;1;en
+c1_087;Who bears the consequences of decisions?;C;1;GENERAL;prompt;2;50;1;en
+c1_088;How do stakeholders communicate their expectations?;C;1;GENERAL;prompt;2;70;1;en
+c1_089;How are conflicts of interest resolved today?;C;1;GENERAL;prompt;2;70;1;en
+c1_090;How do stakeholder relationships affect the element?;C;1;GENERAL;prompt;2;70;1;en
+c1_091;Does the technology behind this element exist today?;C;1;GENERAL;prompt;3;50;1;en
+c1_092;How mature is this technology?;C;1;GENERAL;prompt;2;70;1;en
+c1_093;Is the technology widely available?;C;1;GENERAL;prompt;3;50;1;en
+c1_094;Does the user actually have access to this technology?;C;1;GENERAL;prompt;3;50;1;en
+c1_095;What technical skills are required?;C;1;GENERAL;prompt;3;70;1;en
+c1_096;How stable and reliable is this technology?;C;1;GENERAL;prompt;2;70;1;en
+c1_097;What are the known technological limitations?;C;1;GENERAL;prompt;1;70;1;en
+c1_098;How fast is this technology developing?;C;1;GENERAL;prompt;2;70;1;en
+c1_099;Is the innovation of the element based on new or known technology?;C;1;GENERAL;prompt;3;50;1;en
+c1_100;How much risk is associated with using this technology today?;C;1;GENERAL;prompt;2;70;1;en
+c2_001;In what situations does this element not meet market needs?;C;2;GENERAL;prompt;3;70;1;en
+c2_002;Where is the element outdated in relation to current expectations?;C;2;GENERAL;prompt;2;50;1;en
+c2_003;What market alternatives perform better?;C;2;GENERAL;prompt;3;70;1;en
+c2_004;Where is the element losing its significance?;C;2;GENERAL;prompt;2;50;1;en
+c2_005;What market changes expose its weaknesses?;C;2;GENERAL;prompt;3;70;1;en
+c2_006;Where is the element perceived as unnecessary?;C;2;GENERAL;prompt;2;70;1;en
+c2_007;What market expectations does it fail to meet?;C;2;GENERAL;prompt;3;70;1;en
+c2_008;Where does the element limit the competitiveness of the product?;C;2;GENERAL;prompt;2;80;1;en
+c2_009;What market signals are ignored at the element level?;C;2;GENERAL;prompt;3;70;1;en
+c2_010;Where does the element fail to scale with the market?;C;2;GENERAL;prompt;2;50;1;en
+c2_011;At what points does the element frustrate the user?;C;2;GENERAL;prompt;3;70;1;en
+c2_012;Where does the element require too much competence?;C;2;GENERAL;prompt;2;50;1;en
+c2_013;What user errors are systematically caused?;C;2;GENERAL;prompt;3;70;1;en
+c2_014;Where does the element not fit with the user's actual behavior?;C;2;GENERAL;prompt;2;50;1;en
+c2_015;What user needs remain unmet?;C;2;GENERAL;prompt;3;70;1;en
+c2_016;Where does the user lose trust in the element?;C;2;GENERAL;prompt;2;50;1;en
+c2_017;What workarounds does the user have to use?;C;2;GENERAL;prompt;3;70;1;en
+c2_018;In what situations does the user avoid this element?;C;2;GENERAL;prompt;3;70;1;en
+c2_019;How does the element reduce the quality of the experience?;C;2;GENERAL;prompt;2;70;1;en
+c2_020;Which elements are perceived as the most annoying?;C;2;GENERAL;prompt;3;70;1;en
+c2_021;Which stages of using the element are problematic?;C;2;GENERAL;prompt;3;90;1;en
+c2_022;Where is the usage process too complex?;C;2;GENERAL;prompt;2;50;1;en
+c2_023;What steps are unnecessary but unavoidable?;C;2;GENERAL;prompt;3;70;1;en
+c2_024;Where does the element fail to work in real-world conditions?;C;2;GENERAL;prompt;2;50;1;en
+c2_025;What extreme situations are not handled?;C;2;GENERAL;prompt;3;70;1;en
+c2_026;Where do interruptions or failures occur?;C;2;GENERAL;prompt;2;50;1;en
+c2_027;What actions cause time loss?;C;2;GENERAL;prompt;3;70;1;en
+c2_028;Where is there a lack of continuity?;C;2;GENERAL;prompt;2;50;1;en
+c2_029;What interactions are illogical?;C;2;GENERAL;prompt;3;70;1;en
+c2_030;What problems recur regularly?;C;2;GENERAL;prompt;3;90;1;en
+c2_031;Where does the element not work with others?;C;2;GENERAL;prompt;2;50;1;en
+c2_032;What integrations are fragile or prone to failure?;C;2;GENERAL;prompt;3;70;1;en
+c2_033;Where does the user have to manually connect elements?;C;2;GENERAL;prompt;2;50;1;en
+c2_034;What external dependencies cause problems?;C;2;GENERAL;prompt;3;90;1;en
+c2_035;Where do changes in the ecosystem disrupt the operation of the element?;C;2;GENERAL;prompt;2;50;1;en
+c2_036;What standards hinder integration?;C;2;GENERAL;prompt;3;70;1;en
+c2_037;Where is there a lack of consistency between elements?;C;2;GENERAL;prompt;2;50;1;en
+c2_038;Which elements of the ecosystem are bottlenecks?;C;2;GENERAL;prompt;3;70;1;en
+c2_039;Where is the element too rigid in relation to its environment?;C;2;GENERAL;prompt;2;50;1;en
+c2_040;Which dependencies are unclear?;C;2;GENERAL;prompt;3;70;1;en
+c2_041;Where does the cost of an element not correspond to its value?;C;2;GENERAL;prompt;2;50;1;en
+c2_042;What costs are unacceptable to the user?;C;2;GENERAL;prompt;3;70;1;en
+c2_043;Where does the user pay for something they don't use?;C;2;GENERAL;prompt;2;50;1;en
+c2_044;How does the element complicate the product's pricing model?;C;2;GENERAL;prompt;2;70;1;en
+c2_045;Where does the element hinder the purchasing decision?;C;2;GENERAL;prompt;2;50;1;en
+c2_046;What cost compromises are indefensible?;C;2;GENERAL;prompt;3;70;1;en
+c2_047;Where does the element reduce the perceived value of the product?;C;2;GENERAL;prompt;2;80;1;en
+c2_048;What costs are revealed too late?;C;2;GENERAL;prompt;3;70;1;en
+c2_049;Where does the element block business scaling?;C;2;GENERAL;prompt;2;50;1;en
+c2_050;What elements are candidates for cost elimination?;C;2;GENERAL;prompt;3;70;1;en
+c2_051;What are the misconceptions about this element?;C;2;GENERAL;prompt;3;70;1;en
+c2_052;Where do simplifications lead to problems?;C;2;GENERAL;prompt;2;90;1;en
+c2_053;What myths make it difficult to change the element?;C;2;GENERAL;prompt;3;70;1;en
+c2_054;Where does the narrative diverge from experience?;C;2;GENERAL;prompt;2;50;1;en
+c2_055;What problems are downplayed?;C;2;GENERAL;prompt;3;90;1;en
+c2_056;Where does “it has to be this way” block improvement?;C;2;GENERAL;prompt;2;50;1;en
+c2_057;What conflicting expectations exist?;C;2;GENERAL;prompt;3;70;1;en
+c2_058;What promises are being abused?;C;2;GENERAL;prompt;3;70;1;en
+c2_059;Where does the user not understand why something is not working?;C;2;GENERAL;prompt;2;70;1;en
+c2_060;What topics are being avoided in the conversation about the element?;C;2;GENERAL;prompt;3;70;1;en
+c2_061;Which regulations overly complicate the element?;C;2;GENERAL;prompt;3;50;1;en
+c2_062;What standards hinder its development?;C;2;GENERAL;prompt;3;70;1;en
+c2_063;Where are procedures too rigid?;C;2;GENERAL;prompt;2;50;1;en
+c2_064;What physical constraints are critical?;C;2;GENERAL;prompt;3;70;1;en
+c2_065;Where do organizational constraints block change?;C;2;GENERAL;prompt;2;50;1;en
+c2_066;Which rules are interpreted inconsistently?;C;2;GENERAL;prompt;3;70;1;en
+c2_067;Where is there a lack of flexibility within the rules?;C;2;GENERAL;prompt;2;50;1;en
+c2_068;Which requirements are disproportionate?;C;2;GENERAL;prompt;3;70;1;en
+c2_069;Where do the rules protect the status quo at the expense of value?;C;2;GENERAL;prompt;2;50;1;en
+c2_070;How does the element circumvent these restrictions?;C;2;GENERAL;prompt;2;70;1;en
+c2_071;What data is missing for proper functioning?;C;2;GENERAL;prompt;3;70;1;en
+c2_072;Where is the information incomplete or inconsistent?;C;2;GENERAL;prompt;2;50;1;en
+c2_073;What data is difficult to interpret?;C;2;GENERAL;prompt;3;70;1;en
+c2_074;Where does information overload hinder decisions?;C;2;GENERAL;prompt;2;50;1;en
+c2_075;What data is unreliable or out of date?;C;2;GENERAL;prompt;3;70;1;en
+c2_076;Where does information arrive too late?;C;2;GENERAL;prompt;2;50;1;en
+c2_077;What information gaps cause errors?;C;2;GENERAL;prompt;3;70;1;en
+c2_078;Where does the user have to guess?;C;2;GENERAL;prompt;2;50;1;en
+c2_079;What data is ignored despite its value?;C;2;GENERAL;prompt;3;70;1;en
+c2_080;How does the lack of information affect the entire system?;C;2;GENERAL;prompt;2;70;1;en
+c2_081;Which stakeholders have conflicting goals?;C;2;GENERAL;prompt;3;90;1;en
+c2_082;Where is the decision-making process unclear?;C;2;GENERAL;prompt;2;50;1;en
+c2_083;Who is blocking changes in this area?;C;2;GENERAL;prompt;2;50;1;en
+c2_084;Where is responsibility unclear?;C;2;GENERAL;prompt;2;50;1;en
+c2_085;What conflicts of interest are common?;C;2;GENERAL;prompt;3;70;1;en
+c2_086;Who imposes requirements without consequences?;C;2;GENERAL;prompt;2;50;1;en
+c2_087;Where does communication fail?;C;2;GENERAL;prompt;2;50;1;en
+c2_088;What decisions are postponed?;C;2;GENERAL;prompt;3;70;1;en
+c2_089;Who is overlooked despite their influence?;C;2;GENERAL;prompt;2;50;1;en
+c2_090;How do stakeholder relationships hinder development?;C;2;GENERAL;prompt;2;70;1;en
+c2_091;Does the technology not exist or is it not mature enough?;C;2;GENERAL;prompt;3;50;1;en
+c2_092;Where is the technology only available in theory?;C;2;GENERAL;prompt;2;50;1;en
+c2_093;What technological barriers are blocking the implementation of the element?;C;2;GENERAL;prompt;3;70;1;en
+c2_094;Does the user really not have this technology at their disposal?;C;2;GENERAL;prompt;3;50;1;en
+c2_095;What technical competencies are a barrier?;C;2;GENERAL;prompt;3;70;1;en
+c2_096;Where is the technology unstable or unreliable?;C;2;GENERAL;prompt;2;50;1;en
+c2_097;What technological limitations are critical?;C;2;GENERAL;prompt;3;70;1;en
+c2_098;Where is innovation based on too much risk?;C;2;GENERAL;prompt;2;50;1;en
+c2_099;What technological assumptions are unrealistic?;C;2;GENERAL;prompt;3;70;1;en
+c2_100;Where does the technology not scale with the product?;C;2;GENERAL;prompt;2;50;1;en
+c3_001;What role should this element play in the target product?;C;3;GENERAL;prompt;3;90;1;en
+c3_002;How important should it be to the market value of the product?;C;3;GENERAL;prompt;2;70;1;en
+c3_003;How should the element respond to market changes?;C;3;GENERAL;prompt;2;70;1;en
+c3_004;How long should the element remain relevant?;C;3;GENERAL;prompt;2;70;1;en
+c3_005;What market alternatives should be realistically considered?;C;3;GENERAL;prompt;3;70;1;en
+c3_006;How should the element support the competitiveness of the product?;C;3;GENERAL;prompt;2;80;1;en
+c3_007;How should its importance change over time?;C;3;GENERAL;prompt;2;70;1;en
+c3_008;How should the element scale with the market?;C;3;GENERAL;prompt;2;70;1;en
+c3_009;How should it fit into the target context of use?;C;3;GENERAL;prompt;2;90;1;en
+c3_010;How much market flexibility should it retain?;C;3;GENERAL;prompt;3;70;1;en
+c3_011;How should the user interact with this element?;C;3;GENERAL;prompt;2;70;1;en
+c3_012;What user skills should not be required?;C;3;GENERAL;prompt;3;70;1;en
+c3_013;How should the element support the user in their actions?;C;3;GENERAL;prompt;2;70;1;en
+c3_014;What user frustrations should disappear?;C;3;GENERAL;prompt;3;70;1;en
+c3_015;How should the user understand how the element works?;C;3;GENERAL;prompt;2;70;1;en
+c3_016;How should the element reduce the risk of user errors?;C;3;GENERAL;prompt;2;70;1;en
+c3_017;How should the user feel when using the element?;C;3;GENERAL;prompt;2;70;1;en
+c3_018;How should the element adapt to the user?;C;3;GENERAL;prompt;2;70;1;en
+c3_019;How should the user trust this element?;C;3;GENERAL;prompt;2;70;1;en
+c3_020;How should the user describe this element to others?;C;3;GENERAL;prompt;2;70;1;en
+c3_021;What should typical use of this element look like?;C;3;GENERAL;prompt;2;70;1;en
+c3_022;How simple should the process of use be?;C;3;GENERAL;prompt;2;70;1;en
+c3_023;What steps should be natural and intuitive?;C;3;GENERAL;prompt;3;70;1;en
+c3_024;How should the element respond to non-standard situations?;C;3;GENERAL;prompt;2;70;1;en
+c3_025;How should the element behave when errors occur?;C;3;GENERAL;prompt;2;70;1;en
+c3_026;How should the element support continuity of operation?;C;3;GENERAL;prompt;2;70;1;en
+c3_027;How should the user return to using the element?;C;3;GENERAL;prompt;2;70;1;en
+c3_028;How should the element work with limited attention?;C;3;GENERAL;prompt;2;70;1;en
+c3_029;How should the element minimize distractions?;C;3;GENERAL;prompt;2;70;1;en
+c3_030;How should it interact with other elements of the process?;C;3;GENERAL;prompt;2;70;1;en
+c3_031;How should the element interact with other elements of the product?;C;3;GENERAL;prompt;2;70;1;en
+c3_032;What integrations should be obvious and stable?;C;3;GENERAL;prompt;3;70;1;en
+c3_033;How should the element respond to changes in the ecosystem?;C;3;GENERAL;prompt;2;70;1;en
+c3_034;What dependencies should be simplified or removed?;C;3;GENERAL;prompt;3;70;1;en
+c3_035;How should the user perceive the boundaries of the element?;C;3;GENERAL;prompt;2;70;1;en
+c3_036;What interoperability standards should it meet?;C;3;GENERAL;prompt;3;70;1;en
+c3_037;How should the element support the development of the entire system?;C;3;GENERAL;prompt;2;70;1;en
+c3_038;Which elements of the ecosystem should be interchangeable?;C;3;GENERAL;prompt;3;70;1;en
+c3_039;How should stability and flexibility be balanced?;C;3;GENERAL;prompt;2;70;1;en
+c3_040;How should the element scale within this ecosystem?;C;3;GENERAL;prompt;2;70;1;en
+c3_041;What value should the element provide to the user?;C;3;GENERAL;prompt;3;80;1;en
+c3_042;How should the cost of the element be perceived?;C;3;GENERAL;prompt;2;70;1;en
+c3_043;How should the element affect the price of the product?;C;3;GENERAL;prompt;2;70;1;en
+c3_044;What costs should be predictable?;C;3;GENERAL;prompt;3;70;1;en
+c3_045;How should the element support the purchasing decision?;C;3;GENERAL;prompt;2;70;1;en
+c3_046;How should cost compromises be acceptable?;C;3;GENERAL;prompt;2;70;1;en
+c3_047;How should the element build long-term value?;C;3;GENERAL;prompt;2;80;1;en
+c3_048;How should its value be communicated?;C;3;GENERAL;prompt;2;80;1;en
+c3_049;How should the element fare in market comparisons?;C;3;GENERAL;prompt;2;70;1;en
+c3_050;How should the element support business scaling?;C;3;GENERAL;prompt;2;70;1;en
+c3_051;How should the user understand the meaning of this element?;C;3;GENERAL;prompt;2;70;1;en
+c3_052;What misconceptions should disappear?;C;3;GENERAL;prompt;3;70;1;en
+c3_053;How should the narrative around the element change?;C;3;GENERAL;prompt;2;70;1;en
+c3_054;What compromises should no longer be accepted?;C;3;GENERAL;prompt;3;70;1;en
+c3_055;What user expectations should increase?;C;3;GENERAL;prompt;3;70;1;en
+c3_056;How should the user evaluate the quality of the element?;C;3;GENERAL;prompt;2;70;1;en
+c3_057;How should the element build trust?;C;3;GENERAL;prompt;2;70;1;en
+c3_058;How should the user respond to changes in the element?;C;3;GENERAL;prompt;2;70;1;en
+c3_059;How should the element be remembered?;C;3;GENERAL;prompt;2;70;1;en
+c3_060;What myths should be dispelled?;C;3;GENERAL;prompt;3;70;1;en
+c3_061;How should regulations support this element?;C;3;GENERAL;prompt;2;70;1;en
+c3_062;How should standards enable development?;C;3;GENERAL;prompt;2;70;1;en
+c3_063;What rules should be simplified?;C;3;GENERAL;prompt;3;70;1;en
+c3_064;How should technological limitations evolve?;C;3;GENERAL;prompt;2;70;1;en
+c3_065;How should organizational processes support the element?;C;3;GENERAL;prompt;2;70;1;en
+c3_066;What rules should protect the user?;C;3;GENERAL;prompt;3;70;1;en
+c3_067;How should the rules be more flexible?;C;3;GENERAL;prompt;2;70;1;en
+c3_068;How should the requirements be proportionate?;C;3;GENERAL;prompt;2;70;1;en
+c3_069;How should the rules support innovation?;C;3;GENERAL;prompt;2;70;1;en
+c3_070;How should the element function within this framework?;C;3;GENERAL;prompt;2;70;1;en
+c3_071;What data should the element provide?;C;3;GENERAL;prompt;3;70;1;en
+c3_072;How should the information support the user's decisions?;C;3;GENERAL;prompt;2;70;1;en
+c3_073;How should the data be presented?;C;3;GENERAL;prompt;2;70;1;en
+c3_074;What information should be available at the right time?;C;3;GENERAL;prompt;3;70;1;en
+c3_075;What information gaps should be eliminated?;C;3;GENERAL;prompt;3;70;1;en
+c3_076;How should users trust the data from the element?;C;3;GENERAL;prompt;2;70;1;en
+c3_077;How should information be updated?;C;3;GENERAL;prompt;2;70;1;en
+c3_078;How should data reduce uncertainty?;C;3;GENERAL;prompt;2;70;1;en
+c3_079;How should knowledge build user competence?;C;3;GENERAL;prompt;2;70;1;en
+c3_080;How should information support responsible decisions?;C;3;GENERAL;prompt;2;70;1;en
+c3_081;How should stakeholder roles be clearly defined?;C;3;GENERAL;prompt;2;70;1;en
+c3_082;How should decisions about the element be made?;C;3;GENERAL;prompt;2;70;1;en
+c3_083;How should responsibility be assigned?;C;3;GENERAL;prompt;2;70;1;en
+c3_084;How should stakeholders collaborate on changes?;C;3;GENERAL;prompt;2;70;1;en
+c3_085;How should conflicts of interest be resolved?;C;3;GENERAL;prompt;2;70;1;en
+c3_086;What should communication look like?;C;3;GENERAL;prompt;2;70;1;en
+c3_087;How should stakeholders be involved in development?;C;3;GENERAL;prompt;2;70;1;en
+c3_088;How should decisions be made in a timely manner?;C;3;GENERAL;prompt;2;70;1;en
+c3_089;How should the user's interest be represented?;C;3;GENERAL;prompt;2;70;1;en
+c3_090;How should stakeholder relationships enhance value?;C;3;GENERAL;prompt;2;80;1;en
+c3_091;Should the technology already exist, or should it still be maturing?;C;3;GENERAL;prompt;3;50;1;en
+c3_092;How technologically mature should the implementation of the element be?;C;3;GENERAL;prompt;2;70;1;en
+c3_093;How accessible should this technology be to the user?;C;3;GENERAL;prompt;2;70;1;en
+c3_094;What technical skills should not be required?;C;3;GENERAL;prompt;3;70;1;en
+c3_095;What technological risk is acceptable?;C;3;GENERAL;prompt;3;70;1;en
+c3_096;How stable and reliable should the technology be?;C;3;GENERAL;prompt;2;70;1;en
+c3_097;How should the technology scale with the product?;C;3;GENERAL;prompt;2;70;1;en
+c3_098;How technologically innovative should this component be?;C;3;GENERAL;prompt;2;70;1;en
+c3_099;Where should the line between innovation and risk be drawn?;C;3;GENERAL;prompt;2;50;1;en
+c3_100;How should the technology support the feasibility of the entire product?;C;3;GENERAL;prompt;2;70;1;en

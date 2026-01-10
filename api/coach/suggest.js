@@ -50,33 +50,50 @@ module.exports = async (req, res) => {
 
   try {
     const { initEngineDb } = await import('../../engine/db.mjs')
-    const { getDbHealth } = await import('../../engine/dbHealth.mjs')
-    const { seedQuestionsIfEmpty } = await import('../../engine/seedQuestions.mjs')
-    const { selectQuestion, finalizeSelection } = await import('../../engine/questionSelector.mjs')
+    const { getQuestionDataset } = await import('../../engine/questionDataset.mjs')
+    const {
+      selectQuestion,
+      selectQuestionFromList,
+      finalizeSelection,
+    } = await import('../../engine/questionSelector.mjs')
 
     initEngineDb()
-    seedQuestionsIfEmpty()
-    const health = getDbHealth()
-    if (health.questionsCount === 0) {
-      res.statusCode = 500
-      res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ ok: false, error: 'DB_EMPTY' }))
-      return
-    }
+    const normalizedLang = normalizeEngineLanguage(language)
+    const dataset = getQuestionDataset()
+    const debugEnabled = process.env.DEBUG_ENGINE === '1'
 
-    const { question } = selectQuestion({
-      sessionId,
-      lang: normalizeEngineLanguage(language),
-      action,
-      modeCode,
-      categoryCode,
-      intentCode,
-    })
+    const { question, meta } =
+      dataset.source === 'db'
+        ? selectQuestion({
+            sessionId,
+            lang: normalizedLang,
+            action,
+            modeCode,
+            categoryCode,
+            intentCode,
+          })
+        : selectQuestionFromList({
+            sessionId,
+            lang: normalizedLang,
+            action,
+            modeCode,
+            categoryCode,
+            intentCode,
+            all: dataset.getQuestionsForLang(normalizedLang),
+            lookupQuestionById: dataset.lookupById,
+          })
 
     if (!question) {
       res.statusCode = 200
       res.setHeader('Content-Type', 'application/json')
-      res.end(JSON.stringify({ question: null }))
+      res.end(
+        JSON.stringify({
+          question: null,
+          meta: debugEnabled
+            ? { ...meta, source: dataset.source, questionsCount: dataset.questionsCount }
+            : undefined,
+        })
+      )
       return
     }
 
@@ -84,7 +101,14 @@ module.exports = async (req, res) => {
 
     res.statusCode = 200
     res.setHeader('Content-Type', 'application/json')
-    res.end(JSON.stringify({ question }))
+    res.end(
+      JSON.stringify({
+        question,
+        meta: debugEnabled
+          ? { ...meta, source: dataset.source, questionsCount: dataset.questionsCount }
+          : undefined,
+      })
+    )
   } catch (error) {
     res.statusCode = 500
     res.setHeader('Content-Type', 'application/json')

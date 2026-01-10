@@ -333,6 +333,10 @@ type Translations = {
   labelEditorSave: string
   labelEditorAdd: string
   removeLabelAriaLabel: string
+  engineEntryDeleteLabel: string
+  engineEntryDeleteConfirm: string
+  engineEntryDeleteYes: string
+  engineEntryDeleteCancel: string
   labelDropPlaceholder: string
   noLabelText: string
   save: string
@@ -598,6 +602,10 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     labelEditorSave: 'Save',
     labelEditorAdd: 'Add label',
     removeLabelAriaLabel: 'Remove label',
+    engineEntryDeleteLabel: 'Delete item',
+    engineEntryDeleteConfirm: 'Delete this item?',
+    engineEntryDeleteYes: 'Yes',
+    engineEntryDeleteCancel: 'Cancel',
     labelDropPlaceholder: 'Place your label',
     noLabelText: 'No label',
     save: 'Save',
@@ -1125,6 +1133,10 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     labelEditorSave: 'Zapisz',
     labelEditorAdd: 'Dodaj etykietę',
     removeLabelAriaLabel: 'Usuń etykietę',
+    engineEntryDeleteLabel: 'Usuń wpis',
+    engineEntryDeleteConfirm: 'Usunąć ten wpis?',
+    engineEntryDeleteYes: 'Tak',
+    engineEntryDeleteCancel: 'Cofnij',
     labelDropPlaceholder: 'Upuść etykietę',
     noLabelText: 'Brak etykiety',
     save: 'Zapisz',
@@ -2846,6 +2858,7 @@ function App() {
   const [engineEditLoading, setEngineEditLoading] = useState(false)
   const [enginePreviewEditId, setEnginePreviewEditId] = useState<string | null>(null)
   const [enginePreviewEditText, setEnginePreviewEditText] = useState('')
+  const [engineEntryDeleteId, setEngineEntryDeleteId] = useState<string | null>(null)
   const [engineEntryHint, setEngineEntryHint] = useState<{
     x: number
     y: number
@@ -4758,6 +4771,46 @@ function App() {
     }
   }
 
+  const cancelEngineEntryDelete = () => {
+    setEngineEntryDeleteId(null)
+  }
+
+  const confirmEngineEntryDelete = async (itemId: string) => {
+    const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id
+    if (!sessionId) return
+    setEngineSessionsError(null)
+    try {
+      const detail = await getSession(sessionId)
+      if (!detail?.session) return
+      const updatedDetail: EngineSessionDetail = {
+        ...detail,
+        boardItems: detail.boardItems.filter((item) => item.id !== itemId),
+        session: { ...detail.session, updated_at: Date.now() },
+      }
+      await updateSession(updatedDetail)
+      setEnginePreviewItems((prev) => prev.filter((item) => item.id !== itemId))
+      if (engineSessionDetail?.session) {
+        setEngineSessionDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                boardItems: prev.boardItems.filter((item) => item.id !== itemId),
+              }
+            : prev
+        )
+      }
+      if (enginePreviewEditId === itemId) cancelEnginePreviewEdit()
+      if (engineLabelEditorId === itemId) setEngineLabelEditorId(null)
+      delete engineLabelCache.current[itemId]
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Request failed'
+      setEngineSessionsError(`Nie udało się usunąć elementu. ${message}`)
+      logSessionStore('engine_preview_item_delete_failed', { itemId, message })
+    } finally {
+      setEngineEntryDeleteId(null)
+    }
+  }
+
   const deleteEngineItem = async (itemId: string) => {
     if (!engineSessionDetail?.session) return
     setEngineEditLoading(true)
@@ -5458,19 +5511,41 @@ function App() {
                       ) : (
                         <div className="engine-entry-text">{item.text}</div>
                       )}
-                      {item.label && (
-                        <div className="engine-entry-label-group">
-                          <button
-                            type="button"
-                            className="engine-entry-edit-button"
-                            aria-label={copy.editIdeaTitle}
-                            onClick={(event) => {
-                              event.stopPropagation()
-                              startEnginePreviewEdit(item)
-                            }}
+                      <div className="engine-entry-label-group">
+                        <button
+                          type="button"
+                          className="engine-entry-delete-button"
+                          aria-label={copy.engineEntryDeleteLabel}
+                          title={copy.engineEntryDeleteLabel}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            setEngineEntryDeleteId(item.id)
+                          }}
+                        >
+                          <svg
+                            viewBox="0 0 24 24"
+                            width="14"
+                            height="14"
+                            aria-hidden="true"
                           >
-                            ✎
-                          </button>
+                            <path
+                              fill="currentColor"
+                              d="M9 3a1 1 0 0 0-1 1v1H5.5a1 1 0 1 0 0 2H6v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7h.5a1 1 0 1 0 0-2H16V4a1 1 0 0 0-1-1H9zm1 2h4v1h-4V5zm-1 4a1 1 0 0 1 1 1v7a1 1 0 1 1-2 0v-7a1 1 0 0 1 1-1zm6 1a1 1 0 1 0-2 0v7a1 1 0 1 0 2 0v-7z"
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          className="engine-entry-edit-button"
+                          aria-label={copy.editIdeaTitle}
+                          onClick={(event) => {
+                            event.stopPropagation()
+                            startEnginePreviewEdit(item)
+                          }}
+                        >
+                          ✎
+                        </button>
+                        {item.label && (
                           <span
                             className="engine-entry-label"
                             data-testid={`entry-label-${item.id}`}
@@ -5484,9 +5559,33 @@ function App() {
                               ? ENGINE_ENTRY_LABEL_TRANSLATIONS[item.label] || item.label
                               : item.label}
                           </span>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
+                    {engineEntryDeleteId === item.id && (
+                      <div
+                        className="engine-entry-delete-confirm"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <span>{copy.engineEntryDeleteConfirm}</span>
+                        <div className="engine-entry-delete-actions">
+                          <button
+                            type="button"
+                            className="primary"
+                            onClick={() => confirmEngineEntryDelete(item.id)}
+                          >
+                            {copy.engineEntryDeleteYes}
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost"
+                            onClick={cancelEngineEntryDelete}
+                          >
+                            {copy.engineEntryDeleteCancel}
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {engineLabelEditorId === item.id && (
                       <div
                         ref={engineLabelEditorRef}

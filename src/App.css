@@ -2332,6 +2332,21 @@ button.ghost.danger:hover {
   padding: 0;
 }
 
+.engine-entry-delete-button {
+  width: 24px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background: rgba(255, 255, 255, 0.6);
+  color: rgb(255, 150, 141);
+  font-size: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+
 .engine-entry-edit {
   width: 100%;
   display: grid;
@@ -2351,6 +2366,19 @@ button.ghost.danger:hover {
 .engine-entry-edit-actions {
   display: flex;
   gap: 0.4rem;
+}
+
+.engine-entry-delete-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.engine-entry-delete-actions {
+  display: inline-flex;
+  gap: 0.5rem;
 }
 
 .engine-entry-label-editor {
@@ -2467,7 +2495,7 @@ button.ghost.danger:hover {
 
 .engine-entry-text {
   font-size: 0.95rem;
-  color: var(--ink);
+  color: rgb(0, 77, 128);
 }
 
 .engine-entry-meta {
