@@ -2865,6 +2865,14 @@ function App() {
     response: unknown
     rawText: string
   } | null>(null)
+  const [engineFacilitationDiagnostics, setEngineFacilitationDiagnostics] = useState<{
+    url: string
+    status: number
+    contentType: string
+    raw: string
+    json: unknown
+    parseError: string | null
+  } | null>(null)
   const [engineEntryHint, setEngineEntryHint] = useState<{
     x: number
     y: number
@@ -4259,12 +4267,35 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const fetchJsonWithDiagnostics = async (url: string, options: RequestInit) => {
+    const response = await fetch(url, options)
+    const contentType = response.headers.get('content-type') || ''
+    const raw = await response.text()
+    let json: unknown = null
+    let parseError: string | null = null
+    try {
+      json = JSON.parse(raw)
+    } catch (error) {
+      parseError = error instanceof Error ? error.message : String(error)
+    }
+    return {
+      ok: response.ok,
+      status: response.status,
+      contentType,
+      raw: raw.slice(0, 300),
+      json,
+      parseError,
+      url,
+    }
+  }
+
   const activateFacilitationPrompt = async (type: FacilitationType) => {
     if (!enginePreviewSessionId) return
     setEnginePreviewError(null)
+    setEngineFacilitationDiagnostics(null)
     const endpoint = '/api/coach/suggest'
     try {
-      const response = await fetch(endpoint, {
+      const result = await fetchJsonWithDiagnostics(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -4273,39 +4304,26 @@ function App() {
           action: type,
         }),
       })
-      const rawText = await response.text()
-      let data: { question?: { text?: string } | null; ok?: boolean } | null = null
-      try {
-        data = JSON.parse(rawText)
-      } catch {
-        data = null
-      }
-      if (!response.ok || !data) {
-        setEngineApiDebug(
-          import.meta.env.VITE_DEBUG_ENGINE === '1'
-            ? { endpoint, status: response.status, response: data, rawText }
-            : null
-        )
+      const data = result.json as { question?: { text?: string } | null } | null
+      if (!result.ok || !data) {
+        setEngineFacilitationDiagnostics(result)
         throw new Error('Request failed')
       }
       const nextText = data.question?.text?.trim()
       if (!nextText) {
-        setEngineApiDebug(
-          import.meta.env.VITE_DEBUG_ENGINE === '1'
-            ? { endpoint, status: response.status, response: data, rawText }
-            : null
-        )
+        setEngineFacilitationDiagnostics(result)
         setEngineActivePrompt(null)
         setEngineUiState('FREE_FLOW')
         setEngineOfferReason(null)
         setEnginePreviewError(copy.enginePreviewQuestionEmpty)
         return
       }
-      if (import.meta.env.VITE_DEBUG_ENGINE === '1') {
-        setEngineApiDebug({ endpoint, status: response.status, response: data, rawText })
-      } else {
-        setEngineApiDebug(null)
-      }
+      setEngineApiDebug(import.meta.env.VITE_DEBUG_ENGINE === '1' ? {
+        endpoint,
+        status: result.status,
+        response: data,
+        rawText: result.raw,
+      } : null)
       setEngineActivePrompt({ type, text: nextText })
       setEnginePreviewInput('')
       enginePreviousInput.current = ''
@@ -4318,9 +4336,6 @@ function App() {
       })
       resetStuckSignals()
     } catch {
-      if (import.meta.env.VITE_DEBUG_ENGINE !== '1') {
-        setEngineApiDebug(null)
-      }
       setEngineActivePrompt(null)
       setEngineUiState('FREE_FLOW')
       setEngineOfferReason(null)
@@ -5418,6 +5433,22 @@ function App() {
               </div>
               </div>
               {enginePreviewError && <div className="engine-error">{enginePreviewError}</div>}
+              {enginePreviewError && engineFacilitationDiagnostics && (
+                <div className="engine-debug-panel">
+                  <div>URL: {engineFacilitationDiagnostics.url}</div>
+                  <div>Status: {engineFacilitationDiagnostics.status}</div>
+                  <div>Content-Type: {engineFacilitationDiagnostics.contentType}</div>
+                  {engineFacilitationDiagnostics.json ? (
+                    <pre>{JSON.stringify(engineFacilitationDiagnostics.json, null, 2)}</pre>
+                  ) : (
+                    <pre>
+                      NON-JSON: {engineFacilitationDiagnostics.parseError || 'Unknown error'}
+                      {'\n'}
+                      {engineFacilitationDiagnostics.raw}
+                    </pre>
+                  )}
+                </div>
+              )}
               {import.meta.env.VITE_DEBUG_ENGINE === '1' && engineApiDebug && (
                 <div className="engine-debug-panel">
                   <div>Endpoint: {engineApiDebug.endpoint}</div>
