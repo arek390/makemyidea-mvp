@@ -231,16 +231,24 @@ export default async function handler(req, res) {
       currentModeCode: body.currentModeCode || null,
       askedIds: Array.isArray(body.askedIds) ? body.askedIds : [],
     })
-    if (!rawQuestion) {
+    const activeList = dataset.list.filter((q) => Number(q.is_active) === 1)
+    if (activeList.length === 0) {
       res.status(200).json({
         ok: false,
-        error: 'NO_QUESTION',
+        error: 'DATASET_EMPTY',
         reason: {
           candidates: dataset.list.length,
           datasetStats: dataset.stats,
           csvPath: dataset.csvPath,
         },
       })
+      return
+    }
+    if (!rawQuestion) {
+      const fallback = activeList[0]
+      res
+        .status(200)
+        .json({ ok: true, question: mapQuestion(fallback, lang), debug: { fallbackUsed: true } })
       return
     }
     res.status(200).json({ ok: true, question: mapQuestion(rawQuestion, lang) })
