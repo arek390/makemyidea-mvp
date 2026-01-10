@@ -4357,14 +4357,15 @@ function App() {
         action: type,
         promptText: nextText,
       })
-      if (data.question?.id) {
+      const questionId = data.question?.id
+      if (questionId) {
         setEngineLastQuestionMeta({
-          id: data.question.id,
-          group_code: data.question.group_code,
-          mode_code: data.question.mode_code,
+          id: questionId,
+          group_code: data.question?.group_code,
+          mode_code: data.question?.mode_code,
         })
         setEngineAskedQuestionIds((prev) =>
-          prev.includes(data.question.id) ? prev : [...prev, data.question.id]
+          prev.includes(questionId) ? prev : [...prev, questionId]
         )
       }
       resetStuckSignals()
