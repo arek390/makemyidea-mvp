@@ -1,5 +1,5 @@
-const fs = require('fs')
-const path = require('path')
+import fs from 'node:fs'
+import path from 'node:path'
 
 let cachedDataset = null
 
@@ -152,17 +152,6 @@ const selectQuestion = ({ dataset, lang, action, currentGroupCode, currentModeCo
   const normalizedLang = normalizeLang(lang)
   const askedSet = new Set((askedIds || []).filter(Boolean))
   const all = dataset.list.filter((q) => Number(q.is_active) === 1)
-  const mapQuestion = (q) => ({
-    id: q.id,
-    text: q.texts[normalizedLang] || q.texts.pl || '',
-    group_code: q.group_code,
-    mode_code: q.mode_code,
-    category_code: q.category_code,
-    intent_code: q.intent_code,
-    difficulty: q.difficulty,
-    priority: q.priority,
-  })
-
   const actionNormalized = String(action || 'NEXT').toUpperCase()
   const group = currentGroupCode || null
   const mode = Number(currentModeCode)
@@ -205,55 +194,62 @@ const selectQuestion = ({ dataset, lang, action, currentGroupCode, currentModeCo
   return pickRandom(unaskedAll.length ? unaskedAll : all)
 }
 
-module.exports = async (req, res) => {
+const mapQuestion = (question, lang) => ({
+  id: question.id,
+  text: question.texts[lang] || question.texts.pl || '',
+  group_code: question.group_code,
+  mode_code: question.mode_code,
+  category_code: question.category_code,
+  intent_code: question.intent_code,
+  difficulty: question.difficulty,
+  priority: question.priority,
+})
+
+export default async function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
+  if (req.method === 'OPTIONS') {
+    res.status(204).end()
+    return
+  }
+  if (req.method !== 'POST') {
+    res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['POST'] })
+    return
+  }
   try {
-    if (req.method !== 'POST') {
-      res.statusCode = 405
-      res.end(JSON.stringify({ ok: false, error: 'Method Not Allowed' }))
-      return
-    }
     const body = await readJsonBody(req)
     if (!body) {
-      res.statusCode = 400
-      res.end(JSON.stringify({ ok: false, error: 'INVALID_JSON' }))
+      res.status(400).json({ ok: false, error: 'INVALID_JSON' })
       return
     }
     const dataset = loadQuestionsFromCsvOnce()
-    const question = selectQuestion({
+    const lang = normalizeLang(body.lang || body.language || 'pl')
+    const rawQuestion = selectQuestion({
       dataset,
-      lang: body.lang || body.language || 'pl',
+      lang,
       action: body.action || 'NEXT',
       currentGroupCode: body.currentGroupCode || null,
       currentModeCode: body.currentModeCode || null,
       askedIds: Array.isArray(body.askedIds) ? body.askedIds : [],
     })
-    if (!question) {
-      res.statusCode = 200
-      res.end(
-        JSON.stringify({
-          ok: false,
-          error: 'NO_QUESTION',
-          reason: {
-            candidates: dataset.list.length,
-            datasetStats: dataset.stats,
-            csvPath: dataset.csvPath,
-          },
-        })
-      )
+    if (!rawQuestion) {
+      res.status(200).json({
+        ok: false,
+        error: 'NO_QUESTION',
+        reason: {
+          candidates: dataset.list.length,
+          datasetStats: dataset.stats,
+          csvPath: dataset.csvPath,
+        },
+      })
       return
     }
-    res.statusCode = 200
-    res.end(JSON.stringify({ ok: true, question }))
+    res.status(200).json({ ok: true, question: mapQuestion(rawQuestion, lang) })
   } catch (error) {
-    res.statusCode = 500
-    res.end(
-      JSON.stringify({
-        ok: false,
-        error: 'EXCEPTION',
-        message: error?.message || 'Server error',
-        stack: error?.stack || null,
-      })
-    )
+    res.status(500).json({
+      ok: false,
+      error: 'EXCEPTION',
+      message: error?.message || 'Server error',
+      stack: error?.stack || null,
+    })
   }
 }

@@ -1,7 +1,7 @@
-const fs = require('fs')
-const path = require('path')
+import fs from 'node:fs'
+import path from 'node:path'
 
-module.exports = (req, res) => {
+export default function handler(req, res) {
   res.setHeader('Content-Type', 'application/json')
   try {
     const cwd = process.cwd()
@@ -14,8 +14,7 @@ module.exports = (req, res) => {
     }
 
     if (!exists) {
-      res.statusCode = 200
-      res.end(JSON.stringify({ ok: false, error: 'CSV_NOT_FOUND', cwd, csvPath, exists }))
+      res.status(200).json({ ok: false, error: 'CSV_NOT_FOUND', cwd, csvPath, exists })
       return
     }
 
@@ -35,24 +34,18 @@ module.exports = (req, res) => {
       if (lang) langSet.add(lang)
     }
 
-    res.statusCode = 200
-    res.end(
-      JSON.stringify({
-        ok: true,
-        cwd,
-        csvPath,
-        exists: true,
-        stats: { rows, uniqueIds: idSet.size, langs: Array.from(langSet).sort() },
-      })
-    )
+    res.status(200).json({
+      ok: true,
+      cwd,
+      csvPath,
+      exists: true,
+      stats: { rows, uniqueIds: idSet.size, langs: Array.from(langSet).sort() },
+    })
   } catch (error) {
-    res.statusCode = 200
-    res.end(
-      JSON.stringify({
-        ok: false,
-        error: 'EXCEPTION_READING_CSV',
-        message: String(error && error.message ? error.message : error),
-      })
-    )
+    res.status(200).json({
+      ok: false,
+      error: 'EXCEPTION_READING_CSV',
+      message: String(error && error.message ? error.message : error),
+    })
   }
 }
