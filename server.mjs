@@ -32,6 +32,10 @@ const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini'
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'
 const DEBUG_UI = process.env.DEBUG_UI === 'true'
 const DEBUG_ENGINE = process.env.DEBUG_ENGINE === '1'
+const isVercel = Boolean(process.env.VERCEL)
+
+const generateCorrelationId = () =>
+  `noq-${Date.now()}-${Math.random().toString(16).slice(2)}`
 const ENTRY_LABELS = [
   'pomysł',
   'problem do rozwiązania',
@@ -216,14 +220,18 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  if (url.pathname === '/api/debug/db-health' && req.method === 'GET') {
+  if (url.pathname === '/debug/db-health' && req.method === 'GET') {
     if (!DEBUG_ENGINE) {
       sendJson(res, 404, { error: 'Not available' })
       return
     }
-    initEngineDb()
-    const health = getDbHealth()
-    sendJson(res, 200, { ok: true, health })
+    const db = initEngineDb()
+    const health = getDbHealth(db)
+    sendJson(res, 200, {
+      ok: true,
+      env: isVercel ? 'vercel' : 'local',
+      health,
+    })
     return
   }
   if (url.pathname === '/api/engine/sessions' && req.method === 'GET') {
@@ -470,17 +478,25 @@ const server = http.createServer(async (req, res) => {
       if (DEBUG_ENGINE) {
         sendJson(res, 200, {
           question: null,
+          error: 'NO_QUESTION',
           debug: {
-            reason: 'no_candidates',
             lang: filters.lang,
+            action: body?.action ?? 'AUTO',
             sessionId,
-            meta,
-            health: getDbHealth(),
+            totalCandidatesBeforeFilters: meta?.totalCandidates ?? null,
+            candidatesAfterFilters: meta?.candidatesAfterFilters ?? null,
+            askedCount: meta?.askedIdsCount ?? null,
+            currentCell: meta?.cellKey ?? null,
+            dbHealth: getDbHealth(initEngineDb()),
           },
         })
         return
       }
-      sendJson(res, 200, { question: null })
+      const correlationId = generateCorrelationId()
+      console.error(
+        `NO_QUESTION correlationId=${correlationId} sessionId=${sessionId} action=${body?.action ?? 'AUTO'} lang=${filters.lang}`
+      )
+      sendJson(res, 200, { question: null, correlationId })
       return
     }
 
@@ -542,17 +558,25 @@ const server = http.createServer(async (req, res) => {
       if (DEBUG_ENGINE) {
         sendJson(res, 200, {
           question: null,
+          error: 'NO_QUESTION',
           debug: {
-            reason: 'no_candidates',
             lang: normalizeEngineLanguage(language),
+            action,
             sessionId,
-            meta,
-            health: getDbHealth(),
+            totalCandidatesBeforeFilters: meta?.totalCandidates ?? null,
+            candidatesAfterFilters: meta?.candidatesAfterFilters ?? null,
+            askedCount: meta?.askedIdsCount ?? null,
+            currentCell: meta?.cellKey ?? null,
+            dbHealth: getDbHealth(initEngineDb()),
           },
         })
         return
       }
-      sendJson(res, 200, { question: null })
+      const correlationId = generateCorrelationId()
+      console.error(
+        `NO_QUESTION correlationId=${correlationId} sessionId=${sessionId} action=${action} lang=${normalizeEngineLanguage(language)}`
+      )
+      sendJson(res, 200, { question: null, correlationId })
       return
     }
 
