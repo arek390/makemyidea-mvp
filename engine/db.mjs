@@ -6,6 +6,7 @@ const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), 'data')
 const DB_PATH = process.env.SQLITE_PATH || path.join(DATA_DIR, 'engine.sqlite')
 const SCHEMA_PATH = process.env.SQLITE_SCHEMA || path.join(process.cwd(), 'db', 'schema.sql')
 let engineDb = null
+let didLogDbPath = false
 
 const applyPragmas = (db) => {
   db.pragma('journal_mode = WAL')
@@ -21,6 +22,10 @@ export const initEngineDb = () => {
   applyPragmas(engineDb)
   const schema = fs.readFileSync(SCHEMA_PATH, 'utf-8')
   engineDb.exec(schema)
+  if (process.env.DEBUG_ENGINE === '1' && !didLogDbPath) {
+    console.log(JSON.stringify({ event: 'engine_db_path', path: DB_PATH }))
+    didLogDbPath = true
+  }
   return engineDb
 }
 

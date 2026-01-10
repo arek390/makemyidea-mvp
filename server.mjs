@@ -1,6 +1,8 @@
 import http from 'node:http'
 import { URL } from 'node:url'
 import { initEngineDb } from './engine/db.mjs'
+import { getDbHealth } from './engine/dbHealth.mjs'
+import { seedQuestionsIfEmpty } from './engine/seedQuestions.mjs'
 import { insertQuestions, getQuestionById } from './engine/questionRepository.mjs'
 import {
   addBoardItem,
@@ -29,6 +31,7 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ''
 const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini'
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'
 const DEBUG_UI = process.env.DEBUG_UI === 'true'
+const DEBUG_ENGINE = process.env.DEBUG_ENGINE === '1'
 const ENTRY_LABELS = [
   'pomysł',
   'problem do rozwiązania',
@@ -213,6 +216,16 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (url.pathname === '/api/debug/db-health' && req.method === 'GET') {
+    if (!DEBUG_ENGINE) {
+      sendJson(res, 404, { error: 'Not available' })
+      return
+    }
+    initEngineDb()
+    const health = getDbHealth()
+    sendJson(res, 200, { ok: true, health })
+    return
+  }
   if (url.pathname === '/api/engine/sessions' && req.method === 'GET') {
     initEngineDb()
     warnLowQuestionCount()
@@ -395,6 +408,10 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/api/engine/next-question' && req.method === 'POST') {
     initEngineDb()
     warnLowQuestionCount()
+    const seedInfo = seedQuestionsIfEmpty()
+    if (DEBUG_ENGINE && seedInfo?.seeded) {
+      console.log(JSON.stringify({ event: 'questions_seeded', ...seedInfo }))
+    }
     const body = await readJsonBody(req)
     if (!body) {
       sendJson(res, 400, { error: 'Invalid JSON body.' })
@@ -450,6 +467,19 @@ const server = http.createServer(async (req, res) => {
     }
 
     if (!question) {
+      if (DEBUG_ENGINE) {
+        sendJson(res, 200, {
+          question: null,
+          debug: {
+            reason: 'no_candidates',
+            lang: filters.lang,
+            sessionId,
+            meta,
+            health: getDbHealth(),
+          },
+        })
+        return
+      }
       sendJson(res, 200, { question: null })
       return
     }
@@ -472,6 +502,10 @@ const server = http.createServer(async (req, res) => {
   if (url.pathname === '/coach/suggest' && req.method === 'POST') {
     initEngineDb()
     warnLowQuestionCount()
+    const seedInfo = seedQuestionsIfEmpty()
+    if (DEBUG_ENGINE && seedInfo?.seeded) {
+      console.log(JSON.stringify({ event: 'questions_seeded', ...seedInfo }))
+    }
 
     const body = await readJsonBody(req)
     if (!body) {
@@ -505,6 +539,19 @@ const server = http.createServer(async (req, res) => {
     })
 
     if (!question) {
+      if (DEBUG_ENGINE) {
+        sendJson(res, 200, {
+          question: null,
+          debug: {
+            reason: 'no_candidates',
+            lang: normalizeEngineLanguage(language),
+            sessionId,
+            meta,
+            health: getDbHealth(),
+          },
+        })
+        return
+      }
       sendJson(res, 200, { question: null })
       return
     }

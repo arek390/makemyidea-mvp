@@ -243,8 +243,16 @@ export const selectQuestion = ({
     maxDifficulty: difficultyMax,
   })
 
+  const baseMeta = {
+    action: normalizedAction,
+    lang,
+    totalCandidates: all.length,
+    candidatesAfterFilters: candidates.length,
+    askedIdsCount: askedIds.length,
+  }
+
   if (!candidates.length) {
-    return { question: null, meta: { action: normalizedAction } }
+    return { question: null, meta: baseMeta }
   }
 
   const currentCell = resolveCurrentCell({ sessionState, groupCode, modeCode })
@@ -267,7 +275,7 @@ export const selectQuestion = ({
           })
         )
       }
-      return { question: chosen, meta: { action: normalizedAction, fallback: true } }
+      return { question: chosen, meta: { ...baseMeta, fallback: true } }
     }
     const result = chooseDeepen({ candidates, askedSet, currentCell })
     if (process.env.DEBUG_LANG === '1') {
@@ -283,7 +291,7 @@ export const selectQuestion = ({
     return {
       question: result.chosen,
       meta: {
-        action: normalizedAction,
+        ...baseMeta,
         cellKey: `${currentCell.group}:${currentCell.mode}`,
         candidatesInCell: result.candidatesInCell,
         askedInCell: result.askedInCell,
@@ -310,7 +318,7 @@ export const selectQuestion = ({
           })
         )
       }
-      return { question: chosen, meta: { action: normalizedAction, fallback: true } }
+      return { question: chosen, meta: { ...baseMeta, fallback: true } }
     }
     const result = choosePerspective({ candidates, askedSet, currentCell })
     if (result.chosen) {
@@ -327,7 +335,7 @@ export const selectQuestion = ({
       return {
         question: result.chosen,
         meta: {
-          action: normalizedAction,
+          ...baseMeta,
           cellKey: result.cellKey,
           candidatesInCell: result.candidatesInCell,
           askedInCell: result.askedInCell,
@@ -346,7 +354,7 @@ export const selectQuestion = ({
         })
       )
     }
-    return { question: fallback, meta: { action: normalizedAction, fallback: true } }
+    return { question: fallback, meta: { ...baseMeta, fallback: true } }
   }
 
   if (normalizedAction === 'NEXT') {
@@ -365,7 +373,7 @@ export const selectQuestion = ({
     return {
       question: chosen,
       meta: {
-        action: normalizedAction,
+        ...baseMeta,
         candidatesInCell: candidates.length,
         askedInCell: candidates.length - unasked.length,
         exhausted: unasked.length === 0,
@@ -396,7 +404,7 @@ export const selectQuestion = ({
   return {
     question: chosen,
     meta: {
-      action: normalizedAction,
+      ...baseMeta,
       cellKey: cellFiltered.cellKey,
       candidatesInCell: cellFiltered.candidatesInCellCount,
       askedInCell: cellFiltered.askedInCellCount,
