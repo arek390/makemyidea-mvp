@@ -2873,6 +2873,12 @@ function App() {
     json: unknown
     parseError: string | null
   } | null>(null)
+  const [engineAskedQuestionIds, setEngineAskedQuestionIds] = useState<string[]>([])
+  const [engineLastQuestionMeta, setEngineLastQuestionMeta] = useState<{
+    id: string
+    group_code?: string
+    mode_code?: number
+  } | null>(null)
   const [engineEntryHint, setEngineEntryHint] = useState<{
     x: number
     y: number
@@ -3058,6 +3064,11 @@ function App() {
       setEngineLastInputActivityAt(Date.now())
     }
   }, [isEnginePreview, enginePreviewSessionId])
+
+  useEffect(() => {
+    setEngineAskedQuestionIds([])
+    setEngineLastQuestionMeta(null)
+  }, [enginePreviewSessionId])
 
   useEffect(() => {
     const sessionKey = getEngineSessionKey()
@@ -4167,7 +4178,7 @@ function App() {
         body: JSON.stringify({
           sessionId: engineSessionId,
           boardItems,
-          language: reportLanguage,
+          language: reportLanguage === 'English' ? 'en' : 'pl',
         }),
       })
       const rawText = await response.text()
@@ -4302,9 +4313,21 @@ function App() {
           sessionId: enginePreviewSessionId,
           language: uiLanguage === 'English' ? 'en' : 'pl',
           action: type,
+          askedIds: engineAskedQuestionIds,
+          currentGroupCode: engineLastQuestionMeta?.group_code ?? null,
+          currentModeCode: engineLastQuestionMeta?.mode_code ?? null,
         }),
       })
-      const data = result.json as { question?: { text?: string } | null } | null
+      const data = result.json as
+        | {
+            question?: {
+              id?: string
+              text?: string
+              group_code?: string
+              mode_code?: number
+            } | null
+          }
+        | null
       if (!result.ok || !data) {
         setEngineFacilitationDiagnostics(result)
         throw new Error('Request failed')
@@ -4334,6 +4357,16 @@ function App() {
         action: type,
         promptText: nextText,
       })
+      if (data.question?.id) {
+        setEngineLastQuestionMeta({
+          id: data.question.id,
+          group_code: data.question.group_code,
+          mode_code: data.question.mode_code,
+        })
+        setEngineAskedQuestionIds((prev) =>
+          prev.includes(data.question.id) ? prev : [...prev, data.question.id]
+        )
+      }
       resetStuckSignals()
     } catch {
       setEngineActivePrompt(null)
