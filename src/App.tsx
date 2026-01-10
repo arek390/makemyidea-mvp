@@ -2897,6 +2897,8 @@ function App() {
   const [engineEditItemId, setEngineEditItemId] = useState<string | null>(null)
   const [engineEditText, setEngineEditText] = useState('')
   const [engineEditLoading, setEngineEditLoading] = useState(false)
+  const [enginePreviewEditId, setEnginePreviewEditId] = useState<string | null>(null)
+  const [enginePreviewEditText, setEnginePreviewEditText] = useState('')
   const [engineEntryHint, setEngineEntryHint] = useState<{
     x: number
     y: number
@@ -4420,20 +4422,49 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const activateFacilitationPrompt = (type: FacilitationType) => {
-    const seed = enginePreviewItems.length + engineWeakSignals + engineMediumSignals + engineStrongSignals
-    const text = pickFacilitationPrompt(type, seed, uiLanguage)
-    setEngineActivePrompt({ type, text })
-    setEnginePreviewInput('')
-    enginePreviousInput.current = ''
-    setEngineUiState('FACILITATED_INPUT')
-    setEngineOfferReason(null)
-    logFacilitationEvent('facilitation_used', {
-      sessionId: enginePreviewSessionId || 'unknown',
-      action: type,
-      promptText: text,
-    })
-    resetStuckSignals()
+  const activateFacilitationPrompt = async (type: FacilitationType) => {
+    if (!enginePreviewSessionId) return
+    setEnginePreviewError(null)
+    try {
+      const response = await fetch(`${llmApiBase}/coach/suggest`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: enginePreviewSessionId,
+          language: uiLanguage === 'English' ? 'en' : 'pl',
+          action: type,
+        }),
+      })
+      if (!response.ok) {
+        const msg = await response.text()
+        throw new Error(msg || 'Request failed')
+      }
+      const data = (await response.json()) as { question?: { text?: string } | null }
+      const nextText = data.question?.text?.trim()
+      if (!nextText) {
+        setEngineActivePrompt(null)
+        setEngineUiState('FREE_FLOW')
+        setEngineOfferReason(null)
+        setEnginePreviewError(copy.enginePreviewQuestionEmpty)
+        return
+      }
+      setEngineActivePrompt({ type, text: nextText })
+      setEnginePreviewInput('')
+      enginePreviousInput.current = ''
+      setEngineUiState('FACILITATED_INPUT')
+      setEngineOfferReason(null)
+      logFacilitationEvent('facilitation_used', {
+        sessionId: enginePreviewSessionId || 'unknown',
+        action: type,
+        promptText: nextText,
+      })
+      resetStuckSignals()
+    } catch {
+      setEngineActivePrompt(null)
+      setEngineUiState('FREE_FLOW')
+      setEngineOfferReason(null)
+      setEnginePreviewError(copy.enginePreviewQuestionEmpty)
+    }
   }
 
   const handleEnginePreviewInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
@@ -4577,7 +4608,9 @@ function App() {
       engineIdleTriggered.current = false
       clearEngineIdleTimer('post_add')
       setEngineOfferReason(null)
-      setEngineUiState('FREE_FLOW')
+      if (entryType !== 'facilitated_input') {
+        setEngineUiState('FREE_FLOW')
+      }
       logFacilitationEvent('post_add_grace_start', {
         sessionId,
         until: now + postAddGraceMs,
@@ -4618,9 +4651,11 @@ function App() {
         setEngineSessions(await listSessions())
       }
       enginePreviousInput.current = ''
-      setEngineUiState('FREE_FLOW')
-      setEngineActivePrompt(null)
-    setEngineOfferReason(null)
+      if (entryType !== 'facilitated_input') {
+        setEngineUiState('FREE_FLOW')
+        setEngineActivePrompt(null)
+      }
+      setEngineOfferReason(null)
       if (engineUiState === 'FACILITATION_OFFER' || engineUiState === 'FACILITATED_INPUT') {
         resetStuckSignals()
       }
@@ -4865,6 +4900,57 @@ function App() {
     }
   }
 
+  const startEnginePreviewEdit = (item: EngineBoardItem) => {
+    setEngineLabelEditorId(null)
+    setEnginePreviewEditId(item.id)
+    setEnginePreviewEditText(item.text)
+  }
+
+  const cancelEnginePreviewEdit = () => {
+    setEnginePreviewEditId(null)
+    setEnginePreviewEditText('')
+  }
+
+  const saveEnginePreviewEdit = async () => {
+    if (!enginePreviewEditId || !enginePreviewSessionId) return
+    const nextText = enginePreviewEditText.trim()
+    if (!nextText) return
+    const limited = limitWords(nextText, WORD_LIMIT)
+    setEnginePreviewItems((prev) =>
+      prev.map((item) => (item.id === enginePreviewEditId ? { ...item, text: limited } : item))
+    )
+    if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
+      setEngineSessionDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              boardItems: prev.boardItems.map((item) =>
+                item.id === enginePreviewEditId ? { ...item, text: limited } : item
+              ),
+            }
+          : prev
+      )
+    }
+    try {
+      const detail = await getSession(enginePreviewSessionId)
+      if (!detail?.session) return
+      const updatedDetail: EngineSessionDetail = {
+        ...detail,
+        boardItems: detail.boardItems.map((item) =>
+          item.id === enginePreviewEditId ? { ...item, text: limited } : item
+        ),
+        session: { ...detail.session, updated_at: Date.now() },
+      }
+      await updateSession(updatedDetail)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Request failed'
+      setEngineSessionsError(`Nie udało się zapisać zmian. ${message}`)
+      logSessionStore('engine_preview_edit_failed', { message })
+    } finally {
+      cancelEnginePreviewEdit()
+    }
+  }
+
   const deleteEngineItem = async (itemId: string) => {
     if (!engineSessionDetail?.session) return
     setEngineEditLoading(true)
@@ -4963,16 +5049,27 @@ function App() {
       return `Session ${shortId}`
     }
 
-    const engineRemainingWords = Math.max(0, WORD_LIMIT - countWords(enginePreviewInput))
-    const isEngineWordLimitReached =
-      enginePreviewInput.trim().length > 0 && countWords(enginePreviewInput) >= WORD_LIMIT
-    const showFacilitationOffer =
-      engineUiState === 'FACILITATION_OFFER' ||
-      engineOfferReason === 'idle' ||
-      engineOfferReason === 'manual'
-    const showHelpButton = !showFacilitationOffer
+  const engineRemainingWords = Math.max(0, WORD_LIMIT - countWords(enginePreviewInput))
+  const isEngineWordLimitReached =
+    enginePreviewInput.trim().length > 0 && countWords(enginePreviewInput) >= WORD_LIMIT
+  const showFacilitationOffer =
+    engineUiState === 'FACILITATION_OFFER' ||
+    engineOfferReason === 'idle' ||
+    engineOfferReason === 'manual'
+  const showHelpButton = !showFacilitationOffer
+  const orderedEnginePreviewItems = useMemo(() => {
+    const estimateLines = (value: string) => {
+      const length = String(value || '').trim().length
+      const perLine = 55
+      return Math.max(1, Math.ceil(length / perLine))
+    }
+    return enginePreviewItems
+      .map((item, index) => ({ item, index, lines: estimateLines(item.text) }))
+      .sort((a, b) => a.lines - b.lines || a.index - b.index)
+      .map(({ item }) => item)
+  }, [enginePreviewItems])
 
-    return (
+  return (
       <div className="app engine-preview" data-testid="active-session">
         <header className="engine-header">
           <div>
@@ -5385,7 +5482,7 @@ function App() {
                   onClick={() => {
                     setFacilitationCooldown('NEXT')
                     armIdleWatch('facilitation_next')
-                    activateFacilitationPrompt('NEXT')
+                    void activateFacilitationPrompt('NEXT')
                   }}
                   disabled={!showFacilitationOffer}
                 >
@@ -5398,7 +5495,7 @@ function App() {
                   onClick={() => {
                     setFacilitationCooldown('DEEPEN')
                     armIdleWatch('facilitation_deepen')
-                    activateFacilitationPrompt('DEEPEN')
+                    void activateFacilitationPrompt('DEEPEN')
                   }}
                   disabled={!showFacilitationOffer}
                 >
@@ -5411,7 +5508,7 @@ function App() {
                   onClick={() => {
                     setFacilitationCooldown('PERSPECTIVE')
                     armIdleWatch('facilitation_perspective')
-                    activateFacilitationPrompt('PERSPECTIVE')
+                    void activateFacilitationPrompt('PERSPECTIVE')
                   }}
                   disabled={!showFacilitationOffer}
                 >
@@ -5502,7 +5599,7 @@ function App() {
                 {enginePreviewItems.length === 0 && (
                   <li className="engine-empty">{copy.enginePreviewBoardItemsEmpty}</li>
                 )}
-                {enginePreviewItems.map((item) => (
+                {orderedEnginePreviewItems.map((item) => (
                   <li
                     key={item.id}
                     className="engine-entry"
@@ -5522,21 +5619,65 @@ function App() {
                     }
                   >
                     <div className="engine-entry-main">
-                      <div className="engine-entry-text">{item.text}</div>
+                      {enginePreviewEditId === item.id ? (
+                        <div className="engine-entry-edit" onClick={(event) => event.stopPropagation()}>
+                          <textarea
+                            className="engine-entry-edit-input"
+                            rows={3}
+                            value={enginePreviewEditText}
+                            onChange={(event) => {
+                              const next = limitWords(event.target.value, WORD_LIMIT)
+                              setEnginePreviewEditText(next)
+                            }}
+                          />
+                          <div className="engine-entry-edit-actions">
+                            <button
+                              type="button"
+                              className="primary"
+                              onClick={saveEnginePreviewEdit}
+                              disabled={!enginePreviewEditText.trim()}
+                            >
+                              {copy.save}
+                            </button>
+                            <button
+                              type="button"
+                              className="ghost"
+                              onClick={cancelEnginePreviewEdit}
+                            >
+                              {copy.cancel}
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="engine-entry-text">{item.text}</div>
+                      )}
                       {item.label && (
-                        <span
-                          className="engine-entry-label"
-                          data-testid={`entry-label-${item.id}`}
-                          style={{
-                            backgroundColor:
-                              ENGINE_ENTRY_LABEL_COLORS[item.label] || '#e7ebf0',
-                            color: '#000000',
-                          }}
-                        >
-                      {uiLanguage === 'English'
-                        ? ENGINE_ENTRY_LABEL_TRANSLATIONS[item.label] || item.label
-                        : item.label}
-                        </span>
+                        <div className="engine-entry-label-group">
+                          <button
+                            type="button"
+                            className="engine-entry-edit-button"
+                            aria-label={copy.editIdeaTitle}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              startEnginePreviewEdit(item)
+                            }}
+                          >
+                            ✎
+                          </button>
+                          <span
+                            className="engine-entry-label"
+                            data-testid={`entry-label-${item.id}`}
+                            style={{
+                              backgroundColor:
+                                ENGINE_ENTRY_LABEL_COLORS[item.label] || '#e7ebf0',
+                              color: '#000000',
+                            }}
+                          >
+                            {uiLanguage === 'English'
+                              ? ENGINE_ENTRY_LABEL_TRANSLATIONS[item.label] || item.label
+                              : item.label}
+                          </span>
+                        </div>
                       )}
                     </div>
                     {engineLabelEditorId === item.id && (
@@ -5570,9 +5711,6 @@ function App() {
                         </label>
                       </div>
                     )}
-                    <div className="engine-entry-meta">
-                      {new Date(item.created_at || Date.now()).toLocaleString()}
-                    </div>
                   </li>
                 ))}
               </ul>
@@ -5585,7 +5723,6 @@ function App() {
               </div>
             </section>
           )}
-          {feedbackPanel}
         </main>
       </div>
     )
@@ -5612,7 +5749,6 @@ function App() {
             </button>
           </div>
         </div>
-        {feedbackPanel}
       </div>
     )
   }
@@ -6485,8 +6621,6 @@ function App() {
           </section>
         )}
       </main>
-      {feedbackPanel}
-
       {activeIdeaCell && (
         <div className="modal" role="dialog" aria-modal="true">
           <div className="modal-content">

@@ -116,11 +116,21 @@ ensureLegacyCopy(questionsPath)
 const questionsCsv = fs.readFileSync(questionsPath, 'utf-8')
 const rows = parseCsv(questionsCsv)
 
+const normalizeLang = (value) => {
+  const raw = String(value || '').trim().toLowerCase()
+  if (!raw) return 'pl'
+  if (raw.startsWith('en')) return 'en'
+  if (raw.startsWith('pl')) return 'pl'
+  return raw
+}
+
+const resolveText = (row) => row.text ?? row.Text ?? row.TEXT ?? ''
+
 const questions = rows.map((row) => {
-  const langValue = (row.lang || row.Lang || row.LANG || 'pl').toLowerCase()
+  const langValue = normalizeLang(row.lang || row.Lang || row.LANG || 'pl')
   return {
     id: row.id,
-    text: row.text,
+    text: resolveText(row),
     group_code: row.group_code,
     mode_code: Number(row.mode_code),
     category_code: row.category_code,

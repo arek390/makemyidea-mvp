@@ -15,15 +15,14 @@ import {
   listBoardItems,
   listSessions,
   listAskedQuestionIds,
-  recordAskedQuestion,
   recordSessionAnswer,
   updateBoardItem,
   updateBoardItemLabel,
-  updateSessionState,
   updateSessionStateRow,
   updateSessionName,
 } from './engine/sessionRepository.mjs'
-import { suggestNextQuestion, computeAnswerSignal } from './engine/suggester.mjs'
+import { computeAnswerSignal } from './engine/suggester.mjs'
+import { finalizeSelection, selectQuestion } from './engine/questionSelector.mjs'
 
 const PORT = Number(process.env.PORT || 8787)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ''
@@ -167,8 +166,6 @@ const parseJsonArray = (value) => {
   return null
 }
 
-const containsPolishChars = (value) => /[ąćęłńóśżź]/i.test(value)
-
 const translateList = async (items, language) => {
   const messages = [
     {
@@ -197,66 +194,6 @@ const parseJsonObject = (value) => {
 }
 
 const nowMs = () => Date.now()
-
-const buildQuestionQuery = (filters) => {
-  const where = ['q.is_active = 1']
-  const params = {}
-
-  params.lang = filters.lang || 'pl'
-  if (filters.groupCode) {
-    where.push('q.group_code = @groupCode')
-    params.groupCode = filters.groupCode
-  }
-  if (filters.modeCode) {
-    where.push('q.mode_code = @modeCode')
-    params.modeCode = filters.modeCode
-  }
-  if (filters.categoryCode) {
-    where.push('q.category_code = @categoryCode')
-    params.categoryCode = filters.categoryCode
-  }
-  if (filters.intentCode) {
-    where.push('q.intent_code = @intentCode')
-    params.intentCode = filters.intentCode
-  }
-  if (filters.minDifficulty) {
-    where.push('q.difficulty >= @minDifficulty')
-    params.minDifficulty = filters.minDifficulty
-  }
-  if (filters.maxDifficulty) {
-    where.push('q.difficulty <= @maxDifficulty')
-    params.maxDifficulty = filters.maxDifficulty
-  }
-
-  let join = ''
-  if (filters.tags && filters.tags.length) {
-    join = 'JOIN question_tags qt ON qt.question_id = q.id'
-    where.push(`qt.tag IN (${filters.tags.map((_, i) => `@tag${i}`).join(',')})`)
-    filters.tags.forEach((tag, index) => {
-      params[`tag${index}`] = tag
-    })
-  }
-
-  return {
-    sql: `
-      SELECT
-        q.id,
-        COALESCE(t_lang.text, t_pl.text, q.text) AS text,
-        q.group_code, q.mode_code, q.category_code, q.intent_code,
-        q.difficulty, q.priority, q.is_active, q.lang
-      FROM questions q
-      LEFT JOIN question_texts t_lang
-        ON t_lang.question_id = q.id AND t_lang.lang = @lang
-      LEFT JOIN question_texts t_pl
-        ON t_pl.question_id = q.id AND t_pl.lang = 'pl'
-      ${join}
-      WHERE ${where.join(' AND ')}
-      ORDER BY q.priority DESC, q.difficulty ASC
-      LIMIT 1
-    `,
-    params,
-  }
-}
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host}`)
@@ -456,7 +393,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/engine/next-question' && req.method === 'POST') {
-    const engineDb = initEngineDb()
+    initEngineDb()
     warnLowQuestionCount()
     const body = await readJsonBody(req)
     if (!body) {
@@ -490,20 +427,34 @@ const server = http.createServer(async (req, res) => {
       tags,
     }
 
-    const { sql, params } = buildQuestionQuery(filters)
-    const question = engineDb.prepare(sql).get(params)
+    const { question, meta } = selectQuestion({
+      sessionId,
+      ...filters,
+      action: body?.action ?? 'AUTO',
+    })
+
+    if (process.env.DEBUG_SUGGESTER === '1') {
+      console.log(
+        JSON.stringify({
+          event: 'selection',
+          endpoint: 'api/engine/next-question',
+          sessionId,
+          action: meta?.action,
+          cellKey: meta?.cellKey ?? null,
+          candidatesInCell: meta?.candidatesInCell ?? null,
+          askedInCell: meta?.askedInCell ?? null,
+          exhausted: meta?.exhausted ?? null,
+          selected: question?.id ?? null,
+        })
+      )
+    }
+
     if (!question) {
       sendJson(res, 200, { question: null })
       return
     }
 
-    recordAskedQuestion({ sessionId, questionId: question.id })
-    updateSessionState({
-      sessionId,
-      last_group_code: groupCode ?? null,
-      last_mode_code: modeCode ?? null,
-      last_category_code: categoryCode ?? null,
-    })
+    finalizeSelection({ sessionId, question })
 
     sendJson(res, 200, { question })
     return
@@ -544,7 +495,7 @@ const server = http.createServer(async (req, res) => {
 
     ensureSessionState(sessionId)
 
-    const question = suggestNextQuestion({
+    const { question, meta } = selectQuestion({
       sessionId,
       lang: normalizeEngineLanguage(language),
       action,
@@ -558,14 +509,23 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    recordAskedQuestion({ sessionId, questionId: question.id })
+    if (process.env.DEBUG_SUGGESTER === '1') {
+      console.log(
+        JSON.stringify({
+          event: 'selection',
+          endpoint: 'coach/suggest',
+          sessionId,
+          action: meta?.action,
+          cellKey: meta?.cellKey ?? null,
+          candidatesInCell: meta?.candidatesInCell ?? null,
+          askedInCell: meta?.askedInCell ?? null,
+          exhausted: meta?.exhausted ?? null,
+          selected: question?.id ?? null,
+        })
+      )
+    }
 
-    updateSessionState({
-      sessionId,
-      last_group_code: question.group_code,
-      last_mode_code: question.mode_code,
-      last_category_code: question.category_code,
-    })
+    finalizeSelection({ sessionId, question })
 
     sendJson(res, 200, { question })
     return

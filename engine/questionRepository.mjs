@@ -1,5 +1,17 @@
 import { getEngineDb } from './db.mjs'
 
+const ensureQuestionTextsTable = (db) => {
+  db.exec(
+    `CREATE TABLE IF NOT EXISTS question_texts (
+      question_id TEXT NOT NULL,
+      lang TEXT NOT NULL,
+      text TEXT NOT NULL,
+      PRIMARY KEY (question_id, lang),
+      FOREIGN KEY (question_id) REFERENCES questions(id) ON DELETE CASCADE
+    )`
+  )
+}
+
 const insertQuestion = (db) =>
   db.prepare(
     `INSERT INTO questions
@@ -34,6 +46,7 @@ const insertQuestionText = (db) =>
 
 export const insertQuestions = (questions) => {
   const db = getEngineDb()
+  ensureQuestionTextsTable(db)
   const baseById = new Map()
   const texts = []
 
@@ -126,6 +139,8 @@ export const listQuestionsWithTags = ({ lang }) => {
     `SELECT
         q.id,
         COALESCE(t_lang.text, t_pl.text, q.text) AS text,
+        t_lang.text AS lang_text,
+        t_pl.text AS pl_text,
         q.group_code, q.mode_code, q.category_code, q.intent_code,
         q.difficulty, q.priority, q.is_active, q.lang,
         COALESCE(GROUP_CONCAT(t.tag), '') AS tags_csv
@@ -141,6 +156,8 @@ export const listQuestionsWithTags = ({ lang }) => {
 
   return rows.map((r) => ({
     ...r,
+    lang_text: r.lang_text ?? null,
+    pl_text: r.pl_text ?? null,
     tags: r.tags_csv ? r.tags_csv.split(',') : [],
   }))
 }

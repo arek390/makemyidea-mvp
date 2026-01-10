@@ -10,8 +10,8 @@ process.env.SQLITE_SCHEMA = path.join(process.cwd(), 'db', 'schema.sql')
 
 const { initEngineDb } = await import('../engine/db.mjs')
 const { insertQuestions } = await import('../engine/questionRepository.mjs')
-const { createSession, updateSessionState, recordAskedQuestion } = await import('../engine/sessionRepository.mjs')
-const { suggestNextQuestion } = await import('../engine/suggester.mjs')
+const { createSession, ensureSessionState, getSession } = await import('../engine/sessionRepository.mjs')
+const { finalizeSelection, selectQuestion } = await import('../engine/questionSelector.mjs')
 
 initEngineDb()
 
@@ -29,110 +29,99 @@ const baseQuestion = (overrides) => ({
   tags: overrides.tags ?? [],
 })
 
-// Test 1: keyword/tag overlap wins
+// Test 1: deepen returns sequential ids within a cell and restarts after exhaustion
 insertQuestions([
-  baseQuestion({
-    id: 't1_q1',
-    text: 'How does battery life impact usage?',
-    lang: 't1',
-    tags: ['battery'],
-  }),
-  baseQuestion({
-    id: 't1_q2',
-    text: 'How is the product stored?',
-    lang: 't1',
-    tags: [],
-  }),
+  baseQuestion({ id: 'a1_001', text: 'A1 first', lang: 't1', group_code: 'A', mode_code: 1 }),
+  baseQuestion({ id: 'a1_002', text: 'A1 second', lang: 't1', group_code: 'A', mode_code: 1 }),
+  baseQuestion({ id: 'a1_003', text: 'A1 third', lang: 't1', group_code: 'A', mode_code: 1 }),
 ])
 
 {
   const { sessionId } = createSession()
-  const result = suggestNextQuestion({
-    sessionId,
-    lang: 't1',
-    boardItems: [{ text: 'Battery performance is weak.' }],
-  })
-  assert.equal(result.id, 't1_q1')
+  const picks = []
+  for (let i = 0; i < 4; i += 1) {
+    const { question } = selectQuestion({
+      sessionId,
+      lang: 't1',
+      action: 'DEEPEN',
+      groupCode: 'A',
+      modeCode: 1,
+    })
+    finalizeSelection({ sessionId, question })
+    picks.push(question?.id)
+  }
+  assert.deepEqual(picks, ['a1_001', 'a1_002', 'a1_003', 'a1_001'])
 }
 
-// Test 2: rhythm penalty prefers matching group/mode/category
+// Test 2: next returns non-repeating ids until exhaustion, then repeats allowed
 insertQuestions([
-  baseQuestion({
-    id: 't2_q1',
-    text: 'Match group question',
-    lang: 't2',
-    group_code: 'A',
-    mode_code: 1,
-    category_code: 'GENERAL',
-  }),
-  baseQuestion({
-    id: 't2_q2',
-    text: 'Different group question',
-    lang: 't2',
-    group_code: 'B',
-    mode_code: 2,
-    category_code: 'PRICING',
-  }),
+  baseQuestion({ id: 't2_q1', text: 'Q1', lang: 't2', group_code: 'A', mode_code: 1 }),
+  baseQuestion({ id: 't2_q2', text: 'Q2', lang: 't2', group_code: 'A', mode_code: 2 }),
+  baseQuestion({ id: 't2_q3', text: 'Q3', lang: 't2', group_code: 'B', mode_code: 1 }),
 ])
 
 {
   const { sessionId } = createSession()
-  updateSessionState({
-    sessionId,
-    last_group_code: 'A',
-    last_mode_code: 1,
-    last_category_code: 'GENERAL',
-  })
-  const result = suggestNextQuestion({ sessionId, lang: 't2', boardItems: [] })
-  assert.equal(result.id, 't2_q1')
+  const seen = new Set()
+  for (let i = 0; i < 3; i += 1) {
+    const { question } = selectQuestion({ sessionId, lang: 't2', action: 'NEXT' })
+    finalizeSelection({ sessionId, question })
+    assert.ok(question)
+    assert.ok(!seen.has(question.id))
+    seen.add(question.id)
+  }
+  const { question: repeat } = selectQuestion({ sessionId, lang: 't2', action: 'NEXT' })
+  finalizeSelection({ sessionId, question: repeat })
+  assert.ok(repeat)
 }
 
-// Test 3: stuck_counter favors easier questions
+// Test 3: perspective moves to a neighbor cell (no A<->C or 1<->3 jumps)
 insertQuestions([
-  baseQuestion({
-    id: 't3_q1',
-    text: 'Hard question',
+  baseQuestion({ id: 'p_a1_001', text: 'A1 base', lang: 't3', group_code: 'A', mode_code: 1 }),
+  baseQuestion({ id: 'p_a2_001', text: 'A2 neighbor', lang: 't3', group_code: 'A', mode_code: 2 }),
+  baseQuestion({ id: 'p_b1_001', text: 'B1 neighbor', lang: 't3', group_code: 'B', mode_code: 1 }),
+])
+
+{
+  const { sessionId } = createSession()
+  const { question } = selectQuestion({
+    sessionId,
     lang: 't3',
-    difficulty: 5,
-  }),
-  baseQuestion({
-    id: 't3_q2',
-    text: 'Easy question',
-    lang: 't3',
-    difficulty: 1,
-  }),
-])
-
-{
-  const { sessionId } = createSession()
-  updateSessionState({
-    sessionId,
-    stuck_counter: 2,
+    action: 'PERSPECTIVE',
+    groupCode: 'A',
+    modeCode: 1,
   })
-  const result = suggestNextQuestion({ sessionId, lang: 't3', boardItems: [] })
-  assert.equal(result.id, 't3_q2')
+  finalizeSelection({ sessionId, question })
+  assert.ok(question)
+  assert.ok(
+    (question.group_code === 'A' && question.mode_code === 2) ||
+      (question.group_code === 'B' && question.mode_code === 1) ||
+      (question.group_code === 'B' && question.mode_code === 2)
+  )
+  assert.notEqual(question.group_code, 'C')
+  assert.notEqual(question.mode_code, 3)
 }
 
-
-// Test 4: asked_questions prevents repeats
+// Test 4: language-specific text is returned when available
 insertQuestions([
-  baseQuestion({
-    id: 't4_q1',
-    text: 'First question',
-    lang: 't4',
-  }),
-  baseQuestion({
-    id: 't4_q2',
-    text: 'Second question',
-    lang: 't4',
-  }),
+  baseQuestion({ id: 'lang_q1', text: 'Polskie pytanie', lang: 'pl' }),
+  baseQuestion({ id: 'lang_q1', text: 'English question', lang: 'en' }),
 ])
 
 {
   const { sessionId } = createSession()
-  recordAskedQuestion({ sessionId, questionId: 't4_q1' })
-  const result = suggestNextQuestion({ sessionId, lang: 't4', boardItems: [] })
-  assert.equal(result.id, 't4_q2')
+  const { question } = selectQuestion({ sessionId, lang: 'en', action: 'NEXT' })
+  finalizeSelection({ sessionId, question })
+  assert.equal(question.text, 'English question')
 }
 
 console.log('suggester tests: ok')
+
+{
+  const sessionId = `auto-${Date.now()}`
+  const state = ensureSessionState(sessionId)
+  assert.ok(state)
+  assert.ok(getSession(sessionId))
+}
+
+console.log('session ensure tests: ok')

@@ -248,8 +248,24 @@ export const hasAskedQuestion = ({ sessionId, questionId }) => {
   return Boolean(row)
 }
 
+export const ensureSessionExists = (sessionId) => {
+  if (!sessionId) return null
+  const existing = getSession(sessionId)
+  if (existing) return existing
+  const created = ensureSession(sessionId)
+  if (process.env.DEBUG_SESSION === '1') {
+    console.log(
+      JSON.stringify({
+        event: 'session_auto_created',
+        sessionId,
+      })
+    )
+  }
+  return created
+}
 
 export const ensureSessionState = (sessionId) => {
+  ensureSessionExists(sessionId)
   const db = getEngineDb()
   const timestamp = nowMs()
   db.prepare(
