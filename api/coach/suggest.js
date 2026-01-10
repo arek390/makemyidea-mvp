@@ -50,48 +50,52 @@ module.exports = async (req, res) => {
 
   try {
     const { initEngineDb } = await import('../../engine/db.mjs')
-    const { getQuestionDataset } = await import('../../engine/questionDataset.mjs')
+    const { loadQuestionsFromCsvOnce } = await import('../../engine/questionsCsvSource.mjs')
     const {
-      selectQuestion,
       selectQuestionFromList,
       finalizeSelection,
     } = await import('../../engine/questionSelector.mjs')
 
     initEngineDb()
     const normalizedLang = normalizeEngineLanguage(language)
-    const dataset = getQuestionDataset()
-    const debugEnabled = process.env.DEBUG_ENGINE === '1'
+    const dataset = await loadQuestionsFromCsvOnce()
+    const candidates = dataset.list
+      .filter((question) => Number(question.is_active) === 1)
+      .map((question) => {
+        const text = question.texts[normalizedLang] || question.texts.pl || ''
+        return {
+          ...question,
+          text,
+          lang_text: question.texts[normalizedLang] || null,
+          pl_text: question.texts.pl || null,
+          tags: [],
+        }
+      })
 
-    const { question, meta } =
-      dataset.source === 'db'
-        ? selectQuestion({
-            sessionId,
-            lang: normalizedLang,
-            action,
-            modeCode,
-            categoryCode,
-            intentCode,
-          })
-        : selectQuestionFromList({
-            sessionId,
-            lang: normalizedLang,
-            action,
-            modeCode,
-            categoryCode,
-            intentCode,
-            all: dataset.getQuestionsForLang(normalizedLang),
-            lookupQuestionById: dataset.lookupById,
-          })
+    const { question, meta } = selectQuestionFromList({
+      sessionId,
+      lang: normalizedLang,
+      action,
+      modeCode,
+      categoryCode,
+      intentCode,
+      all: candidates,
+      lookupQuestionById: (id) => dataset.byId.get(id) || null,
+    })
 
     if (!question) {
       res.statusCode = 200
       res.setHeader('Content-Type', 'application/json')
       res.end(
         JSON.stringify({
-          question: null,
-          meta: debugEnabled
-            ? { ...meta, source: dataset.source, questionsCount: dataset.questionsCount }
-            : undefined,
+          ok: false,
+          error: 'NO_QUESTION',
+          reason: {
+            candidates: candidates.length,
+            datasetStats: dataset.stats,
+            csvPath: dataset.csvPath,
+            meta,
+          },
         })
       )
       return
@@ -101,15 +105,20 @@ module.exports = async (req, res) => {
 
     res.statusCode = 200
     res.setHeader('Content-Type', 'application/json')
-    res.end(
-      JSON.stringify({
-        question,
-        meta: debugEnabled
-          ? { ...meta, source: dataset.source, questionsCount: dataset.questionsCount }
-          : undefined,
-      })
-    )
+    res.end(JSON.stringify({ question }))
   } catch (error) {
+    if (error?.message?.startsWith('CSV_')) {
+      res.statusCode = 500
+      res.setHeader('Content-Type', 'application/json')
+      res.end(
+        JSON.stringify({
+          ok: false,
+          error: error.message.split(' ')[0],
+          details: { message: error.message },
+        })
+      )
+      return
+    }
     res.statusCode = 500
     res.setHeader('Content-Type', 'application/json')
     res.end(JSON.stringify({ ok: false, error: error?.message || 'Server error' }))
