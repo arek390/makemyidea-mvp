@@ -2317,6 +2317,17 @@ button.ghost.danger:hover {
   gap: 0.35rem;
 }
 
+.engine-entry-action {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.engine-entry:hover .engine-entry-action {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .engine-entry-edit-button {
   width: 24px;
   height: 24px;
@@ -2366,6 +2377,7 @@ button.ghost.danger:hover {
 .engine-entry-edit-actions {
   display: flex;
   gap: 0.4rem;
+  transform: translateX(150px);
 }
 
 .engine-entry-delete-confirm {

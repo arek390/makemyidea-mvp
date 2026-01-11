@@ -5627,7 +5627,7 @@ function App() {
                       <div className="engine-entry-label-group">
                         <button
                           type="button"
-                          className="engine-entry-delete-button"
+                          className="engine-entry-delete-button engine-entry-action"
                           aria-label={copy.engineEntryDeleteLabel}
                           title={copy.engineEntryDeleteLabel}
                           onClick={(event) => {
@@ -5649,7 +5649,7 @@ function App() {
                         </button>
                         <button
                           type="button"
-                          className="engine-entry-edit-button"
+                          className="engine-entry-edit-button engine-entry-action"
                           aria-label={copy.editIdeaTitle}
                           onClick={(event) => {
                             event.stopPropagation()

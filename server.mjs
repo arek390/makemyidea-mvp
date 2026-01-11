@@ -220,6 +220,11 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (url.pathname === '/api/ping' && req.method === 'GET') {
+    sendJson(res, 200, { ok: true, env: 'local', ts: new Date().toISOString() })
+    return
+  }
+
   if (url.pathname === '/debug/db-health' && req.method === 'GET') {
     if (!DEBUG_ENGINE) {
       sendJson(res, 404, { error: 'Not available' })
@@ -515,7 +520,10 @@ const server = http.createServer(async (req, res) => {
 
 
 
-  if (url.pathname === '/coach/suggest' && req.method === 'POST') {
+  if (
+    (url.pathname === '/coach/suggest' || url.pathname === '/api/coach/suggest') &&
+    req.method === 'POST'
+  ) {
     initEngineDb()
     warnLowQuestionCount()
     const seedInfo = seedQuestionsIfEmpty()
