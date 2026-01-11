@@ -296,7 +296,7 @@
 
 .landing-section.intro .landing-inner {
   text-align: center;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .intro-title {
@@ -346,6 +346,10 @@
 .intro-cta {
   display: flex;
   justify-content: center;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  transform: translateY(20px);
 }
 
 .landing-cta {
@@ -354,13 +358,33 @@
   opacity: 0;
   transform: translateY(18px);
   transition: opacity 0.8s ease, transform 0.8s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
 }
 
-.landing-section.in-view .landing-cta {
+.landing-cta-icon {
+  display: inline-flex;
+  align-items: center;
+  color: inherit;
+}
+
+.landing-microcopy {
+  font-size: 0.95rem;
+  color: var(--muted);
+  letter-spacing: 0.01em;
   opacity: 1;
   transform: translateY(0);
 }
 
+.intro-cta .landing-microcopy {
+  display: block;
+  margin-top: 0.1rem;
+  opacity: 1;
+  transform: none;
+}
+
+/* Keep CTA animation only; microcopy is always visible */
 .landing-section.intro.in-view .intro-title,
 .landing-section.intro.in-view .intro-subtext,
 .landing-section.intro.in-view .landing-cta {
@@ -524,6 +548,13 @@
 .landing-final .landing-cta {
   margin-top: 0.6rem;
   justify-self: center;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.landing-final .landing-microcopy {
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .scroll-progress {
@@ -2227,6 +2258,11 @@ button.ghost.danger:hover {
   justify-content: space-between;
   align-items: center;
   margin-top: 0.75rem;
+}
+
+.feedback-panel-action-group {
+  display: inline-flex;
+  gap: 0.5rem;
 }
 
 .feedback-reminder {

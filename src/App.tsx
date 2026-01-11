@@ -389,7 +389,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       'always led by {emphasis}.',
     ],
     landingIntroSubtextEmphasis: 'you',
-    landingCta: 'Start with an idea, see it work.',
+    landingCta: '▶ Start for free',
     landingThreeStepsCta: 'Get started in 3 steps',
     landingThreeStepsTitle: '3 steps',
     landingBeforeLead: 'If any of this sounds familiar — you are in the right place.',
@@ -997,7 +997,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       'sterowane zawsze przez {emphasis}.',
     ],
     landingIntroSubtextEmphasis: 'Ciebie',
-    landingCta: 'Zacznij od pomysłu, zobacz jak to działa.',
+    landingCta: '▶ Zacznij za darmo',
     landingThreeStepsCta: 'Get started in 3 steps',
     landingThreeStepsTitle: '3 kroki',
     landingBeforeLead: 'Jeśli choć jedno brzmi znajomo — jesteś w dobrym miejscu.',
@@ -2879,6 +2879,14 @@ function App() {
     group_code?: string
     mode_code?: number
   } | null>(null)
+  const [feedbackOpen, setFeedbackOpen] = useState(false)
+  const [feedbackForm, setFeedbackForm] = useState({
+    doing: '',
+    unclear: '',
+    workaround: '',
+    suggestion: '',
+    keywords: '',
+  })
   const [engineEntryHint, setEngineEntryHint] = useState<{
     x: number
     y: number
@@ -2950,6 +2958,22 @@ function App() {
     } catch {
       return []
     }
+  }
+
+  const writeFeedbackEntries = (entries: FeedbackEntry[]) => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(entries))
+    } catch {
+      // ignore write errors
+    }
+  }
+
+  const createFeedbackId = () => {
+    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+      return crypto.randomUUID()
+    }
+    return `fb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
   }
 
   const getEngineSessionKey = () => enginePreviewSessionId ?? 'new'
@@ -3557,6 +3581,37 @@ function App() {
     URL.revokeObjectURL(url)
   }
 
+  const saveFeedbackEntry = () => {
+    const entry: FeedbackEntry = {
+      id: createFeedbackId(),
+      timestamp: new Date().toISOString(),
+      context: {
+        language: uiLanguage,
+        route: feedbackContext.route,
+        sessionId: feedbackContext.sessionId,
+        matrixCell: feedbackContext.matrixCell,
+        questionId: engineLastQuestionMeta?.id,
+      },
+      feedback: {
+        doing: feedbackForm.doing.trim(),
+        unclear: feedbackForm.unclear.trim(),
+        workaround: feedbackForm.workaround.trim(),
+        suggestion: feedbackForm.suggestion.trim(),
+        keywords: feedbackForm.keywords.trim(),
+      },
+    }
+    const next = [...readFeedbackEntries(), entry]
+    writeFeedbackEntries(next)
+    setFeedbackForm({
+      doing: '',
+      unclear: '',
+      workaround: '',
+      suggestion: '',
+      keywords: '',
+    })
+    setFeedbackOpen(false)
+  }
+
   useEffect(() => {
     if (!isDebugEnabled()) return
     if (!debugMatrixData) return
@@ -3674,6 +3729,83 @@ function App() {
         </div>
       </div>
     ) : null
+
+  const feedbackPanel = feedbackOpen ? (
+    <div className="feedback-panel">
+      <div className="feedback-panel-header">
+        <h3>{copy.feedbackTitle}</h3>
+        <button type="button" className="ghost" onClick={() => setFeedbackOpen(false)}>
+          {copy.close}
+        </button>
+      </div>
+      <div className="feedback-panel-body">
+        <label>
+          <span>{copy.feedbackDoingLabel}</span>
+          <textarea
+            value={feedbackForm.doing}
+            onChange={(event) =>
+              setFeedbackForm((prev) => ({ ...prev, doing: event.target.value }))
+            }
+          />
+        </label>
+        <label>
+          <span>{copy.feedbackUnclearLabel}</span>
+          <textarea
+            value={feedbackForm.unclear}
+            onChange={(event) =>
+              setFeedbackForm((prev) => ({ ...prev, unclear: event.target.value }))
+            }
+          />
+        </label>
+        <label>
+          <span>{copy.feedbackWorkaroundLabel}</span>
+          <textarea
+            value={feedbackForm.workaround}
+            onChange={(event) =>
+              setFeedbackForm((prev) => ({ ...prev, workaround: event.target.value }))
+            }
+          />
+        </label>
+        <label>
+          <span>{copy.feedbackSuggestionLabel}</span>
+          <textarea
+            value={feedbackForm.suggestion}
+            onChange={(event) =>
+              setFeedbackForm((prev) => ({ ...prev, suggestion: event.target.value }))
+            }
+          />
+        </label>
+        <label>
+          <span>{copy.feedbackKeywordsLabel}</span>
+          <textarea
+            value={feedbackForm.keywords}
+            onChange={(event) =>
+              setFeedbackForm((prev) => ({ ...prev, keywords: event.target.value }))
+            }
+          />
+        </label>
+      </div>
+      <div className="feedback-panel-actions">
+        <button type="button" className="ghost" onClick={exportFeedbackJson}>
+          {copy.feedbackExport}
+        </button>
+        <div className="feedback-panel-action-group">
+          <button type="button" className="primary" onClick={saveFeedbackEntry}>
+            {copy.feedbackSave}
+          </button>
+          <button type="button" className="ghost" onClick={() => setFeedbackOpen(false)}>
+            {copy.feedbackCancel}
+          </button>
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  const feedbackFab = (
+    <button type="button" className="feedback-fab" onClick={() => setFeedbackOpen(true)}>
+      {copy.feedbackButtonLabel}
+    </button>
+  )
 
   const spaceSectionsStep2 = ['supersystem', 'system', 'subsystem'] as const
   const spaceSectionsStep3 = ['supersystem', 'system', 'subsystem'] as const
@@ -5743,6 +5875,8 @@ function App() {
             </section>
           )}
         </main>
+        {feedbackPanel}
+        {feedbackFab}
       </div>
     )
   }
@@ -5768,6 +5902,8 @@ function App() {
             </button>
           </div>
         </div>
+        {feedbackPanel}
+        {feedbackFab}
       </div>
     )
   }
@@ -5846,6 +5982,42 @@ function App() {
               <div className="landing-inner">
                 <h1>{copy.landingHeroTitle}</h1>
                 <p>{copy.landingHeroSubtitle}</p>
+                {uiLanguage === 'Polish' && (
+                  <a
+                    className="primary landing-cta"
+                    href="https://youtu.be/2mLESqZKDj0"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span className="landing-cta-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="36" height="36">
+                        <path
+                          fill="currentColor"
+                          d="M4 6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2.2l4.4 2.2a1 1 0 0 0 1.6-.8V8a1 1 0 0 0-1.6-.8L15 9.4V8a2 2 0 0 0-2-2H4z"
+                        />
+                      </svg>
+                    </span>
+                    Zobacz jak to działa (90 s)
+                  </a>
+                )}
+                {uiLanguage === 'English' && (
+                  <a
+                    className="primary landing-cta"
+                    href="https://youtu.be/0OBBZfOAltU"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    <span className="landing-cta-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24" width="36" height="36">
+                        <path
+                          fill="currentColor"
+                          d="M4 6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2.2l4.4 2.2a1 1 0 0 0 1.6-.8V8a1 1 0 0 0-1.6-.8L15 9.4V8a2 2 0 0 0-2-2H4z"
+                        />
+                      </svg>
+                    </span>
+                    Watch how it works (90 sec)
+                  </a>
+                )}
               </div>
             </div>
 
@@ -5880,6 +6052,14 @@ function App() {
                   <a className="primary landing-cta" href="/engine">
                     {copy.landingCta}
                   </a>
+                  {uiLanguage === 'English' && (
+                    <div className="landing-microcopy">
+                      Sign up in 30 seconds • No credit card required
+                    </div>
+                  )}
+                  {uiLanguage === 'Polish' && (
+                    <div className="landing-microcopy">rejestracja w 30 s • bez karty</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -5942,6 +6122,14 @@ function App() {
                   <a className="primary landing-cta" href="/engine">
                     {copy.landingCta}
                   </a>
+                  {uiLanguage === 'English' && (
+                    <div className="landing-microcopy">
+                      Sign up in 30 seconds • No credit card required
+                    </div>
+                  )}
+                  {uiLanguage === 'Polish' && (
+                    <div className="landing-microcopy">rejestracja w 30 s • bez karty</div>
+                  )}
                 </div>
               </div>
             </div>
@@ -7205,6 +7393,8 @@ function App() {
         </div>
       )}
 
+      {feedbackPanel}
+      {feedbackFab}
     </div>
   )
 }
