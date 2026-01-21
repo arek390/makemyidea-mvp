@@ -1,13 +1,16 @@
 import { spawn } from 'node:child_process'
 
-const frontend = spawn('npm', ['run', 'dev'], {
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm'
+const nodeCommand = process.execPath
+
+const frontend = spawn(npmCommand, ['run', 'dev'], {
   stdio: 'inherit',
-  shell: true,
+  shell: false,
 })
 
-const backend = spawn('node', ['server.mjs'], {
+const backend = spawn(nodeCommand, ['server.mjs'], {
   stdio: 'inherit',
-  shell: true,
+  shell: false,
   env: {
     ...process.env,
     PORT: process.env.PORT || '8787',

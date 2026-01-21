@@ -353,6 +353,8 @@ type Translations = {
   llmTestConnection: string
   llmEnableConnection: string
   llmDisableConnection: string
+  aiSupportOn: string
+  aiSupportOff: string
   questionTemplates: (productName: string, spaceDef: string, timeDef: string) => string[]
   questionTemplate: (spaceDef: string, timeDef: string) => string
   llmIdeaTemplate: (spaceDef: string, timeDef: string) => string
@@ -624,6 +626,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     llmTestConnection: 'Test connection',
     llmEnableConnection: 'Enable OpenAI',
     llmDisableConnection: 'Disable OpenAI',
+    aiSupportOn: 'AI support ON',
+    aiSupportOff: 'AI support OFF',
     questionTemplate: (spaceDef, timeDef) =>
       `How could "${spaceDef}" respond to "${timeDef}" and reveal a new opportunity?`,
     questionTemplates: (productName, spaceDef, timeDef) => [
@@ -1233,6 +1237,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     llmTestConnection: 'Testuj połączenie',
     llmEnableConnection: 'Włącz OpenAI',
     llmDisableConnection: 'Wyłącz OpenAI',
+    aiSupportOn: 'AI support ON',
+    aiSupportOff: 'AI support OFF',
     questionTemplate: (spaceDef, timeDef) =>
       `Jak "${spaceDef}" może odpowiedzieć na "${timeDef}" i ujawnić nową szansę?`,
     questionTemplates: (productName, spaceDef, timeDef) => [
@@ -2414,7 +2420,10 @@ const getTranslations = (language: Language): Translations => {
 }
 
 const stepOrder: StepId[] = [1, 2, 3, 4]
-const DEFAULT_LLM_API_BASE = 'http://localhost:8787'
+const DEFAULT_LLM_API_BASE =
+  typeof window !== 'undefined' && window.location.hostname !== 'localhost'
+    ? ''
+    : 'http://localhost:8787'
 const SPACE_KIND_FOR_SLOT: Record<SpaceSlot, OptionItem['kind']> = {
   supersystem: 'world',
   subsystem: 'element',
@@ -2783,9 +2792,16 @@ function App() {
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false)
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(false)
   const [llmApiBase, setLlmApiBase] = useState(DEFAULT_LLM_API_BASE)
-  const [llmEnabled, setLlmEnabled] = useState(true)
+  const [aiSupportEnabled, setAiSupportEnabled] = useState(true)
   const [llmStatus, setLlmStatus] = useState<'unknown' | 'online' | 'offline'>('unknown')
   const [llmSaved, setLlmSaved] = useState(false)
+  const llmHeaders = useMemo(
+    () => ({
+      'Content-Type': 'application/json',
+      'x-ai-support': aiSupportEnabled ? 'on' : 'off',
+    }),
+    [aiSupportEnabled]
+  )
   const [ideaLabels, setIdeaLabels] = useState<LabelItem[]>([
     { id: 'label-1', text: 'Question to customer', color: '#f6b8a2' },
     { id: 'label-2', text: 'New functionality', color: '#f4d6a0' },
@@ -3297,7 +3313,7 @@ function App() {
   }
 
   const checkLlmStatus = async (base: string) => {
-    if (!llmEnabled || !base) {
+    if (!aiSupportEnabled || !base) {
       setLlmStatus('offline')
       return
     }
@@ -3311,10 +3327,12 @@ function App() {
 
   useEffect(() => {
     const savedBase = localStorage.getItem('llm_api_base')
-    const savedEnabled = localStorage.getItem('llm_enabled')
+    const savedAiSupport = localStorage.getItem('aiSupportEnabled')
+    const legacyEnabled = localStorage.getItem('llm_enabled')
+    const savedEnabled = savedAiSupport ?? legacyEnabled
     const nextEnabled = savedEnabled !== 'false'
     const nextBase = normalizeApiBase(savedBase || DEFAULT_LLM_API_BASE)
-    setLlmEnabled(nextEnabled)
+    setAiSupportEnabled(nextEnabled)
     setLlmApiBase(nextBase)
     if (nextEnabled) {
       void checkLlmStatus(nextBase)
@@ -3324,12 +3342,12 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!llmEnabled) {
+    if (!aiSupportEnabled) {
       setLlmStatus('offline')
       return
     }
     void checkLlmStatus(llmApiBase)
-  }, [llmEnabled, llmApiBase])
+  }, [aiSupportEnabled, llmApiBase])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -3896,7 +3914,7 @@ function App() {
         const [spaceRes, timeRes] = await Promise.all([
           fetch(`${llmApiBase}/api/generate-space-options`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: llmHeaders,
             body: JSON.stringify({
               productName: productName.trim(),
               description: productDescription.trim(),
@@ -3907,7 +3925,7 @@ function App() {
           }),
           fetch(`${llmApiBase}/api/generate-time-options`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: llmHeaders,
             body: JSON.stringify({
               productName: productName.trim(),
               count: 15,
@@ -3918,20 +3936,19 @@ function App() {
 
         if (!spaceRes.ok || !timeRes.ok) throw new Error('Request failed')
         const spaceData = (await spaceRes.json()) as {
-          worldOptions?: string[]
-          elementOptions?: string[]
+          ok?: boolean
+          data?: { worldOptions?: string[]; elementOptions?: string[] }
         }
-        const timeData = (await timeRes.json()) as { options?: string[] }
-        if (
-          !Array.isArray(spaceData.worldOptions) ||
-          !Array.isArray(spaceData.elementOptions) ||
-          !Array.isArray(timeData.options)
-        ) {
+        const timeData = (await timeRes.json()) as { ok?: boolean; data?: { options?: string[] } }
+        const worldOptions = spaceData?.data?.worldOptions
+        const elementOptions = spaceData?.data?.elementOptions
+        const timeOptions = timeData?.data?.options
+        if (!Array.isArray(worldOptions) || !Array.isArray(elementOptions) || !Array.isArray(timeOptions)) {
           throw new Error('Invalid response')
         }
-        const nextWorlds = uniqueList(spaceData.worldOptions).slice(0, 10)
-        const nextElements = uniqueList(spaceData.elementOptions).slice(0, 10)
-        const nextTimes = uniqueList(timeData.options).slice(0, 20)
+        const nextWorlds = uniqueList(worldOptions).slice(0, 10)
+        const nextElements = uniqueList(elementOptions).slice(0, 10)
+        const nextTimes = uniqueList(timeOptions).slice(0, 20)
         const needsPolishFallback = reportLanguage === 'Polish'
         const needsEnglishFallback = reportLanguage === 'English'
         const worldsOut =
@@ -3964,7 +3981,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [productName, productDescription, copy, llmStatus, llmApiBase, reportLanguage])
+  }, [productName, productDescription, copy, llmStatus, llmApiBase, reportLanguage, llmHeaders])
 
   useEffect(() => {
     setProductConfirmed(false)
@@ -3989,18 +4006,19 @@ function App() {
     try {
       const response = await fetch(`${llmApiBase}/api/generate-names`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: llmHeaders,
         body: JSON.stringify({ description, count: 5 }),
       })
       if (!response.ok) {
         const msg = await response.text()
         throw new Error(msg || 'Request failed')
       }
-      const data = (await response.json()) as { names?: string[] }
-      if (!Array.isArray(data.names) || data.names.length === 0) {
+      const data = (await response.json()) as { ok?: boolean; data?: { names?: string[] } }
+      const names = data?.data?.names
+      if (!Array.isArray(names) || names.length === 0) {
         throw new Error('Invalid response')
       }
-      setProductNameSuggestions(data.names)
+      setProductNameSuggestions(names)
     } catch {
       setProductNameSuggestions(buildNameSuggestions(description, productName))
     }
@@ -4266,7 +4284,7 @@ function App() {
       )
       const response = await fetch(`${llmApiBase}/api/generate-ideas`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: llmHeaders,
         body: JSON.stringify({
           productName: productName || copy.analyzedProduct,
           ideasPerCell: 3,
@@ -4277,12 +4295,16 @@ function App() {
         const msg = await response.text()
         throw new Error(msg || 'Request failed')
       }
-      const data = (await response.json()) as { ideas?: Record<string, string[]> }
-      if (!data.ideas) throw new Error('Invalid response')
+      const data = (await response.json()) as {
+        ok?: boolean
+        data?: { ideas?: Record<string, string[]> }
+      }
+      const ideas = data?.data?.ideas
+      if (!ideas) throw new Error('Invalid response')
 
       setWorkshopIdeas((prev) => {
         const next: Record<string, Idea[]> = { ...prev }
-        Object.entries(data.ideas || {}).forEach(([cellKey, ideaList]) => {
+        Object.entries(ideas || {}).forEach(([cellKey, ideaList]) => {
           const mapped = (ideaList || []).map((text, index) => ({
             id: `llm-${cellKey}-${Date.now()}-${index}`,
             text,
@@ -4306,7 +4328,7 @@ function App() {
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: llmHeaders,
         body: JSON.stringify({
           sessionId: engineSessionId,
           boardItems,
@@ -4314,7 +4336,9 @@ function App() {
         }),
       })
       const rawText = await response.text()
-      let data: { question?: { text?: string } | null; ok?: boolean } | null = null
+      let data:
+        | { ok?: boolean; data?: { question?: { text?: string } | null } }
+        | null = null
       try {
         data = JSON.parse(rawText)
       } catch {
@@ -4328,10 +4352,11 @@ function App() {
         )
         throw new Error('Request failed')
       }
-      if (!data.question || !data.question.text) {
+      const question = data?.data?.question
+      if (!question || !question.text) {
         setImpulseQuestion(copy.impulseEmpty)
       } else {
-        setImpulseQuestion(data.question.text)
+        setImpulseQuestion(question.text)
       }
     } catch {
       setImpulseQuestion(copy.impulseEmpty)
@@ -4440,7 +4465,7 @@ function App() {
     try {
       const result = await fetchJsonWithDiagnostics(endpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: llmHeaders,
         body: JSON.stringify({
           sessionId: enginePreviewSessionId,
           language: uiLanguage === 'English' ? 'en' : 'pl',
@@ -4452,19 +4477,22 @@ function App() {
       })
       const data = result.json as
         | {
-            question?: {
-              id?: string
-              text?: string
-              group_code?: string
-              mode_code?: number
-            } | null
+            data?: {
+              question?: {
+                id?: string
+                text?: string
+                group_code?: string
+                mode_code?: number
+              } | null
+            }
           }
         | null
       if (!result.ok || !data) {
         setEngineFacilitationDiagnostics(result)
         throw new Error('Request failed')
       }
-      const nextText = data.question?.text?.trim()
+      const question = data?.data?.question
+      const nextText = question?.text?.trim()
       if (!nextText) {
         setEngineFacilitationDiagnostics(result)
         setEngineActivePrompt(null)
@@ -4489,12 +4517,12 @@ function App() {
         action: type,
         promptText: nextText,
       })
-      const questionId = data.question?.id
+      const questionId = question?.id
       if (questionId) {
         setEngineLastQuestionMeta({
           id: questionId,
-          group_code: data.question?.group_code,
-          mode_code: data.question?.mode_code,
+          group_code: question?.group_code,
+          mode_code: question?.mode_code,
         })
         setEngineAskedQuestionIds((prev) =>
           prev.includes(questionId) ? prev : [...prev, questionId]
@@ -5158,6 +5186,24 @@ function App() {
             <a className="engine-kicker" href="/">
               makemyidea.work
             </a>
+          </div>
+          <div className="engine-header-actions">
+            <button
+              className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
+              type="button"
+              onClick={() => {
+                const nextEnabled = !aiSupportEnabled
+                setAiSupportEnabled(nextEnabled)
+                localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
+                if (nextEnabled) {
+                  void checkLlmStatus(normalizeApiBase(llmApiBase))
+                } else {
+                  setLlmStatus('offline')
+                }
+              }}
+            >
+              {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
+            </button>
           </div>
         </header>
         <main className="engine-main">
@@ -5945,6 +5991,24 @@ function App() {
               ))}
             </select>
           </label>
+        )}
+        {!showLanding && (
+          <button
+            className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
+            type="button"
+            onClick={() => {
+              const nextEnabled = !aiSupportEnabled
+              setAiSupportEnabled(nextEnabled)
+              localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
+              if (nextEnabled) {
+                void checkLlmStatus(normalizeApiBase(llmApiBase))
+              } else {
+                setLlmStatus('offline')
+              }
+            }}
+          >
+            {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
+          </button>
         )}
         {!showLanding && (
           <button
@@ -7342,7 +7406,7 @@ function App() {
                     setLlmApiBase(normalized)
                     void checkLlmStatus(normalized)
                   }}
-                  disabled={!llmEnabled}
+                  disabled={!aiSupportEnabled}
                 >
                   {copy.llmTestConnection}
                 </button>
@@ -7356,7 +7420,7 @@ function App() {
                     void checkLlmStatus(normalized)
                     setLlmSaved(true)
                   }}
-                  disabled={!llmEnabled}
+                  disabled={!aiSupportEnabled}
                 >
                   {copy.llmSettingsSave}
                 </button>
@@ -7365,27 +7429,19 @@ function App() {
               <div className="actions llm-toggle">
                 <button
                   type="button"
-                  className="secondary"
+                  className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
                   onClick={() => {
-                    setLlmEnabled(true)
-                    localStorage.setItem('llm_enabled', 'true')
-                    void checkLlmStatus(normalizeApiBase(llmApiBase))
+                    const nextEnabled = !aiSupportEnabled
+                    setAiSupportEnabled(nextEnabled)
+                    localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
+                    if (nextEnabled) {
+                      void checkLlmStatus(normalizeApiBase(llmApiBase))
+                    } else {
+                      setLlmStatus('offline')
+                    }
                   }}
-                  disabled={llmEnabled}
                 >
-                  {copy.llmEnableConnection}
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => {
-                    setLlmEnabled(false)
-                    localStorage.setItem('llm_enabled', 'false')
-                    setLlmStatus('offline')
-                  }}
-                  disabled={!llmEnabled}
-                >
-                  {copy.llmDisableConnection}
+                  {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
                 </button>
               </div>
             </div>

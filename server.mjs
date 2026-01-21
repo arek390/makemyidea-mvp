@@ -25,14 +25,26 @@ import {
 } from './engine/sessionRepository.mjs'
 import { computeAnswerSignal } from './engine/suggester.mjs'
 import { finalizeSelection, selectQuestion } from './engine/questionSelector.mjs'
+import {
+  runLlmTask,
+  createRateLimiter,
+  parseJsonArray,
+  parseJsonObject,
+} from './llm/llmRouter.mjs'
 
 const PORT = Number(process.env.PORT || 8787)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ''
-const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini'
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'
 const DEBUG_UI = process.env.DEBUG_UI === 'true'
 const DEBUG_ENGINE = process.env.DEBUG_ENGINE === '1'
 const isVercel = Boolean(process.env.VERCEL)
+const AI_SUPPORT_DISABLED = process.env.AI_SUPPORT_DISABLED === 'true'
+const LLM_MODELS = {
+  default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
+  preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+  escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+}
+const llmRateLimiter = createRateLimiter({ windowMs: 60_000, max: 30 })
 
 const generateCorrelationId = () =>
   `noq-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -46,6 +58,92 @@ const ENTRY_LABELS = [
   'decyzja',
   'następny krok (action)',
 ]
+
+const fallbackNameSeeds = ['Nova', 'Pulse', 'Craft', 'Shift', 'Spark', 'Flow', 'Nest']
+
+const buildNameFallbacks = (description, count = 5) => {
+  const words = String(description || '')
+    .toLowerCase()
+    .replace(/[^a-z0-9ąćęłńóśżź\s-]/gi, ' ')
+    .split(/\s+/)
+    .filter((word) => word.length >= 4)
+  const unique = [...new Set(words)]
+  const base = unique.length ? unique.slice(0, count) : fallbackNameSeeds
+  const names = []
+  base.forEach((word, index) => {
+    const cap = word.charAt(0).toUpperCase() + word.slice(1)
+    names.push(cap)
+    if (names.length < count) names.push(`${cap} Lab`)
+    if (names.length < count) names.push(`${cap} Hub`)
+    if (names.length < count && fallbackNameSeeds[index]) names.push(`${cap} ${fallbackNameSeeds[index]}`)
+  })
+  return names.slice(0, count)
+}
+
+const buildIdeaFallbacks = (cells, ideasPerCell = 3) => {
+  const ideas = {}
+  cells.forEach((cell) => {
+    const list = []
+    for (let i = 0; i < ideasPerCell; i += 1) {
+      list.push(`Idea for ${cell.spaceDef} (${cell.timeDef})`)
+    }
+    ideas[cell.id] = list
+  })
+  return ideas
+}
+
+const buildSpaceFallbacks = (productName) => {
+  const base = String(productName || 'Product').trim() || 'Product'
+  return {
+    worldOptions: [
+      `${base} usage`,
+      `${base} market`,
+      `${base} ecosystem`,
+      'Home',
+      'Workplace',
+      'Public space',
+      'Retail',
+      'Logistics',
+      'Healthcare',
+      'Education',
+    ],
+    elementOptions: [
+      'Core module',
+      'Housing',
+      'Materials',
+      'Sensors',
+      'Power unit',
+      'Interface layer',
+      'Connectivity',
+      'Packaging',
+      'Fasteners',
+      'Support parts',
+    ],
+  }
+}
+
+const buildTimeFallbacks = () => [
+  'Past constraints',
+  'Current state',
+  'Future trends',
+  'Existing workflow',
+  'Pain points',
+  'Desired outcome',
+  'Market evolution',
+  'Technology shift',
+  'User habits',
+  'Regulation changes',
+  'Lifecycle stage',
+  'Maintenance phase',
+  'Scaling stage',
+  'Adoption barriers',
+  'Optimization phase',
+]
+
+const buildQuestionFallbacks = ({ productName, spaceDef, timeDef, count = 10 }) => {
+  const base = `What matters for ${productName} in ${spaceDef} at ${timeDef}?`
+  return Array.from({ length: Math.min(count, 10) }, () => base)
+}
 
 const detectMatrixColumnShift = (text) => {
   const value = String(text || '').toLowerCase()
@@ -100,7 +198,7 @@ const sendJson = (res, status, payload) => {
     'Content-Type': 'application/json',
     'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
     'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-ai-support',
   })
   res.end(JSON.stringify(payload))
 }
@@ -118,32 +216,24 @@ const readJsonBody = async (req) => {
   }
 }
 
-const callOpenAI = async (messages, maxTokens = 800) => {
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${OPENAI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      model: OPENAI_MODEL,
-      messages,
-      temperature: 0.7,
-      max_tokens: maxTokens,
-    }),
-  })
+const getClientIp = (req) => {
+  const forwarded = req.headers['x-forwarded-for']
+  if (typeof forwarded === 'string') return forwarded.split(',')[0].trim()
+  if (Array.isArray(forwarded)) return forwarded[0]
+  return req.socket?.remoteAddress || 'unknown'
+}
 
-  if (!response.ok) {
-    const errorText = await response.text()
-    throw new Error(`OpenAI error: ${response.status} ${errorText}`)
+const resolveAiSupportEnabled = (req, body) => {
+  if (AI_SUPPORT_DISABLED) return false
+  const header = req.headers['x-ai-support']
+  const headerValue = Array.isArray(header) ? header[0] : header
+  if (typeof headerValue === 'string') {
+    const normalized = headerValue.toLowerCase().trim()
+    if (['on', 'true', '1', 'yes'].includes(normalized)) return true
+    if (['off', 'false', '0', 'no'].includes(normalized)) return false
   }
-
-  const data = await response.json()
-  const content = data?.choices?.[0]?.message?.content
-  if (!content) {
-    throw new Error('Missing content from OpenAI')
-  }
-  return content.trim()
+  if (body && typeof body.aiSupportEnabled === 'boolean') return body.aiSupportEnabled
+  return true
 }
 
 const normalizeLanguage = (language) => {
@@ -163,44 +253,26 @@ const normalizeEngineLanguage = (language) => {
   return normalized.slice(0, 2)
 }
 
-const parseJsonArray = (value) => {
-  try {
-    const parsed = JSON.parse(value)
-    if (Array.isArray(parsed)) return parsed
-  } catch {
-    return null
-  }
-  return null
-}
-
-const translateList = async (items, language) => {
-  const messages = [
-    {
-      role: 'system',
-      content: `Translate the provided list into ${language}. Return only a JSON array of strings.`,
-    },
-    {
-      role: 'user',
-      content: `Translate this JSON array into ${language}. Output ONLY a JSON array of strings.\\n\\n${JSON.stringify(items)}`,
-    },
-  ]
-  const content = await callOpenAI(messages, 400)
-  const translated = parseJsonArray(content)
-  if (!translated) throw new Error('Invalid translation response')
-  return translated
-}
-
-const parseJsonObject = (value) => {
-  try {
-    const parsed = JSON.parse(value)
-    if (parsed && typeof parsed === 'object') return parsed
-  } catch {
-    return null
-  }
-  return null
-}
-
 const nowMs = () => Date.now()
+const isKeyError = (error) => String(error || '').includes('OPENAI_API_KEY')
+const isRateLimitError = (error) => String(error || '').includes('Rate limit')
+
+const sendLlmResponse = (res, result, dataBuilder) => {
+  if (!result.ok) {
+    const status = isKeyError(result.error) ? 401 : isRateLimitError(result.error) ? 429 : 500
+    sendJson(res, status, {
+      ok: false,
+      error: result.error || 'LLM request failed.',
+      meta: result.meta || { aiSupportEnabled: true, modelUsed: null, escalated: false },
+    })
+    return
+  }
+  sendJson(res, 200, {
+    ok: true,
+    data: dataBuilder(result.data),
+    meta: result.meta,
+  })
+}
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', `http://${req.headers.host}`)
@@ -209,7 +281,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(204, {
       'Access-Control-Allow-Origin': ALLOWED_ORIGIN,
       'Access-Control-Allow-Methods': 'GET,POST,PATCH,DELETE,OPTIONS',
-      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-ai-support',
     })
     res.end()
     return
@@ -551,6 +623,9 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
+    const aiSupportEnabled = resolveAiSupportEnabled(req, body)
+    const aiMeta = { aiSupportEnabled, modelUsed: null, escalated: false }
+
     ensureSessionState(sessionId)
 
     const { question, meta } = selectQuestion({
@@ -565,7 +640,9 @@ const server = http.createServer(async (req, res) => {
     if (!question) {
       if (DEBUG_ENGINE) {
         sendJson(res, 200, {
-          question: null,
+          ok: true,
+          data: { question: null },
+          meta: aiMeta,
           error: 'NO_QUESTION',
           debug: {
             lang: normalizeEngineLanguage(language),
@@ -584,7 +661,12 @@ const server = http.createServer(async (req, res) => {
       console.error(
         `NO_QUESTION correlationId=${correlationId} sessionId=${sessionId} action=${action} lang=${normalizeEngineLanguage(language)}`
       )
-      sendJson(res, 200, { question: null, correlationId })
+      sendJson(res, 200, {
+        ok: true,
+        data: { question: null },
+        meta: aiMeta,
+        correlationId,
+      })
       return
     }
 
@@ -606,7 +688,7 @@ const server = http.createServer(async (req, res) => {
 
     finalizeSelection({ sessionId, question })
 
-    sendJson(res, 200, { question })
+    sendJson(res, 200, { ok: true, data: { question }, meta: aiMeta })
     return
   }
 
@@ -755,11 +837,6 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  if (!OPENAI_API_KEY) {
-    sendJson(res, 401, { error: 'OPENAI_API_KEY is not set on the server.' })
-    return
-  }
-
   if (url.pathname === '/api/generate-questions' && req.method === 'POST') {
     const body = await readJsonBody(req)
     if (!body) {
@@ -772,26 +849,22 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    const messages = [
-      {
-        role: 'system',
-        content:
-          'You generate focused, practical guiding questions. Return only JSON arrays of strings.',
-      },
-      {
-        role: 'user',
-        content: `Generate ${count} concise, insightful guiding questions for product "${productName}". The questions must reflect the intersection of space "${spaceDef}" and observation level "${timeDef}". Mix technical, business, user-need, trends, standards, connectivity, and price-vs-performance angles. Output ONLY a JSON array of strings, no extra text.`,
-      },
-    ]
-
-    try {
-      const content = await callOpenAI(messages, 900)
-      const questions = parseJsonArray(content)
-      if (!questions) throw new Error('Invalid JSON array')
-      sendJson(res, 200, { questions })
-    } catch (error) {
-      sendJson(res, 500, { error: String(error) })
-    }
+    const aiSupportEnabled = resolveAiSupportEnabled(req, body)
+    const result = await runLlmTask({
+      apiKey: OPENAI_API_KEY,
+      aiSupportEnabled,
+      task: 'generate-questions',
+      input: `${productName}\n${spaceDef}\n${timeDef}`,
+      language: 'English',
+      taskInstructions: `Generate ${count} concise, insightful guiding questions for product "${productName}". The questions must reflect the intersection of space "${spaceDef}" and observation level "${timeDef}". Mix technical, business, user-need, trends, standards, connectivity, and price-vs-performance angles. Output ONLY a JSON array of strings, no extra text.`,
+      parseResponse: parseJsonArray,
+      fallbackData: buildQuestionFallbacks({ productName, spaceDef, timeDef, count }),
+      models: LLM_MODELS,
+      maxOutputTokens: 900,
+      rateLimiter: llmRateLimiter,
+      rateLimitKey: getClientIp(req),
+    })
+    sendLlmResponse(res, result, (data) => ({ questions: data }))
     return
   }
 
@@ -807,26 +880,22 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    const messages = [
-      {
-        role: 'system',
-        content:
-          'You generate short, brandable product names. Return only JSON arrays of strings.',
-      },
-      {
-        role: 'user',
-        content: `Generate ${count} short, brandable product names (1-3 words) based on this description. Avoid punctuation. Output ONLY a JSON array of strings, no extra text.\\n\\nDescription:\\n${description}`,
-      },
-    ]
-
-    try {
-      const content = await callOpenAI(messages, 300)
-      const names = parseJsonArray(content)
-      if (!names) throw new Error('Invalid JSON array')
-      sendJson(res, 200, { names })
-    } catch (error) {
-      sendJson(res, 500, { error: String(error) })
-    }
+    const aiSupportEnabled = resolveAiSupportEnabled(req, body)
+    const result = await runLlmTask({
+      apiKey: OPENAI_API_KEY,
+      aiSupportEnabled,
+      task: 'generate-names',
+      input: description,
+      language: 'English',
+      taskInstructions: `Generate ${count} short, brandable product names (1-3 words) based on this description. Avoid punctuation. Output ONLY a JSON array of strings, no extra text.`,
+      parseResponse: parseJsonArray,
+      fallbackData: buildNameFallbacks(description, count),
+      models: LLM_MODELS,
+      maxOutputTokens: 300,
+      rateLimiter: llmRateLimiter,
+      rateLimitKey: getClientIp(req),
+    })
+    sendLlmResponse(res, result, (data) => ({ names: data }))
     return
   }
 
@@ -846,26 +915,22 @@ const server = http.createServer(async (req, res) => {
       .map((cell) => `- ${cell.id}: space="${cell.spaceDef}", level="${cell.timeDef}"`)
       .join('\n')
 
-    const messages = [
-      {
-        role: 'system',
-        content:
-          'You generate short, practical idea prompts. Return only JSON objects mapping cell ids to arrays of ideas.',
-      },
-      {
-        role: 'user',
-        content: `Generate ${ideasPerCell} concise ideas (max 50 words each) for each cell for product "${productName}". Each idea must relate to both the space and observation level. Return ONLY a JSON object where keys are cell ids and values are arrays of ideas.\n\nCells:\n${promptCells}`,
-      },
-    ]
-
-    try {
-      const content = await callOpenAI(messages, 1200)
-      const ideas = parseJsonObject(content)
-      if (!ideas) throw new Error('Invalid JSON object')
-      sendJson(res, 200, { ideas })
-    } catch (error) {
-      sendJson(res, 500, { error: String(error) })
-    }
+    const aiSupportEnabled = resolveAiSupportEnabled(req, body)
+    const result = await runLlmTask({
+      apiKey: OPENAI_API_KEY,
+      aiSupportEnabled,
+      task: 'generate-ideas',
+      input: `${productName}\n${promptCells}`,
+      language: 'English',
+      taskInstructions: `Generate ${ideasPerCell} concise ideas (max 50 words each) for each cell for product "${productName}". Each idea must relate to both the space and observation level. Return ONLY a JSON object where keys are cell ids and values are arrays of ideas.`,
+      parseResponse: parseJsonObject,
+      fallbackData: buildIdeaFallbacks(cells, ideasPerCell),
+      models: LLM_MODELS,
+      maxOutputTokens: 1200,
+      rateLimiter: llmRateLimiter,
+      rateLimitKey: getClientIp(req),
+    })
+    sendLlmResponse(res, result, (data) => ({ ideas: data }))
     return
   }
 
@@ -888,30 +953,31 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    const messages = [
-      {
-        role: 'system',
-        content: `You generate concise option lists in ${outputLanguage}. Return ONLY a JSON object with arrays.`,
+    const aiSupportEnabled = resolveAiSupportEnabled(req, body)
+    const result = await runLlmTask({
+      apiKey: OPENAI_API_KEY,
+      aiSupportEnabled,
+      task: 'generate-space-options',
+      input: `${productName}\n${description}`,
+      language: outputLanguage,
+      taskInstructions: `Product: "${productName}". Description: "${description}".\n\nTask:\n1) Generate ${worldCount} options for where this product can exist, be used, or be found (near context and broader context). These are for the "World" category.\n2) Generate ${elementCount} options describing components, materials, subassemblies, or parts the product can be made of. These are for the "Elements" category.\n\nRequirements:\n- Write ONLY in ${outputLanguage}.\n- Each option 1-6 words.\n- Return ONLY a JSON object: {"worldOptions":[...],"elementOptions":[...]}\n- No extra text.`,
+      parseResponse: (value) => {
+        const parsed = parseJsonObject(value)
+        if (!parsed || !Array.isArray(parsed.worldOptions) || !Array.isArray(parsed.elementOptions)) {
+          return null
+        }
+        return parsed
       },
-      {
-        role: 'user',
-        content: `Product: "${productName}". Description: "${description}".\n\nTask:\n1) Generate ${worldCount} options for where this product can exist, be used, or be found (near context and broader context). These are for the "World" category.\n2) Generate ${elementCount} options describing components, materials, subassemblies, or parts the product can be made of. These are for the "Elements" category.\n\nRequirements:\n- Write ONLY in ${outputLanguage}.\n- Each option 1-6 words.\n- Return ONLY a JSON object: {"worldOptions":[...],"elementOptions":[...]}\n- No extra text.`,
-      },
-    ]
-
-    try {
-      const content = await callOpenAI(messages, 400)
-      const parsed = parseJsonObject(content)
-      if (!parsed || !Array.isArray(parsed.worldOptions) || !Array.isArray(parsed.elementOptions)) {
-        throw new Error('Invalid JSON object')
-      }
-      sendJson(res, 200, {
-        worldOptions: parsed.worldOptions,
-        elementOptions: parsed.elementOptions,
-      })
-    } catch (error) {
-      sendJson(res, 500, { error: String(error) })
-    }
+      fallbackData: buildSpaceFallbacks(productName),
+      models: LLM_MODELS,
+      maxOutputTokens: 400,
+      rateLimiter: llmRateLimiter,
+      rateLimitKey: getClientIp(req),
+    })
+    sendLlmResponse(res, result, (data) => ({
+      worldOptions: data.worldOptions,
+      elementOptions: data.elementOptions,
+    }))
     return
   }
 
@@ -928,27 +994,22 @@ const server = http.createServer(async (req, res) => {
       return
     }
 
-    const messages = [
-      {
-        role: 'system',
-        content:
-          `You generate concise time/process/observation level options in ${outputLanguage}. Return only JSON arrays of strings.`,
-      },
-      {
-        role: 'user',
-        content: `Generate ${count} concise observation/time/process options (1-6 words) for product \"${productName}\". Write ONLY in ${outputLanguage}. Do not use any other language. Output ONLY a JSON array of strings, no extra text.`,
-      },
-    ]
-
-    try {
-      const content = await callOpenAI(messages, 400)
-      let options = parseJsonArray(content)
-      if (!options) throw new Error('Invalid JSON array')
-      options = await translateList(options, outputLanguage)
-      sendJson(res, 200, { options })
-    } catch (error) {
-      sendJson(res, 500, { error: String(error) })
-    }
+    const aiSupportEnabled = resolveAiSupportEnabled(req, body)
+    const result = await runLlmTask({
+      apiKey: OPENAI_API_KEY,
+      aiSupportEnabled,
+      task: 'generate-time-options',
+      input: productName,
+      language: outputLanguage,
+      taskInstructions: `Generate ${count} concise observation/time/process options (1-6 words) for product "${productName}". Write ONLY in ${outputLanguage}. Do not use any other language. Output ONLY a JSON array of strings, no extra text.`,
+      parseResponse: parseJsonArray,
+      fallbackData: buildTimeFallbacks().slice(0, count),
+      models: LLM_MODELS,
+      maxOutputTokens: 400,
+      rateLimiter: llmRateLimiter,
+      rateLimitKey: getClientIp(req),
+    })
+    sendLlmResponse(res, result, (data) => ({ options: data }))
     return
   }
 

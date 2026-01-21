@@ -1,5 +1,6 @@
 import fs from 'node:fs'
 import path from 'node:path'
+import { buildMeta, readJsonBody, resolveAiSupportEnabled, sendError, sendJson } from '../_lib/http.js'
 
 let cachedDataset = null
 
@@ -101,20 +102,6 @@ const loadQuestionsFromCsvOnce = () => {
   return cachedDataset
 }
 
-const readJsonBody = async (req) => {
-  if (req.body && typeof req.body === 'object') return req.body
-  let body = ''
-  for await (const chunk of req) {
-    body += chunk
-  }
-  if (!body) return {}
-  try {
-    return JSON.parse(body)
-  } catch {
-    return null
-  }
-}
-
 const sortByNumericSuffix = (items) =>
   [...items].sort((a, b) => {
     const aNum = Number(String(a.id).split('_')[1] || 0)
@@ -206,21 +193,22 @@ const mapQuestion = (question, lang) => ({
 })
 
 export default async function handler(req, res) {
-  res.setHeader('Content-Type', 'application/json')
   if (req.method === 'OPTIONS') {
     res.status(204).end()
     return
   }
   if (req.method !== 'POST') {
-    res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['POST'] })
+    sendJson(res, 405, { ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['POST'] })
     return
   }
   try {
     const body = await readJsonBody(req)
     if (!body) {
-      res.status(400).json({ ok: false, error: 'INVALID_JSON' })
+      sendError(res, 400, 'INVALID_JSON', 'Invalid JSON body.')
       return
     }
+    const aiSupportEnabled = resolveAiSupportEnabled(req, body)
+    const meta = buildMeta({ aiSupportEnabled, modelUsed: null, escalated: false })
     const dataset = loadQuestionsFromCsvOnce()
     const lang = normalizeLang(body.lang || body.language || 'pl')
     const rawQuestion = selectQuestion({
@@ -233,10 +221,12 @@ export default async function handler(req, res) {
     })
     const activeList = dataset.list.filter((q) => Number(q.is_active) === 1)
     if (activeList.length === 0) {
-      res.status(200).json({
+      sendJson(res, 200, {
         ok: false,
-        error: 'DATASET_EMPTY',
-        reason: {
+        code: 'DATASET_EMPTY',
+        message: 'No questions available.',
+        meta,
+        data: {
           candidates: dataset.list.length,
           datasetStats: dataset.stats,
           csvPath: dataset.csvPath,
@@ -246,18 +236,16 @@ export default async function handler(req, res) {
     }
     if (!rawQuestion) {
       const fallback = activeList[0]
-      res
-        .status(200)
-        .json({ ok: true, question: mapQuestion(fallback, lang), debug: { fallbackUsed: true } })
+      sendJson(res, 200, {
+        ok: true,
+        data: { question: mapQuestion(fallback, lang) },
+        meta,
+        debug: { fallbackUsed: true },
+      })
       return
     }
-    res.status(200).json({ ok: true, question: mapQuestion(rawQuestion, lang) })
+    sendJson(res, 200, { ok: true, data: { question: mapQuestion(rawQuestion, lang) }, meta })
   } catch (error) {
-    res.status(500).json({
-      ok: false,
-      error: 'EXCEPTION',
-      message: error?.message || 'Server error',
-      stack: error?.stack || null,
-    })
+    sendError(res, 500, 'EXCEPTION', 'Server error.')
   }
 }

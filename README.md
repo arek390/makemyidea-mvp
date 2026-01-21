@@ -2,6 +2,30 @@
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 
+## Local development
+
+Use Node 20 LTS (>= 20.19.0) for local dev (Vite requires 20.19+; native modules like `better-sqlite3` are not ready for Node 24).
+
+```bash
+nvm install
+nvm use
+node -v
+npm install
+npm run dev:all
+```
+
+Sanity check for the engine DB dependency:
+
+```bash
+npm run check:engine
+```
+
+If `better-sqlite3` fails to build on macOS, install the Xcode Command Line Tools:
+
+```bash
+xcode-select --install
+```
+
 Currently, two official plugins are available:
 
 - [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh

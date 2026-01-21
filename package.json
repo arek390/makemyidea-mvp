@@ -11,12 +11,16 @@
     "import:questions": "node scripts/import-questions.mjs",
     "test:suggester": "node scripts/test-suggester.mjs",
     "dev:all": "node scripts/dev-all.mjs",
+    "check:engine": "node scripts/check-engine-db.mjs",
     "seed:questions": "node scripts/import-questions.mjs",
     "test:unit": "vitest run",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:report": "playwright show-report",
     "test": "npm run test:unit && npm run test:e2e"
+  },
+  "engines": {
+    "node": ">=20.19 <21"
   },
   "dependencies": {
     "better-sqlite3": "^12.5.0",
