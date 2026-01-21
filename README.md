@@ -20,6 +20,10 @@ Sanity check for the engine DB dependency:
 npm run check:engine
 ```
 
+SQLite notes:
+- `data/engine.sqlite*` is local runtime state and is intentionally not tracked by git.
+- It will be created automatically on first run (e.g., `npm run dev:all`).
+
 If `better-sqlite3` fails to build on macOS, install the Xcode Command Line Tools:
 
 ```bash

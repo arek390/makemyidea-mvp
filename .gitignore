@@ -24,5 +24,10 @@ dist-ssr
 *.sw?
 
 # local shortcuts / secrets
+.env*
+*.sqlite
+*.sqlite-*
+data/*.sqlite
+data/*.sqlite-*
 moje/
 *.rtf
