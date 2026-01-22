@@ -16,6 +16,18 @@ const MAX_INPUT_CHARS = 10_000
 const DEFAULT_TIMEOUT_MS = 18_000
 
 const estimateTokens = (value) => Math.ceil(String(value || '').length / 4)
+const buildEmptyUsage = () => ({ input: 0, output: 0, total: 0 })
+const mergeUsage = (current, usage) => {
+  if (!usage) return current
+  const input = Number(usage.prompt_tokens ?? 0)
+  const output = Number(usage.completion_tokens ?? 0)
+  const total = Number(usage.total_tokens ?? input + output)
+  return {
+    input: current.input + input,
+    output: current.output + output,
+    total: current.total + total,
+  }
+}
 
 const safeJsonParse = (value) => {
   try {
@@ -120,7 +132,7 @@ export const runLlmTask = async ({
     return {
       ok: true,
       data: fallbackData,
-      meta: { aiSupportEnabled: false, modelUsed: null, escalated: false },
+      meta: { aiSupportEnabled: false, modelUsed: null, escalated: false, tokens: buildEmptyUsage() },
     }
   }
 
@@ -128,7 +140,7 @@ export const runLlmTask = async ({
     return {
       ok: false,
       error: 'OPENAI_API_KEY is not set on the server.',
-      meta: { aiSupportEnabled: true, modelUsed: null, escalated: false },
+      meta: { aiSupportEnabled: true, modelUsed: null, escalated: false, tokens: buildEmptyUsage() },
     }
   }
 
@@ -138,7 +150,7 @@ export const runLlmTask = async ({
       return {
         ok: false,
         error: 'Rate limit exceeded.',
-        meta: { aiSupportEnabled: true, modelUsed: null, escalated: false },
+        meta: { aiSupportEnabled: true, modelUsed: null, escalated: false, tokens: buildEmptyUsage() },
       }
     }
   }
@@ -164,6 +176,7 @@ export const runLlmTask = async ({
     constraint_count: 0,
     valid: false,
   }
+  let usageTotals = buildEmptyUsage()
   let preprocessSucceeded = false
   try {
     const result = await callOpenAIChat({
@@ -174,6 +187,7 @@ export const runLlmTask = async ({
       temperature: 0.2,
       timeoutMs,
     })
+    usageTotals = mergeUsage(usageTotals, result.usage)
     preprocess = resolvePreprocess(result.content, preprocess.cleaned_input)
     preprocessSucceeded = preprocess.valid
   } catch {
@@ -210,13 +224,16 @@ export const runLlmTask = async ({
     })
     const parsed = parseResponse(result.content)
     if (!parsed) {
-      throw new Error('Invalid model response.')
+      const error = new Error('Invalid model response.')
+      error.usage = result.usage
+      throw error
     }
     return { parsed, usage: result.usage, model }
   }
 
   try {
     const result = await runGeneration(primaryModel)
+    usageTotals = mergeUsage(usageTotals, result.usage)
     return {
       ok: true,
       data: result.parsed,
@@ -224,19 +241,17 @@ export const runLlmTask = async ({
         aiSupportEnabled: true,
         modelUsed: result.model,
         escalated,
-        tokens: result.usage
-          ? {
-              input: result.usage.prompt_tokens,
-              output: result.usage.completion_tokens,
-              total: result.usage.total_tokens,
-            }
-          : undefined,
+        tokens: usageTotals,
       },
     }
   } catch (error) {
+    if (error?.usage) {
+      usageTotals = mergeUsage(usageTotals, error.usage)
+    }
     if (escalated) {
       try {
         const fallback = await runGeneration(models.default)
+        usageTotals = mergeUsage(usageTotals, fallback.usage)
         return {
           ok: true,
           data: fallback.parsed,
@@ -244,27 +259,24 @@ export const runLlmTask = async ({
             aiSupportEnabled: true,
             modelUsed: fallback.model,
             escalated: false,
-            tokens: fallback.usage
-              ? {
-                  input: fallback.usage.prompt_tokens,
-                  output: fallback.usage.completion_tokens,
-                  total: fallback.usage.total_tokens,
-                }
-              : undefined,
+            tokens: usageTotals,
           },
         }
       } catch (fallbackError) {
+        if (fallbackError?.usage) {
+          usageTotals = mergeUsage(usageTotals, fallbackError.usage)
+        }
         return {
           ok: false,
           error: String(fallbackError),
-          meta: { aiSupportEnabled: true, modelUsed: null, escalated: true },
+          meta: { aiSupportEnabled: true, modelUsed: null, escalated: true, tokens: usageTotals },
         }
       }
     }
     return {
       ok: false,
       error: String(error),
-      meta: { aiSupportEnabled: true, modelUsed: null, escalated: false },
+      meta: { aiSupportEnabled: true, modelUsed: null, escalated: false, tokens: usageTotals },
     }
   }
 }

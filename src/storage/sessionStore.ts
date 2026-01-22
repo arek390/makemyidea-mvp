@@ -19,6 +19,8 @@ export type EngineSessionSummary = {
   last_mode_code: number | null
   last_category_code: string | null
   stuck_counter: number
+  tokensInTotal?: number
+  tokensOutTotal?: number
 }
 
 export type EngineSessionDetail = {
@@ -87,6 +89,8 @@ const normalizeSession = (session: EngineSessionSummary): EngineSessionSummary =
   last_mode_code: session.last_mode_code ?? null,
   last_category_code: session.last_category_code ?? null,
   stuck_counter: session.stuck_counter ?? 0,
+  tokensInTotal: session.tokensInTotal ?? 0,
+  tokensOutTotal: session.tokensOutTotal ?? 0,
 })
 
 export const listSessions = async (): Promise<EngineSessionSummary[]> => {
@@ -119,6 +123,8 @@ export const createSession = async (input?: {
     last_mode_code: null,
     last_category_code: null,
     stuck_counter: 0,
+    tokensInTotal: 0,
+    tokensOutTotal: 0,
   }
   const record: StoredSession = {
     session,

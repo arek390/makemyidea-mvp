@@ -132,6 +132,8 @@ type Language =
   | 'French'
 
 type LlmUsageModel = 'gpt-4.1-mini' | 'gpt-5-nano' | 'gpt-5-mini'
+type LlmUsageTokens = { input?: number; output?: number; total?: number }
+type LlmUsageMeta = { modelUsed?: string | null; aiSupportEnabled?: boolean; tokens?: LlmUsageTokens }
 
 type FacilitationType = 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET'
 type FacilitationPrompt = { type: FacilitationType; text: string }
@@ -2805,18 +2807,52 @@ function App() {
     }),
     [aiSupportEnabled]
   )
-  const resolveUsageModel = (
-    meta?: { modelUsed?: string | null; aiSupportEnabled?: boolean }
-  ): LlmUsageModel | null => {
+  const resolveUsageModel = (meta?: LlmUsageMeta): LlmUsageModel | null => {
     if (!meta || meta.aiSupportEnabled === false || !meta.modelUsed) return null
     if (meta.modelUsed === 'gpt-4.1-mini') return 'gpt-4.1-mini'
     if (meta.modelUsed === 'gpt-5-nano') return 'gpt-5-nano'
     if (meta.modelUsed === 'gpt-5-mini') return 'gpt-5-mini'
     return null
   }
-  const applyUsageModel = (meta?: { modelUsed?: string | null; aiSupportEnabled?: boolean }) => {
+  const applyUsageModel = (meta?: LlmUsageMeta) => {
     if (!meta) return
     setLlmUsageModel(resolveUsageModel(meta))
+  }
+  const applyUsageToSession = async (
+    meta?: LlmUsageMeta,
+    sessionIdOverride?: string | null
+  ) => {
+    const input = Number(meta?.tokens?.input ?? 0)
+    const output = Number(meta?.tokens?.output ?? 0)
+    if (!input && !output) return
+    const sessionId = sessionIdOverride ?? enginePreviewSessionId ?? null
+    if (!sessionId) return
+    // Token accumulation happens here so it persists with the session record.
+    const detail = await getSession(sessionId)
+    if (!detail?.session) return
+    const nextSession = {
+      ...detail.session,
+      tokensInTotal: (detail.session.tokensInTotal ?? 0) + input,
+      tokensOutTotal: (detail.session.tokensOutTotal ?? 0) + output,
+      updated_at: Date.now(),
+    }
+    const updatedDetail: EngineSessionDetail = { ...detail, session: nextSession }
+    await updateSession(updatedDetail)
+    if (engineSessionDetail?.session?.id === sessionId) {
+      setEngineSessionDetail(updatedDetail)
+    }
+    setEngineSessions((prev) =>
+      prev.map((session) =>
+        session.id === sessionId
+          ? {
+              ...session,
+              tokensInTotal: nextSession.tokensInTotal,
+              tokensOutTotal: nextSession.tokensOutTotal,
+              updated_at: nextSession.updated_at,
+            }
+          : session
+      )
+    )
   }
 
   useEffect(() => {
@@ -3943,6 +3979,7 @@ function App() {
               worldCount: 10,
               elementCount: 10,
               language: reportLanguage,
+              sessionId: enginePreviewSessionId || engineSessionId || undefined,
             }),
           }),
           fetch(`${llmApiBase}/api/generate-time-options`, {
@@ -3952,6 +3989,7 @@ function App() {
               productName: productName.trim(),
               count: 15,
               language: reportLanguage,
+              sessionId: enginePreviewSessionId || engineSessionId || undefined,
             }),
           }),
         ])
@@ -3973,7 +4011,9 @@ function App() {
         if (!Array.isArray(worldOptions) || !Array.isArray(elementOptions) || !Array.isArray(timeOptions)) {
           throw new Error('Invalid response')
         }
-        applyUsageModel(spaceData.meta || timeData.meta)
+        const meta = spaceData.meta || timeData.meta
+        applyUsageModel(meta)
+        void applyUsageToSession(meta, enginePreviewSessionId)
         const nextWorlds = uniqueList(worldOptions).slice(0, 10)
         const nextElements = uniqueList(elementOptions).slice(0, 10)
         const nextTimes = uniqueList(timeOptions).slice(0, 20)
@@ -4035,7 +4075,11 @@ function App() {
       const response = await fetch(`${llmApiBase}/api/generate-names`, {
         method: 'POST',
         headers: llmHeaders,
-        body: JSON.stringify({ description, count: 5 }),
+        body: JSON.stringify({
+          description,
+          count: 5,
+          sessionId: enginePreviewSessionId || engineSessionId || undefined,
+        }),
       })
       if (!response.ok) {
         const msg = await response.text()
@@ -4052,6 +4096,7 @@ function App() {
       }
       setProductNameSuggestions(names)
       applyUsageModel(data.meta)
+      void applyUsageToSession(data.meta, enginePreviewSessionId)
     } catch {
       setProductNameSuggestions(buildNameSuggestions(description, productName))
     }
@@ -4322,6 +4367,7 @@ function App() {
           productName: productName || copy.analyzedProduct,
           ideasPerCell: 3,
           cells,
+          sessionId: enginePreviewSessionId || engineSessionId || undefined,
         }),
       })
       if (!response.ok) {
@@ -4336,6 +4382,7 @@ function App() {
       const ideas = data?.data?.ideas
       if (!ideas) throw new Error('Invalid response')
       applyUsageModel(data.meta)
+      void applyUsageToSession(data.meta, enginePreviewSessionId)
 
       setWorkshopIdeas((prev) => {
         const next: Record<string, Idea[]> = { ...prev }
@@ -4372,7 +4419,7 @@ function App() {
       })
       const rawText = await response.text()
       let data:
-        | { ok?: boolean; data?: { question?: { text?: string } | null } }
+        | { ok?: boolean; data?: { question?: { text?: string } | null }; meta?: LlmUsageMeta }
         | null = null
       try {
         data = JSON.parse(rawText)
@@ -4387,6 +4434,7 @@ function App() {
         )
         throw new Error('Request failed')
       }
+      void applyUsageToSession(data.meta, enginePreviewSessionId)
       const question = data?.data?.question
       if (!question || !question.text) {
         setImpulseQuestion(copy.impulseEmpty)
@@ -4731,6 +4779,8 @@ function App() {
           last_mode_code: null,
           last_category_code: null,
           stuck_counter: 0,
+          tokensInTotal: 0,
+          tokensOutTotal: 0,
         },
         boardItems: [],
         askedQuestionIds: [],
@@ -5216,6 +5266,19 @@ function App() {
   const llmUsageClass = llmUsageModel
     ? `llm-model-${llmUsageModel.replace(/\./g, '-')}`
     : 'llm-model-none'
+  const currentEngineSession = useMemo(() => {
+    if (!enginePreviewSessionId) return null
+    if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
+      return engineSessionDetail.session
+    }
+    return engineSessions.find((session) => session.id === enginePreviewSessionId) || null
+  }, [enginePreviewSessionId, engineSessionDetail, engineSessions])
+  const currentTokensTotal =
+    (currentEngineSession?.tokensInTotal ?? 0) + (currentEngineSession?.tokensOutTotal ?? 0)
+  const formatTokenTotal = (value: number) => {
+    const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
+    return new Intl.NumberFormat(locale).format(Math.max(0, Math.floor(value || 0)))
+  }
 
   return (
       <div className="app engine-preview" data-testid="active-session">
@@ -5249,7 +5312,7 @@ function App() {
               title="LLM usage indicator"
               disabled
             >
-              LLM
+              {`${formatTokenTotal(currentTokensTotal)} tok`}
             </button>
           </div>
         </header>

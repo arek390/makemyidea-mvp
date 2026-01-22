@@ -55,7 +55,9 @@ CREATE TABLE IF NOT EXISTS sessions (
   last_group_code TEXT,
   last_mode_code INTEGER,
   last_category_code TEXT,
-  stuck_counter INTEGER NOT NULL DEFAULT 0
+  stuck_counter INTEGER NOT NULL DEFAULT 0,
+  tokens_in_total INTEGER NOT NULL DEFAULT 0,
+  tokens_out_total INTEGER NOT NULL DEFAULT 0
 );
 
 -- =========================

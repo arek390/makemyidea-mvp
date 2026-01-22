@@ -9,6 +9,12 @@ const ensureSessionsColumns = () => {
   if (!columns.includes('name')) {
     db.prepare('ALTER TABLE sessions ADD COLUMN name TEXT').run()
   }
+  if (!columns.includes('tokens_in_total')) {
+    db.prepare('ALTER TABLE sessions ADD COLUMN tokens_in_total INTEGER NOT NULL DEFAULT 0').run()
+  }
+  if (!columns.includes('tokens_out_total')) {
+    db.prepare('ALTER TABLE sessions ADD COLUMN tokens_out_total INTEGER NOT NULL DEFAULT 0').run()
+  }
 }
 
 const ensureBoardItemsColumns = () => {
@@ -62,8 +68,8 @@ export const createSession = ({ name }) => {
   const id = crypto.randomUUID()
   const timestamp = nowMs()
   db.prepare(
-    `INSERT INTO sessions (id, name, created_at, updated_at, last_group_code, last_mode_code, last_category_code, stuck_counter)
-     VALUES (@id, @name, @created_at, @updated_at, NULL, NULL, NULL, 0)`
+    `INSERT INTO sessions (id, name, created_at, updated_at, last_group_code, last_mode_code, last_category_code, stuck_counter, tokens_in_total, tokens_out_total)
+     VALUES (@id, @name, @created_at, @updated_at, NULL, NULL, NULL, 0, 0, 0)`
   ).run({ id, name: name || null, created_at: timestamp, updated_at: timestamp })
   return { sessionId: id }
 }
@@ -84,7 +90,8 @@ export const getSession = (sessionId) => {
   ensureSessionsColumns()
   return db
     .prepare(
-      `SELECT id, name, created_at, updated_at, last_group_code, last_mode_code, last_category_code, stuck_counter
+      `SELECT id, name, created_at, updated_at, last_group_code, last_mode_code, last_category_code, stuck_counter,
+              tokens_in_total, tokens_out_total
        FROM sessions WHERE id = @id`
     )
     .get({ id: sessionId })
@@ -96,7 +103,8 @@ export const listSessions = ({ limit = 50 } = {}) => {
   ensureSessionsColumns()
   return db
     .prepare(
-      `SELECT id, name, created_at, updated_at, last_group_code, last_mode_code, last_category_code, stuck_counter
+      `SELECT id, name, created_at, updated_at, last_group_code, last_mode_code, last_category_code, stuck_counter,
+              tokens_in_total, tokens_out_total
        FROM sessions
        ORDER BY updated_at DESC
        LIMIT @limit`
@@ -376,15 +384,37 @@ export const getLastSessionAnswer = (sessionId) => {
 
 export const ensureSession = (sessionId) => {
   const db = getEngineDb()
+  ensureSessionsColumns()
   const timestamp = nowMs()
 
   db.prepare(
-    `INSERT INTO sessions (id, created_at, updated_at, last_group_code, last_mode_code, last_category_code, stuck_counter)
-     VALUES (@id, @created_at, @updated_at, NULL, NULL, NULL, 0)
+    `INSERT INTO sessions (id, created_at, updated_at, last_group_code, last_mode_code, last_category_code, stuck_counter, tokens_in_total, tokens_out_total)
+     VALUES (@id, @created_at, @updated_at, NULL, NULL, NULL, 0, 0, 0)
      ON CONFLICT(id) DO UPDATE SET updated_at = excluded.updated_at`
   ).run({ id: sessionId, created_at: timestamp, updated_at: timestamp })
 
   return getSession(sessionId)
+}
+
+export const incrementSessionTokens = ({ sessionId, tokensIn = 0, tokensOut = 0 }) => {
+  if (!sessionId) return
+  const safeIn = Number(tokensIn || 0)
+  const safeOut = Number(tokensOut || 0)
+  if (!Number.isFinite(safeIn) || !Number.isFinite(safeOut)) return
+  ensureSessionExists(sessionId)
+  const db = getEngineDb()
+  db.prepare(
+    `UPDATE sessions
+     SET tokens_in_total = tokens_in_total + @tokens_in,
+         tokens_out_total = tokens_out_total + @tokens_out,
+         updated_at = @updated_at
+     WHERE id = @id`
+  ).run({
+    id: sessionId,
+    tokens_in: Math.max(0, Math.floor(safeIn)),
+    tokens_out: Math.max(0, Math.floor(safeOut)),
+    updated_at: nowMs(),
+  })
 }
 
 export const listAskedQuestionIds = (sessionId) => {

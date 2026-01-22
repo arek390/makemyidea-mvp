@@ -48,12 +48,17 @@ export const resolveAiSupportEnabled = (req, body) => {
   return true
 }
 
-export const buildMeta = ({ aiSupportEnabled, modelUsed, tokens, escalated }) => ({
-  aiSupportEnabled: Boolean(aiSupportEnabled),
-  modelUsed: modelUsed ?? null,
-  escalated: Boolean(escalated),
-  tokens: tokens || undefined,
-})
+export const buildMeta = ({ aiSupportEnabled, modelUsed, tokens, escalated }) => {
+  const input = Number(tokens?.input ?? 0)
+  const output = Number(tokens?.output ?? 0)
+  const total = Number(tokens?.total ?? input + output)
+  return {
+    aiSupportEnabled: Boolean(aiSupportEnabled),
+    modelUsed: modelUsed ?? null,
+    escalated: Boolean(escalated),
+    tokens: { input, output, total },
+  }
+}
 
 export const mapLlmError = (error) => {
   const message = String(error || '')

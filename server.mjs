@@ -14,6 +14,7 @@ import {
   getSession,
   getSessionState,
   incrementAskedCount,
+  incrementSessionTokens,
   listBoardItems,
   listSessions,
   listAskedQuestionIds,
@@ -78,6 +79,14 @@ const buildNameFallbacks = (description, count = 5) => {
     if (names.length < count && fallbackNameSeeds[index]) names.push(`${cap} ${fallbackNameSeeds[index]}`)
   })
   return names.slice(0, count)
+}
+
+const applySessionTokenUpdate = (sessionId, meta) => {
+  if (!sessionId || !meta?.tokens) return
+  const input = Number(meta.tokens.input ?? 0)
+  const output = Number(meta.tokens.output ?? 0)
+  if (!input && !output) return
+  incrementSessionTokens({ sessionId, tokensIn: input, tokensOut: output })
 }
 
 const buildIdeaFallbacks = (cells, ideasPerCell = 3) => {
@@ -325,7 +334,9 @@ const server = http.createServer(async (req, res) => {
     warnLowQuestionCount()
     const body = await readJsonBody(req)
     const name = body?.name ? String(body.name).trim() : ''
-    sendJson(res, 201, createSession({ name: name || null }))
+    const created = createSession({ name: name || null })
+    const session = created?.sessionId ? getSession(created.sessionId) : null
+    sendJson(res, 201, { sessionId: created.sessionId, session })
     return
   }
 
@@ -843,7 +854,7 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 400, { error: 'Invalid JSON body.' })
       return
     }
-    const { productName, spaceDef, timeDef, count = 30 } = body
+    const { productName, spaceDef, timeDef, count = 30, sessionId } = body
     if (!productName || !spaceDef || !timeDef) {
       sendJson(res, 400, { error: 'Missing productName, spaceDef, or timeDef.' })
       return
@@ -864,6 +875,7 @@ const server = http.createServer(async (req, res) => {
       rateLimiter: llmRateLimiter,
       rateLimitKey: getClientIp(req),
     })
+    applySessionTokenUpdate(sessionId, result.meta)
     sendLlmResponse(res, result, (data) => ({ questions: data }))
     return
   }
@@ -874,7 +886,7 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 400, { error: 'Invalid JSON body.' })
       return
     }
-    const { description, count = 5 } = body
+    const { description, count = 5, sessionId } = body
     if (!description) {
       sendJson(res, 400, { error: 'Missing description.' })
       return
@@ -895,6 +907,7 @@ const server = http.createServer(async (req, res) => {
       rateLimiter: llmRateLimiter,
       rateLimitKey: getClientIp(req),
     })
+    applySessionTokenUpdate(sessionId, result.meta)
     sendLlmResponse(res, result, (data) => ({ names: data }))
     return
   }
@@ -905,7 +918,7 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 400, { error: 'Invalid JSON body.' })
       return
     }
-    const { productName, cells = [], ideasPerCell = 3 } = body
+    const { productName, cells = [], ideasPerCell = 3, sessionId } = body
     if (!productName || !Array.isArray(cells) || !cells.length) {
       sendJson(res, 400, { error: 'Missing productName or cells.' })
       return
@@ -930,6 +943,7 @@ const server = http.createServer(async (req, res) => {
       rateLimiter: llmRateLimiter,
       rateLimitKey: getClientIp(req),
     })
+    applySessionTokenUpdate(sessionId, result.meta)
     sendLlmResponse(res, result, (data) => ({ ideas: data }))
     return
   }
@@ -946,6 +960,7 @@ const server = http.createServer(async (req, res) => {
       worldCount = 10,
       elementCount = 10,
       language = 'English',
+      sessionId,
     } = body
     const outputLanguage = normalizeLanguage(language)
     if (!productName) {
@@ -974,6 +989,7 @@ const server = http.createServer(async (req, res) => {
       rateLimiter: llmRateLimiter,
       rateLimitKey: getClientIp(req),
     })
+    applySessionTokenUpdate(sessionId, result.meta)
     sendLlmResponse(res, result, (data) => ({
       worldOptions: data.worldOptions,
       elementOptions: data.elementOptions,
@@ -987,7 +1003,7 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 400, { error: 'Invalid JSON body.' })
       return
     }
-    const { productName, count = 15, language = 'English' } = body
+    const { productName, count = 15, language = 'English', sessionId } = body
     const outputLanguage = normalizeLanguage(language)
     if (!productName) {
       sendJson(res, 400, { error: 'Missing productName.' })
@@ -1009,6 +1025,7 @@ const server = http.createServer(async (req, res) => {
       rateLimiter: llmRateLimiter,
       rateLimitKey: getClientIp(req),
     })
+    applySessionTokenUpdate(sessionId, result.meta)
     sendLlmResponse(res, result, (data) => ({ options: data }))
     return
   }
