@@ -992,6 +992,34 @@
   color: #2f3947;
 }
 
+.llm-usage-indicator {
+  pointer-events: none;
+}
+
+.llm-usage-indicator.llm-model-none {
+  background: #e3e6ea;
+  border-color: #c7cbd1;
+  color: #2f3947;
+}
+
+.llm-usage-indicator.llm-model-gpt-4-1-mini {
+  background: #1f8a4c;
+  border-color: #1f8a4c;
+  color: #fff;
+}
+
+.llm-usage-indicator.llm-model-gpt-5-nano {
+  background: #e2b300;
+  border-color: #e2b300;
+  color: #1f1f1f;
+}
+
+.llm-usage-indicator.llm-model-gpt-5-mini {
+  background: #e07a1f;
+  border-color: #e07a1f;
+  color: #fff;
+}
+
 .llm-button {
   white-space: nowrap;
   align-self: flex-start;

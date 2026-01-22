@@ -131,6 +131,8 @@ type Language =
   | 'Italian'
   | 'French'
 
+type LlmUsageModel = 'gpt-4.1-mini' | 'gpt-5-nano' | 'gpt-5-mini'
+
 type FacilitationType = 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET'
 type FacilitationPrompt = { type: FacilitationType; text: string }
 
@@ -2795,6 +2797,7 @@ function App() {
   const [aiSupportEnabled, setAiSupportEnabled] = useState(true)
   const [llmStatus, setLlmStatus] = useState<'unknown' | 'online' | 'offline'>('unknown')
   const [llmSaved, setLlmSaved] = useState(false)
+  const [llmUsageModel, setLlmUsageModel] = useState<LlmUsageModel | null>(null)
   const llmHeaders = useMemo(
     () => ({
       'Content-Type': 'application/json',
@@ -2802,6 +2805,25 @@ function App() {
     }),
     [aiSupportEnabled]
   )
+  const resolveUsageModel = (
+    meta?: { modelUsed?: string | null; aiSupportEnabled?: boolean }
+  ): LlmUsageModel | null => {
+    if (!meta || meta.aiSupportEnabled === false || !meta.modelUsed) return null
+    if (meta.modelUsed === 'gpt-4.1-mini') return 'gpt-4.1-mini'
+    if (meta.modelUsed === 'gpt-5-nano') return 'gpt-5-nano'
+    if (meta.modelUsed === 'gpt-5-mini') return 'gpt-5-mini'
+    return null
+  }
+  const applyUsageModel = (meta?: { modelUsed?: string | null; aiSupportEnabled?: boolean }) => {
+    if (!meta) return
+    setLlmUsageModel(resolveUsageModel(meta))
+  }
+
+  useEffect(() => {
+    if (!aiSupportEnabled || llmStatus !== 'online') {
+      setLlmUsageModel(null)
+    }
+  }, [aiSupportEnabled, llmStatus])
   const [ideaLabels, setIdeaLabels] = useState<LabelItem[]>([
     { id: 'label-1', text: 'Question to customer', color: '#f6b8a2' },
     { id: 'label-2', text: 'New functionality', color: '#f4d6a0' },
@@ -3938,14 +3960,20 @@ function App() {
         const spaceData = (await spaceRes.json()) as {
           ok?: boolean
           data?: { worldOptions?: string[]; elementOptions?: string[] }
+          meta?: { modelUsed?: string | null; aiSupportEnabled?: boolean }
         }
-        const timeData = (await timeRes.json()) as { ok?: boolean; data?: { options?: string[] } }
+        const timeData = (await timeRes.json()) as {
+          ok?: boolean
+          data?: { options?: string[] }
+          meta?: { modelUsed?: string | null; aiSupportEnabled?: boolean }
+        }
         const worldOptions = spaceData?.data?.worldOptions
         const elementOptions = spaceData?.data?.elementOptions
         const timeOptions = timeData?.data?.options
         if (!Array.isArray(worldOptions) || !Array.isArray(elementOptions) || !Array.isArray(timeOptions)) {
           throw new Error('Invalid response')
         }
+        applyUsageModel(spaceData.meta || timeData.meta)
         const nextWorlds = uniqueList(worldOptions).slice(0, 10)
         const nextElements = uniqueList(elementOptions).slice(0, 10)
         const nextTimes = uniqueList(timeOptions).slice(0, 20)
@@ -4013,12 +4041,17 @@ function App() {
         const msg = await response.text()
         throw new Error(msg || 'Request failed')
       }
-      const data = (await response.json()) as { ok?: boolean; data?: { names?: string[] } }
+      const data = (await response.json()) as {
+        ok?: boolean
+        data?: { names?: string[] }
+        meta?: { modelUsed?: string | null; aiSupportEnabled?: boolean }
+      }
       const names = data?.data?.names
       if (!Array.isArray(names) || names.length === 0) {
         throw new Error('Invalid response')
       }
       setProductNameSuggestions(names)
+      applyUsageModel(data.meta)
     } catch {
       setProductNameSuggestions(buildNameSuggestions(description, productName))
     }
@@ -4298,9 +4331,11 @@ function App() {
       const data = (await response.json()) as {
         ok?: boolean
         data?: { ideas?: Record<string, string[]> }
+        meta?: { modelUsed?: string | null; aiSupportEnabled?: boolean }
       }
       const ideas = data?.data?.ideas
       if (!ideas) throw new Error('Invalid response')
+      applyUsageModel(data.meta)
 
       setWorkshopIdeas((prev) => {
         const next: Record<string, Idea[]> = { ...prev }
@@ -5178,6 +5213,9 @@ function App() {
       .sort((a, b) => a.lines - b.lines || a.index - b.index)
       .map(({ item }) => item)
   }, [enginePreviewItems])
+  const llmUsageClass = llmUsageModel
+    ? `llm-model-${llmUsageModel.replace(/\./g, '-')}`
+    : 'llm-model-none'
 
   return (
       <div className="app engine-preview" data-testid="active-session">
@@ -5203,6 +5241,15 @@ function App() {
               }}
             >
               {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
+            </button>
+            <button
+              className={`ai-support-toggle llm-usage-indicator ${llmUsageClass}`}
+              type="button"
+              aria-label="LLM usage indicator"
+              title="LLM usage indicator"
+              disabled
+            >
+              LLM
             </button>
           </div>
         </header>
