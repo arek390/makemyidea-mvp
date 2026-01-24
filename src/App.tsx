@@ -30,7 +30,7 @@ import {
   type CloudSessionPayload,
   type CloudSessionRecord,
 } from './lib/cloudSessions'
-import { supabase, supabaseUrl } from './lib/supabase/client'
+import { supabase as client, supabaseUrl } from './lib/supabase/client'
 import {
   clearGuestMode,
   clearGuestSessions,
@@ -3406,8 +3406,8 @@ function App() {
 
   useEffect(() => {
     let cancelled = false
-    const client = supabase
-    if (!client) {
+    const supa = client
+    if (!supa) {
       setAuthLoading(false)
       setAuthError('Missing Supabase env vars.')
       return () => {
@@ -3415,14 +3415,14 @@ function App() {
       }
     }
     const init = async () => {
-      const { data } = await client.auth.getSession()
+      const { data } = await supa.auth.getSession()
       if (!cancelled) {
         setAuthSession(data.session ?? null)
         setAuthLoading(false)
       }
     }
     init()
-    const { data } = client.auth.onAuthStateChange(
+    const { data } = supa.auth.onAuthStateChange(
       (_event: AuthChangeEvent, session: Session | null) => {
         setAuthSession(session ?? null)
       }
@@ -3443,8 +3443,8 @@ function App() {
 
   useEffect(() => {
     if (!isAuthCallback) return
-    const client = supabase
-    if (!client) {
+    const supa = client
+    if (!supa) {
       setAuthCallbackError(copy.authCallback.unknownError)
       return
     }
@@ -3482,7 +3482,7 @@ function App() {
         setAuthCallbackLoading(false)
         return
       }
-      const { error } = await client.auth.exchangeCodeForSession(code)
+      const { error } = await supa.auth.exchangeCodeForSession(code)
       if (cancelled) return
       if (error) {
         logAuthDiagnostics('auth_callback_error', { message: error.message })
@@ -3502,11 +3502,11 @@ function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const client = supabase
-    if (!authSession?.user || !client) return
+    const supa = client
+    if (!authSession?.user || !supa) return
     const handlePageHide = () => {
       // Best-effort sign-out on tab/window close.
-      void client.auth.signOut()
+      void supa.auth.signOut()
     }
     window.addEventListener('pagehide', handlePageHide)
     window.addEventListener('beforeunload', handlePageHide)
@@ -3529,7 +3529,7 @@ function App() {
   }, [authSession])
 
   const handleGoogleLogin = async () => {
-    if (!supabase) {
+    if (!client) {
       setAuthError('Missing Supabase env vars.')
       return
     }
@@ -3542,7 +3542,7 @@ function App() {
       origin: window.location.origin,
       redirectTo,
     })
-    const { error } = await supabase.auth.signInWithOAuth({
+    const { error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo },
     })
@@ -3551,7 +3551,7 @@ function App() {
   }
 
   const handleMagicLink = async () => {
-    if (!supabase) {
+    if (!client) {
       setAuthError('Missing Supabase env vars.')
       return
     }
@@ -3569,7 +3569,7 @@ function App() {
       redirectTo,
       hasEmail: Boolean(loginEmail.trim()),
     })
-    const { error } = await supabase.auth.signInWithOtp({
+    const { error } = await client.auth.signInWithOtp({
       email: loginEmail.trim(),
       options: { emailRedirectTo: redirectTo },
     })
@@ -5425,11 +5425,11 @@ function App() {
   const handleLogout = async () => {
     const saved = await saveCurrentSessionToCloud(true)
     if (!saved) return
-    if (!supabase) {
+    if (!client) {
       showEngineNotice(copy.auth.logoutFailed, 'error')
       return
     }
-    const { error } = await supabase.auth.signOut()
+    const { error } = await client.auth.signOut()
     if (error) {
       showEngineNotice(copy.auth.logoutFailed, 'error')
       return
