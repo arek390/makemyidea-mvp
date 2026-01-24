@@ -3413,15 +3413,16 @@ function App() {
         cancelled = true
       }
     }
+    const auth = client.auth
     const init = async () => {
-      const { data } = await client!.auth.getSession()
+      const { data } = await auth.getSession()
       if (!cancelled) {
         setAuthSession(data.session ?? null)
         setAuthLoading(false)
       }
     }
     init()
-    const { data } = client!.auth.onAuthStateChange(
+    const { data } = auth.onAuthStateChange(
       (_event: AuthChangeEvent, session: Session | null) => {
         setAuthSession(session ?? null)
       }
@@ -3446,6 +3447,7 @@ function App() {
       setAuthCallbackError(copy.authCallback.unknownError)
       return
     }
+    const auth = client.auth
     let cancelled = false
     const run = async () => {
       setAuthError(null)
@@ -3480,7 +3482,7 @@ function App() {
         setAuthCallbackLoading(false)
         return
       }
-      const { error } = await client!.auth.exchangeCodeForSession(code)
+      const { error } = await auth.exchangeCodeForSession(code)
       if (cancelled) return
       if (error) {
         logAuthDiagnostics('auth_callback_error', { message: error.message })
@@ -3501,9 +3503,10 @@ function App() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     if (!authSession?.user || !client) return
+    const auth = client.auth
     const handlePageHide = () => {
       // Best-effort sign-out on tab/window close.
-      void client!.auth.signOut()
+      void auth.signOut()
     }
     window.addEventListener('pagehide', handlePageHide)
     window.addEventListener('beforeunload', handlePageHide)
