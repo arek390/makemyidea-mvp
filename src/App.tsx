@@ -20,13 +20,13 @@ import {
   importSessions,
   listSessions,
   updateSession,
+  getStorageSessionCount,
   type EngineBoardItem,
   type EngineSessionDetail,
   type EngineSessionSummary,
 } from './storage/sessionStore'
 import {
   listCloudSessions,
-  saveSessionToCloud,
   type CloudSessionPayload,
   type CloudSessionRecord,
 } from './lib/cloudSessions'
@@ -159,8 +159,11 @@ const DEFAULT_IDLE_THRESHOLD_MS = 15000
 const ERASE_EMPTY_SECONDS_STRONG = 10
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
 const FEEDBACK_STORAGE_KEY = 'makemyidea.feedback.v1'
+const LLM_TOKENS_TOTAL_KEY = 'llm_tokens_total'
 const AUTH_LOGIN_ORIGIN_KEY = 'auth-login-origin'
 const AUTH_LOGIN_REDIRECT_KEY = 'auth-login-redirect'
+const AUTH_OAUTH_ORIGIN_KEY = 'auth_oauth_origin'
+const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
 const CANONICAL_HOST = (() => {
@@ -215,6 +218,13 @@ type Translations = {
   }
   authCallback: {
     invalidLink: string
+    missingCode: string
+    signInFailed: string
+    backToApp: string
+    redirectHint: string
+    tryAgain: string
+    tryAgainCta: string
+    oauthOriginMismatch: string
     pkceMismatch: string
     pkceMissing: string
     expired: string
@@ -516,6 +526,15 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     },
     authCallback: {
       invalidLink: 'Invalid or expired login link. Please request a new one.',
+      missingCode: 'Sign-in failed. Please try again.',
+      signInFailed: 'Sign-in did not complete. Please try again.',
+      backToApp: 'Back to app',
+      redirectHint:
+        'Check Supabase Auth Redirect URLs + Google OAuth origins/redirect.',
+      tryAgain: 'Try again.',
+      tryAgainCta: 'Try again',
+      oauthOriginMismatch:
+        'Please complete sign-in on the same address (localhost vs 127.0.0.1).',
       pkceMismatch:
         'This login link was opened on a different site or browser. Please open it in the same browser and device where you started login.',
       pkceMissing: 'Invalid or expired login link. Please request a new one.',
@@ -1170,6 +1189,15 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     },
     authCallback: {
       invalidLink: 'Nieprawidłowy lub wygasły link logowania. Wyślij nowy link.',
+      missingCode: 'Logowanie nie powiodło się. Spróbuj ponownie.',
+      signInFailed: 'Logowanie nie zakończyło się. Spróbuj ponownie.',
+      backToApp: 'Wróć do aplikacji',
+      redirectHint:
+        'Sprawdź Supabase Auth Redirect URLs + Google OAuth origins/redirect.',
+      tryAgain: 'Spróbuj ponownie.',
+      tryAgainCta: 'Spróbuj ponownie',
+      oauthOriginMismatch:
+        'Dokończ logowanie na tym samym adresie (localhost vs 127.0.0.1).',
       pkceMismatch:
         'Ten link został otwarty w innej przeglądarce lub na innej stronie. Otwórz go w tej samej przeglądarce i na tym samym urządzeniu, na którym rozpocząłeś logowanie.',
       pkceMissing: 'Nieprawidłowy lub wygasły link logowania. Wyślij nowy link.',
@@ -2906,6 +2934,151 @@ const IconElement = () => (
   </svg>
 )
 
+function DebugMatrixPage({ llmApiBase }: { llmApiBase: string }) {
+  const params =
+    typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
+  const sessionId = params ? params.get('sessionId') : null
+  const debugEnabled =
+    (params?.get('debug') === '1') || import.meta.env.VITE_DEBUG_UI === 'true'
+
+  const [matrixData, setMatrixData] = useState(null as null | {
+    matrix: Record<
+      string,
+      Record<string, { id: string; short_text: string; entry_type: string; promptType: string | null; created_at: number }[]>
+    >
+    coverage: { filledCells: number; totalCells: number }
+    timeline: { id: string; short_text: string; created_at: number; matrix_row: string; matrix_col: string }[]
+  })
+  const [matrixError, setMatrixError] = useState<string | null>(null)
+  const [matrixLoading, setMatrixLoading] = useState(false)
+
+  useEffect(() => {
+    if (!debugEnabled || !sessionId) return
+    let timer: number | undefined
+    const fetchMatrix = async () => {
+      setMatrixLoading(true)
+      setMatrixError(null)
+      try {
+        const response = await fetch(
+          `${llmApiBase}/api/debug/matrix?sessionId=${sessionId}&debug=1`
+        )
+        if (!response.ok) {
+          const msg = await response.text()
+          throw new Error(msg || 'Request failed')
+        }
+        const data = await response.json()
+        setMatrixData(data)
+      } catch {
+        setMatrixError('Unable to load matrix data.')
+      } finally {
+        setMatrixLoading(false)
+      }
+    }
+    void fetchMatrix()
+    timer = window.setInterval(fetchMatrix, 5000)
+    return () => {
+      if (timer) window.clearInterval(timer)
+    }
+  }, [debugEnabled, sessionId, llmApiBase])
+
+  if (!debugEnabled) {
+    return <div className="debug-matrix">Not available.</div>
+  }
+
+  if (!sessionId) {
+    return <div className="debug-matrix">Missing sessionId.</div>
+  }
+
+  const rows = ['WORLD', 'PRODUCT', 'ELEMENTS']
+  const cols = ['AS_IS', 'NOT_WORKING', 'SHOULD_BE']
+  const recent = matrixData?.timeline?.[0]
+  const formatMatrixLabel = (row: string, col: string) => {
+    const rowLabel =
+      row === 'WORLD' ? 'Świat / Środowisko' : row === 'PRODUCT' ? 'Produkt' : 'Elementy'
+    const colLabel =
+      col === 'AS_IS'
+        ? 'Jak jest?'
+        : col === 'NOT_WORKING'
+          ? 'Co nie działa?'
+          : 'Jak powinno być?'
+    const cell = `${row === 'WORLD' ? 'A' : row === 'PRODUCT' ? 'B' : 'C'}${
+      col === 'AS_IS' ? '1' : col === 'NOT_WORKING' ? '2' : '3'
+    }`
+    return `${cell} – ${rowLabel} / ${colLabel}`
+  }
+
+  const recentKey = recent ? `${recent.matrix_row}-${recent.matrix_col}` : null
+  const rowLabel = (row: string) =>
+    row === 'WORLD' ? 'Świat / Środowisko' : row === 'PRODUCT' ? 'Produkt' : 'Elementy'
+  const colLabel = (col: string) =>
+    col === 'AS_IS' ? 'Jak jest?' : col === 'NOT_WORKING' ? 'Co nie działa?' : 'Jak powinno być?'
+
+  return (
+    <div className="debug-matrix">
+      <header>
+        <h1>Debug Matrix</h1>
+        <div className="debug-meta">
+          <span>Session: {sessionId}</span>
+          {matrixData && (
+            <span>
+              Pokrycie analizy: {matrixData.coverage.filledCells} /{' '}
+              {matrixData.coverage.totalCells}
+            </span>
+          )}
+        </div>
+      </header>
+      {matrixError && <div className="engine-error">{matrixError}</div>}
+      {matrixLoading && <div className="engine-empty">Loading…</div>}
+      {matrixData && (
+        <div className="debug-grid">
+          <div className="debug-corner" />
+          {cols.map((col) => (
+            <div key={col} className="debug-col-label">
+              {colLabel(col)}
+            </div>
+          ))}
+          {rows.map((row) => (
+            <>
+              <div key={`${row}-label`} className="debug-row-label">
+                {rowLabel(row)}
+              </div>
+              {cols.map((col) => {
+                const answers = matrixData.matrix[row][col] || []
+                const isRecent = recentKey === `${row}-${col}`
+                return (
+                  <div key={`${row}-${col}`} className={`debug-cell ${isRecent ? 'recent' : ''}`}>
+                    <div className="debug-count">{answers.length} wpisów</div>
+                    <ul>
+                      {answers.map((answer) => (
+                        <li key={`${answer.id}-${answer.created_at}`}>{answer.short_text}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )
+              })}
+            </>
+          ))}
+        </div>
+      )}
+      {matrixData && (
+        <section className="debug-timeline">
+          <h2>Ostatnie wpisy</h2>
+          <ul>
+            {matrixData.timeline.map((entry) => (
+              <li key={`${entry.id}-${entry.created_at}`}>
+                <span className="debug-pill">
+                  {formatMatrixLabel(entry.matrix_row, entry.matrix_col)}
+                </span>
+                <span>{entry.short_text}</span>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  )
+}
+
 function App() {
   const [activeStep, setActiveStep] = useState<StepId>(1)
   const [showLanding, setShowLanding] = useState(true)
@@ -2915,9 +3088,17 @@ function App() {
   const [authError, setAuthError] = useState<string | null>(null)
   const [authCallbackError, setAuthCallbackError] = useState<string | null>(null)
   const [authCallbackLoading, setAuthCallbackLoading] = useState(false)
+  const [authCallbackHint, setAuthCallbackHint] = useState<string | null>(null)
+  const [devLastError, setDevLastError] = useState<string | null>(null)
+  const [lastAuthEvent, setLastAuthEvent] = useState<string | null>(null)
+  const [authResolved, setAuthResolved] = useState(false)
   const [loginEmail, setLoginEmail] = useState('')
   const [loginSending, setLoginSending] = useState(false)
   const [loginOauthLoading, setLoginOauthLoading] = useState(false)
+  const [loginCooldownSeconds, setLoginCooldownSeconds] = useState(0)
+  const [loginPassword, setLoginPassword] = useState('')
+  const [loginUsePassword, setLoginUsePassword] = useState(false)
+  const [loginAuthMode, setLoginAuthMode] = useState<'signin' | 'signup'>('signin')
   const [loginNotice, setLoginNotice] = useState<string | null>(null)
   const [guestPromptOpen, setGuestPromptOpen] = useState(false)
   const [guestMergeLoading, setGuestMergeLoading] = useState(false)
@@ -2969,6 +3150,25 @@ function App() {
   const [llmStatus, setLlmStatus] = useState<'unknown' | 'online' | 'offline'>('unknown')
   const [llmSaved, setLlmSaved] = useState(false)
   const [llmUsageModel, setLlmUsageModel] = useState<LlmUsageModel | null>(null)
+  const [llmTokensTotal, setLlmTokensTotal] = useState(() => {
+    if (typeof window === 'undefined') return 0
+    const raw = window.localStorage.getItem(LLM_TOKENS_TOTAL_KEY)
+    const parsed = Number(raw)
+    return Number.isFinite(parsed) ? parsed : 0
+  })
+  const [lastLlmCallAt, setLastLlmCallAt] = useState<string | null>(null)
+  const [lastLlmModel, setLastLlmModel] = useState<string | null>(null)
+  const [lastLlmTokensDelta, setLastLlmTokensDelta] = useState<number | null>(null)
+  const [lastLlmSource, setLastLlmSource] = useState<'llm' | 'fallback' | null>(null)
+  const [lastLlmGroundedCount, setLastLlmGroundedCount] = useState<number | null>(null)
+  const [lastLlmGroundedIn, setLastLlmGroundedIn] = useState<string[] | null>(null)
+  const [lastLlmWhy, setLastLlmWhy] = useState<string | null>(null)
+  const [llmPingResult, setLlmPingResult] = useState<{
+    model?: string | null
+    tokensIn?: number
+    tokensOut?: number
+    error?: string | null
+  } | null>(null)
   const llmHeaders = useMemo(
     () => ({
       'Content-Type': 'application/json',
@@ -2987,10 +3187,34 @@ function App() {
     if (!meta) return
     setLlmUsageModel(resolveUsageModel(meta))
   }
+  const applyUsageToApp = (meta?: LlmUsageMeta) => {
+    const input = Number(meta?.tokens?.input ?? 0)
+    const output = Number(meta?.tokens?.output ?? 0)
+    const delta = input + output
+    if (!delta) {
+      if (import.meta.env.DEV) {
+        console.log('[ai] no usage (fallback)')
+      }
+      setLastLlmSource('fallback')
+      return
+    }
+    setLlmTokensTotal((prev) => {
+      const next = prev + delta
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(LLM_TOKENS_TOTAL_KEY, String(next))
+      }
+      return next
+    })
+    setLastLlmCallAt(new Date().toISOString())
+    setLastLlmTokensDelta(delta)
+    setLastLlmModel(meta?.modelUsed ?? null)
+    setLastLlmSource('llm')
+  }
   const applyUsageToSession = async (
     meta?: LlmUsageMeta,
     sessionIdOverride?: string | null
   ) => {
+    applyUsageToApp(meta)
     const input = Number(meta?.tokens?.input ?? 0)
     const output = Number(meta?.tokens?.output ?? 0)
     if (!input && !output) return
@@ -3079,6 +3303,9 @@ function App() {
   const engineEraseTimer = useRef<number | null>(null)
   const engineIdleTimer = useRef<number | null>(null)
   const engineNoticeTimer = useRef<number | null>(null)
+  const oauthStartOnceRef = useRef(false)
+  const initialRouteResolvedRef = useRef(false)
+  const engineGateRedirectedRef = useRef(false)
   const engineIdleTriggered = useRef(false)
   const enginePreviousInput = useRef('')
   const engineLatestInput = useRef('')
@@ -3172,6 +3399,11 @@ function App() {
 
   const uiLanguageOptions: Language[] = ['Polish', 'English']
 
+  const isAuthed = Boolean(authSession?.user?.id)
+  const isGuest = isGuestMode() === true
+  const hasActiveGuestSession = isGuest ? getStorageSessionCount() > 0 : false
+  const canEnterApp = isAuthed || (isGuest && hasActiveGuestSession)
+
   const applySessionLanguage = (value?: string) => {
     if (!value) return
     const nextLanguage = value as Language
@@ -3214,6 +3446,15 @@ function App() {
     console.log(JSON.stringify({ event, ...payload }))
   }
 
+  const findSupabasePkceVerifierKeys = () => {
+  if (typeof window === 'undefined') return []
+  return Object.keys(window.localStorage).filter(
+    (key) =>
+      key.includes('code-verifier') || key.includes('pkce') || key.includes('supabase')
+  )
+}
+
+
   const getSupabaseProjectRef = () => {
     if (!supabaseUrl) return null
     try {
@@ -3235,38 +3476,35 @@ function App() {
     return keys.some((key) => key.includes('code-verifier') || key.includes('code_verifier'))
   }
 
-  const recordAuthRedirect = (redirectTo: string) => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem(AUTH_LOGIN_ORIGIN_KEY, window.location.origin)
-    window.localStorage.setItem(AUTH_LOGIN_REDIRECT_KEY, redirectTo)
-    logAuthDiagnostics('auth_redirect_set', {
-      origin: window.location.origin,
-      redirectTo,
-    })
-  }
+const recordAuthRedirect = (redirectTo: string) => {
+  if (typeof window === 'undefined') return
+  window.localStorage.setItem(AUTH_LOGIN_ORIGIN_KEY, window.location.origin)
+  window.localStorage.setItem(AUTH_LOGIN_REDIRECT_KEY, redirectTo)
+  logAuthDiagnostics('auth_redirect_set', {
+    origin: window.location.origin,
+    redirectTo,
+  })
+}
 
-  const clearAuthRedirect = () => {
-    if (typeof window === 'undefined') return
-    window.localStorage.removeItem(AUTH_LOGIN_ORIGIN_KEY)
-    window.localStorage.removeItem(AUTH_LOGIN_REDIRECT_KEY)
-  }
+const clearAuthRedirect = () => {
+  if (typeof window === 'undefined') return
+  window.localStorage.removeItem(AUTH_LOGIN_ORIGIN_KEY)
+  window.localStorage.removeItem(AUTH_LOGIN_REDIRECT_KEY)
+}
 
-  const mapAuthCallbackError = (message?: string | null) => {
-    const normalized = (message || '').toLowerCase()
-    if (normalized.includes('code_verifier') || normalized.includes('pkce')) {
-      return copy.authCallback.pkceMissing
-    }
-    if (normalized.includes('expired')) {
-      return copy.authCallback.expired
-    }
-    if (normalized.includes('redirect') && normalized.includes('mismatch')) {
-      return copy.authCallback.redirectMismatch
-    }
-    if (normalized.includes('invalid_grant')) {
-      return copy.authCallback.invalidLink
-    }
-    return copy.authCallback.unknownError
+const setAuthFlowInProgress = (value: boolean) => {
+  if (typeof window === 'undefined') return
+  if (value) {
+    window.localStorage.setItem(AUTH_FLOW_IN_PROGRESS_KEY, 'true')
+  } else {
+    window.localStorage.removeItem(AUTH_FLOW_IN_PROGRESS_KEY)
   }
+}
+
+const isAuthFlowInProgress = () => {
+  if (typeof window === 'undefined') return false
+  return window.localStorage.getItem(AUTH_FLOW_IN_PROGRESS_KEY) === 'true'
+}
 
   const showEngineNotice = (message: string, variant: 'success' | 'error') => {
     setEngineNotice({ message, variant })
@@ -3276,6 +3514,18 @@ function App() {
     engineNoticeTimer.current = window.setTimeout(() => {
       setEngineNotice(null)
     }, 2400)
+  }
+
+  const resetAuthDev = async () => {
+    if (!import.meta.env.DEV) return
+    if (client) {
+      await client.auth.signOut()
+    }
+    if (typeof window !== 'undefined') {
+      window.localStorage.clear()
+      window.sessionStorage.clear()
+      window.location.replace('/')
+    }
   }
 
   useEffect(() => {
@@ -3405,6 +3655,11 @@ function App() {
     typeof window !== 'undefined' && window.location.pathname.startsWith('/app')
 
   useEffect(() => {
+    if (!isEnginePreview) return
+    console.log('[engine] route mounted', window.location.href)
+  }, [isEnginePreview])
+
+  useEffect(() => {
     let cancelled = false
     if (!client) {
       setAuthLoading(false)
@@ -3419,12 +3674,26 @@ function App() {
       if (!cancelled) {
         setAuthSession(data.session ?? null)
         setAuthLoading(false)
+        setAuthResolved(true)
       }
     }
     init()
     const { data } = auth.onAuthStateChange(
-      (_event: AuthChangeEvent, session: Session | null) => {
+      (event: AuthChangeEvent, session: Session | null) => {
+        setLastAuthEvent(event)
         setAuthSession(session ?? null)
+        if (!authResolved) setAuthResolved(true)
+        if (typeof window !== 'undefined') {
+          if (event === 'SIGNED_IN') {
+            if (window.location.pathname !== '/engine') {
+              window.location.replace('/engine')
+            }
+          } else if (event === 'SIGNED_OUT') {
+            if (window.location.pathname !== '/') {
+              window.location.replace('/')
+            }
+          }
+        }
       }
     )
     return () => {
@@ -3442,6 +3711,45 @@ function App() {
   }, [isProtectedRoute, authLoading, authSession])
 
   useEffect(() => {
+    if (initialRouteResolvedRef.current) return
+    if (!authResolved) return
+    if (typeof window === 'undefined') return
+    const path = window.location.pathname
+    let target = path
+
+    if (!canEnterApp) {
+      if (
+        path !== '/' &&
+        !path.startsWith('/login') &&
+        !path.startsWith('/auth/callback')
+      ) {
+        target = '/'
+      }
+    }
+
+    if (import.meta.env.DEV) {
+      console.log('[route] start', {
+        path,
+        authResolved,
+        isAuthed,
+        isGuest,
+        hasActiveGuestSession,
+        canEnterApp,
+        target,
+      })
+    }
+
+    if (target !== path) {
+      if (import.meta.env.DEV) {
+        console.log('[route-force] redirect to', target)
+        console.trace()
+      }
+      window.location.replace(target)
+    }
+    initialRouteResolvedRef.current = true
+  }, [authResolved, canEnterApp, isAuthed, isGuest, hasActiveGuestSession])
+
+  useEffect(() => {
     if (!isAuthCallback) return
     if (!client) {
       setAuthCallbackError(copy.authCallback.unknownError)
@@ -3453,46 +3761,67 @@ function App() {
       setAuthError(null)
       setAuthCallbackError(null)
       setAuthCallbackLoading(true)
+      setAuthCallbackHint(null)
+      const href = typeof window !== 'undefined' ? window.location.href : ''
       const params = new URLSearchParams(window.location.search)
       const code = params.get('code')
-      const storedOrigin =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem(AUTH_LOGIN_ORIGIN_KEY)
-          : null
-      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : ''
-      const storedRedirect =
-        typeof window !== 'undefined'
-          ? window.localStorage.getItem(AUTH_LOGIN_REDIRECT_KEY)
-          : null
-      logAuthDiagnostics('auth_callback_seen', {
-        origin: currentOrigin,
-        storedOrigin,
-        redirectTo: storedRedirect,
+      const errorParam = params.get('error')
+      if (import.meta.env.DEV) {
+        console.log('[auth callback] start', { code, error: errorParam, href })
+      }
+      logAuthDiagnostics('auth_callback_location', {
+        href,
+        origin: typeof window !== 'undefined' ? window.location.origin : '',
+        search: typeof window !== 'undefined' ? window.location.search : '',
+        hash: typeof window !== 'undefined' ? window.location.hash : '',
         hasCode: Boolean(code),
-        hasCodeVerifier: hasCodeVerifier(),
+        hasError: Boolean(errorParam),
       })
-      if (storedOrigin && storedOrigin !== currentOrigin) {
-        // PKCE is bound to the origin + browser storage. Mismatch means the verifier won't exist.
-        setAuthCallbackError(copy.authCallback.pkceMismatch)
+      if (!code && !errorParam) {
+        setAuthCallbackError(copy.authCallback.signInFailed)
         setAuthCallbackLoading(false)
         return
       }
-      if (!code) {
-        setAuthCallbackError(copy.authCallback.invalidLink)
+      if (errorParam) {
+        console.error('[auth callback] oauth error', {
+          error: errorParam,
+          description: params.get('error_description'),
+          href,
+        })
+        setAuthCallbackError(copy.authCallback.signInFailed)
+        setAuthCallbackHint(params.get('error_description'))
         setAuthCallbackLoading(false)
         return
       }
-      const { error } = await auth.exchangeCodeForSession(code)
-      if (cancelled) return
-      if (error) {
-        logAuthDiagnostics('auth_callback_error', { message: error.message })
-        setAuthCallbackError(mapAuthCallbackError(error.message))
+      try {
+        const start = Date.now()
+        const timeoutMs = 5000
+        const intervalMs = 200
+        while (Date.now() - start < timeoutMs) {
+          const { data, error } = await auth.getSession()
+          if (cancelled) return
+          if (error) {
+            console.error(error)
+            const codeValue = (error as { code?: string }).code
+            setAuthCallbackError(
+              `${error.message}${codeValue ? ` (${codeValue})` : ''}`
+            )
+            setAuthCallbackLoading(false)
+            return
+          }
+          if (data.session) {
+            clearAuthRedirect()
+            window.location.replace('/engine')
+            return
+          }
+          await new Promise((resolve) => setTimeout(resolve, intervalMs))
+        }
+        console.error('[auth callback] timeout, no session')
+        setAuthCallbackError(copy.authCallback.signInFailed)
         setAuthCallbackLoading(false)
-        return
+      } finally {
+        setAuthFlowInProgress(false)
       }
-      clearAuthRedirect()
-      const next = params.get('next') || '/app'
-      window.location.replace(next)
     }
     run()
     return () => {
@@ -3502,6 +3831,10 @@ function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+    if (import.meta.env.DEV) return
+    if (isAuthCallback || authCallbackLoading) return
+    if (window.location.pathname.startsWith('/auth/callback')) return
+    if (isAuthFlowInProgress()) return
     if (!authSession?.user || !client) return
     const auth = client.auth
     const handlePageHide = () => {
@@ -3537,14 +3870,35 @@ function App() {
     setLoginNotice(null)
     setLoginOauthLoading(true)
     const redirectTo = `${window.location.origin}/auth/callback`
+    if (oauthStartOnceRef.current) return
+    oauthStartOnceRef.current = true
+    setAuthFlowInProgress(true)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(AUTH_OAUTH_ORIGIN_KEY, window.location.origin)
+    }
     recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_oauth_start', {
       origin: window.location.origin,
       redirectTo,
     })
+    if (import.meta.env.DEV) {
+      console.log('[oauth start] before', {
+        origin: window.location.origin,
+        keys: findSupabasePkceVerifierKeys(),
+      })
+    }
     const { error } = await client.auth.signInWithOAuth({
       provider: 'google',
       options: { redirectTo },
+    })
+    if (import.meta.env.DEV) {
+      window.setTimeout(() => {
+        console.log('[oauth start] after', { keys: findSupabasePkceVerifierKeys() })
+      }, 50)
+    }
+    logAuthDiagnostics('auth_oauth_initiated', {
+      origin: window.location.origin,
+      redirectTo,
     })
     if (error) setAuthError(copy.auth.loginStartFailed)
     setLoginOauthLoading(false)
@@ -3559,30 +3913,120 @@ function App() {
       setAuthError(copy.loginEmailError)
       return
     }
+    if (loginSending || loginCooldownSeconds > 0) {
+      return
+    }
     setAuthError(null)
     setLoginNotice(null)
     setLoginSending(true)
     const redirectTo = `${window.location.origin}/auth/callback`
+    setAuthFlowInProgress(true)
     recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_magiclink_start', {
       origin: window.location.origin,
       redirectTo,
       hasEmail: Boolean(loginEmail.trim()),
     })
+    if (import.meta.env.DEV) {
+      console.log('[auth otp] start', { email: loginEmail.trim() })
+    }
     const { error } = await client.auth.signInWithOtp({
       email: loginEmail.trim(),
       options: { emailRedirectTo: redirectTo },
     })
+    if (import.meta.env.DEV) {
+      console.log('[auth otp] result', { ok: !error, error })
+      const { data } = await client.auth.getSession()
+      console.log('[auth email] post-action session', { hasSession: !!data.session })
+    }
     if (error) {
-      setAuthError(copy.auth.loginStartFailed)
+      const codeValue = (error as { code?: string }).code
+      const statusValue = (error as { status?: number }).status
+      const lower = error.message.toLowerCase()
+      const isRateLimit =
+        statusValue === 429 || lower.includes('rate limit') || lower.includes('too many')
+      if (import.meta.env.DEV) {
+        console.log('[auth otp] error', {
+          status: statusValue,
+          message: error.message,
+          code: codeValue,
+        })
+      }
+      if (isRateLimit) {
+        const baseMessage =
+          'Limit maili przekroczony — odczekaj lub użyj Google/hasła'
+        const devDetail = import.meta.env.DEV
+          ? ` (${codeValue ?? 'no_code'}: ${error.message})`
+          : ''
+        setAuthError(`${baseMessage}${devDetail}`)
+        setLoginCooldownSeconds(60)
+      } else {
+        const detail = import.meta.env.DEV
+          ? ` (${codeValue ?? 'no_code'}: ${error.message})`
+          : ''
+        setAuthError(`${error.message}${detail}`)
+      }
     } else {
       setLoginNotice(copy.loginNoticeSent)
     }
     setLoginSending(false)
   }
 
+  const handlePasswordAuth = async () => {
+    if (!client) {
+      setAuthError('Missing Supabase env vars.')
+      return
+    }
+    if (!loginEmail.trim() || !loginPassword) {
+      setAuthError(copy.loginEmailError)
+      return
+    }
+    if (loginSending) return
+    setAuthError(null)
+    setLoginNotice(null)
+    setLoginSending(true)
+    if (loginAuthMode === 'signin') {
+      const { data, error } = await client.auth.signInWithPassword({
+        email: loginEmail.trim(),
+        password: loginPassword,
+      })
+      if (import.meta.env.DEV) {
+        console.log('[auth email] signInWithPassword', { ok: !error, error })
+        const session = data?.session
+        console.log('[auth email] post-action session', { hasSession: !!session })
+      }
+      if (error) {
+        const codeValue = (error as { code?: string }).code
+        const detail = import.meta.env.DEV && codeValue ? ` (${codeValue})` : ''
+        setAuthError(`${error.message}${detail}`)
+      }
+    } else {
+      const { data, error } = await client.auth.signUp({
+        email: loginEmail.trim(),
+        password: loginPassword,
+      })
+      if (import.meta.env.DEV) {
+        console.log('[auth email] signUp', { ok: !error, error })
+      }
+      if (error) {
+        const codeValue = (error as { code?: string }).code
+        const detail = import.meta.env.DEV && codeValue ? ` (${codeValue})` : ''
+        setAuthError(`${error.message}${detail}`)
+      } else if (!data?.session) {
+        setLoginNotice(
+          'Konto utworzone. Jeśli wymagane jest potwierdzenie email, sprawdź skrzynkę.'
+        )
+      }
+    }
+    setLoginSending(false)
+  }
+
   const handleGuestMode = () => {
     enableGuestMode()
+    if (import.meta.env.DEV) {
+      console.log('[route-force] redirect to /engine')
+      console.trace()
+    }
     window.location.replace('/engine')
   }
 
@@ -3605,6 +4049,51 @@ function App() {
     clearGuestSessions()
     clearGuestMode()
     setGuestPromptOpen(false)
+  }
+
+  const getSessionContext = (sessionId: string | null) => {
+    const id = sessionId || enginePreviewSessionId || engineSessionDetail?.session?.id || null
+    const sessionName =
+      enginePreviewSessionName ||
+      engineSessionDetail?.session?.name ||
+      currentEngineSession?.name ||
+      ''
+    const boardEntries = (enginePreviewItems || []).map((item) => ({
+      id: item.id,
+      text: item.text,
+      createdAt: item.created_at,
+      tags: item.label ? [item.label] : undefined,
+    }))
+    const matrixContext =
+      engineLastQuestionMeta?.group_code && engineLastQuestionMeta?.mode_code
+        ? {
+            group_code: engineLastQuestionMeta.group_code,
+            mode_code: engineLastQuestionMeta.mode_code,
+            action: engineLastQuestionMeta?.id ? 'NEXT' : undefined,
+          }
+        : null
+    const source =
+      id && cloudSessionPayloads[id] ? ('cloud' as const) : ('local' as const)
+    return {
+      sessionId: id,
+      sessionName,
+      language: uiLanguage === 'English' ? 'en' : 'pl',
+      boardEntries,
+      matrixContext,
+      source,
+    }
+  }
+
+  const handleLandingCtaClick = () => {
+    if (import.meta.env.DEV) {
+      console.log('[cta] start free clicked', {
+        from: typeof window !== 'undefined' ? window.location.pathname : '',
+        to: '/login',
+      })
+    }
+    if (typeof window !== 'undefined') {
+      window.location.href = '/login'
+    }
   }
 
   useEffect(() => {
@@ -3635,6 +4124,31 @@ function App() {
       setEngineLastInputActivityAt(Date.now())
     }
   }, [isEnginePreview, enginePreviewSessionId])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    if (!isEnginePreview) return
+    console.log('[engine]', {
+      authResolved,
+      hasSession: Boolean(authSession?.user?.id),
+      hasActiveSession: Boolean(enginePreviewSessionId),
+    })
+  }, [isEnginePreview, authResolved, authSession?.user?.id, enginePreviewSessionId])
+
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    if (typeof window === 'undefined') return
+    const handleKeydown = (event: KeyboardEvent) => {
+      if (event.ctrlKey && event.altKey && event.key.toLowerCase() === 'r') {
+        event.preventDefault()
+        void resetAuthDev()
+      }
+    }
+    window.addEventListener('keydown', handleKeydown)
+    return () => {
+      window.removeEventListener('keydown', handleKeydown)
+    }
+  }, [])
 
   useEffect(() => {
     setEngineAskedQuestionIds([])
@@ -3720,129 +4234,6 @@ function App() {
   const isDebugMatrix =
     typeof window !== 'undefined' && window.location.pathname === '/debug/matrix'
 
-  if (isDebugMatrix) {
-    const params = new URLSearchParams(window.location.search)
-    const sessionId = params.get('sessionId')
-    const debugEnabled = params.get('debug') === '1' || import.meta.env.VITE_DEBUG_UI === 'true'
-
-    const [matrixData, setMatrixData] = useState(null as null | {
-      matrix: Record<string, Record<string, { id: string; short_text: string; entry_type: string; promptType: string | null; created_at: number }[]>>
-      coverage: { filledCells: number; totalCells: number }
-      timeline: { id: string; short_text: string; created_at: number; matrix_row: string; matrix_col: string }[]
-    })
-    const [matrixError, setMatrixError] = useState<string | null>(null)
-    const [matrixLoading, setMatrixLoading] = useState(false)
-
-    useEffect(() => {
-      if (!debugEnabled || !sessionId) return
-      let timer: number | undefined
-      const fetchMatrix = async () => {
-        setMatrixLoading(true)
-        setMatrixError(null)
-        try {
-          const response = await fetch(`${llmApiBase}/api/debug/matrix?sessionId=${sessionId}&debug=1`)
-          if (!response.ok) {
-        const msg = await response.text()
-        throw new Error(msg || 'Request failed')
-      }
-          const data = await response.json()
-          setMatrixData(data)
-        } catch {
-          setMatrixError('Unable to load matrix data.')
-        } finally {
-          setMatrixLoading(false)
-        }
-      }
-      void fetchMatrix()
-      timer = window.setInterval(fetchMatrix, 5000)
-      return () => {
-        if (timer) window.clearInterval(timer)
-      }
-    }, [debugEnabled, sessionId, llmApiBase])
-
-    if (!debugEnabled) {
-      return <div className="debug-matrix">Not available.</div>
-    }
-
-    if (!sessionId) {
-      return <div className="debug-matrix">Missing sessionId.</div>
-    }
-
-    const rows = ['WORLD', 'PRODUCT', 'ELEMENTS']
-    const cols = ['AS_IS', 'NOT_WORKING', 'SHOULD_BE']
-    const recent = matrixData?.timeline?.[0]
-    const formatMatrixLabel = (row: string, col: string) => {
-      const rowLabel = row === 'WORLD' ? 'Świat / Środowisko' : row === 'PRODUCT' ? 'Produkt' : 'Elementy'
-      const colLabel = col === 'AS_IS' ? 'Jak jest?' : col === 'NOT_WORKING' ? 'Co nie działa?' : 'Jak powinno być?'
-      const cell = `${row === 'WORLD' ? 'A' : row === 'PRODUCT' ? 'B' : 'C'}${col === 'AS_IS' ? '1' : col === 'NOT_WORKING' ? '2' : '3'}`
-      return `${cell} – ${rowLabel} / ${colLabel}`
-    }
-
-    const recentKey = recent ? `${recent.matrix_row}-${recent.matrix_col}` : null
-    const rowLabel = (row: string) =>
-      row === 'WORLD' ? 'Świat / Środowisko' : row === 'PRODUCT' ? 'Produkt' : 'Elementy'
-    const colLabel = (col: string) =>
-      col === 'AS_IS' ? 'Jak jest?' : col === 'NOT_WORKING' ? 'Co nie działa?' : 'Jak powinno być?'
-
-    return (
-      <div className="debug-matrix">
-        <header>
-          <h1>Debug Matrix</h1>
-          <div className="debug-meta">
-            <span>Session: {sessionId}</span>
-            {matrixData && (
-              <span>
-                Pokrycie analizy: {matrixData.coverage.filledCells} / {matrixData.coverage.totalCells}
-              </span>
-            )}
-          </div>
-        </header>
-        {matrixError && <div className="engine-error">{matrixError}</div>}
-        {matrixLoading && <div className="engine-empty">Loading…</div>}
-        {matrixData && (
-          <div className="debug-grid">
-            <div className="debug-corner" />
-            {cols.map((col) => (
-              <div key={col} className="debug-col-label">{colLabel(col)}</div>
-            ))}
-            {rows.map((row) => (
-              <>
-                <div key={`${row}-label`} className="debug-row-label">{rowLabel(row)}</div>
-                {cols.map((col) => {
-                  const answers = matrixData.matrix[row][col] || []
-                  const isRecent = recentKey === `${row}-${col}`
-                  return (
-                    <div key={`${row}-${col}`} className={`debug-cell ${isRecent ? 'recent' : ''}`}>
-                      <div className="debug-count">{answers.length} wpisów</div>
-                      <ul>
-                        {answers.map((answer) => (
-                          <li key={`${answer.id}-${answer.created_at}`}>{answer.short_text}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )
-                })}
-              </>
-            ))}
-          </div>
-        )}
-        {matrixData && (
-          <section className="debug-timeline">
-            <h2>Ostatnie wpisy</h2>
-            <ul>
-              {matrixData.timeline.map((entry) => (
-                <li key={`${entry.id}-${entry.created_at}`}>
-                  <span className="debug-pill">{formatMatrixLabel(entry.matrix_row, entry.matrix_col)}</span>
-                  <span>{entry.short_text}</span>
-                </li>
-              ))}
-            </ul>
-          </section>
-        )}
-      </div>
-    )
-  }
-
   const checkLlmStatus = async (base: string) => {
     if (!aiSupportEnabled || !base) {
       setLlmStatus('offline')
@@ -3853,6 +4244,41 @@ function App() {
       setLlmStatus(response.ok ? 'online' : 'offline')
     } catch {
       setLlmStatus('offline')
+    }
+  }
+
+  const handleLlmPing = async () => {
+    try {
+      setLlmPingResult(null)
+      const response = await fetch(`${llmApiBase}/api/llm/ping`, {
+        method: 'POST',
+        headers: { ...llmHeaders, 'x-ai-support': 'on' },
+        body: JSON.stringify({
+          language: uiLanguage === 'English' ? 'en' : 'pl',
+        }),
+      })
+      const payload = (await response.json()) as {
+        ok?: boolean
+        usage?: { model?: string | null; tokensIn?: number; tokensOut?: number }
+        meta?: LlmUsageMeta
+        error?: string
+      }
+      if (!response.ok || !payload?.ok) {
+        setLlmPingResult({ error: payload?.error || 'Ping failed.' })
+        return
+      }
+      if (payload?.meta) {
+        applyUsageModel(payload.meta)
+        applyUsageToApp(payload.meta)
+      }
+      setLlmPingResult({
+        model: payload?.usage?.model ?? payload?.meta?.modelUsed ?? null,
+        tokensIn: payload?.usage?.tokensIn ?? payload?.meta?.tokens?.input,
+        tokensOut: payload?.usage?.tokensOut ?? payload?.meta?.tokens?.output,
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Ping failed.'
+      setLlmPingResult({ error: message })
     }
   }
 
@@ -4199,6 +4625,14 @@ function App() {
     }
     void createEngineSession()
   }, [activeStep, selectedScenario, engineSessionId, llmApiBase])
+
+  useEffect(() => {
+    if (loginCooldownSeconds <= 0) return
+    const timer = window.setInterval(() => {
+      setLoginCooldownSeconds((prev) => Math.max(0, prev - 1))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [loginCooldownSeconds])
 
   useEffect(() => {
     if (!showLanding) return
@@ -4880,19 +5314,56 @@ function App() {
       .flat()
       .map((idea) => ({ type: 'idea', text: idea.text }))
     const endpoint = '/api/coach/suggest'
+    const sessionName = enginePreviewSessionName || productName || ''
+    const language = reportLanguage === 'English' ? 'en' : 'pl'
+    const boardEntries = boardItems.map((item, index) => ({
+      id: `idea-${index}`,
+      text: item.text,
+    }))
+    if (import.meta.env.DEV) {
+      console.log('[ai] suggest request', {
+        aiSupportEnabled,
+        sessionName,
+        entriesCount: boardEntries.length,
+        matrixId: selectedScenarioId || null,
+        lang: language,
+      })
+      console.log('[ai] suggest payload', {
+        sessionId: engineSessionId,
+        sessionName,
+        entries: boardEntries.length,
+        sample: boardEntries.slice(0, 3),
+      })
+    }
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: llmHeaders,
         body: JSON.stringify({
           sessionId: engineSessionId,
-          boardItems,
-          language: reportLanguage === 'English' ? 'en' : 'pl',
+          sessionName,
+          boardEntries,
+          language,
+          matrix: selectedScenario
+            ? {
+                scenarioId: selectedScenarioId,
+                spaceDefs: selectedScenario.spaceDefs,
+                timeDefs: selectedScenario.timeDefs,
+              }
+            : null,
         }),
       })
       const rawText = await response.text()
       let data:
-        | { ok?: boolean; data?: { question?: { text?: string } | null }; meta?: LlmUsageMeta }
+        | {
+            ok?: boolean
+            data?: {
+              question?: { text?: string } | null
+              questions?: { text?: string; grounded_in?: string[] }[]
+            }
+            meta?: LlmUsageMeta
+            groundedCount?: number
+          }
         | null = null
       try {
         data = JSON.parse(rawText)
@@ -4907,12 +5378,27 @@ function App() {
         )
         throw new Error('Request failed')
       }
+      applyUsageModel(data.meta)
       void applyUsageToSession(data.meta, enginePreviewSessionId)
+      applyUsageModel(data.meta)
+      void applyUsageToSession(data.meta, enginePreviewSessionId)
+      const questions = data?.data?.questions
       const question = data?.data?.question
-      if (!question || !question.text) {
+      const nextText =
+        questions && questions.length
+          ? String(questions[0]?.text || '').trim()
+          : question?.text
+      if (typeof data?.groundedCount === 'number') {
+        setLastLlmGroundedCount(data.groundedCount)
+      }
+      if (questions && questions.length) {
+        setLastLlmGroundedIn(questions[0]?.grounded_in ?? null)
+        setLastLlmWhy(questions[0]?.why_this_question ?? null)
+      }
+      if (!nextText) {
         setImpulseQuestion(copy.impulseEmpty)
       } else {
-        setImpulseQuestion(question.text)
+        setImpulseQuestion(nextText)
       }
     } catch {
       setImpulseQuestion(copy.impulseEmpty)
@@ -5018,17 +5504,47 @@ function App() {
     setEnginePreviewError(null)
     setEngineFacilitationDiagnostics(null)
     const endpoint = '/api/coach/suggest'
+    const context = getSessionContext(enginePreviewSessionId)
+    const boardEntries = context.boardEntries
+    const sessionName = context.sessionName
+    const language = context.language
+    const matrixId =
+      context.matrixContext?.group_code && context.matrixContext?.mode_code
+        ? `${context.matrixContext.group_code}${context.matrixContext.mode_code}`
+        : null
+    if (import.meta.env.DEV) {
+      console.log('[ai] suggest request', {
+        aiSupportEnabled,
+        sessionName,
+        entriesCount: boardEntries.length,
+        matrixId,
+        lang: language,
+      })
+      console.log('[ai] suggest payload', {
+        sessionId: context.sessionId,
+        sessionName,
+        entries: boardEntries.length,
+        sample: boardEntries.slice(0, 3),
+      })
+    }
+    if (!aiSupportEnabled && import.meta.env.DEV) {
+      console.log('[ai] LLM skipped: aiSupport=off')
+    }
     try {
       const result = await fetchJsonWithDiagnostics(endpoint, {
         method: 'POST',
         headers: llmHeaders,
         body: JSON.stringify({
-          sessionId: enginePreviewSessionId,
-          language: uiLanguage === 'English' ? 'en' : 'pl',
+          sessionId: context.sessionId,
+          sessionName,
+          language,
           action: type,
           askedIds: engineAskedQuestionIds,
           currentGroupCode: engineLastQuestionMeta?.group_code ?? null,
           currentModeCode: engineLastQuestionMeta?.mode_code ?? null,
+          boardEntries,
+          matrixContext: context.matrixContext,
+          userRequest: { type: 'facilitation_question' },
         }),
       })
       const data = result.json as
@@ -5040,15 +5556,36 @@ function App() {
                 group_code?: string
                 mode_code?: number
               } | null
+              questions?: {
+                id?: string
+                text?: string
+                grounded_in?: string[]
+                why_this_question?: string
+              }[]
             }
+            meta?: LlmUsageMeta
+            groundedCount?: number
           }
         | null
       if (!result.ok || !data) {
         setEngineFacilitationDiagnostics(result)
         throw new Error('Request failed')
       }
+      applyUsageModel(data.meta)
+      void applyUsageToSession(data.meta, enginePreviewSessionId)
+      const questions = data?.data?.questions
       const question = data?.data?.question
-      const nextText = question?.text?.trim()
+      const nextText =
+        questions && questions.length
+          ? String(questions[0]?.text || '').trim()
+          : question?.text?.trim()
+      if (typeof data?.groundedCount === 'number') {
+        setLastLlmGroundedCount(data.groundedCount)
+      }
+      if (questions && questions.length) {
+        setLastLlmGroundedIn(questions[0]?.grounded_in ?? null)
+        setLastLlmWhy(questions[0]?.why_this_question ?? null)
+      }
       if (!nextText) {
         setEngineFacilitationDiagnostics(result)
         setEngineActivePrompt(null)
@@ -5073,12 +5610,13 @@ function App() {
         action: type,
         promptText: nextText,
       })
-      const questionId = question?.id
+      const questionId =
+        questions && questions.length ? questions[0]?.id : question?.id
       if (questionId) {
         setEngineLastQuestionMeta({
           id: questionId,
-          group_code: question?.group_code,
-          mode_code: question?.mode_code,
+          group_code: questions && questions.length ? questions[0]?.group_code : question?.group_code,
+          mode_code: questions && questions.length ? questions[0]?.mode_code : question?.mode_code,
         })
         setEngineAskedQuestionIds((prev) =>
           prev.includes(questionId) ? prev : [...prev, questionId]
@@ -5363,6 +5901,28 @@ function App() {
     return engineSessions.find((session) => session.id === enginePreviewSessionId) || null
   }, [enginePreviewSessionId, engineSessionDetail, engineSessions])
 
+  if (import.meta.env.DEV) {
+    console.log('[hooks-check] reached memo block', {
+      path: typeof window !== 'undefined' ? window.location.pathname : '',
+      isEnginePreview,
+      authResolved,
+      hasSession: Boolean(authSession?.user?.id),
+      hasActiveSession: Boolean(enginePreviewSessionId),
+    })
+  }
+
+  const orderedEnginePreviewItems = useMemo(() => {
+    const estimateLines = (value: string) => {
+      const length = String(value || '').trim().length
+      const perLine = 55
+      return Math.max(1, Math.ceil(length / perLine))
+    }
+    return enginePreviewItems
+      .map((item, index) => ({ item, index, lines: estimateLines(item.text) }))
+      .sort((a, b) => a.lines - b.lines || a.index - b.index)
+      .map(({ item }) => item)
+  }, [enginePreviewItems])
+
   const buildSessionDetailForSave = async (): Promise<EngineSessionDetail | null> => {
     if (!enginePreviewSessionId) return null
     const now = Date.now()
@@ -5391,10 +5951,6 @@ function App() {
   }
 
   const saveCurrentSessionToCloud = async (silentSuccess = false) => {
-    if (!authSession?.user?.id) {
-      showEngineNotice(copy.engine.saveRequiresAuth, 'error')
-      return false
-    }
     if (!enginePreviewSessionId) {
       showEngineNotice(copy.engine.saveMissingSession, 'error')
       return false
@@ -5405,10 +5961,34 @@ function App() {
       return false
     }
     try {
-      await updateSession(detail)
-      await saveSessionToCloud(authSession.user.id, detail, uiLanguage)
+      if (!client) {
+        showEngineNotice(copy.engine.saveRequiresAuth, 'error')
+        return false
+      }
+      const { data } = await client.auth.getSession()
+      const session = data.session
+      if (!session?.user?.id) {
+        showEngineNotice('Zaloguj się, aby zapisać w chmurze', 'error')
+        return false
+      }
+      const record = {
+        user_id: session.user.id,
+        session_id: String(enginePreviewSessionId),
+        payload: detail,
+      }
+      const { error, status } = await client
+        .from('user_sessions')
+        .upsert(record, { onConflict: 'user_id,session_id' })
+      if (import.meta.env.DEV) {
+        console.log('[cloud save]', { status, message: error?.message })
+      }
+      if (error) {
+        console.error('[cloud save] failed', { status, error })
+        showEngineNotice(`Nie udało się zapisać (${status ?? 'err'})`, 'error')
+        return false
+      }
       if (!silentSuccess) {
-        showEngineNotice(copy.engine.saveSuccess, 'success')
+        showEngineNotice('Sesja zapisana w chmurze', 'success')
       }
       if (engineSessionsOpen) {
         void fetchEngineSessions()
@@ -5423,8 +6003,6 @@ function App() {
   }
 
   const handleLogout = async () => {
-    const saved = await saveCurrentSessionToCloud(true)
-    if (!saved) return
     if (!client) {
       showEngineNotice(copy.auth.logoutFailed, 'error')
       return
@@ -5433,6 +6011,16 @@ function App() {
     if (error) {
       showEngineNotice(copy.auth.logoutFailed, 'error')
       return
+    }
+    if (import.meta.env.DEV) {
+      console.log('[auth] signed out')
+    }
+    if (typeof window !== 'undefined') {
+      window.localStorage.removeItem(AUTH_LOGIN_ORIGIN_KEY)
+      window.localStorage.removeItem(AUTH_LOGIN_REDIRECT_KEY)
+      window.localStorage.removeItem(AUTH_OAUTH_ORIGIN_KEY)
+      window.localStorage.removeItem(AUTH_FLOW_IN_PROGRESS_KEY)
+      window.sessionStorage.removeItem('last_oauth_code')
     }
     window.location.href = '/'
   }
@@ -5463,7 +6051,15 @@ function App() {
         setEngineSessions(localSessions)
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Request failed'
+      if (import.meta.env.DEV) {
+        console.error('[engine sessions] fetch failed', error)
+      }
+      const message =
+        error instanceof Error
+          ? error.message
+          : typeof error === 'object' && error
+            ? String((error as { message?: string }).message || 'Request failed')
+            : 'Request failed'
       setEngineSessionsError(`Nie udało się pobrać listy sesji. ${message}`)
       logSessionStore('engine_sessions_list_failed', { message })
     } finally {
@@ -5818,36 +6414,120 @@ function App() {
     }
   }
 
+  const isDevUi =
+    import.meta.env.DEV ||
+    (typeof window !== 'undefined' && window.location.hostname === 'localhost')
+
+  useEffect(() => {
+    if (!isDevUi) return
+    if (typeof window === 'undefined') return
+    const handleError = (event: ErrorEvent) => {
+      const message =
+        event.message || (event.error instanceof Error ? event.error.message : 'Unknown error')
+      setDevLastError(message)
+      console.error('[dev error]', event)
+    }
+    const handleRejection = (event: PromiseRejectionEvent) => {
+      const reason = event.reason
+      const message =
+        reason instanceof Error ? reason.message : reason ? String(reason) : 'Unknown rejection'
+      setDevLastError(`Unhandled rejection: ${message}`)
+      console.error('[dev unhandledrejection]', reason)
+    }
+    window.addEventListener('error', handleError)
+    window.addEventListener('unhandledrejection', handleRejection)
+    return () => {
+      window.removeEventListener('error', handleError)
+      window.removeEventListener('unhandledrejection', handleRejection)
+    }
+  }, [isDevUi])
+
+  const devAuthPanel = isDevUi ? (
+    <div
+      style={{
+        position: 'fixed',
+        top: 8,
+        left: 8,
+        zIndex: 9999,
+        background: 'rgba(15, 23, 42, 0.92)',
+        color: '#fff',
+        padding: '8px 10px',
+        borderRadius: 8,
+        fontSize: 12,
+        lineHeight: 1.4,
+        maxWidth: 320,
+      }}
+    >
+      <div>path: {typeof window !== 'undefined' ? window.location.pathname : ''}</div>
+      <div>hostname: {typeof window !== 'undefined' ? window.location.hostname : ''}</div>
+      <div>origin: {typeof window !== 'undefined' ? window.location.origin : ''}</div>
+      <div>href: {typeof window !== 'undefined' ? window.location.href : ''}</div>
+      <div>importMetaDev: {import.meta.env.DEV ? 'true' : 'false'}</div>
+      <div>mode: {import.meta.env.MODE}</div>
+      <div>
+        build:{' '}
+        {String(
+          import.meta.env.VITE_BUILD_TIME ??
+            import.meta.env.VITE_APP_VERSION ??
+            'unknown'
+        )}
+      </div>
+      <div>authResolved: {authResolved ? 'true' : 'false'}</div>
+      <div>hasSession: {authSession ? 'true' : 'false'}</div>
+      <div>email: {authSession?.user?.email ?? '—'}</div>
+      <div>isGuest: {isGuestMode() ? 'true' : 'false'}</div>
+      <div>
+        hasActiveGuestSession:{' '}
+        {isGuestMode() && readGuestSessions().length > 0 ? 'true' : 'false'}
+      </div>
+      <div>lastAuthEvent: {lastAuthEvent ?? '—'}</div>
+      <div>lastLLMCallAt: {lastLlmCallAt ?? '—'}</div>
+      <div>lastLLMModel: {lastLlmModel ?? '—'}</div>
+      <div>
+        lastTokensDelta: {lastLlmTokensDelta != null ? String(lastLlmTokensDelta) : '—'}
+      </div>
+      <div>lastLLMSource: {lastLlmSource ?? '—'}</div>
+      <div>
+        lastGroundedCount:{' '}
+        {lastLlmGroundedCount != null ? String(lastLlmGroundedCount) : '—'}
+      </div>
+      <div>lastGroundedIn: {lastLlmGroundedIn ? lastLlmGroundedIn.join(', ') : '—'}</div>
+      {devLastError && <div>lastError: {devLastError}</div>}
+    </div>
+  ) : null
+
+  const withDevOverlay = (node: React.ReactNode) => (
+    <>
+      {devAuthPanel}
+      {node}
+    </>
+  )
+
+  if (isDebugMatrix) {
+    return withDevOverlay(<DebugMatrixPage llmApiBase={llmApiBase} />)
+  }
+
   if (isAuthCallback) {
-    const nextParam =
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('next') || '/app'
-        : '/app'
-    return (
+    return withDevOverlay(
       <div className="app auth-screen">
         <section className="panel auth-panel">
           <h1>{copy.loginCallbackTitle}</h1>
-          {authCallbackLoading && <p className="muted">...</p>}
+          {authCallbackLoading && <p className="muted">{copy.loginCallbackTitle}</p>}
           {authCallbackError && <p className="engine-error">{authCallbackError}</p>}
+          {authCallbackError && import.meta.env.DEV && (
+            <p className="muted">DEV: {authCallbackError}</p>
+          )}
+          {authCallbackHint && <p className="muted">{authCallbackHint}</p>}
           {!authCallbackLoading && authCallbackError && (
             <div className="actions">
               <button
                 type="button"
                 className="secondary"
                 onClick={() => {
-                  window.location.href = `/login?next=${encodeURIComponent(nextParam)}`
+                  window.location.href = '/'
                 }}
               >
-                {copy.authCallback.sendLinkAgain}
-              </button>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => {
-                  window.location.href = '/login'
-                }}
-              >
-                {copy.authCallback.returnToLogin}
+                {copy.authCallback.tryAgainCta}
               </button>
               <button
                 type="button"
@@ -5867,10 +6547,25 @@ function App() {
 
   if (isLogin) {
     const isGuestActive = isGuestMode()
-    return (
+    const hasSupabaseKey =
+      Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY) ||
+      Boolean(import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+    return withDevOverlay(
       <div className="app auth-screen">
         <section className="panel auth-panel">
           <h1>{copy.loginTitle}</h1>
+          {import.meta.env.DEV && (
+            <div className="actions">
+              <button type="button" className="ghost" onClick={() => void resetAuthDev()}>
+                Reset auth (dev)
+              </button>
+            </div>
+          )}
+          {!hasSupabaseKey && (
+            <p className="engine-error">
+              Brak VITE_SUPABASE_ANON_KEY w .env.local / env Vite
+            </p>
+          )}
           <p className="muted">{copy.loginSubtitle}</p>
           <div className="auth-options auth-options--actions">
             <div className="auth-option">
@@ -5899,16 +6594,76 @@ function App() {
                   placeholder={copy.loginEmailPlaceholder}
                 />
               </div>
-              <div className="actions">
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={handleMagicLink}
-                  disabled={loginSending}
-                >
-                  {loginSending ? copy.loginEmailSending : copy.loginEmailCta}
-                </button>
-              </div>
+              {import.meta.env.DEV && (
+                <label className="auth-option-toggle">
+                  <input
+                    type="checkbox"
+                    checked={loginUsePassword}
+                    onChange={(event) => setLoginUsePassword(event.target.checked)}
+                  />
+                  <span>Email + password (dev)</span>
+                </label>
+              )}
+              {loginUsePassword && import.meta.env.DEV ? (
+                <>
+                  <div className="field-group">
+                    <input
+                      id="login-password"
+                      type="password"
+                      value={loginPassword}
+                      onChange={(event) => setLoginPassword(event.target.value)}
+                      placeholder="password"
+                    />
+                  </div>
+                  <div className="actions">
+                    <button
+                      type="button"
+                      className={loginAuthMode === 'signin' ? 'primary' : 'ghost'}
+                      onClick={() => setLoginAuthMode('signin')}
+                    >
+                      Sign in
+                    </button>
+                    <button
+                      type="button"
+                      className={loginAuthMode === 'signup' ? 'primary' : 'ghost'}
+                      onClick={() => setLoginAuthMode('signup')}
+                    >
+                      Sign up
+                    </button>
+                  </div>
+                  <div className="actions">
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={handlePasswordAuth}
+                      disabled={loginSending}
+                    >
+                      {loginSending ? '...' : loginAuthMode === 'signin' ? 'Sign in' : 'Sign up'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="primary"
+                    onClick={handleMagicLink}
+                    disabled={loginSending || loginCooldownSeconds > 0}
+                  >
+                    {loginSending
+                      ? copy.loginEmailSending
+                      : loginCooldownSeconds > 0
+                        ? `Poczekaj ${loginCooldownSeconds}s`
+                        : copy.loginEmailCta}
+                  </button>
+                </div>
+              )}
+              {import.meta.env.DEV && !loginUsePassword && (
+                <p className="muted">
+                  Supabase default SMTP ma bardzo niski limit wysyłek. Jeśli widzisz 429,
+                  użyj login hasłem lub Google.
+                </p>
+              )}
             </div>
             <div className="auth-option">
               <p className="auth-option-title">{copy.loginGuestLabel}</p>
@@ -5948,6 +6703,44 @@ function App() {
   }
 
   if (isEnginePreview) {
+    const hasSupabaseSession = Boolean(authSession?.user?.id)
+    const guestActive = isGuestMode()
+    const hasActiveSession = Boolean(enginePreviewSessionId)
+    if (!authResolved) {
+      return withDevOverlay(
+        <div className="app auth-screen">
+          <section className="panel auth-panel">
+            <p className="muted">Loading...</p>
+          </section>
+        </div>
+      )
+    }
+    if (!hasSupabaseSession && !guestActive) {
+      return withDevOverlay(
+        <div className="app auth-screen">
+          <section className="panel auth-panel">
+            <h1>{copy.loginTitle}</h1>
+            <p className="muted">
+              {uiLanguage === 'Polish'
+                ? 'Nie jesteś zalogowany.'
+                : 'You are not signed in.'}
+            </p>
+            <p className="muted">{copy.loginSubtitle}</p>
+            <div className="actions">
+              <button
+                type="button"
+                className="primary"
+                onClick={() => {
+                  window.location.href = '/'
+                }}
+              >
+                {copy.authCallback.goHome}
+              </button>
+            </div>
+          </section>
+        </div>
+      )
+    }
     const enginePlaceholder =
       engineUiState === 'FACILITATED_INPUT' && engineActivePrompt
         ? engineActivePrompt.text
@@ -5975,28 +6768,16 @@ function App() {
     engineOfferReason === 'idle' ||
     engineOfferReason === 'manual'
   const showHelpButton = !showFacilitationOffer
-  const orderedEnginePreviewItems = useMemo(() => {
-    const estimateLines = (value: string) => {
-      const length = String(value || '').trim().length
-      const perLine = 55
-      return Math.max(1, Math.ceil(length / perLine))
-    }
-    return enginePreviewItems
-      .map((item, index) => ({ item, index, lines: estimateLines(item.text) }))
-      .sort((a, b) => a.lines - b.lines || a.index - b.index)
-      .map(({ item }) => item)
-  }, [enginePreviewItems])
   const llmUsageClass = llmUsageModel
     ? `llm-model-${llmUsageModel.replace(/\./g, '-')}`
     : 'llm-model-none'
-  const currentTokensTotal =
-    (currentEngineSession?.tokensInTotal ?? 0) + (currentEngineSession?.tokensOutTotal ?? 0)
+  const currentTokensTotal = llmTokensTotal
   const formatTokenTotal = (value: number) => {
     const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
     return new Intl.NumberFormat(locale).format(Math.max(0, Math.floor(value || 0)))
   }
 
-  return (
+    return withDevOverlay(
       <div className="app engine-preview" data-testid="active-session">
         <header className="engine-header">
           <div>
@@ -6109,12 +6890,16 @@ function App() {
                 )}
               </div>
             </div>
-            <div className="engine-meta">
-              <span>{copy.enginePreviewSessionIdLabel}:</span>
-              <span className="engine-meta-value engine-meta-value--muted">
-                {enginePreviewSessionId ? formatSessionLabel(enginePreviewSessionName, enginePreviewSessionId) : copy.enginePreviewSessionEmpty}
-              </span>
-            </div>
+            {(enginePreviewSessionId || engineSessionsOpen || engineSessionDetail?.session) && (
+              <div className="engine-meta">
+                <span>{copy.enginePreviewSessionIdLabel}:</span>
+                <span className="engine-meta-value engine-meta-value--muted">
+                  {enginePreviewSessionId
+                    ? formatSessionLabel(enginePreviewSessionName, enginePreviewSessionId)
+                    : copy.enginePreviewSessionEmpty}
+                </span>
+              </div>
+            )}
           </section>
 
           {engineSessionsOpen && (
@@ -6436,6 +7221,14 @@ function App() {
               >
                 {copy.engineFacilitationNote}
               </div>
+              {import.meta.env.DEV && engineActivePrompt && (
+                <div className="engine-helper">
+                  {lastLlmSource === 'llm' ? 'AI generated' : 'Deterministic fallback'}
+                  {lastLlmWhy && (
+                    <span className="muted"> · {lastLlmWhy}</span>
+                  )}
+                </div>
+              )}
               {uiLanguage === 'English' && copy.engineQuestionsWipNote && (
                 <div className="engine-helper">{copy.engineQuestionsWipNote}</div>
               )}
@@ -6771,7 +7564,7 @@ function App() {
   }
 
   if (isWorkInProgress) {
-    return (
+    return withDevOverlay(
       <div className="app">
         <div className="topbar-links">
           <a className="ghost topbar-link" href="/">
@@ -6797,7 +7590,7 @@ function App() {
     )
   }
 
-  return (
+  return withDevOverlay(
     <div className="app">
       <header className={`top-bar ${showLanding ? 'landing-top' : ''}`}>
         {!showLanding && <div className="brand">{copy.appTitle}</div>}
@@ -6956,7 +7749,11 @@ function App() {
                   </span>
                 </p>
                 <div className="intro-cta">
-                  <a className="primary landing-cta" href="/login?next=/engine">
+                  <a
+                    className="primary landing-cta"
+                    href="/login"
+                    onClick={handleLandingCtaClick}
+                  >
                     {copy.landingCta}
                   </a>
                   {uiLanguage === 'English' && (
@@ -7026,7 +7823,11 @@ function App() {
                 <div className="landing-final">
                   <p>{copy.landingFinalLines[0]}</p>
                   <p className="final-shift">{copy.landingFinalLines[1]}</p>
-                  <a className="primary landing-cta" href="/login?next=/engine">
+                  <a
+                    className="primary landing-cta"
+                    href="/login"
+                    onClick={handleLandingCtaClick}
+                  >
                     {copy.landingCta}
                   </a>
                   {uiLanguage === 'English' && (
@@ -7082,7 +7883,11 @@ function App() {
                       )}
                   </span>
                 </p>
-                <a className="primary landing-cta" href="/login?next=/engine">
+                <a
+                  className="primary landing-cta"
+                  href="/login"
+                  onClick={handleLandingCtaClick}
+                >
                   {copy.landingCta}
                 </a>
               </div>
@@ -7840,6 +8645,12 @@ function App() {
             </div>
             <div className="modal-body">
               <p>{impulseQuestion || copy.impulseEmpty}</p>
+              {import.meta.env.DEV && (
+                <p className="muted">
+                  {lastLlmSource === 'llm' ? 'AI generated' : 'Deterministic fallback'}
+                  {lastLlmWhy ? ` · ${lastLlmWhy}` : ''}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -8286,7 +9097,21 @@ function App() {
                 >
                   {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
                 </button>
+                {import.meta.env.DEV && (
+                  <button type="button" className="ghost" onClick={handleLlmPing}>
+                    LLM ping
+                  </button>
+                )}
               </div>
+              {import.meta.env.DEV && llmPingResult && (
+                <div className="engine-helper">
+                  {llmPingResult.error
+                    ? `Ping error: ${llmPingResult.error}`
+                    : `Ping OK: ${llmPingResult.model ?? 'model?'} | in ${
+                        llmPingResult.tokensIn ?? 0
+                      } / out ${llmPingResult.tokensOut ?? 0}`}
+                </div>
+              )}
             </div>
           </div>
         </div>

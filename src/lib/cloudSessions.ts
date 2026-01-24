@@ -68,7 +68,6 @@ export const saveSessionToCloud = async (
       {
         user_id: userId,
         session_id: session.id,
-        title: session.name ?? null,
         payload,
         updated_at: new Date(now).toISOString(),
       },
@@ -83,7 +82,7 @@ export const listCloudSessions = async (userId: string): Promise<CloudSessionRec
   }
   const { data, error } = await supabase
     .from('user_sessions')
-    .select('session_id,title,payload,updated_at,created_at')
+    .select('session_id,payload,updated_at,created_at')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
   if (error) throw error
@@ -97,7 +96,7 @@ export const listCloudSessions = async (userId: string): Promise<CloudSessionRec
     const summary = normalizeSummary({
       ...(payload?.session || {}),
       id: sessionId,
-      name: payload?.session?.name ?? row.title ?? null,
+      name: payload?.session?.name ?? null,
       updated_at: toTimestamp(payload?.session?.updated_at, updatedAt),
       created_at: toTimestamp(payload?.session?.created_at, createdAt),
     })
@@ -108,7 +107,7 @@ export const listCloudSessions = async (userId: string): Promise<CloudSessionRec
     }
     return {
       sessionId,
-      title: row.title ?? null,
+      title: payload?.session?.name ?? null,
       payload,
       updatedAt,
       createdAt,

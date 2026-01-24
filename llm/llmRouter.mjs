@@ -129,6 +129,9 @@ export const runLlmTask = async ({
   rateLimitKey,
 }) => {
   if (!aiSupportEnabled) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[ai] LLM skipped: aiSupport=off', { task })
+    }
     return {
       ok: true,
       data: fallbackData,
@@ -137,6 +140,9 @@ export const runLlmTask = async ({
   }
 
   if (!apiKey) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[ai] llm decision', { willCallLLM: false, reason: 'missing_api_key', task })
+    }
     return {
       ok: false,
       error: 'OPENAI_API_KEY is not set on the server.',
@@ -147,6 +153,9 @@ export const runLlmTask = async ({
   if (rateLimiter && rateLimitKey) {
     const rate = rateLimiter(rateLimitKey)
     if (!rate.allowed) {
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[ai] llm decision', { willCallLLM: false, reason: 'rate_limited', task })
+      }
       return {
         ok: false,
         error: 'Rate limit exceeded.',
@@ -198,6 +207,14 @@ export const runLlmTask = async ({
   const summary = preprocess.summary
   const escalated = preprocessSucceeded ? shouldEscalate({ cleanedInput, preprocess }) : false
   const primaryModel = escalated ? models.escalation : models.default
+  if (process.env.NODE_ENV !== 'production') {
+    console.log('[ai] llm decision', {
+      willCallLLM: true,
+      reason: escalated ? 'escalated' : 'default',
+      modelChosen: primaryModel,
+      task,
+    })
+  }
 
   const buildMessages = () => [
     { role: 'system', content: BASE_SYSTEM_PROMPT },

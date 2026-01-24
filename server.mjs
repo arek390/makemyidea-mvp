@@ -33,6 +33,7 @@ import {
   parseJsonObject,
 } from './llm/llmRouter.mjs'
 import coachSuggestHandler from './api/coach/suggest.js'
+import llmPingHandler from './api/llm/ping.js'
 import {
   buildContextPrompt,
   buildQuestionPrompt,
@@ -342,12 +343,18 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (url.pathname === '/api/llm/ping') {
+    const resShim = createResShim(res)
+    await llmPingHandler(req, resShim)
+    return
+  }
+
   if (url.pathname === '/api/ping' && req.method === 'GET') {
     sendJson(res, 200, { ok: true, env: 'local', ts: new Date().toISOString() })
     return
   }
 
-  if (url.pathname === '/api/coach/suggest') {
+  if (url.pathname === '/api/coach/suggest' || url.pathname === '/coach/suggest') {
     const resShim = createResShim(res)
     await coachSuggestHandler(req, resShim)
     return

@@ -1,8 +1,18 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { buildMeta, readJsonBody, resolveAiSupportEnabled, sendError, sendJson } from '../_lib/http.js'
+import { runLlmTask, createRateLimiter } from '../../llm/llmRouter.mjs'
+import {
+  buildMeta,
+  readJsonBody,
+  resolveAiSupportEnabled,
+  sendError,
+  sendJson,
+  mapLlmError,
+} from '../_lib/http.js'
+import { buildContextPrompt } from '../../src/lib/llm/contextInterpreter.mjs'
 
 let cachedDataset = null
+const limiter = createRateLimiter({ windowMs: 60_000, max: 20 })
 
 const parseCsvRow = (line, delimiter) => {
   const result = []
@@ -49,6 +59,22 @@ const normalizeLang = (value) => {
   if (raw.startsWith('en')) return 'en'
   if (raw.startsWith('pl')) return 'pl'
   return raw || 'pl'
+}
+
+const extractKeywords = (text) =>
+  String(text || '')
+    .toLowerCase()
+    .split(/[^a-z0-9ąćęłńóśżź]+/i)
+    .map((token) => token.trim())
+    .filter((token) => token.length >= 4)
+
+const countGroundedQuestions = (questions, keywords) => {
+  if (!Array.isArray(questions)) return 0
+  if (!keywords.length) return 0
+  return questions.filter((q) => {
+    const text = String(q?.text || '').toLowerCase()
+    return keywords.some((kw) => text.includes(kw))
+  }).length
 }
 
 const resolveCsvPath = () =>
@@ -208,16 +234,153 @@ export default async function handler(req, res) {
       return
     }
     const aiSupportEnabled = resolveAiSupportEnabled(req, body)
-    const meta = buildMeta({ aiSupportEnabled, modelUsed: null, escalated: false })
+    const killSwitch = process.env.AI_SUPPORT_DISABLED === 'true'
+    const aiSupportHeader = req.headers['x-ai-support']
+    const hasContextFields = Boolean(
+      body?.sessionName || (Array.isArray(body?.boardEntries) && body.boardEntries.length)
+    )
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[ai] suggest input', {
+        aiSupportHeader,
+        killSwitch,
+        hasContextFields,
+      })
+    }
     const dataset = loadQuestionsFromCsvOnce()
     const lang = normalizeLang(body.lang || body.language || 'pl')
+    const action = body.action || 'NEXT'
+    const askedIds = Array.isArray(body.askedIds) ? body.askedIds : []
+    const currentGroupCode = body.currentGroupCode || null
+    const currentModeCode = body.currentModeCode || null
+    const sessionName = String(body.sessionName || '').trim()
+    const boardEntriesRaw = Array.isArray(body.boardEntries)
+      ? body.boardEntries
+      : Array.isArray(body.boardItems)
+        ? body.boardItems
+        : []
+    const boardEntries = boardEntriesRaw
+      .map((item) => (typeof item === 'string' ? item : item?.text))
+      .filter(Boolean)
+      .slice(0, 60)
+    const matrixContext =
+      body.matrixContext ||
+      body.matrix ||
+      (currentGroupCode || currentModeCode
+        ? { currentGroupCode, currentModeCode, action }
+        : null)
+
+    if (!aiSupportEnabled) {
+      const reason = killSwitch ? 'kill-switch' : 'aiSupport=off'
+      console.log(`[ai] LLM skipped: ${reason}`)
+    }
+
+    if (process.env.NODE_ENV !== 'production') {
+      if (!sessionName || !Array.isArray(boardEntriesRaw)) {
+        sendError(res, 400, 'MISSING_CONTEXT', 'Missing session context.')
+        return
+      }
+    }
+
+    if (aiSupportEnabled) {
+      const limitedEntries = boardEntries.slice(0, 30)
+      const keywords = [
+        ...extractKeywords(sessionName),
+        ...limitedEntries.flatMap((entry) => extractKeywords(entry)),
+      ]
+      const contextInput = buildContextPrompt({
+        boardItems: limitedEntries,
+        sessionTitle: sessionName,
+        matrixContext,
+      })
+      const count = Number(body.count || 4)
+      const buildInstructions = (attempt) =>
+        [
+          `Generate ${count} facilitation questions as JSON.`,
+          'You are a facilitation coach. You MUST base questions on the provided session title and the existing board entries.',
+          'Do not invent product details not present in the context.',
+          'Each question must reference at least one concrete theme from the entries OR the session title.',
+          'Return ONLY JSON in this shape:',
+          '{"questions":[{"id":"...","text":"...","grounded_in":["entry:...","title"],"why_this_question":"..."}]}',
+          attempt > 0
+            ? 'STRICT: If a question cannot be grounded, replace it. Grounded_in must be non-empty.'
+            : '',
+        ].filter(Boolean).join(' ')
+
+      const runSuggest = async (attempt) =>
+        runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'coach-suggest',
+          input: contextInput,
+          language: lang === 'pl' ? 'Polish' : 'English',
+          taskInstructions: buildInstructions(attempt),
+          parseResponse: (value) => {
+            try {
+              const parsed = JSON.parse(value)
+              if (!parsed || typeof parsed !== 'object') return null
+              if (!Array.isArray(parsed.questions)) return null
+              return parsed
+            } catch {
+              return null
+            }
+          },
+          fallbackData: null,
+          models: {
+            default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
+            preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+          },
+          maxOutputTokens: 600,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+
+      let result = await runSuggest(0)
+      if (!result.ok) {
+        const mapped = mapLlmError(result.error)
+        sendError(res, mapped.status, mapped.code, mapped.message, result.meta)
+        return
+      }
+      let questions = result.data?.questions || []
+      let groundedCount = countGroundedQuestions(questions, keywords)
+      if (groundedCount === 0) {
+        result = await runSuggest(1)
+        if (!result.ok) {
+          const mapped = mapLlmError(result.error)
+          sendError(res, mapped.status, mapped.code, mapped.message, result.meta)
+          return
+        }
+        questions = result.data?.questions || []
+        groundedCount = countGroundedQuestions(questions, keywords)
+      }
+
+      if (!questions.length || groundedCount === 0) {
+        console.error('[ai] grounding failed; falling back')
+      } else {
+        const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+        sendJson(res, 200, {
+          ok: true,
+          data: { questions },
+          groundedCount,
+          meta,
+          usage: {
+            model: meta.modelUsed,
+            tokensIn: meta.tokens.input,
+            tokensOut: meta.tokens.output,
+          },
+        })
+        return
+      }
+    }
+
+    const meta = buildMeta({ aiSupportEnabled: false, modelUsed: null, escalated: false })
     const rawQuestion = selectQuestion({
       dataset,
       lang,
-      action: body.action || 'NEXT',
-      currentGroupCode: body.currentGroupCode || null,
-      currentModeCode: body.currentModeCode || null,
-      askedIds: Array.isArray(body.askedIds) ? body.askedIds : [],
+      action,
+      currentGroupCode,
+      currentModeCode,
+      askedIds,
     })
     const activeList = dataset.list.filter((q) => Number(q.is_active) === 1)
     if (activeList.length === 0) {
