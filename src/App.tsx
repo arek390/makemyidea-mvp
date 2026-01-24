@@ -5872,7 +5872,7 @@ function App() {
         <section className="panel auth-panel">
           <h1>{copy.loginTitle}</h1>
           <p className="muted">{copy.loginSubtitle}</p>
-          <div className="auth-options">
+          <div className="auth-options auth-options--actions">
             <div className="auth-option">
               <p className="auth-option-title">{copy.loginGoogleLabel}</p>
               <div className="actions">

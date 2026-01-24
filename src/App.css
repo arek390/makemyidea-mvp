@@ -1089,6 +1089,26 @@
   display: inline-flex;
 }
 
+.auth-options--actions {
+  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  align-items: stretch;
+}
+
+.auth-options--actions .auth-option {
+  display: grid;
+  gap: 0.7rem;
+  align-content: start;
+}
+
+.auth-options--actions .auth-option .actions {
+  margin-top: 0;
+}
+
+.auth-options--actions .auth-option .primary {
+  width: 100%;
+  justify-content: center;
+}
+
 .auth-guest-note {
   font-size: 0.8em;
 }
