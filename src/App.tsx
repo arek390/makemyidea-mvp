@@ -3406,8 +3406,7 @@ function App() {
 
   useEffect(() => {
     let cancelled = false
-    const supa = client
-    if (!supa) {
+    if (!client) {
       setAuthLoading(false)
       setAuthError('Missing Supabase env vars.')
       return () => {
@@ -3415,14 +3414,14 @@ function App() {
       }
     }
     const init = async () => {
-      const { data } = await supa.auth.getSession()
+      const { data } = await client!.auth.getSession()
       if (!cancelled) {
         setAuthSession(data.session ?? null)
         setAuthLoading(false)
       }
     }
     init()
-    const { data } = supa.auth.onAuthStateChange(
+    const { data } = client!.auth.onAuthStateChange(
       (_event: AuthChangeEvent, session: Session | null) => {
         setAuthSession(session ?? null)
       }
@@ -3443,8 +3442,7 @@ function App() {
 
   useEffect(() => {
     if (!isAuthCallback) return
-    const supa = client
-    if (!supa) {
+    if (!client) {
       setAuthCallbackError(copy.authCallback.unknownError)
       return
     }
@@ -3482,7 +3480,7 @@ function App() {
         setAuthCallbackLoading(false)
         return
       }
-      const { error } = await supa.auth.exchangeCodeForSession(code)
+      const { error } = await client!.auth.exchangeCodeForSession(code)
       if (cancelled) return
       if (error) {
         logAuthDiagnostics('auth_callback_error', { message: error.message })
@@ -3502,11 +3500,10 @@ function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const supa = client
-    if (!authSession?.user || !supa) return
+    if (!authSession?.user || !client) return
     const handlePageHide = () => {
       // Best-effort sign-out on tab/window close.
-      void supa.auth.signOut()
+      void client!.auth.signOut()
     }
     window.addEventListener('pagehide', handlePageHide)
     window.addEventListener('beforeunload', handlePageHide)
