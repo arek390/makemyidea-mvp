@@ -12,7 +12,10 @@ class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { error: Error | null; stack: string | null }
 > {
-  state = { error: null, stack: null }
+  state: { error: Error | null; stack: string | null } = {
+    error: null,
+    stack: null,
+  }
 
   static getDerivedStateFromError(error: Error) {
     return { error, stack: error.stack || null }
@@ -33,7 +36,9 @@ class ErrorBoundary extends React.Component<
         <div className="app auth-screen">
           <section className="panel auth-panel">
             <h1>Something went wrong</h1>
-            <p className="engine-error">{this.state.error.message}</p>
+            <p className="engine-error">
+              {this.state.error ? this.state.error.message : 'Unknown error'}
+            </p>
             {stack && (
               <>
                 <pre style={{ whiteSpace: 'pre-wrap', fontSize: 12 }}>{stack}</pre>

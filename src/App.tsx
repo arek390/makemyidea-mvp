@@ -30,7 +30,7 @@ import {
   type CloudSessionPayload,
   type CloudSessionRecord,
 } from './lib/cloudSessions'
-import { supabase as client, supabaseUrl } from './lib/supabase/client'
+import { supabase as client } from './lib/supabase/client'
 import {
   clearGuestMode,
   clearGuestSessions,
@@ -152,6 +152,14 @@ type LlmUsageMeta = { modelUsed?: string | null; aiSupportEnabled?: boolean; tok
 
 type FacilitationType = 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET'
 type FacilitationPrompt = { type: FacilitationType; text: string }
+type AiQuestion = {
+  id?: string
+  text?: string
+  grounded_in?: string[]
+  why_this_question?: string
+  group_code?: string
+  mode_code?: number
+}
 
 const WORD_LIMIT = 40
 const SHORT_ENTRY_WORDS = 12
@@ -3305,7 +3313,6 @@ function App() {
   const engineNoticeTimer = useRef<number | null>(null)
   const oauthStartOnceRef = useRef(false)
   const initialRouteResolvedRef = useRef(false)
-  const engineGateRedirectedRef = useRef(false)
   const engineIdleTriggered = useRef(false)
   const enginePreviousInput = useRef('')
   const engineLatestInput = useRef('')
@@ -3447,33 +3454,11 @@ function App() {
   }
 
   const findSupabasePkceVerifierKeys = () => {
-  if (typeof window === 'undefined') return []
-  return Object.keys(window.localStorage).filter(
-    (key) =>
-      key.includes('code-verifier') || key.includes('pkce') || key.includes('supabase')
-  )
-}
-
-
-  const getSupabaseProjectRef = () => {
-    if (!supabaseUrl) return null
-    try {
-      const host = new URL(supabaseUrl).hostname
-      return host.split('.')[0] || null
-    } catch {
-      return null
-    }
-  }
-
-  const hasCodeVerifier = () => {
-    if (typeof window === 'undefined') return false
-    const keys = Object.keys(window.localStorage)
-    if (keys.length === 0) return false
-    const ref = getSupabaseProjectRef()
-    if (ref) {
-      return keys.some((key) => key.includes(ref) && key.includes('code-verifier'))
-    }
-    return keys.some((key) => key.includes('code-verifier') || key.includes('code_verifier'))
+    if (typeof window === 'undefined') return []
+    return Object.keys(window.localStorage).filter(
+      (key) =>
+        key.includes('code-verifier') || key.includes('pkce') || key.includes('supabase')
+    )
   }
 
 const recordAuthRedirect = (redirectTo: string) => {
@@ -5358,8 +5343,8 @@ const isAuthFlowInProgress = () => {
         | {
             ok?: boolean
             data?: {
-              question?: { text?: string } | null
-              questions?: { text?: string; grounded_in?: string[] }[]
+              question?: AiQuestion | null
+              questions?: AiQuestion[]
             }
             meta?: LlmUsageMeta
             groundedCount?: number
@@ -5380,9 +5365,7 @@ const isAuthFlowInProgress = () => {
       }
       applyUsageModel(data.meta)
       void applyUsageToSession(data.meta, enginePreviewSessionId)
-      applyUsageModel(data.meta)
-      void applyUsageToSession(data.meta, enginePreviewSessionId)
-      const questions = data?.data?.questions
+      const questions = data?.data?.questions as AiQuestion[] | undefined
       const question = data?.data?.question
       const nextText =
         questions && questions.length
@@ -5550,18 +5533,8 @@ const isAuthFlowInProgress = () => {
       const data = result.json as
         | {
             data?: {
-              question?: {
-                id?: string
-                text?: string
-                group_code?: string
-                mode_code?: number
-              } | null
-              questions?: {
-                id?: string
-                text?: string
-                grounded_in?: string[]
-                why_this_question?: string
-              }[]
+              question?: AiQuestion | null
+              questions?: AiQuestion[]
             }
             meta?: LlmUsageMeta
             groundedCount?: number
@@ -5573,7 +5546,7 @@ const isAuthFlowInProgress = () => {
       }
       applyUsageModel(data.meta)
       void applyUsageToSession(data.meta, enginePreviewSessionId)
-      const questions = data?.data?.questions
+      const questions = data?.data?.questions as AiQuestion[] | undefined
       const question = data?.data?.question
       const nextText =
         questions && questions.length
@@ -6705,7 +6678,6 @@ const isAuthFlowInProgress = () => {
   if (isEnginePreview) {
     const hasSupabaseSession = Boolean(authSession?.user?.id)
     const guestActive = isGuestMode()
-    const hasActiveSession = Boolean(enginePreviewSessionId)
     if (!authResolved) {
       return withDevOverlay(
         <div className="app auth-screen">
