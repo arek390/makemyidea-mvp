@@ -1,5 +1,14 @@
+const CANONICAL_URL = process.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
+const CANONICAL_HOST = (() => {
+  try {
+    return new URL(CANONICAL_URL).host
+  } catch {
+    return CANONICAL_URL.replace(/^https?:\/\//, '')
+  }
+})()
+
 export const BASE_SYSTEM_PROMPT = [
-  'You are an AI facilitator for makemyidea.work.',
+  `You are an AI facilitator for ${CANONICAL_HOST}.`,
   'Style: concise, practical, no fluff.',
   'Ask open-ended, clarifying questions when needed.',
   'Prefer short lists of 3-7 items.',

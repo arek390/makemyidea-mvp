@@ -29,13 +29,15 @@ export type EngineSessionDetail = {
   askedQuestionIds: string[]
 }
 
-type StoredSession = {
+export type StoredSession = {
   session: EngineSessionSummary
   boardItems: EngineBoardItem[]
   askedQuestionIds: string[]
 }
 
 export const STORAGE_KEY = 'engine-sessions-v1'
+export const STORAGE_KEY_GUEST = 'engine-sessions-guest-v1'
+const GUEST_FLAG_KEY = 'guest-mode'
 
 let lastStorageError: string | null = null
 
@@ -59,10 +61,17 @@ const generateId = () => {
   return `session-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+const resolveStorageKey = () => {
+  if (!isBrowser()) return STORAGE_KEY
+  return window.localStorage.getItem(GUEST_FLAG_KEY) === 'true'
+    ? STORAGE_KEY_GUEST
+    : STORAGE_KEY
+}
+
 const readStore = (): Record<string, StoredSession> => {
   if (!isBrowser()) return {}
   try {
-    const raw = window.localStorage.getItem(STORAGE_KEY)
+    const raw = window.localStorage.getItem(resolveStorageKey())
     if (!raw) return {}
     const parsed = JSON.parse(raw) as { sessions?: Record<string, StoredSession> }
     if (!parsed || typeof parsed !== 'object' || !parsed.sessions) return {}
@@ -76,7 +85,7 @@ const readStore = (): Record<string, StoredSession> => {
 const writeStore = (sessions: Record<string, StoredSession>) => {
   if (!isBrowser()) return
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessions }))
+    window.localStorage.setItem(resolveStorageKey(), JSON.stringify({ sessions }))
   } catch (error) {
     setLastError(error)
   }

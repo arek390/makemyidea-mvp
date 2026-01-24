@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "import:questions": "node scripts/import-questions.mjs",
     "test:suggester": "node scripts/test-suggester.mjs",
-    "dev:all": "node scripts/dev-all.mjs",
+    "dev:all": "bash scripts/dev-bootstrap.sh && npm run dev:all:inner",
+    "dev:all:inner": "node scripts/dev-all.mjs",
     "check:engine": "node scripts/check-engine-db.mjs",
     "seed:questions": "node scripts/import-questions.mjs",
     "test:unit": "vitest run",
@@ -23,6 +24,8 @@
     "node": ">=20.19 <21"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.6.1",
+    "@supabase/supabase-js": "^2.49.1",
     "better-sqlite3": "^12.5.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0"

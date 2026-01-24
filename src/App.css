@@ -1020,6 +1020,94 @@
   color: #fff;
 }
 
+.auth-screen {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.auth-panel {
+  width: min(980px, 100%);
+  display: grid;
+  gap: 1rem;
+}
+
+.auth-options {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.auth-option {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1rem;
+  background: var(--panel);
+  display: grid;
+  gap: 0.8rem;
+  align-content: start;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease;
+  will-change: transform;
+}
+
+.auth-option:hover {
+  transform: scale(1.02);
+  border-color: rgba(17, 42, 75, 0.2);
+  box-shadow: 0 12px 26px rgba(17, 42, 75, 0.16);
+}
+
+.auth-option-title {
+  margin: 0;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+}
+
+.auth-option .field-group,
+.auth-option .actions {
+  margin-top: 0;
+}
+
+.auth-option .field-group {
+  gap: 0.4rem;
+}
+
+.auth-option .primary,
+.auth-option .secondary,
+.auth-option .ghost {
+  width: 100%;
+  justify-content: center;
+}
+
+.auth-option .primary,
+.auth-option .secondary,
+.auth-option .ghost {
+  display: inline-flex;
+}
+
+.auth-guest-note {
+  font-size: 0.8em;
+}
+
+@media (max-width: 900px) {
+  .auth-options {
+    grid-template-columns: 1fr;
+  }
+}
+
+.auth-guest-merge {
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  padding: 1rem;
+  background: var(--panel);
+  display: grid;
+  gap: 0.75rem;
+}
+
 .llm-button {
   white-space: nowrap;
   align-self: flex-start;
@@ -1731,6 +1819,26 @@
   gap: 1rem;
   align-items: flex-end;
   flex-wrap: wrap;
+}
+
+.engine-notice {
+  padding: 0.3rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.engine-notice--success {
+  background: #e6f3ea;
+  border-color: #b9e3c6;
+  color: #1f5b3b;
+}
+
+.engine-notice--error {
+  background: #fdecec;
+  border-color: #f3b8b8;
+  color: #8f2a2a;
 }
 
 .engine-field {

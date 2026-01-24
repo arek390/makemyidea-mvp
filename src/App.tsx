@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
+import type { Session } from '@supabase/supabase-js'
 import './App.css'
 import {
   MATRIX_COLS,
@@ -23,6 +24,19 @@ import {
   type EngineSessionDetail,
   type EngineSessionSummary,
 } from './storage/sessionStore'
+import {
+  listCloudSessions,
+  saveSessionToCloud,
+  type CloudSessionPayload,
+} from './lib/cloudSessions'
+import { supabase, supabaseUrl } from './lib/supabase/client'
+import {
+  clearGuestMode,
+  clearGuestSessions,
+  enableGuestMode,
+  isGuestMode,
+  readGuestSessions,
+} from './lib/guest'
 
 type StepId = 1 | 2 | 3 | 4
 type SpaceSlot = 'supersystem' | 'subsystem'
@@ -144,6 +158,18 @@ const DEFAULT_IDLE_THRESHOLD_MS = 15000
 const ERASE_EMPTY_SECONDS_STRONG = 10
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
 const FEEDBACK_STORAGE_KEY = 'makemyidea.feedback.v1'
+const AUTH_LOGIN_ORIGIN_KEY = 'auth-login-origin'
+const AUTH_LOGIN_REDIRECT_KEY = 'auth-login-redirect'
+const CANONICAL_URL =
+  import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
+const CANONICAL_HOST = (() => {
+  try {
+    return new URL(CANONICAL_URL).host
+  } catch {
+    return CANONICAL_URL.replace(/^https?:\/\//, '')
+  }
+})()
+const CANONICAL_DISPLAY_HOST = CANONICAL_HOST.replace(/^www\./, '')
 
 type Translations = {
   stepLabel: string
@@ -174,6 +200,49 @@ type Translations = {
   report: string
   llmSettings: string
   languageLabel: string
+  engine: {
+    saveSession: string
+    saveSuccess: string
+    saveRequiresAuth: string
+    saveMissingSession: string
+    saveFailed: string
+  }
+  auth: {
+    logout: string
+    logoutFailed: string
+    loginStartFailed: string
+  }
+  authCallback: {
+    invalidLink: string
+    pkceMismatch: string
+    pkceMissing: string
+    expired: string
+    redirectMismatch: string
+    unknownError: string
+    returnToLogin: string
+    sendLinkAgain: string
+    goHome: string
+  }
+  loginTitle: string
+  loginSubtitle: string
+  loginContinue: string
+  loginGoogleLabel: string
+  loginGoogleCta: string
+  loginGoogleLoading: string
+  loginEmailLabel: string
+  loginEmailPlaceholder: string
+  loginEmailCta: string
+  loginEmailSending: string
+  loginGuestLabel: string
+  loginGuestCta: string
+  loginGuestActive: string
+  loginNoticeSent: string
+  loginEmailError: string
+  loginCallbackTitle: string
+  loginGuestMergePrompt: string
+  loginGuestMergeYes: string
+  loginGuestMergeNo: string
+  loginGuestMergeLoading: string
   steps: Record<StepId, string>
   step1Intro: string
   productDescriptionLabel: string
@@ -384,7 +453,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingHeroTitle: 'Turn idea chaos into a clear product.',
     landingHeroSubtitle: 'No moderator. No sticky notes. No wasted time.',
     landingIntroTitleLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'guides you step by step',
       'through product definition.',
     ],
@@ -409,7 +478,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingAfterList: ['✅ Process', '✅ Structured questions', '✅ Report'],
     landingWhyLead: 'We don’t replace thinking. We remove friction.',
     landingWhyLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'structures the conversation',
       'keeps the process logical',
       'organizes knowledge in real time',
@@ -432,6 +501,50 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     report: 'Report',
     llmSettings: 'LLM settings',
     languageLabel: 'Language',
+    engine: {
+      saveSession: 'Save session',
+      saveSuccess: 'Saved',
+      saveRequiresAuth: 'Log in to save sessions.',
+      saveMissingSession: 'Start a session before saving.',
+      saveFailed: 'Save failed.',
+    },
+    auth: {
+      logout: 'Log out',
+      logoutFailed: 'Log out failed.',
+      loginStartFailed: 'Unable to start login. Please try again.',
+    },
+    authCallback: {
+      invalidLink: 'Invalid or expired login link. Please request a new one.',
+      pkceMismatch:
+        'This login link was opened on a different site or browser. Please open it in the same browser and device where you started login.',
+      pkceMissing: 'Invalid or expired login link. Please request a new one.',
+      expired: 'This login link has expired. Please request a new one.',
+      redirectMismatch: 'Login link redirect mismatch. Please request a new link.',
+      unknownError: 'Unable to sign you in. Please try again.',
+      returnToLogin: 'Return to login',
+      sendLinkAgain: 'Send login link again',
+      goHome: 'Go to homepage',
+    },
+    loginTitle: 'Login',
+    loginSubtitle: 'Sign in to continue.',
+    loginContinue: 'Continue',
+    loginGoogleLabel: 'Google',
+    loginGoogleCta: 'Continue with Google',
+    loginGoogleLoading: 'Connecting...',
+    loginEmailLabel: 'Email',
+    loginEmailPlaceholder: 'you@company.com',
+    loginEmailCta: 'Email me a login link',
+    loginEmailSending: 'Sending...',
+    loginGuestLabel: 'Guest',
+    loginGuestCta: 'Try as guest',
+    loginGuestActive: 'In guest mode — data is stored locally.',
+    loginNoticeSent: 'Check your email for the login link.',
+    loginEmailError: 'Enter a valid email.',
+    loginCallbackTitle: 'Signing you in...',
+    loginGuestMergePrompt: 'We found work from your guest session. Import it?',
+    loginGuestMergeYes: 'Yes, import',
+    loginGuestMergeNo: 'No, discard',
+    loginGuestMergeLoading: 'Importing...',
     steps: {
       1: 'Tell us about your new product',
       2: 'Idea Clarity Grid scenario confirmation',
@@ -718,7 +831,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingHeroTitle: 'Ideenchaos in ein klares Produkt verwandeln.',
     landingHeroSubtitle: 'Kein Moderator. Keine Haftnotizen. Keine Zeitverschwendung.',
     landingIntroTitleLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'führt dich Schritt für Schritt',
       'durch die Produktdefinition.',
     ],
@@ -743,7 +856,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingAfterList: ['✅ Prozess', '✅ Strukturierte Fragen', '✅ Bericht'],
     landingWhyLead: 'Wir ersetzen Denken nicht. Wir entfernen Reibung.',
     landingWhyLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'strukturiert das Gespräch',
       'hält die Prozesslogik',
       'ordnet Wissen in Echtzeit',
@@ -994,7 +1107,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingHeroTitle: 'Zamień chaos pomysłów w klarowny produkt.',
     landingHeroSubtitle: 'Bez moderatora. Bez karteczek. Bez straty czasu.',
     landingIntroTitleLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'prowadzi Cię krok po kroku',
       'przez proces definiowania produktu.',
     ],
@@ -1019,7 +1132,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingAfterList: ['✅ Proces', '✅ Ustrukturyzowane pytania', '✅ Raport'],
     landingWhyLead: 'Nie zastępujemy myślenia. Usuwamy tarcie.',
     landingWhyLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'strukturyzuje rozmowę',
       'pilnuje logiki procesu',
       'porządkuje wiedzę w czasie rzeczywistym',
@@ -1042,6 +1155,50 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     report: 'Raport',
     llmSettings: 'Ustawienia LLM',
     languageLabel: 'Język',
+    engine: {
+      saveSession: 'Zapisz sesję',
+      saveSuccess: 'Zapisano',
+      saveRequiresAuth: 'Zaloguj się, aby zapisać sesje.',
+      saveMissingSession: 'Rozpocznij sesję przed zapisem.',
+      saveFailed: 'Nie udało się zapisać.',
+    },
+    auth: {
+      logout: 'Wyloguj się',
+      logoutFailed: 'Nie udało się wylogować.',
+      loginStartFailed: 'Nie udało się rozpocząć logowania. Spróbuj ponownie.',
+    },
+    authCallback: {
+      invalidLink: 'Nieprawidłowy lub wygasły link logowania. Wyślij nowy link.',
+      pkceMismatch:
+        'Ten link został otwarty w innej przeglądarce lub na innej stronie. Otwórz go w tej samej przeglądarce i na tym samym urządzeniu, na którym rozpocząłeś logowanie.',
+      pkceMissing: 'Nieprawidłowy lub wygasły link logowania. Wyślij nowy link.',
+      expired: 'Ten link logowania wygasł. Wyślij nowy link.',
+      redirectMismatch: 'Niezgodny adres przekierowania. Wyślij nowy link.',
+      unknownError: 'Nie udało się zalogować. Spróbuj ponownie.',
+      returnToLogin: 'Wróć do logowania',
+      sendLinkAgain: 'Wyślij link ponownie',
+      goHome: 'Przejdź na stronę główną',
+    },
+    loginTitle: 'Logowanie',
+    loginSubtitle: 'Zaloguj się, aby kontynuować.',
+    loginContinue: 'Kontynuuj',
+    loginGoogleLabel: 'Google',
+    loginGoogleCta: 'Kontynuuj z Google',
+    loginGoogleLoading: 'Łączenie...',
+    loginEmailLabel: 'E-mail',
+    loginEmailPlaceholder: 'you@company.com',
+    loginEmailCta: 'Wyślij link do logowania',
+    loginEmailSending: 'Wysyłanie...',
+    loginGuestLabel: 'Gość',
+    loginGuestCta: 'Wypróbuj jako gość',
+    loginGuestActive: 'W trybie gościa — dane są zapisywane lokalnie.',
+    loginNoticeSent: 'Sprawdź e-mail — wysłaliśmy link do logowania.',
+    loginEmailError: 'Wpisz poprawny adres e-mail.',
+    loginCallbackTitle: 'Logowanie...',
+    loginGuestMergePrompt: 'Znaleźliśmy pracę z sesji gościa. Zaimportować?',
+    loginGuestMergeYes: 'Tak, importuj',
+    loginGuestMergeNo: 'Nie, odrzuć',
+    loginGuestMergeLoading: 'Importowanie...',
     steps: {
       1: 'Opowiedz o swoim nowym produkcie',
       2: 'Potwierdzenie scenariusza Idea Clarity Grid',
@@ -1348,7 +1505,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingHeroTitle: '把想法的混乱变成清晰的产品。',
     landingHeroSubtitle: '无需主持人。无需便利贴。无需浪费时间。',
     landingIntroTitleLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       '一步一步引导你',
       '完成产品定义。',
     ],
@@ -1373,7 +1530,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingAfterList: ['✅ 流程', '✅ 结构化问题', '✅ 报告'],
     landingWhyLead: '我们不取代思考。我们去掉摩擦。',
     landingWhyLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       '让对话结构化',
       '确保流程逻辑',
       '实时整理知识',
@@ -1618,7 +1775,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingHeroTitle: 'Ideenchaos in ein klares Produkt verwandeln.',
     landingHeroSubtitle: 'Kein Moderator. Keine Haftnotizen. Keine Zeitverschwendung.',
     landingIntroTitleLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'führt dich Schritt für Schritt',
       'durch die Produktdefinition.',
     ],
@@ -1643,7 +1800,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingAfterList: ['✅ Prozess', '✅ Strukturierte Fragen', '✅ Bericht'],
     landingWhyLead: 'Wir ersetzen Denken nicht. Wir entfernen Reibung.',
     landingWhyLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'strukturiert das Gespräch',
       'hält die Prozesslogik',
       'ordnet Wissen in Echtzeit',
@@ -1894,7 +2051,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingHeroTitle: "Trasforma il caos delle idee in un prodotto chiaro.",
     landingHeroSubtitle: 'Niente moderatore. Niente post-it. Niente tempo perso.',
     landingIntroTitleLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'ti guida passo dopo passo',
       'nella definizione del prodotto.',
     ],
@@ -1919,7 +2076,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingAfterList: ['✅ Processo', '✅ Domande strutturate', '✅ Report'],
     landingWhyLead: 'Non sostituiamo il pensiero. Rimuoviamo l’attrito.',
     landingWhyLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'struttura la conversazione',
       'tiene la logica del processo',
       'organizza la conoscenza in tempo reale',
@@ -2143,7 +2300,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingHeroTitle: 'Transforme le chaos des idées en produit clair.',
     landingHeroSubtitle: 'Pas de modérateur. Pas de post-it. Pas de temps perdu.',
     landingIntroTitleLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'te guide pas à pas',
       'dans la définition du produit.',
     ],
@@ -2168,7 +2325,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingAfterList: ['✅ Processus', '✅ Questions structurées', '✅ Rapport'],
     landingWhyLead: 'Nous ne remplaçons pas la réflexion. Nous supprimons la friction.',
     landingWhyLines: [
-      'makemyidea.work',
+      CANONICAL_DISPLAY_HOST,
       'structure la conversation',
       'garde la logique du processus',
       'organise la connaissance en temps réel',
@@ -2752,6 +2909,17 @@ function App() {
   const [activeStep, setActiveStep] = useState<StepId>(1)
   const [showLanding, setShowLanding] = useState(true)
   const [landingView, setLandingView] = useState<'main' | 'threeSteps'>('main')
+  const [authSession, setAuthSession] = useState<Session | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authError, setAuthError] = useState<string | null>(null)
+  const [authCallbackError, setAuthCallbackError] = useState<string | null>(null)
+  const [authCallbackLoading, setAuthCallbackLoading] = useState(false)
+  const [loginEmail, setLoginEmail] = useState('')
+  const [loginSending, setLoginSending] = useState(false)
+  const [loginOauthLoading, setLoginOauthLoading] = useState(false)
+  const [loginNotice, setLoginNotice] = useState<string | null>(null)
+  const [guestPromptOpen, setGuestPromptOpen] = useState(false)
+  const [guestMergeLoading, setGuestMergeLoading] = useState(false)
   const [productDescription, setProductDescription] = useState('')
   const [productDescriptionConfirmed, setProductDescriptionConfirmed] = useState(false)
   const [productName, setProductName] = useState('')
@@ -2909,6 +3077,7 @@ function App() {
   const [engineLastInputActivityAt, setEngineLastInputActivityAt] = useState<number | null>(null)
   const engineEraseTimer = useRef<number | null>(null)
   const engineIdleTimer = useRef<number | null>(null)
+  const engineNoticeTimer = useRef<number | null>(null)
   const engineIdleTriggered = useRef(false)
   const enginePreviousInput = useRef('')
   const engineLatestInput = useRef('')
@@ -2925,6 +3094,13 @@ function App() {
   const [engineSessions, setEngineSessions] = useState<EngineSessionSummary[]>([])
   const [engineSessionsLoading, setEngineSessionsLoading] = useState(false)
   const [engineSessionsError, setEngineSessionsError] = useState<string | null>(null)
+  const [cloudSessionPayloads, setCloudSessionPayloads] = useState<
+    Record<string, CloudSessionPayload>
+  >({})
+  const [engineNotice, setEngineNotice] = useState<{
+    message: string
+    variant: 'success' | 'error'
+  } | null>(null)
   const [engineDeleteLoadingId, setEngineDeleteLoadingId] = useState<string | null>(null)
   const [engineSessionDetail, setEngineSessionDetail] = useState<EngineSessionDetail | null>(null)
   const [engineEditItemId, setEngineEditItemId] = useState<string | null>(null)
@@ -2995,6 +3171,16 @@ function App() {
 
   const uiLanguageOptions: Language[] = ['Polish', 'English']
 
+  const applySessionLanguage = (value?: string) => {
+    if (!value) return
+    const nextLanguage = value as Language
+    if (!languageOptions.includes(nextLanguage)) return
+    setUiLanguage(nextLanguage)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, nextLanguage)
+    }
+  }
+
   const isDebugEnabled = () => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
@@ -3021,6 +3207,83 @@ function App() {
     if (!import.meta.env.DEV) return
     console.log(JSON.stringify({ event, ...payload }))
   }
+
+  const logAuthDiagnostics = (event: string, payload: Record<string, unknown>) => {
+    if (!import.meta.env.DEV) return
+    console.log(JSON.stringify({ event, ...payload }))
+  }
+
+  const getSupabaseProjectRef = () => {
+    if (!supabaseUrl) return null
+    try {
+      const host = new URL(supabaseUrl).hostname
+      return host.split('.')[0] || null
+    } catch {
+      return null
+    }
+  }
+
+  const hasCodeVerifier = () => {
+    if (typeof window === 'undefined') return false
+    const keys = Object.keys(window.localStorage)
+    if (keys.length === 0) return false
+    const ref = getSupabaseProjectRef()
+    if (ref) {
+      return keys.some((key) => key.includes(ref) && key.includes('code-verifier'))
+    }
+    return keys.some((key) => key.includes('code-verifier') || key.includes('code_verifier'))
+  }
+
+  const recordAuthRedirect = (redirectTo: string) => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem(AUTH_LOGIN_ORIGIN_KEY, window.location.origin)
+    window.localStorage.setItem(AUTH_LOGIN_REDIRECT_KEY, redirectTo)
+    logAuthDiagnostics('auth_redirect_set', {
+      origin: window.location.origin,
+      redirectTo,
+    })
+  }
+
+  const clearAuthRedirect = () => {
+    if (typeof window === 'undefined') return
+    window.localStorage.removeItem(AUTH_LOGIN_ORIGIN_KEY)
+    window.localStorage.removeItem(AUTH_LOGIN_REDIRECT_KEY)
+  }
+
+  const mapAuthCallbackError = (message?: string | null) => {
+    const normalized = (message || '').toLowerCase()
+    if (normalized.includes('code_verifier') || normalized.includes('pkce')) {
+      return copy.authCallback.pkceMissing
+    }
+    if (normalized.includes('expired')) {
+      return copy.authCallback.expired
+    }
+    if (normalized.includes('redirect') && normalized.includes('mismatch')) {
+      return copy.authCallback.redirectMismatch
+    }
+    if (normalized.includes('invalid_grant')) {
+      return copy.authCallback.invalidLink
+    }
+    return copy.authCallback.unknownError
+  }
+
+  const showEngineNotice = (message: string, variant: 'success' | 'error') => {
+    setEngineNotice({ message, variant })
+    if (engineNoticeTimer.current) {
+      window.clearTimeout(engineNoticeTimer.current)
+    }
+    engineNoticeTimer.current = window.setTimeout(() => {
+      setEngineNotice(null)
+    }, 2400)
+  }
+
+  useEffect(() => {
+    return () => {
+      if (engineNoticeTimer.current) {
+        window.clearTimeout(engineNoticeTimer.current)
+      }
+    }
+  }, [])
 
   const readFeedbackEntries = (): FeedbackEntry[] => {
     if (typeof window === 'undefined') return []
@@ -3133,6 +3396,210 @@ function App() {
     typeof window !== 'undefined' && window.location.pathname === '/wip'
   const isIdeaGrid =
     typeof window !== 'undefined' && window.location.pathname === '/grid'
+  const isLogin =
+    typeof window !== 'undefined' && window.location.pathname === '/login'
+  const isAuthCallback =
+    typeof window !== 'undefined' && window.location.pathname === '/auth/callback'
+  const isProtectedRoute =
+    typeof window !== 'undefined' && window.location.pathname.startsWith('/app')
+
+  useEffect(() => {
+    let cancelled = false
+    if (!supabase) {
+      setAuthLoading(false)
+      setAuthError('Missing Supabase env vars.')
+      return () => {
+        cancelled = true
+      }
+    }
+    const init = async () => {
+      const { data } = await supabase.auth.getSession()
+      if (!cancelled) {
+        setAuthSession(data.session ?? null)
+        setAuthLoading(false)
+      }
+    }
+    init()
+    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthSession(session ?? null)
+    })
+    return () => {
+      cancelled = true
+      data.subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!isProtectedRoute || authLoading) return
+    if (!authSession) {
+      const next = window.location.pathname + window.location.search
+      window.location.href = `/login?next=${encodeURIComponent(next)}`
+    }
+  }, [isProtectedRoute, authLoading, authSession])
+
+  useEffect(() => {
+    if (!isAuthCallback) return
+    if (!supabase) {
+      setAuthCallbackError(copy.authCallback.unknownError)
+      return
+    }
+    let cancelled = false
+    const run = async () => {
+      setAuthError(null)
+      setAuthCallbackError(null)
+      setAuthCallbackLoading(true)
+      const params = new URLSearchParams(window.location.search)
+      const code = params.get('code')
+      const storedOrigin =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem(AUTH_LOGIN_ORIGIN_KEY)
+          : null
+      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : ''
+      const storedRedirect =
+        typeof window !== 'undefined'
+          ? window.localStorage.getItem(AUTH_LOGIN_REDIRECT_KEY)
+          : null
+      logAuthDiagnostics('auth_callback_seen', {
+        origin: currentOrigin,
+        storedOrigin,
+        redirectTo: storedRedirect,
+        hasCode: Boolean(code),
+        hasCodeVerifier: hasCodeVerifier(),
+      })
+      if (storedOrigin && storedOrigin !== currentOrigin) {
+        // PKCE is bound to the origin + browser storage. Mismatch means the verifier won't exist.
+        setAuthCallbackError(copy.authCallback.pkceMismatch)
+        setAuthCallbackLoading(false)
+        return
+      }
+      if (!code) {
+        setAuthCallbackError(copy.authCallback.invalidLink)
+        setAuthCallbackLoading(false)
+        return
+      }
+      const { error } = await supabase.auth.exchangeCodeForSession(code)
+      if (cancelled) return
+      if (error) {
+        logAuthDiagnostics('auth_callback_error', { message: error.message })
+        setAuthCallbackError(mapAuthCallbackError(error.message))
+        setAuthCallbackLoading(false)
+        return
+      }
+      clearAuthRedirect()
+      const next = params.get('next') || '/app'
+      window.location.replace(next)
+    }
+    run()
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthCallback])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!authSession?.user || !supabase) return
+    const handlePageHide = () => {
+      // Best-effort sign-out on tab/window close.
+      void supabase.auth.signOut()
+    }
+    window.addEventListener('pagehide', handlePageHide)
+    window.addEventListener('beforeunload', handlePageHide)
+    return () => {
+      window.removeEventListener('pagehide', handlePageHide)
+      window.removeEventListener('beforeunload', handlePageHide)
+    }
+  }, [authSession?.user?.id])
+
+  useEffect(() => {
+    if (!authSession) return
+    if (!isGuestMode()) return
+    const guestSessions = readGuestSessions()
+    if (guestSessions.length) {
+      setGuestPromptOpen(true)
+    } else {
+      clearGuestMode()
+      clearGuestSessions()
+    }
+  }, [authSession])
+
+  const handleGoogleLogin = async () => {
+    if (!supabase) {
+      setAuthError('Missing Supabase env vars.')
+      return
+    }
+    setAuthError(null)
+    setLoginNotice(null)
+    setLoginOauthLoading(true)
+    const redirectTo = `${window.location.origin}/auth/callback`
+    recordAuthRedirect(redirectTo)
+    logAuthDiagnostics('auth_oauth_start', {
+      origin: window.location.origin,
+      redirectTo,
+    })
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: { redirectTo },
+    })
+    if (error) setAuthError(copy.auth.loginStartFailed)
+    setLoginOauthLoading(false)
+  }
+
+  const handleMagicLink = async () => {
+    if (!supabase) {
+      setAuthError('Missing Supabase env vars.')
+      return
+    }
+    if (!loginEmail.trim()) {
+      setAuthError(copy.loginEmailError)
+      return
+    }
+    setAuthError(null)
+    setLoginNotice(null)
+    setLoginSending(true)
+    const redirectTo = `${window.location.origin}/auth/callback`
+    recordAuthRedirect(redirectTo)
+    logAuthDiagnostics('auth_magiclink_start', {
+      origin: window.location.origin,
+      redirectTo,
+      hasEmail: Boolean(loginEmail.trim()),
+    })
+    const { error } = await supabase.auth.signInWithOtp({
+      email: loginEmail.trim(),
+      options: { emailRedirectTo: redirectTo },
+    })
+    if (error) {
+      setAuthError(copy.auth.loginStartFailed)
+    } else {
+      setLoginNotice(copy.loginNoticeSent)
+    }
+    setLoginSending(false)
+  }
+
+  const handleGuestMode = () => {
+    enableGuestMode()
+    window.location.replace('/engine')
+  }
+
+  const handleGuestMerge = async () => {
+    setGuestMergeLoading(true)
+    try {
+      const guestSessions = readGuestSessions()
+      if (guestSessions.length) {
+        await importSessions(guestSessions as Parameters<typeof importSessions>[0])
+      }
+      clearGuestSessions()
+      clearGuestMode()
+      setGuestPromptOpen(false)
+    } finally {
+      setGuestMergeLoading(false)
+    }
+  }
+
+  const handleGuestSkip = () => {
+    clearGuestSessions()
+    clearGuestMode()
+    setGuestPromptOpen(false)
+  }
 
   useEffect(() => {
     engineLatestInput.current = enginePreviewInput
@@ -3627,7 +4094,7 @@ function App() {
 
   const sendFeedbackEmail = (sessionId: string | null) => {
     if (typeof window === 'undefined') return
-    const subject = encodeURIComponent('Makemyidea.work feedback')
+    const subject = encodeURIComponent(`${CANONICAL_DISPLAY_HOST} feedback`)
     const note =
       uiLanguage === 'English'
         ? 'The JSON file has been downloaded. Please attach it to this email.'
@@ -4866,12 +5333,119 @@ function App() {
     }
   }
 
+  const mergeSessionLists = (
+    localSessions: EngineSessionSummary[],
+    cloudSessions: EngineSessionSummary[]
+  ) => {
+    const merged = new Map<string, EngineSessionSummary>()
+    cloudSessions.forEach((session) => {
+      merged.set(session.id, session)
+    })
+    localSessions.forEach((session) => {
+      if (!merged.has(session.id)) {
+        merged.set(session.id, session)
+      }
+    })
+    return Array.from(merged.values()).sort((a, b) => b.updated_at - a.updated_at)
+  }
+
+  const buildSessionDetailForSave = async (): Promise<EngineSessionDetail | null> => {
+    if (!enginePreviewSessionId) return null
+    const now = Date.now()
+    const localDetail = await getSession(enginePreviewSessionId)
+    const fallbackSession: EngineSessionSummary = {
+      id: enginePreviewSessionId,
+      name: enginePreviewSessionName || null,
+      created_at: now,
+      updated_at: now,
+      last_group_code: null,
+      last_mode_code: null,
+      last_category_code: null,
+      stuck_counter: 0,
+      tokensInTotal: currentEngineSession?.tokensInTotal ?? 0,
+      tokensOutTotal: currentEngineSession?.tokensOutTotal ?? 0,
+    }
+    const session = (localDetail?.session ?? currentEngineSession ?? fallbackSession)
+    return {
+      session: {
+        ...session,
+        updated_at: now,
+      },
+      boardItems: localDetail?.boardItems ?? enginePreviewItems,
+      askedQuestionIds: localDetail?.askedQuestionIds ?? engineAskedQuestionIds,
+    }
+  }
+
+  const saveCurrentSessionToCloud = async (silentSuccess = false) => {
+    if (!authSession?.user?.id) {
+      showEngineNotice(copy.engine.saveRequiresAuth, 'error')
+      return false
+    }
+    if (!enginePreviewSessionId) {
+      showEngineNotice(copy.engine.saveMissingSession, 'error')
+      return false
+    }
+    const detail = await buildSessionDetailForSave()
+    if (!detail?.session) {
+      showEngineNotice(copy.engine.saveMissingSession, 'error')
+      return false
+    }
+    try {
+      await updateSession(detail)
+      await saveSessionToCloud(authSession.user.id, detail, uiLanguage)
+      if (!silentSuccess) {
+        showEngineNotice(copy.engine.saveSuccess, 'success')
+      }
+      if (engineSessionsOpen) {
+        void fetchEngineSessions()
+      }
+      return true
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Request failed'
+      logSessionStore('engine_session_cloud_save_failed', { message })
+      showEngineNotice(copy.engine.saveFailed, 'error')
+      return false
+    }
+  }
+
+  const handleLogout = async () => {
+    const saved = await saveCurrentSessionToCloud(true)
+    if (!saved) return
+    if (!supabase) {
+      showEngineNotice(copy.auth.logoutFailed, 'error')
+      return
+    }
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      showEngineNotice(copy.auth.logoutFailed, 'error')
+      return
+    }
+    window.location.href = '/'
+  }
+
   const fetchEngineSessions = async () => {
     setEngineSessionsError(null)
     setEngineSessionsLoading(true)
     try {
-      const sessions = await listSessions()
-      setEngineSessions(sessions)
+      const localSessions = await listSessions()
+      if (authSession?.user?.id) {
+        const cloudRecords = await listCloudSessions(authSession.user.id)
+        const payloadMap: Record<string, CloudSessionPayload> = {}
+        cloudRecords.forEach((record) => {
+          if (record.sessionId) {
+            payloadMap[record.sessionId] = record.payload
+          }
+        })
+        setCloudSessionPayloads(payloadMap)
+        await Promise.all(
+          cloudRecords.map((record) => updateSession(record.detail))
+        )
+        const cloudSessions = cloudRecords.map((record) => record.summary)
+        setEngineSessions(mergeSessionLists(localSessions, cloudSessions))
+      } else {
+        setCloudSessionPayloads({})
+        setEngineSessions(localSessions)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się pobrać listy sesji. ${message}`)
@@ -4884,7 +5458,7 @@ function App() {
   useEffect(() => {
     if (!isEnginePreview) return
     void fetchEngineSessions()
-  }, [isEnginePreview])
+  }, [isEnginePreview, authSession?.user?.id])
 
   const deleteEngineSession = async (sessionId: string) => {
     setEngineSessionsError(null)
@@ -4978,6 +5552,10 @@ function App() {
       const data = await getSession(sessionId)
       if (!data) throw new Error('Missing session')
       engineResetOnSessionChange.current = true
+      const cloudPayload = cloudSessionPayloads[sessionId]
+      if (cloudPayload?.uiLanguage) {
+        applySessionLanguage(cloudPayload.uiLanguage)
+      }
       const normalizedItems = (data.boardItems ?? []).map((item) => ({
         ...item,
         label: item.label ?? null,
@@ -5224,6 +5802,139 @@ function App() {
     }
   }
 
+  if (isAuthCallback) {
+    const nextParam =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('next') || '/app'
+        : '/app'
+    return (
+      <div className="app auth-screen">
+        <section className="panel auth-panel">
+          <h1>{copy.loginCallbackTitle}</h1>
+          {authCallbackLoading && <p className="muted">...</p>}
+          {authCallbackError && <p className="engine-error">{authCallbackError}</p>}
+          {!authCallbackLoading && authCallbackError && (
+            <div className="actions">
+              <button
+                type="button"
+                className="secondary"
+                onClick={() => {
+                  window.location.href = `/login?next=${encodeURIComponent(nextParam)}`
+                }}
+              >
+                {copy.authCallback.sendLinkAgain}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  window.location.href = '/login'
+                }}
+              >
+                {copy.authCallback.returnToLogin}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  window.location.href = '/'
+                }}
+              >
+                {copy.authCallback.goHome}
+              </button>
+            </div>
+          )}
+        </section>
+      </div>
+    )
+  }
+
+  if (isLogin) {
+    const nextParam =
+      typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('next') || '/app'
+        : '/app'
+    const isGuestActive = isGuestMode()
+    return (
+      <div className="app auth-screen">
+        <section className="panel auth-panel">
+          <h1>{copy.loginTitle}</h1>
+          <p className="muted">{copy.loginSubtitle}</p>
+          <div className="auth-options">
+            <div className="auth-option">
+              <p className="auth-option-title">{copy.loginGoogleLabel}</p>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={handleGoogleLogin}
+                  disabled={loginOauthLoading}
+                >
+                  {loginOauthLoading ? copy.loginGoogleLoading : copy.loginGoogleCta}
+                </button>
+              </div>
+            </div>
+            <div className="auth-option">
+              <label className="auth-option-title" htmlFor="login-email">
+                {copy.loginEmailLabel}
+              </label>
+              <div className="field-group">
+                <input
+                  id="login-email"
+                  type="email"
+                  value={loginEmail}
+                  onChange={(event) => setLoginEmail(event.target.value)}
+                  placeholder={copy.loginEmailPlaceholder}
+                />
+              </div>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={handleMagicLink}
+                  disabled={loginSending}
+                >
+                  {loginSending ? copy.loginEmailSending : copy.loginEmailCta}
+                </button>
+              </div>
+            </div>
+            <div className="auth-option">
+              <p className="auth-option-title">{copy.loginGuestLabel}</p>
+              <div className="actions">
+                <button type="button" className="primary" onClick={handleGuestMode}>
+                  {copy.loginGuestCta}
+                </button>
+              </div>
+              {isGuestActive && !authSession && (
+                <p className="muted auth-guest-note">{copy.loginGuestActive}</p>
+              )}
+            </div>
+          </div>
+          {loginNotice && <p className="muted">{loginNotice}</p>}
+          {authError && <p className="engine-error">{authError}</p>}
+          {guestPromptOpen && (
+            <div className="auth-guest-merge">
+              <p>{copy.loginGuestMergePrompt}</p>
+              <div className="actions">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={handleGuestMerge}
+                  disabled={guestMergeLoading}
+                >
+                  {guestMergeLoading ? copy.loginGuestMergeLoading : copy.loginGuestMergeYes}
+                </button>
+                <button type="button" className="ghost" onClick={handleGuestSkip}>
+                  {copy.loginGuestMergeNo}
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+      </div>
+    )
+  }
+
   if (isEnginePreview) {
     const enginePlaceholder =
       engineUiState === 'FACILITATED_INPUT' && engineActivePrompt
@@ -5285,10 +5996,27 @@ function App() {
         <header className="engine-header">
           <div>
             <a className="engine-kicker" href="/">
-              makemyidea.work
+              {CANONICAL_DISPLAY_HOST}
             </a>
           </div>
           <div className="engine-header-actions">
+            <button
+              className="secondary"
+              type="button"
+              onClick={() => {
+                void saveCurrentSessionToCloud()
+              }}
+            >
+              {copy.engine.saveSession}
+            </button>
+            <button className="ghost" type="button" onClick={handleLogout}>
+              {copy.auth.logout}
+            </button>
+            {engineNotice && (
+              <span className={`engine-notice engine-notice--${engineNotice.variant}`}>
+                {engineNotice.message}
+              </span>
+            )}
             <button
               className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
               type="button"
@@ -6223,7 +6951,7 @@ function App() {
                   </span>
                 </p>
                 <div className="intro-cta">
-                  <a className="primary landing-cta" href="/engine">
+                  <a className="primary landing-cta" href="/login?next=/engine">
                     {copy.landingCta}
                   </a>
                   {uiLanguage === 'English' && (
@@ -6293,7 +7021,7 @@ function App() {
                 <div className="landing-final">
                   <p>{copy.landingFinalLines[0]}</p>
                   <p className="final-shift">{copy.landingFinalLines[1]}</p>
-                  <a className="primary landing-cta" href="/engine">
+                  <a className="primary landing-cta" href="/login?next=/engine">
                     {copy.landingCta}
                   </a>
                   {uiLanguage === 'English' && (
@@ -6349,7 +7077,7 @@ function App() {
                       )}
                   </span>
                 </p>
-                <a className="primary landing-cta" href="/engine">
+                <a className="primary landing-cta" href="/login?next=/engine">
                   {copy.landingCta}
                 </a>
               </div>

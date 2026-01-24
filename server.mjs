@@ -32,6 +32,13 @@ import {
   parseJsonArray,
   parseJsonObject,
 } from './llm/llmRouter.mjs'
+import coachSuggestHandler from './api/coach/suggest.js'
+import {
+  buildContextPrompt,
+  buildQuestionPrompt,
+  inferProductName,
+  normalizeContextPayload,
+} from './src/lib/llm/contextInterpreter.mjs'
 
 const PORT = Number(process.env.PORT || 8787)
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ''
@@ -87,6 +94,40 @@ const applySessionTokenUpdate = (sessionId, meta) => {
   const output = Number(meta.tokens.output ?? 0)
   if (!input && !output) return
   incrementSessionTokens({ sessionId, tokensIn: input, tokensOut: output })
+}
+
+const mergeTokens = (base, extra) => {
+  const safe = (value) => ({
+    input: Number(value?.input ?? 0),
+    output: Number(value?.output ?? 0),
+    total: Number(value?.total ?? 0),
+  })
+  const a = safe(base)
+  const b = safe(extra)
+  return {
+    input: a.input + b.input,
+    output: a.output + b.output,
+    total: a.total + b.total,
+  }
+}
+
+const createResShim = (res) => {
+  let statusCode = 200
+  const api = {
+    status: (code) => {
+      statusCode = code
+      return api
+    },
+    json: (payload) => {
+      sendJson(res, statusCode, payload)
+    },
+    end: () => {
+      res.writeHead(statusCode)
+      res.end()
+    },
+    setHeader: (...args) => res.setHeader(...args),
+  }
+  return api
 }
 
 const buildIdeaFallbacks = (cells, ideasPerCell = 3) => {
@@ -303,6 +344,12 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/ping' && req.method === 'GET') {
     sendJson(res, 200, { ok: true, env: 'local', ts: new Date().toISOString() })
+    return
+  }
+
+  if (url.pathname === '/api/coach/suggest') {
+    const resShim = createResShim(res)
+    await coachSuggestHandler(req, resShim)
     return
   }
 
@@ -854,20 +901,68 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 400, { error: 'Invalid JSON body.' })
       return
     }
-    const { productName, spaceDef, timeDef, count = 30, sessionId } = body
+    const {
+      productName,
+      spaceDef,
+      timeDef,
+      count = 30,
+      boardItems = [],
+      sessionTitle = '',
+      matrixContext = null,
+      sessionId,
+    } = body
     if (!productName || !spaceDef || !timeDef) {
       sendJson(res, 400, { error: 'Missing productName, spaceDef, or timeDef.' })
       return
     }
 
     const aiSupportEnabled = resolveAiSupportEnabled(req, body)
+    let contextPayload = null
+    let contextTokens = null
+    if (aiSupportEnabled && Array.isArray(boardItems) && boardItems.length) {
+      const contextInput = buildContextPrompt({ boardItems, sessionTitle, matrixContext })
+      const contextResult = await runLlmTask({
+        apiKey: OPENAI_API_KEY,
+        aiSupportEnabled,
+        task: 'context-interpreter',
+        input: contextInput,
+        language: 'English',
+        taskInstructions:
+          'Summarize the board content into JSON: ' +
+          '{"productName":null,"productType":"product|service|unknown","summary":"","keyTerms":[],"assumptions":[],"openThreads":[]} ' +
+          'Keep summary under 240 chars. Return ONLY JSON.',
+        parseResponse: parseJsonObject,
+        fallbackData: null,
+        models: LLM_MODELS,
+        maxOutputTokens: 220,
+        temperature: 0.2,
+        rateLimiter: llmRateLimiter,
+        rateLimitKey: getClientIp(req),
+      })
+      const normalized = normalizeContextPayload(contextResult?.data)
+      if (normalized) {
+        const inferredName = inferProductName(boardItems, sessionTitle)
+        contextPayload = {
+          ...normalized,
+          productName: inferredName,
+        }
+      }
+      contextTokens = contextResult?.meta?.tokens || null
+    }
+
+    const questionPrompt = contextPayload
+      ? buildQuestionPrompt({ context: contextPayload, matrixContext, count, spaceDef, timeDef })
+      : {
+          input: `${productName}\n${spaceDef}\n${timeDef}`,
+          instructions: `Generate ${count} concise, insightful guiding questions for product "${productName}". The questions must reflect the intersection of space "${spaceDef}" and observation level "${timeDef}". Mix technical, business, user-need, trends, standards, connectivity, and price-vs-performance angles. Output ONLY a JSON array of strings, no extra text.`,
+        }
     const result = await runLlmTask({
       apiKey: OPENAI_API_KEY,
       aiSupportEnabled,
       task: 'generate-questions',
-      input: `${productName}\n${spaceDef}\n${timeDef}`,
+      input: questionPrompt.input,
       language: 'English',
-      taskInstructions: `Generate ${count} concise, insightful guiding questions for product "${productName}". The questions must reflect the intersection of space "${spaceDef}" and observation level "${timeDef}". Mix technical, business, user-need, trends, standards, connectivity, and price-vs-performance angles. Output ONLY a JSON array of strings, no extra text.`,
+      taskInstructions: questionPrompt.instructions,
       parseResponse: parseJsonArray,
       fallbackData: buildQuestionFallbacks({ productName, spaceDef, timeDef, count }),
       models: LLM_MODELS,
@@ -875,6 +970,9 @@ const server = http.createServer(async (req, res) => {
       rateLimiter: llmRateLimiter,
       rateLimitKey: getClientIp(req),
     })
+    if (contextTokens && result?.meta) {
+      result.meta.tokens = mergeTokens(result.meta.tokens, contextTokens)
+    }
     applySessionTokenUpdate(sessionId, result.meta)
     sendLlmResponse(res, result, (data) => ({ questions: data }))
     return

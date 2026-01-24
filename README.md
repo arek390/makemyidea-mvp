@@ -14,6 +14,11 @@ npm install
 npm run dev:all
 ```
 
+After a restart (new terminal), quick checklist:
+- `node -v`
+- `npm -v`
+- `npm run dev:all`
+
 Sanity check for the engine DB dependency:
 
 ```bash
@@ -120,4 +125,28 @@ export default defineConfig([
     },
   },
 ])
+```
+
+## Supabase Auth (Vercel + local)
+
+Set these env vars in Vercel project settings and in `.env.local`:
+
+```
+NEXT_PUBLIC_SUPABASE_URL=...
+NEXT_PUBLIC_SUPABASE_ANON_KEY=...
+```
+
+For Vite builds, also mirror them as:
+
+```
+VITE_SUPABASE_URL=...
+VITE_SUPABASE_ANON_KEY=...
+```
+
+Saved sessions are stored in the Supabase table `user_sessions`; ensure RLS policies are applied (see `supabase.sql`).
+
+If you add server-side write/merge logic later, use a server-only key:
+
+```
+SUPABASE_SERVICE_ROLE_KEY=... # do NOT expose to the browser
 ```
