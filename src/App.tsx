@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent } from 'react'
-import type { Session } from '@supabase/supabase-js'
+import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import './App.css'
 import {
   MATRIX_COLS,
@@ -28,6 +28,7 @@ import {
   listCloudSessions,
   saveSessionToCloud,
   type CloudSessionPayload,
+  type CloudSessionRecord,
 } from './lib/cloudSessions'
 import { supabase, supabaseUrl } from './lib/supabase/client'
 import {
@@ -3420,9 +3421,11 @@ function App() {
       }
     }
     init()
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data } = supabase.auth.onAuthStateChange(
+      (_event: AuthChangeEvent, session: Session | null) => {
       setAuthSession(session ?? null)
-    })
+    }
+    )
     return () => {
       cancelled = true
       data.subscription.unsubscribe()
@@ -5349,6 +5352,14 @@ function App() {
     return Array.from(merged.values()).sort((a, b) => b.updated_at - a.updated_at)
   }
 
+  const currentEngineSession = useMemo(() => {
+    if (!enginePreviewSessionId) return null
+    if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
+      return engineSessionDetail.session
+    }
+    return engineSessions.find((session) => session.id === enginePreviewSessionId) || null
+  }, [enginePreviewSessionId, engineSessionDetail, engineSessions])
+
   const buildSessionDetailForSave = async (): Promise<EngineSessionDetail | null> => {
     if (!enginePreviewSessionId) return null
     const now = Date.now()
@@ -5429,18 +5440,20 @@ function App() {
     try {
       const localSessions = await listSessions()
       if (authSession?.user?.id) {
-        const cloudRecords = await listCloudSessions(authSession.user.id)
+        const cloudRecords: CloudSessionRecord[] = await listCloudSessions(
+          authSession.user.id
+        )
         const payloadMap: Record<string, CloudSessionPayload> = {}
-        cloudRecords.forEach((record) => {
+        cloudRecords.forEach((record: CloudSessionRecord) => {
           if (record.sessionId) {
             payloadMap[record.sessionId] = record.payload
           }
         })
         setCloudSessionPayloads(payloadMap)
         await Promise.all(
-          cloudRecords.map((record) => updateSession(record.detail))
+          cloudRecords.map((record: CloudSessionRecord) => updateSession(record.detail))
         )
-        const cloudSessions = cloudRecords.map((record) => record.summary)
+        const cloudSessions = cloudRecords.map((record: CloudSessionRecord) => record.summary)
         setEngineSessions(mergeSessionLists(localSessions, cloudSessions))
       } else {
         setCloudSessionPayloads({})
@@ -5850,10 +5863,6 @@ function App() {
   }
 
   if (isLogin) {
-    const nextParam =
-      typeof window !== 'undefined'
-        ? new URLSearchParams(window.location.search).get('next') || '/app'
-        : '/app'
     const isGuestActive = isGuestMode()
     return (
       <div className="app auth-screen">
@@ -5977,13 +5986,6 @@ function App() {
   const llmUsageClass = llmUsageModel
     ? `llm-model-${llmUsageModel.replace(/\./g, '-')}`
     : 'llm-model-none'
-  const currentEngineSession = useMemo(() => {
-    if (!enginePreviewSessionId) return null
-    if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
-      return engineSessionDetail.session
-    }
-    return engineSessions.find((session) => session.id === enginePreviewSessionId) || null
-  }, [enginePreviewSessionId, engineSessionDetail, engineSessions])
   const currentTokensTotal =
     (currentEngineSession?.tokensInTotal ?? 0) + (currentEngineSession?.tokensOutTotal ?? 0)
   const formatTokenTotal = (value: number) => {
