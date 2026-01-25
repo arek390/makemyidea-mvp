@@ -222,11 +222,16 @@ export default async function handler(req, res) {
   console.log('[coach/suggest][boot]', {
     time: new Date().toISOString(),
     method: req.method,
+    url: req.url,
+    hasBody: !!req.body,
+    bodyType: typeof req.body,
     hasOpenAIKey: !!process.env.OPENAI_API_KEY,
     vercelEnv: process.env.VERCEL_ENV,
-    runtime: process.env.VERCEL_EDGE ? 'edge' : 'node',
     node: process.version,
   })
+  if (!req.body) {
+    console.error('[coach/suggest][input]', 'Missing request body')
+  }
   console.info('[coach/suggest] handler entered', {
     time: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
@@ -341,34 +346,45 @@ export default async function handler(req, res) {
             : '',
         ].filter(Boolean).join(' ')
 
-      const runSuggest = async (attempt) =>
-        runLlmTask({
-          apiKey: process.env.OPENAI_API_KEY,
-          aiSupportEnabled: true,
-          task: 'coach-suggest',
-          input: contextInput,
-          language: lang === 'pl' ? 'Polish' : 'English',
-          taskInstructions: buildInstructions(attempt),
-          parseResponse: (value) => {
-            try {
-              const parsed = JSON.parse(value)
-              if (!parsed || typeof parsed !== 'object') return null
-              if (!Array.isArray(parsed.questions)) return null
-              return parsed
-            } catch {
-              return null
-            }
-          },
-          fallbackData: null,
-          models: {
-            default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
-            preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
-            escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
-          },
-          maxOutputTokens: 600,
-          rateLimiter: limiter,
-          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
-        })
+      const runSuggest = async (attempt) => {
+        try {
+          return await runLlmTask({
+            apiKey: process.env.OPENAI_API_KEY,
+            aiSupportEnabled: true,
+            task: 'coach-suggest',
+            input: contextInput,
+            language: lang === 'pl' ? 'Polish' : 'English',
+            taskInstructions: buildInstructions(attempt),
+            parseResponse: (value) => {
+              try {
+                const parsed = JSON.parse(value)
+                if (!parsed || typeof parsed !== 'object') return null
+                if (!Array.isArray(parsed.questions)) return null
+                return parsed
+              } catch {
+                return null
+              }
+            },
+            fallbackData: null,
+            models: {
+              default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
+              preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+              escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+            },
+            maxOutputTokens: 600,
+            rateLimiter: limiter,
+            rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+          })
+        } catch (err) {
+          console.error('[coach/suggest][LLM_ERROR]', {
+            name: err?.name,
+            message: err?.message,
+            stack: err?.stack,
+            cause: err?.cause,
+          })
+          throw err
+        }
+      }
 
       let result
       try {
