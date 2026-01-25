@@ -30,7 +30,7 @@ import {
   type CloudSessionPayload,
   type CloudSessionRecord,
 } from './lib/cloudSessions'
-import { supabase as client } from './lib/supabase/client'
+import { getSupabaseInitError, supabase as client, supabaseEnvDiag } from './lib/supabase/client'
 import {
   clearGuestMode,
   clearGuestSessions,
@@ -3436,6 +3436,12 @@ function App() {
     return import.meta.env.VITE_DEBUG_UI === 'true'
   }
 
+  const isDiagEnabled = () => {
+    if (typeof window === 'undefined') return false
+    const params = new URLSearchParams(window.location.search)
+    return params.get('diag') === '1'
+  }
+
   const isE2EEnabled = () => {
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
@@ -3666,6 +3672,8 @@ const isAuthFlowInProgress = () => {
   const isLogin = normalizedPath === '/login'
   const isAuthCallback = normalizedPath === '/auth/callback'
   const isProtectedRoute = normalizedPath.startsWith('/app')
+  const supabaseInitError = getSupabaseInitError()
+  const showSupabaseConfigError = Boolean(supabaseInitError)
 
   useEffect(() => {
     if (!isEnginePreview) return
@@ -6617,6 +6625,27 @@ const isAuthFlowInProgress = () => {
     const hasSupabaseEnv =
       Boolean(import.meta.env.VITE_SUPABASE_URL) &&
       Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY)
+    if (showSupabaseConfigError) {
+      return withDevOverlay(
+        <div className="app auth-screen">
+          <section className="panel auth-panel">
+            <h1>Supabase is not configured correctly.</h1>
+            <p className="muted">
+              Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel Production env.
+            </p>
+            {isDiagEnabled() && (
+              <div className="muted">
+                <div>hasUrl: {supabaseEnvDiag.hasUrl ? 'true' : 'false'}</div>
+                <div>hasAnon: {supabaseEnvDiag.hasAnon ? 'true' : 'false'}</div>
+                <div>urlLen: {supabaseEnvDiag.urlLen}</div>
+                <div>anonLen: {supabaseEnvDiag.anonLen}</div>
+                <div>supabaseInitError: {supabaseInitError}</div>
+              </div>
+            )}
+          </section>
+        </div>
+      )
+    }
     return withDevOverlay(
       <div className="app auth-screen">
         <section className="panel auth-panel">
@@ -6770,6 +6799,27 @@ const isAuthFlowInProgress = () => {
   if (isEnginePreview) {
     const hasSupabaseSession = Boolean(authSession?.user?.id)
     const guestAllowed = guestEntryAllowed
+    if (showSupabaseConfigError) {
+      return withDevOverlay(
+        <div className="app auth-screen">
+          <section className="panel auth-panel">
+            <h1>Supabase is not configured correctly.</h1>
+            <p className="muted">
+              Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel Production env.
+            </p>
+            {isDiagEnabled() && (
+              <div className="muted">
+                <div>hasUrl: {supabaseEnvDiag.hasUrl ? 'true' : 'false'}</div>
+                <div>hasAnon: {supabaseEnvDiag.hasAnon ? 'true' : 'false'}</div>
+                <div>urlLen: {supabaseEnvDiag.urlLen}</div>
+                <div>anonLen: {supabaseEnvDiag.anonLen}</div>
+                <div>supabaseInitError: {supabaseInitError}</div>
+              </div>
+            )}
+          </section>
+        </div>
+      )
+    }
     if (!authResolved) {
       return withDevOverlay(
         <div className="app auth-screen">

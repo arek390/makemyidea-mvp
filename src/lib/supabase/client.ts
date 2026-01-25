@@ -6,14 +6,23 @@ const rawSupabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 export const supabaseUrl = rawSupabaseUrl
 const supabaseAnonKey = rawSupabaseAnon
 
-console.info('[diag] supabase env', {
-  mode: import.meta.env.MODE,
-  prod: import.meta.env.PROD,
-  dev: import.meta.env.DEV,
+export const supabaseEnvDiag = {
   hasUrl: Boolean(rawSupabaseUrl),
   hasAnon: Boolean(rawSupabaseAnon),
   urlLen: rawSupabaseUrl.length,
   anonLen: rawSupabaseAnon.length,
+}
+
+let supabaseInitError: string | null = null
+
+console.info('[diag] supabase env', {
+  mode: import.meta.env.MODE,
+  prod: import.meta.env.PROD,
+  dev: import.meta.env.DEV,
+  hasUrl: supabaseEnvDiag.hasUrl,
+  hasAnon: supabaseEnvDiag.hasAnon,
+  urlLen: supabaseEnvDiag.urlLen,
+  anonLen: supabaseEnvDiag.anonLen,
 })
 
 if (import.meta.env.DEV && typeof window !== 'undefined') {
@@ -41,9 +50,15 @@ const resolveAuthStorage = () => {
 
 const authStorage = resolveAuthStorage()
 
-export const supabase =
-  supabaseUrl && supabaseAnonKey
-    ? createClient(supabaseUrl, supabaseAnonKey, {
+let supabaseClient: ReturnType<typeof createClient> | null = null
+
+if (supabaseUrl && supabaseAnonKey) {
+  try {
+    const parsed = new URL(supabaseUrl)
+    if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+      supabaseInitError = 'invalid_supabase_url_protocol'
+    } else {
+      supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
         auth: {
           flowType: 'pkce',
           detectSessionInUrl: true,
@@ -52,4 +67,12 @@ export const supabase =
           ...(authStorage ? { storage: authStorage } : {}),
         },
       })
-    : null
+    }
+  } catch {
+    supabaseInitError = 'invalid_supabase_url'
+  }
+}
+
+export const supabase = supabaseClient
+
+export const getSupabaseInitError = () => supabaseInitError
