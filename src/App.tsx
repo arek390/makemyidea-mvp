@@ -3956,16 +3956,17 @@ const isAuthFlowInProgress = () => {
       typeof window !== 'undefined'
         ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
         : null
-    const lang = uiLanguage
+    const lang = uiLanguage || 'English'
+    const normalizedNext = next || '/engine'
     if (oauthStartOnceRef.current) return
     oauthStartOnceRef.current = true
     setAuthFlowInProgress(true)
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(AUTH_OAUTH_ORIGIN_KEY, window.location.origin)
     }
-    writePostAuthNext(next || '/engine')
+    writePostAuthNext(normalizedNext)
     writePostAuthLang(lang)
-    console.info('[auth] starting oauth', { next: next || '/engine', lang })
+    console.info('[auth] starting oauth', { next: normalizedNext, lang })
     recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_oauth_start', {
       origin: window.location.origin,
