@@ -172,6 +172,8 @@ const AUTH_LOGIN_ORIGIN_KEY = 'auth-login-origin'
 const AUTH_LOGIN_REDIRECT_KEY = 'auth-login-redirect'
 const AUTH_OAUTH_ORIGIN_KEY = 'auth_oauth_origin'
 const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
+const MISSING_SUPABASE_ENV_MESSAGE =
+  'Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in build-time env (Vercel Environment Variables)'
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
 const CANONICAL_HOST = (() => {
@@ -3648,7 +3650,7 @@ const isAuthFlowInProgress = () => {
     let cancelled = false
     if (!client) {
       setAuthLoading(false)
-      setAuthError('Missing Supabase env vars.')
+      setAuthError(MISSING_SUPABASE_ENV_MESSAGE)
       return () => {
         cancelled = true
       }
@@ -3848,7 +3850,7 @@ const isAuthFlowInProgress = () => {
 
   const handleGoogleLogin = async () => {
     if (!client) {
-      setAuthError('Missing Supabase env vars.')
+      setAuthError(MISSING_SUPABASE_ENV_MESSAGE)
       return
     }
     setAuthError(null)
@@ -3891,7 +3893,7 @@ const isAuthFlowInProgress = () => {
 
   const handleMagicLink = async () => {
     if (!client) {
-      setAuthError('Missing Supabase env vars.')
+      setAuthError(MISSING_SUPABASE_ENV_MESSAGE)
       return
     }
     if (!loginEmail.trim()) {
@@ -3959,7 +3961,7 @@ const isAuthFlowInProgress = () => {
 
   const handlePasswordAuth = async () => {
     if (!client) {
-      setAuthError('Missing Supabase env vars.')
+      setAuthError(MISSING_SUPABASE_ENV_MESSAGE)
       return
     }
     if (!loginEmail.trim() || !loginPassword) {
@@ -6520,9 +6522,11 @@ const isAuthFlowInProgress = () => {
 
   if (isLogin) {
     const isGuestActive = isGuestMode()
-    const hasSupabaseKey =
-      Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY) ||
-      Boolean(import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+    const hasSupabaseEnv =
+      Boolean(import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL) &&
+      Boolean(
+        import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      )
     return withDevOverlay(
       <div className="app auth-screen">
         <section className="panel auth-panel">
@@ -6534,10 +6538,8 @@ const isAuthFlowInProgress = () => {
               </button>
             </div>
           )}
-          {!hasSupabaseKey && (
-            <p className="engine-error">
-              Brak VITE_SUPABASE_ANON_KEY w .env.local / env Vite
-            </p>
+          {!hasSupabaseEnv && (
+            <p className="engine-error">{MISSING_SUPABASE_ENV_MESSAGE}</p>
           )}
           <p className="muted">{copy.loginSubtitle}</p>
           <div className="auth-options auth-options--actions">

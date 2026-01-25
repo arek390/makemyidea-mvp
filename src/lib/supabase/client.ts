@@ -5,6 +5,16 @@ export const supabaseUrl =
 const supabaseAnonKey =
   import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
 
+console.info('[diag] supabase env', {
+  hasUrl: Boolean(import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL),
+  hasAnon: Boolean(
+    import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  ),
+  mode: import.meta.env.MODE,
+  prod: import.meta.env.PROD,
+  dev: import.meta.env.DEV,
+})
+
 if (import.meta.env.DEV && typeof window !== 'undefined') {
   console.log('[diag] supabase config', {
     url: supabaseUrl,
