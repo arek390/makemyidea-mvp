@@ -173,6 +173,7 @@ const AUTH_LOGIN_REDIRECT_KEY = 'auth-login-redirect'
 const AUTH_OAUTH_ORIGIN_KEY = 'auth_oauth_origin'
 const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
 const POST_AUTH_NEXT_KEY = 'post-auth-next'
+const POST_AUTH_LANG_KEY = 'post-auth-lang'
 const MISSING_SUPABASE_ENV_MESSAGE =
   'Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in build-time env (check Vercel Environment Variables for Preview/Production).'
 const CANONICAL_URL =
@@ -3279,6 +3280,8 @@ function App() {
   const [reportLanguage, setReportLanguage] = useState<Language>('Polish')
   const [uiLanguage, setUiLanguage] = useState<Language>(() => {
     if (typeof window === 'undefined') return 'Polish'
+    const postAuthLang = window.sessionStorage.getItem(POST_AUTH_LANG_KEY)
+    if (postAuthLang === 'English' || postAuthLang === 'Polish') return postAuthLang
     const saved = window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY)
     if (saved === 'English' || saved === 'Polish') return saved
     const languages = window.navigator?.languages ?? []
@@ -3289,6 +3292,7 @@ function App() {
     window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, defaultLanguage)
     return defaultLanguage
   })
+  const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
   const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
   const [enginePreviewSessionName, setEnginePreviewSessionName] = useState('')
   const [engineNamePromptOpen, setEngineNamePromptOpen] = useState(false)
@@ -3489,6 +3493,23 @@ function App() {
   const clearPostAuthNext = () => {
     if (typeof window === 'undefined') return
     window.sessionStorage.removeItem(POST_AUTH_NEXT_KEY)
+  }
+
+  const readPostAuthLang = () => {
+    if (typeof window === 'undefined') return null
+    const value = window.sessionStorage.getItem(POST_AUTH_LANG_KEY)
+    return value === 'English' || value === 'Polish' ? value : null
+  }
+
+  const writePostAuthLang = (value: Language | null) => {
+    if (typeof window === 'undefined') return
+    if (!value) return
+    window.sessionStorage.setItem(POST_AUTH_LANG_KEY, value)
+  }
+
+  const clearPostAuthLang = () => {
+    if (typeof window === 'undefined') return
+    window.sessionStorage.removeItem(POST_AUTH_LANG_KEY)
   }
 
   const findSupabasePkceVerifierKeys = () => {
@@ -3709,6 +3730,14 @@ const isAuthFlowInProgress = () => {
             const next = readPostAuthNext()
             clearPostAuthNext()
             const target = next || '/engine'
+            const lang = readPostAuthLang()
+            if (lang) {
+              setUiLanguage(lang)
+              if (typeof window !== 'undefined') {
+                window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, lang)
+              }
+              clearPostAuthLang()
+            }
             if (window.location.pathname !== target) {
               console.info('[auth] redirecting', { finalTarget: target })
               window.location.replace(target)
@@ -3852,6 +3881,14 @@ const isAuthFlowInProgress = () => {
           if (data.session) {
             const next = readPostAuthNext()
             clearPostAuthNext()
+            const lang = readPostAuthLang()
+            if (lang) {
+              setUiLanguage(lang)
+              if (typeof window !== 'undefined') {
+                window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, lang)
+              }
+              clearPostAuthLang()
+            }
             clearAuthRedirect()
             const target = next || '/engine'
             console.info('[auth] callback success', { next, finalTarget: target })
@@ -3919,14 +3956,16 @@ const isAuthFlowInProgress = () => {
       typeof window !== 'undefined'
         ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
         : null
+    const lang = uiLanguage
     if (oauthStartOnceRef.current) return
     oauthStartOnceRef.current = true
     setAuthFlowInProgress(true)
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(AUTH_OAUTH_ORIGIN_KEY, window.location.origin)
     }
-    writePostAuthNext(next)
-    console.info('[auth] starting oauth', { next })
+    writePostAuthNext(next || '/engine')
+    writePostAuthLang(lang)
+    console.info('[auth] starting oauth', { next: next || '/engine', lang })
     recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_oauth_start', {
       origin: window.location.origin,
@@ -4149,6 +4188,8 @@ const isAuthFlowInProgress = () => {
       target,
     })
     if (typeof window !== 'undefined') {
+      window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, uiLanguage)
+      writePostAuthLang(uiLanguage)
       window.location.href = target
     }
   }
@@ -4381,6 +4422,18 @@ const isAuthFlowInProgress = () => {
     if (typeof window === 'undefined') return
     window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, uiLanguage)
   }, [uiLanguage])
+
+  useEffect(() => {
+    if (postAuthLanguageApplied) return
+    const saved = readPostAuthLang()
+    if (!saved) return
+    setUiLanguage(saved)
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, saved)
+    }
+    clearPostAuthLang()
+    setPostAuthLanguageApplied(true)
+  }, [postAuthLanguageApplied])
 
   useEffect(() => {
     if (!showLanding) return
