@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, MouseEvent } from 'react'
+import type { ChangeEvent, MouseEvent as ReactMouseEvent } from 'react'
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import './App.css'
 import {
@@ -4094,7 +4094,7 @@ const isAuthFlowInProgress = () => {
     }
   }
 
-  const handleLandingCtaClick = (event?: MouseEvent<HTMLAnchorElement>) => {
+  const handleLandingCtaClick = (event?: ReactMouseEvent<HTMLAnchorElement>) => {
     if (event) event.preventDefault()
     const target = isAuthed ? '/engine' : '/login'
     console.info('[cta] start free clicked', {
