@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent } from 'react'
+import type { ChangeEvent, MouseEvent } from 'react'
 import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import './App.css'
 import {
@@ -3411,7 +3411,11 @@ function App() {
   const isAuthed = Boolean(authSession?.user?.id)
   const isGuest = isGuestMode() === true
   const hasActiveGuestSession = isGuest ? getStorageSessionCount() > 0 : false
-  const canEnterApp = isAuthed || (isGuest && hasActiveGuestSession)
+  const guestEntryAllowed =
+    isGuest &&
+    (typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('guest') === '1')
+  const canEnterApp = isAuthed || guestEntryAllowed
 
   const applySessionLanguage = (value?: string) => {
     if (!value) return
@@ -3698,6 +3702,15 @@ const isAuthFlowInProgress = () => {
   }, [isProtectedRoute, authLoading, authSession])
 
   useEffect(() => {
+    if (!isEnginePreview) return
+    if (!authResolved) return
+    if (isAuthed || guestEntryAllowed) return
+    if (typeof window === 'undefined') return
+    const next = window.location.pathname + window.location.search
+    window.location.replace(`/login?next=${encodeURIComponent(next)}`)
+  }, [isEnginePreview, authResolved, isAuthed, guestEntryAllowed])
+
+  useEffect(() => {
     if (initialRouteResolvedRef.current) return
     if (!authResolved) return
     if (typeof window === 'undefined') return
@@ -3710,7 +3723,12 @@ const isAuthFlowInProgress = () => {
         !path.startsWith('/login') &&
         !path.startsWith('/auth/callback')
       ) {
-        target = '/'
+        if (path === '/engine') {
+          const next = `${path}${window.location.search}`
+          target = `/login?next=${encodeURIComponent(next)}`
+        } else {
+          target = '/'
+        }
       }
     }
 
@@ -4019,7 +4037,7 @@ const isAuthFlowInProgress = () => {
       console.log('[route-force] redirect to /engine')
       console.trace()
     }
-    window.location.replace('/engine')
+    window.location.replace('/engine?guest=1')
   }
 
   const handleGuestMerge = async () => {
@@ -4076,15 +4094,16 @@ const isAuthFlowInProgress = () => {
     }
   }
 
-  const handleLandingCtaClick = () => {
-    if (import.meta.env.DEV) {
-      console.log('[cta] start free clicked', {
-        from: typeof window !== 'undefined' ? window.location.pathname : '',
-        to: '/login',
-      })
-    }
+  const handleLandingCtaClick = (event?: MouseEvent<HTMLAnchorElement>) => {
+    if (event) event.preventDefault()
+    const target = isAuthed ? '/engine' : '/login'
+    console.info('[cta] start free clicked', {
+      isAuthed,
+      isGuestMode: isGuest,
+      target,
+    })
     if (typeof window !== 'undefined') {
-      window.location.href = '/login'
+      window.location.href = target
     }
   }
 
@@ -6682,7 +6701,7 @@ const isAuthFlowInProgress = () => {
 
   if (isEnginePreview) {
     const hasSupabaseSession = Boolean(authSession?.user?.id)
-    const guestActive = isGuestMode()
+    const guestAllowed = guestEntryAllowed
     if (!authResolved) {
       return withDevOverlay(
         <div className="app auth-screen">
@@ -6692,27 +6711,26 @@ const isAuthFlowInProgress = () => {
         </div>
       )
     }
-    if (!hasSupabaseSession && !guestActive) {
+    if (!hasSupabaseSession && !guestAllowed) {
+      const next =
+        typeof window !== 'undefined'
+          ? window.location.pathname + window.location.search
+          : '/engine'
       return withDevOverlay(
         <div className="app auth-screen">
           <section className="panel auth-panel">
-            <h1>{copy.loginTitle}</h1>
             <p className="muted">
               {uiLanguage === 'Polish'
-                ? 'Nie jesteś zalogowany.'
-                : 'You are not signed in.'}
+                ? 'Przekierowanie do logowania...'
+                : 'Redirecting to login...'}
             </p>
-            <p className="muted">{copy.loginSubtitle}</p>
             <div className="actions">
-              <button
-                type="button"
+              <a
                 className="primary"
-                onClick={() => {
-                  window.location.href = '/'
-                }}
+                href={`/login?next=${encodeURIComponent(next)}`}
               >
-                {copy.authCallback.goHome}
-              </button>
+                {copy.loginTitle}
+              </a>
             </div>
           </section>
         </div>
