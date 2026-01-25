@@ -1,9 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
-const rawSupabaseUrl =
-  import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL || ''
-const rawSupabaseAnon =
-  import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
+const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
+const rawSupabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
 
 export const supabaseUrl = rawSupabaseUrl
 const supabaseAnonKey = rawSupabaseAnon

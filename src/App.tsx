@@ -6523,10 +6523,8 @@ const isAuthFlowInProgress = () => {
   if (isLogin) {
     const isGuestActive = isGuestMode()
     const hasSupabaseEnv =
-      Boolean(import.meta.env.VITE_SUPABASE_URL || import.meta.env.NEXT_PUBLIC_SUPABASE_URL) &&
-      Boolean(
-        import.meta.env.VITE_SUPABASE_ANON_KEY || import.meta.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-      )
+      Boolean(import.meta.env.VITE_SUPABASE_URL) &&
+      Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY)
     return withDevOverlay(
       <div className="app auth-screen">
         <section className="panel auth-panel">
