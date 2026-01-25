@@ -3868,6 +3868,11 @@ const isAuthFlowInProgress = () => {
       origin: window.location.origin,
       redirectTo,
     })
+    console.info('[oauth start] initiating', {
+      provider: 'google',
+      origin: window.location.origin,
+      redirectTo,
+    })
     if (import.meta.env.DEV) {
       console.log('[oauth start] before', {
         origin: window.location.origin,
