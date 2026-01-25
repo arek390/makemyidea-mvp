@@ -219,6 +219,14 @@ const mapQuestion = (question, lang) => ({
 })
 
 export default async function handler(req, res) {
+  console.log('[coach/suggest][boot]', {
+    time: new Date().toISOString(),
+    method: req.method,
+    hasOpenAIKey: !!process.env.OPENAI_API_KEY,
+    vercelEnv: process.env.VERCEL_ENV,
+    runtime: process.env.VERCEL_EDGE ? 'edge' : 'node',
+    node: process.version,
+  })
   console.info('[coach/suggest] handler entered', {
     time: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
@@ -521,6 +529,12 @@ export default async function handler(req, res) {
     }
     sendJson(res, 200, { ok: true, data: { question: mapQuestion(rawQuestion, lang) }, meta })
   } catch (error) {
+    console.error('[coach/suggest][LLM_ERROR]', {
+      name: error?.name,
+      message: error?.message,
+      stack: error?.stack,
+      cause: error?.cause,
+    })
     console.error('[coach/suggest] fatal error before LLM', {
       name: error?.name,
       message: error?.message,
