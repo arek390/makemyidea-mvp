@@ -176,6 +176,13 @@ const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
 const POST_AUTH_NEXT_KEY = 'post-auth-next'
 const POST_AUTH_LANG_KEY = 'post-auth-lang'
 const PROD_ORIGIN = 'https://makemyidea.work'
+
+const getOAuthRedirectTo = () => {
+  if (import.meta.env.DEV) {
+    return 'http://127.0.0.1:5173/auth/callback'
+  }
+  return `${PROD_ORIGIN}/auth/callback`
+}
 const MISSING_SUPABASE_ENV_MESSAGE =
   'Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in build-time env (check Vercel Environment Variables for Preview/Production).'
 const CANONICAL_URL =
@@ -3948,8 +3955,7 @@ const isAuthFlowInProgress = () => {
     setAuthError(null)
     setLoginNotice(null)
     setLoginOauthLoading(true)
-    const originBase = import.meta.env.DEV ? window.location.origin : PROD_ORIGIN
-    const redirectTo = `${originBase}/auth/callback`
+    const redirectTo = getOAuthRedirectTo()
     if (import.meta.env.PROD && redirectTo.includes('vercel.app')) {
       console.error('[auth] invalid redirectTo for production', { redirectTo })
       throw new Error('Invalid OAuth redirect origin for production')
@@ -4017,8 +4023,7 @@ const isAuthFlowInProgress = () => {
     setAuthError(null)
     setLoginNotice(null)
     setLoginSending(true)
-    const originBase = import.meta.env.DEV ? window.location.origin : PROD_ORIGIN
-    const redirectTo = `${originBase}/auth/callback`
+    const redirectTo = getOAuthRedirectTo()
     if (import.meta.env.PROD && redirectTo.includes('vercel.app')) {
       console.error('[auth] invalid redirectTo for production', { redirectTo })
       throw new Error('Invalid OAuth redirect origin for production')
