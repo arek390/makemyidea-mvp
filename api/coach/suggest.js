@@ -283,7 +283,7 @@ export default async function handler(req, res) {
       aiSupportEnabled,
       aiSupportDisabledEnv: process.env.AI_SUPPORT_DISABLED || null,
       hasOpenAIKey: hasOpenAiKey,
-      openAIKeyLen,
+      openAIKeyLen: openAiKeyLen,
       nodeEnv: process.env.NODE_ENV || null,
     })
     const dataset = loadQuestionsFromCsvOnce()
