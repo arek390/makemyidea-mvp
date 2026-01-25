@@ -3320,6 +3320,7 @@ function App() {
   const engineIdleTimer = useRef<number | null>(null)
   const engineNoticeTimer = useRef<number | null>(null)
   const oauthStartOnceRef = useRef(false)
+  const authRedirectedRef = useRef(false)
   const initialRouteResolvedRef = useRef(false)
   const engineIdleTriggered = useRef(false)
   const enginePreviousInput = useRef('')
@@ -3727,23 +3728,7 @@ const isAuthFlowInProgress = () => {
         setAuthSession(session ?? null)
         if (!authResolved) setAuthResolved(true)
         if (typeof window !== 'undefined') {
-          if (event === 'SIGNED_IN') {
-            const next = readPostAuthNext()
-            clearPostAuthNext()
-            const target = next || '/engine'
-            const lang = readPostAuthLang()
-            if (lang) {
-              setUiLanguage(lang)
-              if (typeof window !== 'undefined') {
-                window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, lang)
-              }
-              clearPostAuthLang()
-            }
-            if (window.location.pathname !== target) {
-              console.info('[auth] redirecting', { finalTarget: target })
-              window.location.replace(target)
-            }
-          } else if (event === 'SIGNED_OUT') {
+          if (event === 'SIGNED_OUT') {
             if (window.location.pathname !== '/') {
               window.location.replace('/')
             }
@@ -3766,6 +3751,28 @@ const isAuthFlowInProgress = () => {
   }, [isProtectedRoute, authLoading, authSession])
 
   useEffect(() => {
+    if (!authResolved) return
+    if (!authSession?.user) return
+    if (authRedirectedRef.current) return
+    if (typeof window === 'undefined') return
+    const nextRaw = readPostAuthNext()
+    const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
+    const lang = readPostAuthLang()
+    if (lang) {
+      setUiLanguage(lang)
+      window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, lang)
+      clearPostAuthLang()
+    }
+    clearPostAuthNext()
+    console.info('[auth] session resolved', { hasSession: true, next, lang })
+    console.info('[auth] redirecting', { redirectTo: next })
+    authRedirectedRef.current = true
+    if (window.location.pathname !== next) {
+      window.location.replace(next)
+    }
+  }, [authResolved, authSession?.user?.id])
+
+  useEffect(() => {
     if (!isEnginePreview) return
     if (!authResolved) return
     if (isAuthed || guestEntryAllowed) return
@@ -3779,6 +3786,7 @@ const isAuthFlowInProgress = () => {
     if (!authResolved) return
     if (typeof window === 'undefined') return
     if (isAuthCallback || isAuthFlowInProgress()) return
+    if (authSession?.user) return
     const path = window.location.pathname
     let target = path
 
@@ -3880,21 +3888,8 @@ const isAuthFlowInProgress = () => {
             return
           }
           if (data.session) {
-            const next = readPostAuthNext()
-            clearPostAuthNext()
-            const lang = readPostAuthLang()
-            if (lang) {
-              setUiLanguage(lang)
-              if (typeof window !== 'undefined') {
-                window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, lang)
-              }
-              clearPostAuthLang()
-            }
             clearAuthRedirect()
-            const target = next || '/engine'
-            console.info('[auth] callback success', { next, finalTarget: target })
-            console.info('[auth] redirecting', { finalTarget: target })
-            window.location.replace(target)
+            setAuthCallbackLoading(false)
             return
           }
           await new Promise((resolve) => setTimeout(resolve, intervalMs))
