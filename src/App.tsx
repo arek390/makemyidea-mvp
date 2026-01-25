@@ -175,13 +175,14 @@ const AUTH_OAUTH_ORIGIN_KEY = 'auth_oauth_origin'
 const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
 const POST_AUTH_NEXT_KEY = 'post-auth-next'
 const POST_AUTH_LANG_KEY = 'post-auth-lang'
-const PROD_ORIGIN = 'https://makemyidea.work'
 
 const getOAuthRedirectTo = () => {
-  if (import.meta.env.DEV) {
-    return 'http://127.0.0.1:5173/auth/callback'
-  }
-  return `${PROD_ORIGIN}/auth/callback`
+  if (typeof window === 'undefined') return ''
+  const storedOrigin =
+    window.localStorage.getItem(AUTH_OAUTH_ORIGIN_KEY) ||
+    window.localStorage.getItem(AUTH_LOGIN_ORIGIN_KEY)
+  const origin = storedOrigin || window.location.origin
+  return `${origin}/auth/callback`
 }
 const MISSING_SUPABASE_ENV_MESSAGE =
   'Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in build-time env (check Vercel Environment Variables for Preview/Production).'
@@ -3852,6 +3853,11 @@ const isAuthFlowInProgress = () => {
       const params = new URLSearchParams(window.location.search)
       const code = params.get('code')
       const errorParam = params.get('error')
+      console.log('[auth callback] location', {
+        href,
+        origin: typeof window !== 'undefined' ? window.location.origin : '',
+        hasCode: Boolean(code),
+      })
       if (import.meta.env.DEV) {
         console.log('[auth callback] start', { code, error: errorParam, href })
       }
@@ -3956,10 +3962,6 @@ const isAuthFlowInProgress = () => {
     setLoginNotice(null)
     setLoginOauthLoading(true)
     const redirectTo = getOAuthRedirectTo()
-    if (import.meta.env.PROD && redirectTo.includes('vercel.app')) {
-      console.error('[auth] invalid redirectTo for production', { redirectTo })
-      throw new Error('Invalid OAuth redirect origin for production')
-    }
     const next =
       typeof window !== 'undefined'
         ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
@@ -4024,10 +4026,6 @@ const isAuthFlowInProgress = () => {
     setLoginNotice(null)
     setLoginSending(true)
     const redirectTo = getOAuthRedirectTo()
-    if (import.meta.env.PROD && redirectTo.includes('vercel.app')) {
-      console.error('[auth] invalid redirectTo for production', { redirectTo })
-      throw new Error('Invalid OAuth redirect origin for production')
-    }
     setAuthFlowInProgress(true)
     recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_magiclink_start', {
