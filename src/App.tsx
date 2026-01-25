@@ -172,6 +172,7 @@ const AUTH_LOGIN_ORIGIN_KEY = 'auth-login-origin'
 const AUTH_LOGIN_REDIRECT_KEY = 'auth-login-redirect'
 const AUTH_OAUTH_ORIGIN_KEY = 'auth_oauth_origin'
 const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
+const POST_AUTH_NEXT_KEY = 'post-auth-next'
 const MISSING_SUPABASE_ENV_MESSAGE =
   'Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in build-time env (check Vercel Environment Variables for Preview/Production).'
 const CANONICAL_URL =
@@ -3459,6 +3460,31 @@ function App() {
     console.log(JSON.stringify({ event, ...payload }))
   }
 
+  const normalizeNextPath = (value: string | null) => {
+    if (!value) return null
+    if (!value.startsWith('/')) return null
+    if (value.startsWith('//')) return null
+    return value
+  }
+
+  const readPostAuthNext = () => {
+    if (typeof window === 'undefined') return null
+    return normalizeNextPath(window.sessionStorage.getItem(POST_AUTH_NEXT_KEY))
+  }
+
+  const writePostAuthNext = (value: string | null) => {
+    if (typeof window === 'undefined') return
+    const normalized = normalizeNextPath(value)
+    if (normalized) {
+      window.sessionStorage.setItem(POST_AUTH_NEXT_KEY, normalized)
+    }
+  }
+
+  const clearPostAuthNext = () => {
+    if (typeof window === 'undefined') return
+    window.sessionStorage.removeItem(POST_AUTH_NEXT_KEY)
+  }
+
   const findSupabasePkceVerifierKeys = () => {
     if (typeof window === 'undefined') return []
     return Object.keys(window.localStorage).filter(
@@ -3672,8 +3698,12 @@ const isAuthFlowInProgress = () => {
         if (!authResolved) setAuthResolved(true)
         if (typeof window !== 'undefined') {
           if (event === 'SIGNED_IN') {
-            if (window.location.pathname !== '/engine') {
-              window.location.replace('/engine')
+            const next = readPostAuthNext()
+            clearPostAuthNext()
+            const target = next || '/engine'
+            if (window.location.pathname !== target) {
+              console.info('[auth] redirecting', { finalTarget: target })
+              window.location.replace(target)
             }
           } else if (event === 'SIGNED_OUT') {
             if (window.location.pathname !== '/') {
@@ -3710,6 +3740,7 @@ const isAuthFlowInProgress = () => {
     if (initialRouteResolvedRef.current) return
     if (!authResolved) return
     if (typeof window === 'undefined') return
+    if (isAuthCallback || isAuthFlowInProgress()) return
     const path = window.location.pathname
     let target = path
 
@@ -3811,8 +3842,13 @@ const isAuthFlowInProgress = () => {
             return
           }
           if (data.session) {
+            const next = readPostAuthNext()
+            clearPostAuthNext()
             clearAuthRedirect()
-            window.location.replace('/engine')
+            const target = next || '/engine'
+            console.info('[auth] callback success', { next, finalTarget: target })
+            console.info('[auth] redirecting', { finalTarget: target })
+            window.location.replace(target)
             return
           }
           await new Promise((resolve) => setTimeout(resolve, intervalMs))
@@ -3871,12 +3907,18 @@ const isAuthFlowInProgress = () => {
     setLoginNotice(null)
     setLoginOauthLoading(true)
     const redirectTo = `${window.location.origin}/auth/callback`
+    const next =
+      typeof window !== 'undefined'
+        ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
+        : null
     if (oauthStartOnceRef.current) return
     oauthStartOnceRef.current = true
     setAuthFlowInProgress(true)
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(AUTH_OAUTH_ORIGIN_KEY, window.location.origin)
     }
+    writePostAuthNext(next)
+    console.info('[auth] starting oauth', { next })
     recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_oauth_start', {
       origin: window.location.origin,
