@@ -173,7 +173,7 @@ const AUTH_LOGIN_REDIRECT_KEY = 'auth-login-redirect'
 const AUTH_OAUTH_ORIGIN_KEY = 'auth_oauth_origin'
 const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
 const MISSING_SUPABASE_ENV_MESSAGE =
-  'Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in build-time env (Vercel Environment Variables)'
+  'Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in build-time env (check Vercel Environment Variables for Preview/Production).'
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
 const CANONICAL_HOST = (() => {
