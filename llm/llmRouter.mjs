@@ -186,8 +186,39 @@ export const runLlmTask = async ({
     valid: false,
   }
   let usageTotals = buildEmptyUsage()
+  const logCoachSuggestStart = (model, messages) => {
+    if (task !== 'coach-suggest') return
+    console.log('[coach/suggest][llm][start]', {
+      time: new Date().toISOString(),
+      model: model ?? null,
+      hasMessages: Array.isArray(messages),
+      messagesLen: Array.isArray(messages) ? messages.length : null,
+      aiSupportEnabled,
+    })
+  }
+
+  const logCoachSuggestError = (err) => {
+    if (task !== 'coach-suggest') return
+    const safeErr = {
+      name: err?.name,
+      message: err?.message,
+      stack: err?.stack,
+      status: err?.status ?? err?.response?.status ?? err?.httpStatus ?? null,
+      code: err?.code ?? null,
+      type: err?.type ?? null,
+      param: err?.param ?? null,
+      response: err?.response?.data
+        ? JSON.stringify(err.response.data).slice(0, 2000)
+        : err?.error
+          ? JSON.stringify(err.error).slice(0, 2000)
+          : null,
+    }
+    console.error('[coach/suggest][llm][error]', safeErr)
+  }
+
   let preprocessSucceeded = false
   try {
+    logCoachSuggestStart(models.preprocess, preprocessMessages)
     const result = await callOpenAIChat({
       apiKey,
       model: models.preprocess,
@@ -199,7 +230,8 @@ export const runLlmTask = async ({
     usageTotals = mergeUsage(usageTotals, result.usage)
     preprocess = resolvePreprocess(result.content, preprocess.cleaned_input)
     preprocessSucceeded = preprocess.valid
-  } catch {
+  } catch (err) {
+    logCoachSuggestError(err)
     preprocessSucceeded = false
   }
 
@@ -231,14 +263,22 @@ export const runLlmTask = async ({
   ]
 
   const runGeneration = async (model) => {
-    const result = await callOpenAIChat({
-      apiKey,
-      model,
-      messages: buildMessages(),
-      maxTokens: maxOutputTokens,
-      temperature,
-      timeoutMs,
-    })
+    const messages = buildMessages()
+    logCoachSuggestStart(model, messages)
+    let result
+    try {
+      result = await callOpenAIChat({
+        apiKey,
+        model,
+        messages,
+        maxTokens: maxOutputTokens,
+        temperature,
+        timeoutMs,
+      })
+    } catch (err) {
+      logCoachSuggestError(err)
+      throw err
+    }
     const parsed = parseResponse(result.content)
     if (!parsed) {
       const error = new Error('Invalid model response.')
