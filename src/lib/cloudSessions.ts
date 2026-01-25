@@ -1,5 +1,19 @@
 import type { EngineBoardItem, EngineSessionDetail, EngineSessionSummary } from '../storage/sessionStore'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from './supabase/types'
 import { supabase } from './supabase/client'
+
+export type UserSessionsRow = {
+  user_id: string
+  session_id: string
+  payload: CloudSessionPayload
+  updated_at: string
+  created_at?: string | null
+}
+
+export type UserSessionsInsert = UserSessionsRow
+
+const typedSupabase = supabase as SupabaseClient<Database, 'public'>
 
 export type CloudSessionPayload = {
   session: EngineSessionSummary
@@ -62,17 +76,15 @@ export const saveSessionToCloud = async (
     askedQuestionIds: detail.askedQuestionIds || [],
     uiLanguage,
   }
-  const { error } = await supabase
+  const record: UserSessionsInsert = {
+    user_id: userId,
+    session_id: session.id,
+    payload,
+    updated_at: new Date(now).toISOString(),
+  }
+  const { error } = await typedSupabase
     .from('user_sessions')
-    .upsert(
-      {
-        user_id: userId,
-        session_id: session.id,
-        payload,
-        updated_at: new Date(now).toISOString(),
-      },
-      { onConflict: 'user_id,session_id' }
-    )
+    .upsert(record, { onConflict: 'user_id,session_id' })
   if (error) throw error
 }
 
@@ -80,14 +92,14 @@ export const listCloudSessions = async (userId: string): Promise<CloudSessionRec
   if (!supabase) {
     throw new Error('Missing Supabase client.')
   }
-  const { data, error } = await supabase
+  const { data, error } = await typedSupabase
     .from('user_sessions')
     .select('session_id,payload,updated_at,created_at')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false })
   if (error) throw error
   if (!data) return []
-  return data.map((row) => {
+  return (data as UserSessionsRow[]).map((row) => {
     const payload = (row.payload || {}) as CloudSessionPayload
     const now = Date.now()
     const updatedAt = toTimestamp(row.updated_at, now)

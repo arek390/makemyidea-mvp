@@ -31,6 +31,7 @@ import {
   type CloudSessionRecord,
 } from './lib/cloudSessions'
 import { getSupabaseInitError, supabase as client, supabaseEnvDiag } from './lib/supabase/client'
+import { saveSessionToCloud } from './lib/cloudSessions'
 import {
   clearGuestMode,
   clearGuestSessions,
@@ -6100,18 +6101,16 @@ const isAuthFlowInProgress = () => {
         showEngineNotice('Zaloguj się, aby zapisać w chmurze', 'error')
         return false
       }
-      const record = {
-        user_id: session.user.id,
-        session_id: String(enginePreviewSessionId),
-        payload: detail,
-      }
-      const { error, status } = await client
-        .from('user_sessions')
-        .upsert(record, { onConflict: 'user_id,session_id' })
-      if (import.meta.env.DEV) {
-        console.log('[cloud save]', { status, message: error?.message })
-      }
-      if (error) {
+      try {
+        await saveSessionToCloud(session.user.id, detail, uiLanguage)
+        if (import.meta.env.DEV) {
+          console.log('[cloud save]', { status: 200 })
+        }
+      } catch (error) {
+        const status = (error as { status?: number }).status
+        if (import.meta.env.DEV) {
+          console.log('[cloud save]', { status, message: (error as Error).message })
+        }
         console.error('[cloud save] failed', { status, error })
         showEngineNotice(`Nie udało się zapisać (${status ?? 'err'})`, 'error')
         return false

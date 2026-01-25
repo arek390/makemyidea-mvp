@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
+import type { SupabaseClient } from '@supabase/supabase-js'
+import type { Database } from './types'
 
 const rawSupabaseUrl = import.meta.env.VITE_SUPABASE_URL || ''
 const rawSupabaseAnon = import.meta.env.VITE_SUPABASE_ANON_KEY || ''
@@ -50,7 +52,7 @@ const resolveAuthStorage = () => {
 
 const authStorage = resolveAuthStorage()
 
-let supabaseClient: ReturnType<typeof createClient> | null = null
+let supabaseClient: SupabaseClient<Database> | null = null
 
 if (supabaseUrl && supabaseAnonKey) {
   try {
@@ -58,7 +60,7 @@ if (supabaseUrl && supabaseAnonKey) {
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
       supabaseInitError = 'invalid_supabase_url_protocol'
     } else {
-      supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
+      supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey, {
         auth: {
           flowType: 'pkce',
           detectSessionInUrl: true,
