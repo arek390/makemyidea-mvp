@@ -1,5 +1,9 @@
 const required = ['VITE_SUPABASE_URL', 'VITE_SUPABASE_ANON_KEY']
-const missing = required.filter((key) => !process.env[key] || !String(process.env[key]).trim())
+const values = {
+  VITE_SUPABASE_URL: String(process.env.VITE_SUPABASE_URL || ''),
+  VITE_SUPABASE_ANON_KEY: String(process.env.VITE_SUPABASE_ANON_KEY || ''),
+}
+const missing = required.filter((key) => !values[key] || !values[key].trim())
 
 if (missing.length) {
   console.error(
@@ -10,4 +14,6 @@ if (missing.length) {
   process.exit(1)
 }
 
-console.log('[env] Supabase build-time env present.')
+console.log(
+  `[env] OK: VITE_SUPABASE_URL present (len=${values.VITE_SUPABASE_URL.length}), VITE_SUPABASE_ANON_KEY present (len=${values.VITE_SUPABASE_ANON_KEY.length})`
+)
