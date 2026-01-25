@@ -3632,18 +3632,14 @@ const isAuthFlowInProgress = () => {
       ? 5000
       : DEFAULT_IDLE_THRESHOLD_MS
   const postAddGraceMs = isE2EEnabled() ? 200 : 7000
-  const isEnginePreview =
-    typeof window !== 'undefined' && window.location.pathname === '/engine'
-  const isWorkInProgress =
-    typeof window !== 'undefined' && window.location.pathname === '/wip'
-  const isIdeaGrid =
-    typeof window !== 'undefined' && window.location.pathname === '/grid'
-  const isLogin =
-    typeof window !== 'undefined' && window.location.pathname === '/login'
-  const isAuthCallback =
-    typeof window !== 'undefined' && window.location.pathname === '/auth/callback'
-  const isProtectedRoute =
-    typeof window !== 'undefined' && window.location.pathname.startsWith('/app')
+  const normalizedPath =
+    typeof window !== 'undefined' ? window.location.pathname.replace(/\/+$/, '') : ''
+  const isEnginePreview = normalizedPath === '/engine'
+  const isWorkInProgress = normalizedPath === '/wip'
+  const isIdeaGrid = normalizedPath === '/grid'
+  const isLogin = normalizedPath === '/login'
+  const isAuthCallback = normalizedPath === '/auth/callback'
+  const isProtectedRoute = normalizedPath.startsWith('/app')
 
   useEffect(() => {
     if (!isEnginePreview) return
@@ -4135,6 +4131,20 @@ const isAuthFlowInProgress = () => {
       setEngineLastInputActivityAt(Date.now())
     }
   }, [isEnginePreview, enginePreviewSessionId])
+
+  useEffect(() => {
+    if (!isEnginePreview) return
+    console.info('[diag] engine header flags', {
+      path: typeof window !== 'undefined' ? window.location.pathname : '',
+      normalizedPath,
+      mode: import.meta.env.MODE,
+      prod: import.meta.env.PROD,
+      dev: import.meta.env.DEV,
+      isAuthed,
+      isGuestMode: isGuest,
+      aiSupportEnabled,
+    })
+  }, [isEnginePreview, normalizedPath, isAuthed, isGuest, aiSupportEnabled])
 
   useEffect(() => {
     if (!import.meta.env.DEV) return
@@ -4678,6 +4688,22 @@ const isAuthFlowInProgress = () => {
       setLandingView('threeSteps')
     }
   }, [showLanding])
+
+  useEffect(() => {
+    if (showLanding) return
+    if (isEnginePreview) return
+    console.info('[diag] top bar flags', {
+      path: typeof window !== 'undefined' ? window.location.pathname : '',
+      normalizedPath,
+      mode: import.meta.env.MODE,
+      prod: import.meta.env.PROD,
+      dev: import.meta.env.DEV,
+      activeStep,
+      isAuthed,
+      isGuestMode: isGuest,
+      aiSupportEnabled,
+    })
+  }, [showLanding, isEnginePreview, normalizedPath, activeStep, isAuthed, isGuest, aiSupportEnabled])
 
   const copy = useMemo(() => getTranslations(uiLanguage), [uiLanguage])
   const stepTitle = (stepId: StepId) => copy.steps[stepId]
