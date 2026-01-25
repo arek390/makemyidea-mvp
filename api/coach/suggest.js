@@ -219,6 +219,14 @@ const mapQuestion = (question, lang) => ({
 })
 
 export default async function handler(req, res) {
+  console.info('[coach/suggest] start', {
+    method: req.method,
+    path: req.url,
+    hasAiSupportHeader: Boolean(
+      req.headers['x-ai-support'] || (typeof req.headers.get === 'function' && req.headers.get('x-ai-support'))
+    ),
+    time: new Date().toISOString(),
+  })
   if (req.method === 'OPTIONS') {
     res.status(204).end()
     return
@@ -250,6 +258,13 @@ export default async function handler(req, res) {
       hasOpenAiKey,
       openAiKeyLen,
       env: process.env.VERCEL ? 'vercel' : 'local',
+    })
+    console.info('[coach/suggest] llm_prepare', {
+      aiSupportEnabled,
+      aiSupportDisabledEnv: process.env.AI_SUPPORT_DISABLED || null,
+      hasOpenAIKey: hasOpenAiKey,
+      openAIKeyLen,
+      nodeEnv: process.env.NODE_ENV || null,
     })
     const dataset = loadQuestionsFromCsvOnce()
     const lang = normalizeLang(body.lang || body.language || 'pl')
@@ -340,12 +355,32 @@ export default async function handler(req, res) {
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
         })
 
-      let result = await runSuggest(0)
+      let result
+      try {
+        result = await runSuggest(0)
+      } catch (err) {
+        console.error('[coach/suggest] llm_error', {
+          name: err?.name,
+          message: err?.message,
+          stack: typeof err?.stack === 'string' ? err.stack.slice(0, 800) : null,
+          status: err?.status || err?.response?.status || null,
+        })
+        result = {
+          ok: false,
+          error: String(err?.message || err),
+          meta: { aiSupportEnabled: true, modelUsed: null, escalated: false, tokens: { input: 0, output: 0, total: 0 } },
+        }
+      }
       if (!result.ok) {
         const mapped = mapLlmError(result.error)
-        const reasonCategory = String(result.error || '').includes('OPENAI_API_KEY')
-          ? 'missing_api_key'
-          : 'llm_failed'
+        const errorText = String(result.error || '')
+        const reasonCategory = errorText.includes('OPENAI_API_KEY')
+          ? 'MISSING_OPENAI_KEY'
+          : errorText.includes('401') || errorText.includes('403')
+            ? 'OPENAI_AUTH'
+            : errorText.includes('timeout') || errorText.includes('ETIMEDOUT')
+              ? 'OPENAI_NETWORK'
+              : 'LLM_FAILED'
         console.error('[ai] LLM failed', {
           code: mapped.code,
           reasonCategory,
@@ -363,14 +398,16 @@ export default async function handler(req, res) {
         })
         const fallback = rawQuestion || dataset.list.find((q) => Number(q.is_active) === 1)
         sendJson(res, 200, {
-          ok: false,
-          code: reasonCategory === 'missing_api_key' ? 'LLM_MISCONFIGURED' : 'LLM_UNAVAILABLE',
-          message:
-            reasonCategory === 'missing_api_key'
-              ? 'AI is misconfigured; using built-in questions.'
-              : 'AI is temporarily unavailable; using built-in questions.',
-          meta: { ...meta, reasonCategory },
-          data: { question: fallback ? mapQuestion(fallback, lang) : null },
+          ok: true,
+          source: 'fallback',
+          question: fallback ? mapQuestion(fallback, lang).text : '',
+          meta: {
+            aiSupportEnabled: true,
+            modelUsed: null,
+            escalated: false,
+            tokens: { input: 0, output: 0, total: 0 },
+            errorCategory: reasonCategory,
+          },
         })
         return
       }
@@ -380,9 +417,14 @@ export default async function handler(req, res) {
         result = await runSuggest(1)
         if (!result.ok) {
           const mapped = mapLlmError(result.error)
-          const reasonCategory = String(result.error || '').includes('OPENAI_API_KEY')
-            ? 'missing_api_key'
-            : 'llm_failed'
+          const errorText = String(result.error || '')
+          const reasonCategory = errorText.includes('OPENAI_API_KEY')
+            ? 'MISSING_OPENAI_KEY'
+            : errorText.includes('401') || errorText.includes('403')
+              ? 'OPENAI_AUTH'
+              : errorText.includes('timeout') || errorText.includes('ETIMEDOUT')
+                ? 'OPENAI_NETWORK'
+                : 'LLM_FAILED'
           console.error('[ai] LLM failed', {
             code: mapped.code,
             reasonCategory,
@@ -400,14 +442,16 @@ export default async function handler(req, res) {
           })
           const fallback = rawQuestion || dataset.list.find((q) => Number(q.is_active) === 1)
           sendJson(res, 200, {
-            ok: false,
-            code: reasonCategory === 'missing_api_key' ? 'LLM_MISCONFIGURED' : 'LLM_UNAVAILABLE',
-            message:
-              reasonCategory === 'missing_api_key'
-                ? 'AI is misconfigured; using built-in questions.'
-                : 'AI is temporarily unavailable; using built-in questions.',
-            meta: { ...meta, reasonCategory },
-            data: { question: fallback ? mapQuestion(fallback, lang) : null },
+            ok: true,
+            source: 'fallback',
+            question: fallback ? mapQuestion(fallback, lang).text : '',
+            meta: {
+              aiSupportEnabled: true,
+              modelUsed: null,
+              escalated: false,
+              tokens: { input: 0, output: 0, total: 0 },
+              errorCategory: reasonCategory,
+            },
           })
           return
         }
