@@ -236,16 +236,21 @@ export default async function handler(req, res) {
     const aiSupportEnabled = resolveAiSupportEnabled(req, body)
     const killSwitch = process.env.AI_SUPPORT_DISABLED === 'true'
     const aiSupportHeader = req.headers['x-ai-support']
+    const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY)
+    const openAiKeyLen = process.env.OPENAI_API_KEY ? process.env.OPENAI_API_KEY.length : 0
     const hasContextFields = Boolean(
       body?.sessionName || (Array.isArray(body?.boardEntries) && body.boardEntries.length)
     )
-    if (process.env.NODE_ENV !== 'production') {
-      console.log('[ai] suggest input', {
-        aiSupportHeader,
-        killSwitch,
-        hasContextFields,
-      })
-    }
+    console.log('[ai] suggest input', {
+      ts: new Date().toISOString(),
+      aiSupportHeader,
+      aiSupportEnabled,
+      killSwitch,
+      hasContextFields,
+      hasOpenAiKey,
+      openAiKeyLen,
+      env: process.env.VERCEL ? 'vercel' : 'local',
+    })
     const dataset = loadQuestionsFromCsvOnce()
     const lang = normalizeLang(body.lang || body.language || 'pl')
     const action = body.action || 'NEXT'
@@ -338,7 +343,35 @@ export default async function handler(req, res) {
       let result = await runSuggest(0)
       if (!result.ok) {
         const mapped = mapLlmError(result.error)
-        sendError(res, mapped.status, mapped.code, mapped.message, result.meta)
+        const reasonCategory = String(result.error || '').includes('OPENAI_API_KEY')
+          ? 'missing_api_key'
+          : 'llm_failed'
+        console.error('[ai] LLM failed', {
+          code: mapped.code,
+          reasonCategory,
+          aiSupportEnabled,
+          hasOpenAiKey,
+        })
+        const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+        const rawQuestion = selectQuestion({
+          dataset,
+          lang,
+          action,
+          currentGroupCode,
+          currentModeCode,
+          askedIds,
+        })
+        const fallback = rawQuestion || dataset.list.find((q) => Number(q.is_active) === 1)
+        sendJson(res, 200, {
+          ok: false,
+          code: reasonCategory === 'missing_api_key' ? 'LLM_MISCONFIGURED' : 'LLM_UNAVAILABLE',
+          message:
+            reasonCategory === 'missing_api_key'
+              ? 'AI is misconfigured; using built-in questions.'
+              : 'AI is temporarily unavailable; using built-in questions.',
+          meta: { ...meta, reasonCategory },
+          data: { question: fallback ? mapQuestion(fallback, lang) : null },
+        })
         return
       }
       let questions = result.data?.questions || []
@@ -347,7 +380,35 @@ export default async function handler(req, res) {
         result = await runSuggest(1)
         if (!result.ok) {
           const mapped = mapLlmError(result.error)
-          sendError(res, mapped.status, mapped.code, mapped.message, result.meta)
+          const reasonCategory = String(result.error || '').includes('OPENAI_API_KEY')
+            ? 'missing_api_key'
+            : 'llm_failed'
+          console.error('[ai] LLM failed', {
+            code: mapped.code,
+            reasonCategory,
+            aiSupportEnabled,
+            hasOpenAiKey,
+          })
+          const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          const rawQuestion = selectQuestion({
+            dataset,
+            lang,
+            action,
+            currentGroupCode,
+            currentModeCode,
+            askedIds,
+          })
+          const fallback = rawQuestion || dataset.list.find((q) => Number(q.is_active) === 1)
+          sendJson(res, 200, {
+            ok: false,
+            code: reasonCategory === 'missing_api_key' ? 'LLM_MISCONFIGURED' : 'LLM_UNAVAILABLE',
+            message:
+              reasonCategory === 'missing_api_key'
+                ? 'AI is misconfigured; using built-in questions.'
+                : 'AI is temporarily unavailable; using built-in questions.',
+            meta: { ...meta, reasonCategory },
+            data: { question: fallback ? mapQuestion(fallback, lang) : null },
+          })
           return
         }
         questions = result.data?.questions || []
