@@ -182,17 +182,26 @@ const normalizeSuggestResponse = (payload: {
   source?: string | null
 }) => {
   const questions = Array.isArray(payload?.data?.questions) ? payload.data.questions : []
-  const questionCandidate =
+  const primaryCandidate =
     (questions[0] as AiQuestion | undefined) ??
     (payload?.question as AiQuestion | string | null) ??
     (payload?.data?.question as AiQuestion | string | null)
+  const mergeMetaCandidate =
+    (payload?.question as AiQuestion | null) ??
+    (payload?.data?.question as AiQuestion | null) ??
+    null
   let questionObj: AiQuestion | null = null
-  if (typeof questionCandidate === 'string') {
-    const text = questionCandidate.trim()
+  if (typeof primaryCandidate === 'string') {
+    const text = primaryCandidate.trim()
     questionObj = text ? { text } : null
-  } else if (questionCandidate && typeof questionCandidate === 'object') {
-    const text = typeof questionCandidate.text === 'string' ? questionCandidate.text.trim() : ''
-    questionObj = text ? { ...questionCandidate, text } : null
+  } else if (primaryCandidate && typeof primaryCandidate === 'object') {
+    const text = typeof primaryCandidate.text === 'string' ? primaryCandidate.text.trim() : ''
+    if (text) {
+      const merged = mergeMetaCandidate && typeof mergeMetaCandidate === 'object'
+        ? { ...primaryCandidate, ...mergeMetaCandidate, text }
+        : { ...primaryCandidate, text }
+      questionObj = merged
+    }
   }
   const questionText = questionObj?.text ?? null
   const sourceFromMeta = payload?.meta?.source ?? payload?.source ?? null
@@ -6035,24 +6044,42 @@ const isAuthFlowInProgress = () => {
         const questionMeta = normalized.questions.length
           ? normalized.questions[0]
           : normalized.questionObj
+        const hasMatrixMeta = Boolean(questionMeta?.group_code || questionMeta?.mode_code)
+        const inferredCell = !hasMatrixMeta && normalized.questionText
+          ? mapEntryToCell(normalized.questionText, uiLanguage)
+          : null
+        const fallbackGroup = inferredCell
+          ? inferredCell.row === 'world'
+            ? 'A'
+            : inferredCell.row === 'product'
+              ? 'B'
+              : 'C'
+          : null
+        const fallbackMode = inferredCell
+          ? inferredCell.col === 'as_is'
+            ? 1
+            : inferredCell.col === 'not_working'
+              ? 2
+              : 3
+          : null
         setEngineLastQuestionMeta({
           id: questionId,
           group_code: normalized.questions.length
-            ? normalized.questions[0]?.group_code
-            : normalized.questionObj?.group_code,
+            ? normalized.questions[0]?.group_code ?? fallbackGroup
+            : normalized.questionObj?.group_code ?? fallbackGroup,
           mode_code: normalized.questions.length
-            ? normalized.questions[0]?.mode_code
-            : normalized.questionObj?.mode_code,
+            ? normalized.questions[0]?.mode_code ?? fallbackMode
+            : normalized.questionObj?.mode_code ?? fallbackMode,
         })
         setEngineAskedQuestionIds((prev) =>
           prev.includes(questionId) ? prev : [...prev, questionId]
         )
-        if (questionMeta?.group_code || questionMeta?.mode_code) {
+        if (questionMeta?.group_code || questionMeta?.mode_code || inferredCell) {
           setEngineAskedQuestionMeta((prev) => ({
             ...prev,
             [questionId]: {
-              group_code: questionMeta?.group_code,
-              mode_code: questionMeta?.mode_code,
+              group_code: questionMeta?.group_code ?? fallbackGroup ?? undefined,
+              mode_code: questionMeta?.mode_code ?? fallbackMode ?? undefined,
             },
           }))
         }
@@ -6060,13 +6087,31 @@ const isAuthFlowInProgress = () => {
         const questionMeta = normalized.questions.length
           ? normalized.questions[0]
           : normalized.questionObj
-        if (questionMeta?.group_code || questionMeta?.mode_code) {
+        const hasMatrixMeta = Boolean(questionMeta?.group_code || questionMeta?.mode_code)
+        const inferredCell = !hasMatrixMeta && normalized.questionText
+          ? mapEntryToCell(normalized.questionText, uiLanguage)
+          : null
+        const fallbackGroup = inferredCell
+          ? inferredCell.row === 'world'
+            ? 'A'
+            : inferredCell.row === 'product'
+              ? 'B'
+              : 'C'
+          : null
+        const fallbackMode = inferredCell
+          ? inferredCell.col === 'as_is'
+            ? 1
+            : inferredCell.col === 'not_working'
+              ? 2
+              : 3
+          : null
+        if (questionMeta?.group_code || questionMeta?.mode_code || inferredCell) {
           const syntheticId = `anon-${Date.now()}-${Math.random().toString(16).slice(2)}`
           setEngineAskedQuestionMeta((prev) => ({
             ...prev,
             [syntheticId]: {
-              group_code: questionMeta?.group_code,
-              mode_code: questionMeta?.mode_code,
+              group_code: questionMeta?.group_code ?? fallbackGroup ?? undefined,
+              mode_code: questionMeta?.mode_code ?? fallbackMode ?? undefined,
             },
           }))
         }
