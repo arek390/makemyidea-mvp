@@ -6048,20 +6048,20 @@ const isAuthFlowInProgress = () => {
         const inferredCell = !hasMatrixMeta && normalized.questionText
           ? mapEntryToCell(normalized.questionText, uiLanguage)
           : null
-        const fallbackGroup = inferredCell
+        const fallbackGroup: string | undefined = inferredCell
           ? inferredCell.row === 'world'
             ? 'A'
             : inferredCell.row === 'product'
               ? 'B'
               : 'C'
-          : null
-        const fallbackMode = inferredCell
+          : undefined
+        const fallbackMode: number | undefined = inferredCell
           ? inferredCell.col === 'as_is'
             ? 1
             : inferredCell.col === 'not_working'
               ? 2
               : 3
-          : null
+          : undefined
         setEngineLastQuestionMeta({
           id: questionId,
           group_code: normalized.questions.length
@@ -6091,20 +6091,20 @@ const isAuthFlowInProgress = () => {
         const inferredCell = !hasMatrixMeta && normalized.questionText
           ? mapEntryToCell(normalized.questionText, uiLanguage)
           : null
-        const fallbackGroup = inferredCell
+        const fallbackGroup: string | undefined = inferredCell
           ? inferredCell.row === 'world'
             ? 'A'
             : inferredCell.row === 'product'
               ? 'B'
               : 'C'
-          : null
-        const fallbackMode = inferredCell
+          : undefined
+        const fallbackMode: number | undefined = inferredCell
           ? inferredCell.col === 'as_is'
             ? 1
             : inferredCell.col === 'not_working'
               ? 2
               : 3
-          : null
+          : undefined
         if (questionMeta?.group_code || questionMeta?.mode_code || inferredCell) {
           const syntheticId = `anon-${Date.now()}-${Math.random().toString(16).slice(2)}`
           setEngineAskedQuestionMeta((prev) => ({
