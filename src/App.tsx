@@ -6103,11 +6103,11 @@ const isAuthFlowInProgress = () => {
         const recentGroup =
           (normalized.questions.length
             ? normalized.questions[0]?.group_code ?? fallbackGroup
-            : normalized.questionObj?.group_code ?? fallbackGroup) || null
+            : normalized.questionObj?.group_code ?? fallbackGroup) || undefined
         const recentMode =
           (normalized.questions.length
             ? normalized.questions[0]?.mode_code ?? fallbackMode
-            : normalized.questionObj?.mode_code ?? fallbackMode) || null
+            : normalized.questionObj?.mode_code ?? fallbackMode) || undefined
         if (recentGroup && recentMode) {
           const key = `${recentGroup}:${recentMode}`
           setEngineRecentCells((prev) => {
