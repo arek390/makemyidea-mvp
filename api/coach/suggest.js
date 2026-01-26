@@ -205,10 +205,6 @@ const selectQuestion = ({
     const orderedNeighbors = scored
       .sort((a, b) => b.score - a.score)
       .map((entry) => entry.cell)
-    const avoidKey =
-      avoidCell && avoidCell.group && Number.isFinite(avoidCell.mode)
-        ? `${avoidCell.group}:${Number(avoidCell.mode)}`
-        : null
     const filteredNeighbors = avoidKey
       ? orderedNeighbors.filter((cell) => `${cell.group}:${cell.mode}` !== avoidKey)
       : orderedNeighbors
