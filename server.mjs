@@ -33,8 +33,10 @@ import {
   parseJsonObject,
 } from './llm/llmRouter.mjs'
 import coachSuggestHandler from './api/coach/suggest.js'
-import fxUsdPlnHandler from './api/fx/usdpln.js'
-import llmPingHandler from './api/llm/ping.js'
+import debugHandler from './api/debug/index.js'
+import fxHandler from './api/fx/index.js'
+import generateHandler from './api/generate.js'
+import healthHandler from './api/health.js'
 import {
   buildContextPrompt,
   buildQuestionPrompt,
@@ -340,30 +342,32 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (url.pathname === '/api/health' && req.method === 'GET') {
-    sendJson(res, 200, { ok: true, hasKey: Boolean(OPENAI_API_KEY) })
-    return
-  }
-
-  if (url.pathname === '/api/llm/ping') {
     const resShim = createResShim(res)
-    await llmPingHandler(req, resShim)
+    await healthHandler(req, resShim)
     return
   }
 
-  if (url.pathname === '/api/ping' && req.method === 'GET') {
-    sendJson(res, 200, { ok: true, env: 'local', ts: new Date().toISOString() })
-    return
-  }
-
-  if (url.pathname === '/api/fx/usdpln' && req.method === 'GET') {
+  if (url.pathname === '/api/fx' && req.method === 'GET') {
     const resShim = createResShim(res)
-    await fxUsdPlnHandler(req, resShim)
+    await fxHandler(req, resShim)
     return
   }
 
   if (url.pathname === '/api/coach/suggest' || url.pathname === '/coach/suggest') {
     const resShim = createResShim(res)
     await coachSuggestHandler(req, resShim)
+    return
+  }
+
+  if (url.pathname === '/api/generate' && req.method === 'POST') {
+    const resShim = createResShim(res)
+    await generateHandler(req, resShim)
+    return
+  }
+
+  if (url.pathname === '/api/debug' && req.method === 'GET') {
+    const resShim = createResShim(res)
+    await debugHandler(req, resShim)
     return
   }
 
@@ -989,156 +993,6 @@ const server = http.createServer(async (req, res) => {
     }
     applySessionTokenUpdate(sessionId, result.meta)
     sendLlmResponse(res, result, (data) => ({ questions: data }))
-    return
-  }
-
-  if (url.pathname === '/api/generate-names' && req.method === 'POST') {
-    const body = await readJsonBody(req)
-    if (!body) {
-      sendJson(res, 400, { error: 'Invalid JSON body.' })
-      return
-    }
-    const { description, count = 5, sessionId } = body
-    if (!description) {
-      sendJson(res, 400, { error: 'Missing description.' })
-      return
-    }
-
-    const aiSupportEnabled = resolveAiSupportEnabled(req, body)
-    const result = await runLlmTask({
-      apiKey: OPENAI_API_KEY,
-      aiSupportEnabled,
-      task: 'generate-names',
-      input: description,
-      language: 'English',
-      taskInstructions: `Generate ${count} short, brandable product names (1-3 words) based on this description. Avoid punctuation. Output ONLY a JSON array of strings, no extra text.`,
-      parseResponse: parseJsonArray,
-      fallbackData: buildNameFallbacks(description, count),
-      models: LLM_MODELS,
-      maxOutputTokens: 300,
-      rateLimiter: llmRateLimiter,
-      rateLimitKey: getClientIp(req),
-    })
-    applySessionTokenUpdate(sessionId, result.meta)
-    sendLlmResponse(res, result, (data) => ({ names: data }))
-    return
-  }
-
-  if (url.pathname === '/api/generate-ideas' && req.method === 'POST') {
-    const body = await readJsonBody(req)
-    if (!body) {
-      sendJson(res, 400, { error: 'Invalid JSON body.' })
-      return
-    }
-    const { productName, cells = [], ideasPerCell = 3, sessionId } = body
-    if (!productName || !Array.isArray(cells) || !cells.length) {
-      sendJson(res, 400, { error: 'Missing productName or cells.' })
-      return
-    }
-
-    const promptCells = cells
-      .map((cell) => `- ${cell.id}: space="${cell.spaceDef}", level="${cell.timeDef}"`)
-      .join('\n')
-
-    const aiSupportEnabled = resolveAiSupportEnabled(req, body)
-    const result = await runLlmTask({
-      apiKey: OPENAI_API_KEY,
-      aiSupportEnabled,
-      task: 'generate-ideas',
-      input: `${productName}\n${promptCells}`,
-      language: 'English',
-      taskInstructions: `Generate ${ideasPerCell} concise ideas (max 50 words each) for each cell for product "${productName}". Each idea must relate to both the space and observation level. Return ONLY a JSON object where keys are cell ids and values are arrays of ideas.`,
-      parseResponse: parseJsonObject,
-      fallbackData: buildIdeaFallbacks(cells, ideasPerCell),
-      models: LLM_MODELS,
-      maxOutputTokens: 1200,
-      rateLimiter: llmRateLimiter,
-      rateLimitKey: getClientIp(req),
-    })
-    applySessionTokenUpdate(sessionId, result.meta)
-    sendLlmResponse(res, result, (data) => ({ ideas: data }))
-    return
-  }
-
-  if (url.pathname === '/api/generate-space-options' && req.method === 'POST') {
-    const body = await readJsonBody(req)
-    if (!body) {
-      sendJson(res, 400, { error: 'Invalid JSON body.' })
-      return
-    }
-    const {
-      productName,
-      description = '',
-      worldCount = 10,
-      elementCount = 10,
-      language = 'English',
-      sessionId,
-    } = body
-    const outputLanguage = normalizeLanguage(language)
-    if (!productName) {
-      sendJson(res, 400, { error: 'Missing productName.' })
-      return
-    }
-
-    const aiSupportEnabled = resolveAiSupportEnabled(req, body)
-    const result = await runLlmTask({
-      apiKey: OPENAI_API_KEY,
-      aiSupportEnabled,
-      task: 'generate-space-options',
-      input: `${productName}\n${description}`,
-      language: outputLanguage,
-      taskInstructions: `Product: "${productName}". Description: "${description}".\n\nTask:\n1) Generate ${worldCount} options for where this product can exist, be used, or be found (near context and broader context). These are for the "World" category.\n2) Generate ${elementCount} options describing components, materials, subassemblies, or parts the product can be made of. These are for the "Elements" category.\n\nRequirements:\n- Write ONLY in ${outputLanguage}.\n- Each option 1-6 words.\n- Return ONLY a JSON object: {"worldOptions":[...],"elementOptions":[...]}\n- No extra text.`,
-      parseResponse: (value) => {
-        const parsed = parseJsonObject(value)
-        if (!parsed || !Array.isArray(parsed.worldOptions) || !Array.isArray(parsed.elementOptions)) {
-          return null
-        }
-        return parsed
-      },
-      fallbackData: buildSpaceFallbacks(productName),
-      models: LLM_MODELS,
-      maxOutputTokens: 400,
-      rateLimiter: llmRateLimiter,
-      rateLimitKey: getClientIp(req),
-    })
-    applySessionTokenUpdate(sessionId, result.meta)
-    sendLlmResponse(res, result, (data) => ({
-      worldOptions: data.worldOptions,
-      elementOptions: data.elementOptions,
-    }))
-    return
-  }
-
-  if (url.pathname === '/api/generate-time-options' && req.method === 'POST') {
-    const body = await readJsonBody(req)
-    if (!body) {
-      sendJson(res, 400, { error: 'Invalid JSON body.' })
-      return
-    }
-    const { productName, count = 15, language = 'English', sessionId } = body
-    const outputLanguage = normalizeLanguage(language)
-    if (!productName) {
-      sendJson(res, 400, { error: 'Missing productName.' })
-      return
-    }
-
-    const aiSupportEnabled = resolveAiSupportEnabled(req, body)
-    const result = await runLlmTask({
-      apiKey: OPENAI_API_KEY,
-      aiSupportEnabled,
-      task: 'generate-time-options',
-      input: productName,
-      language: outputLanguage,
-      taskInstructions: `Generate ${count} concise observation/time/process options (1-6 words) for product "${productName}". Write ONLY in ${outputLanguage}. Do not use any other language. Output ONLY a JSON array of strings, no extra text.`,
-      parseResponse: parseJsonArray,
-      fallbackData: buildTimeFallbacks().slice(0, count),
-      models: LLM_MODELS,
-      maxOutputTokens: 400,
-      rateLimiter: llmRateLimiter,
-      rateLimitKey: getClientIp(req),
-    })
-    applySessionTokenUpdate(sessionId, result.meta)
-    sendLlmResponse(res, result, (data) => ({ options: data }))
     return
   }
 

@@ -3261,6 +3261,7 @@ function App() {
     model?: string | null
     tokensIn?: number
     tokensOut?: number
+    message?: string | null
     error?: string | null
   } | null>(null)
   const llmHeaders = useMemo(
@@ -3820,7 +3821,7 @@ const isAuthFlowInProgress = () => {
         return
       }
       try {
-        const response = await fetch('/api/fx/usdpln')
+        const response = await fetch('/api/fx?action=usdpln')
         const payload = (await response.json()) as {
           ok?: boolean
           usdpln?: number
@@ -4517,31 +4518,24 @@ const isAuthFlowInProgress = () => {
   const handleLlmPing = async () => {
     try {
       setLlmPingResult(null)
-      const response = await fetch(`${llmApiBase}/api/llm/ping`, {
-        method: 'POST',
-        headers: { ...llmHeaders, 'x-ai-support': 'on' },
-        body: JSON.stringify({
-          language: uiLanguage === 'English' ? 'en' : 'pl',
-        }),
+      const response = await fetch(`${llmApiBase}/api/health?scope=llm`, {
+        method: 'GET',
       })
       const payload = (await response.json()) as {
         ok?: boolean
-        usage?: { model?: string | null; tokensIn?: number; tokensOut?: number }
-        meta?: LlmUsageMeta
+        hasOpenAIKey?: boolean
+        aiSupportEnabled?: boolean
         error?: string
       }
       if (!response.ok || !payload?.ok) {
         setLlmPingResult({ error: payload?.error || 'Ping failed.' })
         return
       }
-      if (payload?.meta) {
-        applyUsageModel(payload.meta)
-        applyUsageToApp(payload.meta)
-      }
       setLlmPingResult({
-        model: payload?.usage?.model ?? payload?.meta?.modelUsed ?? null,
-        tokensIn: payload?.usage?.tokensIn ?? payload?.meta?.tokens?.input,
-        tokensOut: payload?.usage?.tokensOut ?? payload?.meta?.tokens?.output,
+        model: payload?.hasOpenAIKey ? 'configured' : 'missing-key',
+        tokensIn: 0,
+        tokensOut: 0,
+        message: payload?.aiSupportEnabled ? 'ai-enabled' : 'ai-disabled',
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Ping failed.'
@@ -5172,7 +5166,7 @@ const isAuthFlowInProgress = () => {
     const requestOptions = async () => {
       try {
         const [spaceRes, timeRes] = await Promise.all([
-          fetch(`${llmApiBase}/api/generate-space-options`, {
+          fetch(`${llmApiBase}/api/generate?action=space-options`, {
             method: 'POST',
             headers: llmHeaders,
             body: JSON.stringify({
@@ -5184,7 +5178,7 @@ const isAuthFlowInProgress = () => {
               sessionId: enginePreviewSessionId || engineSessionId || undefined,
             }),
           }),
-          fetch(`${llmApiBase}/api/generate-time-options`, {
+          fetch(`${llmApiBase}/api/generate?action=time-options`, {
             method: 'POST',
             headers: llmHeaders,
             body: JSON.stringify({
@@ -5274,7 +5268,7 @@ const isAuthFlowInProgress = () => {
     }
 
     try {
-      const response = await fetch(`${llmApiBase}/api/generate-names`, {
+      const response = await fetch(`${llmApiBase}/api/generate?action=names`, {
         method: 'POST',
         headers: llmHeaders,
         body: JSON.stringify({
@@ -5562,7 +5556,7 @@ const isAuthFlowInProgress = () => {
           timeDef: selectedScenario.timeDefs[timeKey],
         }))
       )
-      const response = await fetch(`${llmApiBase}/api/generate-ideas`, {
+      const response = await fetch(`${llmApiBase}/api/generate?action=ideas`, {
         method: 'POST',
         headers: llmHeaders,
         body: JSON.stringify({
@@ -9521,7 +9515,9 @@ const isAuthFlowInProgress = () => {
                     ? `Ping error: ${llmPingResult.error}`
                     : `Ping OK: ${llmPingResult.model ?? 'model?'} | in ${
                         llmPingResult.tokensIn ?? 0
-                      } / out ${llmPingResult.tokensOut ?? 0}`}
+                      } / out ${llmPingResult.tokensOut ?? 0}${
+                        llmPingResult.message ? ` | ${llmPingResult.message}` : ''
+                      }`}
                 </div>
               )}
             </div>

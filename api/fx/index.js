@@ -18,9 +18,19 @@ const fetchUsdPln = async () => {
   return rate
 }
 
+const resolveAction = (req) => {
+  const url = new URL(req.url || '/', `http://${req.headers.host}`)
+  return String(url.searchParams.get('action') || '').trim().toLowerCase()
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'GET') {
     sendJson(res, 405, { ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['GET'] })
+    return
+  }
+  const action = resolveAction(req)
+  if (action !== 'usdpln') {
+    sendJson(res, 400, { ok: false, error: 'INVALID_ACTION' })
     return
   }
   const now = Date.now()
