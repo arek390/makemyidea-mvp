@@ -1,6 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { runLlmTask, createRateLimiter } from '../../llm/llmRouter.mjs'
+import { ensureSessionState, getSessionState, updateSessionStateRow } from '../../engine/sessionRepository.mjs'
 import {
   buildMeta,
   readJsonBody,
@@ -161,84 +162,63 @@ const listNeighborCells = (group, mode) => {
   return neighbors
 }
 
-const selectQuestion = ({
-  dataset,
-  lang,
-  action,
-  currentGroupCode,
-  currentModeCode,
-  askedIds,
-  avoidCell,
-  recentCells,
-}) => {
-  const normalizedLang = normalizeLang(lang)
-  const askedSet = new Set((askedIds || []).filter(Boolean))
-  const recentSet = new Set((recentCells || []).filter(Boolean))
-  const all = dataset.list.filter((q) => Number(q.is_active) === 1)
-  const actionNormalized = String(action || 'NEXT').toUpperCase()
-  const group = currentGroupCode || null
-  const mode = Number(currentModeCode)
+const CELL_GROUPS = ['A', 'B', 'C']
+const CELL_MODES = [1, 2, 3]
 
-  if (actionNormalized === 'DEEPEN' && group && Number.isFinite(mode)) {
-    const inCell = all.filter(
-      (q) => q.group_code === group && Number(q.mode_code) === Number(mode)
-    )
-    const unasked = inCell.filter((q) => !askedSet.has(q.id))
-    const sorted = sortByNumericSuffix(unasked.length ? unasked : inCell)
-    return pickFirst(sorted)
-  }
+const cellKey = (group, mode) => `${group}:${mode}`
 
-  if (actionNormalized === 'PERSPECTIVE' && group && Number.isFinite(mode)) {
-    const neighbors = listNeighborCells(group, Number(mode))
-    const avoidKey =
-      avoidCell && avoidCell.group && Number.isFinite(avoidCell.mode)
-        ? `${avoidCell.group}:${Number(avoidCell.mode)}`
-        : null
-    const scored = neighbors.map((cell) => {
-      const key = `${cell.group}:${cell.mode}`
-      let score = 0
-      if (cell.group !== group) score += 2
-      if (!recentSet.has(key)) score += 1
-      if (avoidKey && key === avoidKey) score -= 2
-      return { cell, key, score }
-    })
-    const orderedNeighbors = scored
-      .sort((a, b) => b.score - a.score)
-      .map((entry) => entry.cell)
-    const filteredNeighbors = avoidKey
-      ? orderedNeighbors.filter((cell) => `${cell.group}:${cell.mode}` !== avoidKey)
-      : orderedNeighbors
-    const neighborsToTry = filteredNeighbors.length ? filteredNeighbors : orderedNeighbors
-    for (const cell of neighborsToTry) {
-      const inCell = all.filter(
-        (q) => q.group_code === cell.group && Number(q.mode_code) === Number(cell.mode)
-      )
-      const unasked = inCell.filter((q) => !askedSet.has(q.id))
-      if (unasked.length) {
-        return pickFirst(sortByNumericSuffix(unasked))
-      }
-    }
-    for (const cell of neighborsToTry) {
-      const inCell = all.filter(
-        (q) => q.group_code === cell.group && Number(q.mode_code) === Number(cell.mode)
-      )
-      if (inCell.length) {
-        return pickFirst(sortByNumericSuffix(inCell))
-      }
+const listAllCells = () =>
+  CELL_GROUPS.flatMap((group) => CELL_MODES.map((mode) => ({ group, mode })))
+
+const listNeighborCellsChebyshev = (group, mode) => {
+  const neighbors = []
+  const groupIndex = CELL_GROUPS.indexOf(group)
+  if (groupIndex === -1) return neighbors
+  for (let dg = -1; dg <= 1; dg += 1) {
+    for (let dm = -1; dm <= 1; dm += 1) {
+      if (dg === 0 && dm === 0) continue
+      const nextGroup = CELL_GROUPS[groupIndex + dg]
+      const nextMode = mode + dm
+      if (!nextGroup) continue
+      if (nextMode < 1 || nextMode > 3) continue
+      neighbors.push({ group: nextGroup, mode: nextMode })
     }
   }
+  return neighbors
+}
 
-  if (actionNormalized === 'NEXT' && group && Number.isFinite(mode)) {
-    const inCell = all.filter(
-      (q) => q.group_code === group && Number(q.mode_code) === Number(mode)
+const getCellQuestions = (dataset, group, mode) =>
+  sortByNumericSuffix(
+    dataset.list.filter(
+      (q) => Number(q.is_active) === 1 && q.group_code === group && Number(q.mode_code) === Number(mode)
     )
-    const unasked = inCell.filter((q) => !askedSet.has(q.id))
-    const sorted = sortByNumericSuffix(unasked.length ? unasked : inCell)
-    return pickFirst(sorted)
-  }
+  )
 
-  const unaskedAll = all.filter((q) => !askedSet.has(q.id))
-  return pickRandom(unaskedAll.length ? unaskedAll : all)
+const pickSequentialFromCell = ({ dataset, group, mode, pointer = 0, askedSet }) => {
+  const list = getCellQuestions(dataset, group, mode)
+  if (!list.length) return { question: null, nextPointer: pointer }
+  const start = pointer % list.length
+  let idx = start
+  for (let i = 0; i < list.length; i += 1) {
+    const candidate = list[idx]
+    if (!askedSet || !askedSet.has(candidate.id)) {
+      return { question: candidate, nextPointer: (idx + 1) % list.length }
+    }
+    idx = (idx + 1) % list.length
+  }
+  return { question: list[start], nextPointer: (start + 1) % list.length }
+}
+
+const pickRandomFromCell = ({ dataset, group, mode, askedSet }) => {
+  const list = getCellQuestions(dataset, group, mode)
+  if (!list.length) return null
+  if (askedSet && askedSet.size) {
+    const unasked = list.filter((q) => !askedSet.has(q.id))
+    if (unasked.length) {
+      return unasked[Math.floor(Math.random() * unasked.length)]
+    }
+  }
+  return list[Math.floor(Math.random() * list.length)]
 }
 
 const mapQuestion = (question, lang) => ({
@@ -284,6 +264,31 @@ const normalizeText = (value) =>
     .trim()
     .replace(/\s+/g, ' ')
     .toLowerCase()
+
+const sessionMemory = new Map()
+
+const getSessionMemory = (sessionId) => {
+  if (!sessionId) return null
+  if (!sessionMemory.has(sessionId)) {
+    sessionMemory.set(sessionId, {
+      currentCell: null,
+      recentCells: [],
+      visitCounts: {},
+      cellPointers: {},
+    })
+  }
+  return sessionMemory.get(sessionId)
+}
+
+const safeParseJson = (value, fallback) => {
+  if (!value || typeof value !== 'string') return fallback
+  try {
+    const parsed = JSON.parse(value)
+    return parsed ?? fallback
+  } catch {
+    return fallback
+  }
+}
 
 export default async function handler(req, res) {
   const requestId =
@@ -406,20 +411,148 @@ export default async function handler(req, res) {
       }
     }
 
-    const selectBaseQuestion = (localAskedIds = []) =>
-      selectQuestion({
-        dataset,
-        lang,
-        action,
-        currentGroupCode,
-        currentModeCode,
-        askedIds: localAskedIds,
-        avoidCell:
-          previousGroupCode && Number.isFinite(Number(previousModeCode))
-            ? { group: previousGroupCode, mode: Number(previousModeCode) }
-            : null,
-        recentCells,
+    const memory = getSessionMemory(body.sessionId) || {
+      currentCell: null,
+      recentCells: [],
+      visitCounts: {},
+      cellPointers: {},
+    }
+    if (body.sessionId) {
+      ensureSessionState(body.sessionId)
+      const sessionState = getSessionState(body.sessionId)
+      if (sessionState) {
+        const storedCell =
+          sessionState.current_group_code && Number.isFinite(Number(sessionState.current_mode_code))
+            ? { group: sessionState.current_group_code, mode: Number(sessionState.current_mode_code) }
+            : null
+        if (storedCell) {
+          memory.currentCell = storedCell
+        }
+        memory.recentCells = safeParseJson(sessionState.recent_cells, memory.recentCells)
+        memory.visitCounts = safeParseJson(sessionState.visit_counts, memory.visitCounts)
+        memory.cellPointers = safeParseJson(sessionState.cell_pointers, memory.cellPointers)
+      }
+    }
+
+    const resolveCurrentCell = () => {
+      if (currentGroupCode && Number.isFinite(Number(currentModeCode))) {
+        return { group: String(currentGroupCode), mode: Number(currentModeCode) }
+      }
+      return memory.currentCell
+    }
+
+    const persistMemory = () => {
+      if (!body.sessionId) return
+      updateSessionStateRow({
+        sessionId: body.sessionId,
+        current_group_code: memory.currentCell?.group ?? null,
+        current_mode_code: memory.currentCell?.mode ?? null,
+        recent_cells: JSON.stringify(memory.recentCells || []),
+        visit_counts: JSON.stringify(memory.visitCounts || {}),
+        cell_pointers: JSON.stringify(memory.cellPointers || {}),
       })
+    }
+
+    const updateMemoryCell = (cell) => {
+      if (!cell || !cell.group || !cell.mode) return
+      memory.currentCell = cell
+      const key = cellKey(cell.group, cell.mode)
+      memory.recentCells = [key, ...memory.recentCells.filter((k) => k !== key)].slice(0, 5)
+      memory.visitCounts[key] = (memory.visitCounts[key] || 0) + 1
+      persistMemory()
+    }
+
+    const pickPerspectiveCell = () => {
+      const current = resolveCurrentCell()
+      if (!current) return null
+      const neighbors = listNeighborCellsChebyshev(current.group, Number(current.mode))
+      const avoidKey =
+        previousGroupCode && Number.isFinite(Number(previousModeCode))
+          ? `${previousGroupCode}:${Number(previousModeCode)}`
+          : null
+      const recentSet = new Set([...memory.recentCells, ...recentCells])
+      const scored = neighbors.map((cell) => {
+        const key = cellKey(cell.group, cell.mode)
+        const visitScore = memory.visitCounts[key] || 0
+        let score = -visitScore
+        if (!recentSet.has(key)) score += 2
+        if (avoidKey && key === avoidKey) score -= 3
+        return { cell, key, score }
+      })
+      scored.sort((a, b) => b.score - a.score)
+      const bestScore = scored[0]?.score ?? 0
+      const best = scored.filter((s) => s.score === bestScore)
+      const pick = best[Math.floor(Math.random() * best.length)] || scored[0]
+      if (process.env.DEBUG_PERSPECTIVE === '1') {
+        console.log('[coach/suggest][perspective]', {
+          requestId,
+          prevCell: `${current.group}:${Number(current.mode)}`,
+          avoidCell: avoidKey,
+          recentCells: [...recentSet],
+          candidates: scored.map((s) => ({ key: s.key, score: s.score })),
+          chosen: pick?.key ?? null,
+        })
+      }
+      return pick ? pick.cell : null
+    }
+
+    const pickRandomCell = () => {
+      const current = resolveCurrentCell()
+      const all = listAllCells()
+      const eligible = current
+        ? all.filter((cell) => cell.group !== current.group || cell.mode !== Number(current.mode))
+        : all
+      return eligible[Math.floor(Math.random() * eligible.length)] || null
+    }
+
+    const selectBaseQuestion = (localAskedIds = [], mode) => {
+      const askedSet = new Set(localAskedIds.filter(Boolean))
+      const current = resolveCurrentCell()
+      if (mode === 'DEEPEN') {
+        if (!current) return { question: null, cell: null, pointer: null }
+        const key = cellKey(current.group, current.mode)
+        const pointer = memory.cellPointers[key] || 0
+        const { question, nextPointer } = pickSequentialFromCell({
+          dataset,
+          group: current.group,
+          mode: Number(current.mode),
+          pointer,
+          askedSet,
+        })
+        memory.cellPointers[key] = nextPointer
+        updateMemoryCell(current)
+        return { question, cell: current, pointer: nextPointer }
+      }
+      if (mode === 'PERSPECTIVE') {
+        const nextCell = pickPerspectiveCell()
+        if (!nextCell) return { question: null, cell: null, pointer: null }
+        const key = cellKey(nextCell.group, nextCell.mode)
+        const pointer = memory.cellPointers[key] || 0
+        const { question, nextPointer } = pickSequentialFromCell({
+          dataset,
+          group: nextCell.group,
+          mode: Number(nextCell.mode),
+          pointer,
+          askedSet,
+        })
+        memory.cellPointers[key] = nextPointer
+        updateMemoryCell(nextCell)
+        return { question, cell: nextCell, pointer: nextPointer }
+      }
+      if (mode === 'NEXT') {
+        const nextCell = pickRandomCell()
+        if (!nextCell) return { question: null, cell: null, pointer: null }
+        const question = pickRandomFromCell({
+          dataset,
+          group: nextCell.group,
+          mode: Number(nextCell.mode),
+          askedSet,
+        })
+        updateMemoryCell(nextCell)
+        return { question, cell: nextCell, pointer: null }
+      }
+      return { question: null, cell: null, pointer: null }
+    }
 
     const buildBaseLog = (payload) =>
       console.log('[coach/suggest][base_select]', {
@@ -434,6 +567,8 @@ export default async function handler(req, res) {
       if (askedTextSet.has(normalized)) return true
       return false
     }
+
+    const actionNormalized = String(action || 'NEXT').toUpperCase()
 
     if (aiSupportEnabled) {
       const limitedEntries = boardEntries.slice(0, 30)
@@ -507,12 +642,13 @@ export default async function handler(req, res) {
       let attempts = 0
       let localAskedIds = [...askedIds]
       while (attempts < 5) {
-        const baseQuestion = selectBaseQuestion(localAskedIds)
+        const baseSelection = selectBaseQuestion(localAskedIds, actionNormalized)
+        const baseQuestion = baseSelection.question
         if (!baseQuestion) break
         localAskedIds = [...localAskedIds, baseQuestion.id]
         const baseMapped = mapQuestion(baseQuestion, lang)
         buildBaseLog({
-          action,
+          action: actionNormalized,
           attempt: attempts,
           baseQuestionId: baseQuestion.id,
           baseQuestionCell: `${baseQuestion.group_code}:${baseQuestion.mode_code}`,
@@ -522,6 +658,10 @@ export default async function handler(req, res) {
             previousGroupCode && Number.isFinite(Number(previousModeCode))
               ? `${previousGroupCode}:${Number(previousModeCode)}`
               : null,
+          nextCell: baseSelection.cell
+            ? `${baseSelection.cell.group}:${Number(baseSelection.cell.mode)}`
+            : null,
+          pointer: baseSelection.pointer ?? null,
         })
         let result
         try {
@@ -573,7 +713,7 @@ export default async function handler(req, res) {
           assertQuestionShape(finalQuestion, 'llm_success')
           console.log('[coach/suggest][result]', {
             requestId,
-            action,
+            action: actionNormalized,
             prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
             avoidCell:
               previousGroupCode && Number.isFinite(Number(previousModeCode))
@@ -582,6 +722,10 @@ export default async function handler(req, res) {
             baseQuestionId: baseMapped.id,
             baseQuestionText: baseMapped.text,
             finalQuestionText: finalQuestion?.text ?? null,
+            nextCell: baseSelection.cell
+              ? `${baseSelection.cell.group}:${Number(baseSelection.cell.mode)}`
+              : null,
+            pointer: baseSelection.pointer ?? null,
             modelUsed: meta.modelUsed,
             tokens: meta.tokens,
             source: 'llm',
@@ -621,7 +765,7 @@ export default async function handler(req, res) {
           assertQuestionShape(fallbackQuestion, 'llm_failed_fallback')
           console.log('[coach/suggest][result]', {
             requestId,
-            action,
+            action: actionNormalized,
             prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
             avoidCell:
               previousGroupCode && Number.isFinite(Number(previousModeCode))
@@ -630,6 +774,10 @@ export default async function handler(req, res) {
             baseQuestionId: baseMapped.id,
             baseQuestionText: baseMapped.text,
             finalQuestionText: fallbackQuestion?.text ?? null,
+            nextCell: baseSelection.cell
+              ? `${baseSelection.cell.group}:${Number(baseSelection.cell.mode)}`
+              : null,
+            pointer: baseSelection.pointer ?? null,
             source: 'fallback',
             errorCategory: reasonCategory,
           })
@@ -652,18 +800,8 @@ export default async function handler(req, res) {
     }
 
     const meta = buildMeta({ aiSupportEnabled: false, modelUsed: null, escalated: false })
-    const rawQuestion = selectQuestion({
-      dataset,
-      lang,
-      action,
-      currentGroupCode,
-      currentModeCode,
-      askedIds,
-      avoidCell:
-        previousGroupCode && Number.isFinite(Number(previousModeCode))
-          ? { group: previousGroupCode, mode: Number(previousModeCode) }
-          : null,
-    })
+    const baseSelection = selectBaseQuestion(askedIds, actionNormalized)
+    const rawQuestion = baseSelection.question
     const activeList = dataset.list.filter((q) => Number(q.is_active) === 1)
     if (activeList.length === 0) {
       sendJson(res, 200, {
@@ -691,10 +829,14 @@ export default async function handler(req, res) {
         const fallbackQuestion = normalizeQuestion({ text: metaQuestionText })
         console.log('[coach/suggest][result]', {
           requestId,
-          action,
+          action: actionNormalized,
           prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
           baseQuestionId: fallback?.id ?? null,
           finalQuestionText: fallbackQuestion?.text ?? null,
+          nextCell: baseSelection.cell
+            ? `${baseSelection.cell.group}:${Number(baseSelection.cell.mode)}`
+            : null,
+          pointer: baseSelection.pointer ?? null,
           source: 'fallback',
           dedupe: true,
         })
@@ -746,10 +888,14 @@ export default async function handler(req, res) {
     }
     console.log('[coach/suggest][result]', {
       requestId,
-      action,
+      action: actionNormalized,
       prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
       baseQuestionId: rawQuestion?.id ?? null,
       finalQuestionText: normalizedQuestion?.text ?? null,
+      nextCell: baseSelection.cell
+        ? `${baseSelection.cell.group}:${Number(baseSelection.cell.mode)}`
+        : null,
+      pointer: baseSelection.pointer ?? null,
       source: 'fallback',
     })
     sendJson(res, 200, {

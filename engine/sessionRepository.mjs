@@ -17,6 +17,26 @@ const ensureSessionsColumns = () => {
   }
 }
 
+const ensureSessionStateColumns = () => {
+  const db = getEngineDb()
+  const columns = db.prepare(`PRAGMA table_info(session_state)`).all().map((row) => row.name)
+  if (!columns.includes('current_group_code')) {
+    db.prepare('ALTER TABLE session_state ADD COLUMN current_group_code TEXT').run()
+  }
+  if (!columns.includes('current_mode_code')) {
+    db.prepare('ALTER TABLE session_state ADD COLUMN current_mode_code INTEGER').run()
+  }
+  if (!columns.includes('recent_cells')) {
+    db.prepare('ALTER TABLE session_state ADD COLUMN recent_cells TEXT').run()
+  }
+  if (!columns.includes('visit_counts')) {
+    db.prepare('ALTER TABLE session_state ADD COLUMN visit_counts TEXT').run()
+  }
+  if (!columns.includes('cell_pointers')) {
+    db.prepare('ALTER TABLE session_state ADD COLUMN cell_pointers TEXT').run()
+  }
+}
+
 const ensureBoardItemsColumns = () => {
   const db = getEngineDb()
   const columns = db.prepare(`PRAGMA table_info(board_items)`).all().map((row) => row.name)
@@ -274,6 +294,7 @@ export const ensureSessionExists = (sessionId) => {
 
 export const ensureSessionState = (sessionId) => {
   ensureSessionExists(sessionId)
+  ensureSessionStateColumns()
   const db = getEngineDb()
   const timestamp = nowMs()
   db.prepare(
@@ -288,7 +309,8 @@ export const getSessionState = (sessionId) => {
   const db = getEngineDb()
   return db
     .prepare(
-      `SELECT session_id, depth_level, hard_streak, last_question_id, last_difficulty, asked_count, updated_at
+      `SELECT session_id, depth_level, hard_streak, last_question_id, last_difficulty, asked_count, updated_at,
+              current_group_code, current_mode_code, recent_cells, visit_counts, cell_pointers
        FROM session_state
        WHERE session_id = @session_id`
     )
@@ -302,6 +324,11 @@ export const updateSessionStateRow = ({
   last_question_id,
   last_difficulty,
   asked_count,
+  current_group_code,
+  current_mode_code,
+  recent_cells,
+  visit_counts,
+  cell_pointers,
 }) => {
   const db = getEngineDb()
   db.prepare(
@@ -311,7 +338,12 @@ export const updateSessionStateRow = ({
          hard_streak = COALESCE(@hard_streak, hard_streak),
          last_question_id = COALESCE(@last_question_id, last_question_id),
          last_difficulty = COALESCE(@last_difficulty, last_difficulty),
-         asked_count = COALESCE(@asked_count, asked_count)
+         asked_count = COALESCE(@asked_count, asked_count),
+         current_group_code = COALESCE(@current_group_code, current_group_code),
+         current_mode_code = COALESCE(@current_mode_code, current_mode_code),
+         recent_cells = COALESCE(@recent_cells, recent_cells),
+         visit_counts = COALESCE(@visit_counts, visit_counts),
+         cell_pointers = COALESCE(@cell_pointers, cell_pointers)
      WHERE session_id = @session_id`
   ).run({
     session_id: sessionId,
@@ -321,6 +353,11 @@ export const updateSessionStateRow = ({
     last_question_id,
     last_difficulty,
     asked_count,
+    current_group_code,
+    current_mode_code,
+    recent_cells,
+    visit_counts,
+    cell_pointers,
   })
 }
 
