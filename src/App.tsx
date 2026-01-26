@@ -3539,6 +3539,13 @@ function App() {
   const [engineAskedQuestionMeta, setEngineAskedQuestionMeta] = useState<
     Record<string, { group_code?: string; mode_code?: number }>
   >({})
+  const [engineAskedQuestionTexts, setEngineAskedQuestionTexts] = useState<string[]>([])
+  const [enginePrevQuestionMeta, setEnginePrevQuestionMeta] = useState<{
+    group_code?: string
+    mode_code?: number
+  } | null>(null)
+  const [engineLastQuestionText, setEngineLastQuestionText] = useState<string | null>(null)
+  const [engineRecentCells, setEngineRecentCells] = useState<string[]>([])
   const [engineLastQuestionMeta, setEngineLastQuestionMeta] = useState<{
     id: string
     group_code?: string
@@ -5913,7 +5920,7 @@ const isAuthFlowInProgress = () => {
     }
   }
 
-  const activateFacilitationPrompt = async (type: FacilitationType) => {
+  const activateFacilitationPrompt = async (type: FacilitationType, retryCount = 0) => {
     if (!enginePreviewSessionId) return
     if (engineFacilitationLoading) return
     setEngineFacilitationLoading(true)
@@ -5966,6 +5973,11 @@ const isAuthFlowInProgress = () => {
           language,
           action: type,
           askedIds: engineAskedQuestionIds,
+          askedTexts: engineAskedQuestionTexts,
+          lastQuestionText: engineLastQuestionText,
+          recentCells: engineRecentCells,
+          previousGroupCode: enginePrevQuestionMeta?.group_code ?? null,
+          previousModeCode: enginePrevQuestionMeta?.mode_code ?? null,
           currentGroupCode: engineLastQuestionMeta?.group_code ?? null,
           currentModeCode: engineLastQuestionMeta?.mode_code ?? null,
           boardEntries,
@@ -6015,6 +6027,17 @@ const isAuthFlowInProgress = () => {
         setEnginePreviewError(copy.enginePreviewQuestionEmpty)
         return
       }
+      if (engineActivePrompt?.text && normalized.questionText === engineActivePrompt.text && retryCount < 1) {
+        if (import.meta.env.DEV) {
+          console.log('[ai] facilitation duplicate, retrying once', {
+            text: normalized.questionText,
+          })
+        }
+        setTimeout(() => {
+          void activateFacilitationPrompt(type, retryCount + 1)
+        }, 0)
+        return
+      }
       setEngineApiDebug(import.meta.env.VITE_DEBUG_ENGINE === '1' ? {
         endpoint,
         status: result.status,
@@ -6028,6 +6051,11 @@ const isAuthFlowInProgress = () => {
           labelType: normalized.labelType,
         })
       }
+      setEngineLastQuestionText(normalized.questionText)
+      setEngineAskedQuestionTexts((prev) => {
+        if (prev.includes(normalized.questionText)) return prev
+        return [...prev, normalized.questionText]
+      })
       setEnginePreviewInput('')
       enginePreviousInput.current = ''
       setEngineUiState('FACILITATED_INPUT')
@@ -6071,6 +6099,22 @@ const isAuthFlowInProgress = () => {
             ? normalized.questions[0]?.mode_code ?? fallbackMode
             : normalized.questionObj?.mode_code ?? fallbackMode,
         })
+        setEnginePrevQuestionMeta(engineLastQuestionMeta)
+        const recentGroup =
+          (normalized.questions.length
+            ? normalized.questions[0]?.group_code ?? fallbackGroup
+            : normalized.questionObj?.group_code ?? fallbackGroup) || null
+        const recentMode =
+          (normalized.questions.length
+            ? normalized.questions[0]?.mode_code ?? fallbackMode
+            : normalized.questionObj?.mode_code ?? fallbackMode) || null
+        if (recentGroup && recentMode) {
+          const key = `${recentGroup}:${recentMode}`
+          setEngineRecentCells((prev) => {
+            const next = [key, ...prev.filter((cell) => cell !== key)]
+            return next.slice(0, 5)
+          })
+        }
         setEngineAskedQuestionIds((prev) =>
           prev.includes(questionId) ? prev : [...prev, questionId]
         )
@@ -6362,6 +6406,10 @@ const isAuthFlowInProgress = () => {
     setEngineAskedQuestionIds([])
     setEngineAskedQuestionMeta({})
     setEngineLastQuestionMeta(null)
+    setEngineAskedQuestionTexts([])
+    setEnginePrevQuestionMeta(null)
+    setEngineLastQuestionText(null)
+    setEngineRecentCells([])
     resetStuckSignals()
     setEngineFreeEntryStreak(0)
     setEngineLastEntryAt(null)

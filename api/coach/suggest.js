@@ -161,9 +161,19 @@ const listNeighborCells = (group, mode) => {
   return neighbors
 }
 
-const selectQuestion = ({ dataset, lang, action, currentGroupCode, currentModeCode, askedIds }) => {
+const selectQuestion = ({
+  dataset,
+  lang,
+  action,
+  currentGroupCode,
+  currentModeCode,
+  askedIds,
+  avoidCell,
+  recentCells,
+}) => {
   const normalizedLang = normalizeLang(lang)
   const askedSet = new Set((askedIds || []).filter(Boolean))
+  const recentSet = new Set((recentCells || []).filter(Boolean))
   const all = dataset.list.filter((q) => Number(q.is_active) === 1)
   const actionNormalized = String(action || 'NEXT').toUpperCase()
   const group = currentGroupCode || null
@@ -180,11 +190,30 @@ const selectQuestion = ({ dataset, lang, action, currentGroupCode, currentModeCo
 
   if (actionNormalized === 'PERSPECTIVE' && group && Number.isFinite(mode)) {
     const neighbors = listNeighborCells(group, Number(mode))
-    const orderedNeighbors = [
-      ...neighbors.filter((cell) => cell.group === group || cell.mode === Number(mode)),
-      ...neighbors.filter((cell) => cell.group !== group && cell.mode !== Number(mode)),
-    ]
-    for (const cell of orderedNeighbors) {
+    const avoidKey =
+      avoidCell && avoidCell.group && Number.isFinite(avoidCell.mode)
+        ? `${avoidCell.group}:${Number(avoidCell.mode)}`
+        : null
+    const scored = neighbors.map((cell) => {
+      const key = `${cell.group}:${cell.mode}`
+      let score = 0
+      if (cell.group !== group) score += 2
+      if (!recentSet.has(key)) score += 1
+      if (avoidKey && key === avoidKey) score -= 2
+      return { cell, key, score }
+    })
+    const orderedNeighbors = scored
+      .sort((a, b) => b.score - a.score)
+      .map((entry) => entry.cell)
+    const avoidKey =
+      avoidCell && avoidCell.group && Number.isFinite(avoidCell.mode)
+        ? `${avoidCell.group}:${Number(avoidCell.mode)}`
+        : null
+    const filteredNeighbors = avoidKey
+      ? orderedNeighbors.filter((cell) => `${cell.group}:${cell.mode}` !== avoidKey)
+      : orderedNeighbors
+    const neighborsToTry = filteredNeighbors.length ? filteredNeighbors : orderedNeighbors
+    for (const cell of neighborsToTry) {
       const inCell = all.filter(
         (q) => q.group_code === cell.group && Number(q.mode_code) === Number(cell.mode)
       )
@@ -193,7 +222,7 @@ const selectQuestion = ({ dataset, lang, action, currentGroupCode, currentModeCo
         return pickFirst(sortByNumericSuffix(unasked))
       }
     }
-    for (const cell of orderedNeighbors) {
+    for (const cell of neighborsToTry) {
       const inCell = all.filter(
         (q) => q.group_code === cell.group && Number(q.mode_code) === Number(cell.mode)
       )
@@ -201,6 +230,15 @@ const selectQuestion = ({ dataset, lang, action, currentGroupCode, currentModeCo
         return pickFirst(sortByNumericSuffix(inCell))
       }
     }
+  }
+
+  if (actionNormalized === 'NEXT' && group && Number.isFinite(mode)) {
+    const inCell = all.filter(
+      (q) => q.group_code === group && Number(q.mode_code) === Number(mode)
+    )
+    const unasked = inCell.filter((q) => !askedSet.has(q.id))
+    const sorted = sortByNumericSuffix(unasked.length ? unasked : inCell)
+    return pickFirst(sorted)
   }
 
   const unaskedAll = all.filter((q) => !askedSet.has(q.id))
@@ -245,8 +283,20 @@ const assertQuestionShape = (question, context) => {
   }
 }
 
+const normalizeText = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase()
+
 export default async function handler(req, res) {
+  const requestId =
+    req.headers['x-request-id'] ||
+    (typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`)
   console.log('[coach/suggest][boot]', {
+    requestId,
     time: new Date().toISOString(),
     method: req.method,
     url: req.url,
@@ -257,9 +307,10 @@ export default async function handler(req, res) {
     node: process.version,
   })
   if (!req.body) {
-    console.error('[coach/suggest][input]', 'Missing request body')
+    console.error('[coach/suggest][input]', 'Missing request body', { requestId })
   }
   console.info('[coach/suggest] handler entered', {
+    requestId,
     time: new Date().toISOString(),
     nodeEnv: process.env.NODE_ENV,
     vercelEnv: process.env.VERCEL_ENV,
@@ -267,6 +318,7 @@ export default async function handler(req, res) {
     openAIKeyLen: process.env.OPENAI_API_KEY?.length || 0,
   })
   console.info('[coach/suggest] start', {
+    requestId,
     method: req.method,
     path: req.url,
     hasAiSupportHeader: Boolean(
@@ -297,6 +349,7 @@ export default async function handler(req, res) {
       body?.sessionName || (Array.isArray(body?.boardEntries) && body.boardEntries.length)
     )
     console.log('[ai] suggest input', {
+      requestId,
       ts: new Date().toISOString(),
       aiSupportHeader,
       aiSupportEnabled,
@@ -307,6 +360,7 @@ export default async function handler(req, res) {
       env: process.env.VERCEL ? 'vercel' : 'local',
     })
     console.info('[coach/suggest] llm_prepare', {
+      requestId,
       aiSupportEnabled,
       aiSupportDisabledEnv: process.env.AI_SUPPORT_DISABLED || null,
       hasOpenAIKey: hasOpenAiKey,
@@ -317,8 +371,16 @@ export default async function handler(req, res) {
     const lang = normalizeLang(body.lang || body.language || 'pl')
     const action = body.action || 'NEXT'
     const askedIds = Array.isArray(body.askedIds) ? body.askedIds : []
+    const askedTexts = Array.isArray(body.askedTexts)
+      ? body.askedTexts.map((text) => String(text || '')).filter(Boolean)
+      : []
+    const askedTextSet = new Set(askedTexts.map((text) => normalizeText(text)))
+    const lastQuestionText = body.lastQuestionText ? String(body.lastQuestionText) : ''
+    const recentCells = Array.isArray(body.recentCells) ? body.recentCells : []
     const currentGroupCode = body.currentGroupCode || null
     const currentModeCode = body.currentModeCode || null
+    const previousGroupCode = body.previousGroupCode || null
+    const previousModeCode = body.previousModeCode || null
     const sessionName = String(body.sessionName || '').trim()
     const boardEntriesRaw = Array.isArray(body.boardEntries)
       ? body.boardEntries
@@ -348,21 +410,46 @@ export default async function handler(req, res) {
       }
     }
 
+    const selectBaseQuestion = (localAskedIds = []) =>
+      selectQuestion({
+        dataset,
+        lang,
+        action,
+        currentGroupCode,
+        currentModeCode,
+        askedIds: localAskedIds,
+        avoidCell:
+          previousGroupCode && Number.isFinite(Number(previousModeCode))
+            ? { group: previousGroupCode, mode: Number(previousModeCode) }
+            : null,
+        recentCells,
+      })
+
+    const buildBaseLog = (payload) =>
+      console.log('[coach/suggest][base_select]', {
+        requestId,
+        ...payload,
+      })
+
+    const shouldRejectDuplicateText = (text) => {
+      const normalized = normalizeText(text)
+      if (!normalized) return true
+      if (lastQuestionText && normalizeText(lastQuestionText) === normalized) return true
+      if (askedTextSet.has(normalized)) return true
+      return false
+    }
+
     if (aiSupportEnabled) {
       const limitedEntries = boardEntries.slice(0, 30)
       const keywords = [
         ...extractKeywords(sessionName),
         ...limitedEntries.flatMap((entry) => extractKeywords(entry)),
       ]
-      const contextInput = buildContextPrompt({
-        boardItems: limitedEntries,
-        sessionTitle: sessionName,
-        matrixContext,
-      })
-      const count = Number(body.count || 4)
-      const buildInstructions = (attempt) =>
+      const count = Number(body.count || 1)
+      const buildInstructions = (attempt, baseQuestionText) =>
         [
-          `Generate ${count} facilitation questions as JSON.`,
+          `Refine this base question to better fit the session context.`,
+          `Base question: "${baseQuestionText}"`,
           'You are a facilitation coach. You MUST base questions on the provided session title and the existing board entries.',
           'Do not invent product details not present in the context.',
           'Each question must reference at least one concrete theme from the entries OR the session title.',
@@ -373,15 +460,23 @@ export default async function handler(req, res) {
             : '',
         ].filter(Boolean).join(' ')
 
-      const runSuggest = async (attempt) => {
+      const runSuggest = async (attempt, baseQuestionText) => {
         try {
+          const contextInput = buildContextPrompt({
+            boardItems: limitedEntries,
+            sessionTitle: sessionName,
+            matrixContext: {
+              ...(matrixContext || {}),
+              baseQuestion: baseQuestionText,
+            },
+          })
           return await runLlmTask({
             apiKey: process.env.OPENAI_API_KEY,
             aiSupportEnabled: true,
             task: 'coach-suggest',
             input: contextInput,
             language: lang === 'pl' ? 'Polish' : 'English',
-            taskInstructions: buildInstructions(attempt),
+            taskInstructions: buildInstructions(attempt, baseQuestionText),
             parseResponse: (value) => {
               try {
                 const parsed = JSON.parse(value)
@@ -413,23 +508,102 @@ export default async function handler(req, res) {
         }
       }
 
-      let result
-      try {
-        result = await runSuggest(0)
-      } catch (err) {
-        console.error('[coach/suggest] llm_error', {
-          name: err?.name,
-          message: err?.message,
-          stack: typeof err?.stack === 'string' ? err.stack.slice(0, 800) : null,
-          status: err?.status || err?.response?.status || null,
+      let attempts = 0
+      let localAskedIds = [...askedIds]
+      while (attempts < 5) {
+        const baseQuestion = selectBaseQuestion(localAskedIds)
+        if (!baseQuestion) break
+        localAskedIds = [...localAskedIds, baseQuestion.id]
+        const baseMapped = mapQuestion(baseQuestion, lang)
+        buildBaseLog({
+          action,
+          attempt: attempts,
+          baseQuestionId: baseQuestion.id,
+          baseQuestionCell: `${baseQuestion.group_code}:${baseQuestion.mode_code}`,
+          neighborCandidates: recentCells,
+          prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
+          avoidCell:
+            previousGroupCode && Number.isFinite(Number(previousModeCode))
+              ? `${previousGroupCode}:${Number(previousModeCode)}`
+              : null,
         })
-        result = {
-          ok: false,
-          error: String(err?.message || err),
-          meta: { aiSupportEnabled: true, modelUsed: null, escalated: false, tokens: { input: 0, output: 0, total: 0 } },
+        let result
+        try {
+          result = await runSuggest(attempts > 0 ? 1 : 0, baseMapped.text)
+        } catch (err) {
+          console.error('[coach/suggest] llm_error', {
+            requestId,
+            name: err?.name,
+            message: err?.message,
+            stack: typeof err?.stack === 'string' ? err.stack.slice(0, 800) : null,
+            status: err?.status || err?.response?.status || null,
+          })
+          result = {
+            ok: false,
+            error: String(err?.message || err),
+            meta: {
+              aiSupportEnabled: true,
+              modelUsed: null,
+              escalated: false,
+              tokens: { input: 0, output: 0, total: 0 },
+            },
+          }
         }
-      }
-      if (!result.ok) {
+        if (result.ok) {
+          let questions = result.data?.questions || []
+          let groundedCount = countGroundedQuestions(questions, keywords)
+          if (groundedCount === 0) {
+            result = await runSuggest(1, baseMapped.text)
+            if (!result.ok) {
+              questions = []
+            } else {
+              questions = result.data?.questions || []
+              groundedCount = countGroundedQuestions(questions, keywords)
+            }
+          }
+          const candidate = questions[0]?.text ? String(questions[0].text).trim() : ''
+          const finalText = candidate || baseMapped.text
+          if (shouldRejectDuplicateText(finalText)) {
+            console.log('[coach/suggest][dedupe]', {
+              requestId,
+              reason: 'duplicate_text',
+              finalText,
+            })
+            attempts += 1
+            continue
+          }
+          const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          const finalQuestion = normalizeQuestion({ ...baseMapped, text: finalText })
+          assertQuestionShape(finalQuestion, 'llm_success')
+          console.log('[coach/suggest][result]', {
+            requestId,
+            action,
+            prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
+            avoidCell:
+              previousGroupCode && Number.isFinite(Number(previousModeCode))
+                ? `${previousGroupCode}:${Number(previousModeCode)}`
+                : null,
+            baseQuestionId: baseMapped.id,
+            baseQuestionText: baseMapped.text,
+            finalQuestionText: finalQuestion?.text ?? null,
+            modelUsed: meta.modelUsed,
+            tokens: meta.tokens,
+            source: 'llm',
+          })
+          sendJson(res, 200, {
+            ok: true,
+            question: finalQuestion,
+            data: { questions: [{ ...finalQuestion }] },
+            groundedCount,
+            meta,
+            usage: {
+              model: meta.modelUsed,
+              tokensIn: meta.tokens.input,
+              tokensOut: meta.tokens.output,
+            },
+          })
+          return
+        }
         const mapped = mapLlmError(result.error)
         const errorText = String(result.error || '')
         const reasonCategory = errorText.includes('OPENAI_API_KEY')
@@ -440,75 +614,33 @@ export default async function handler(req, res) {
               ? 'OPENAI_NETWORK'
               : 'LLM_FAILED'
         console.error('[ai] LLM failed', {
+          requestId,
           code: mapped.code,
           reasonCategory,
           aiSupportEnabled,
           hasOpenAiKey,
         })
-        const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
-        const rawQuestion = selectQuestion({
-          dataset,
-          lang,
-          action,
-          currentGroupCode,
-          currentModeCode,
-          askedIds,
-        })
-        const fallback = rawQuestion || dataset.list.find((q) => Number(q.is_active) === 1)
-        const normalizedQuestion = normalizeQuestion(fallback ? mapQuestion(fallback, lang) : null)
-        assertQuestionShape(normalizedQuestion, 'llm_failed_fallback')
-        sendJson(res, 200, {
-          ok: true,
-          source: 'fallback',
-          question: normalizedQuestion,
-          meta: {
-            aiSupportEnabled: true,
-            modelUsed: null,
-            escalated: false,
-            tokens: { input: 0, output: 0, total: 0 },
-            errorCategory: reasonCategory,
-          },
-        })
-        return
-      }
-      let questions = result.data?.questions || []
-      let groundedCount = countGroundedQuestions(questions, keywords)
-      if (groundedCount === 0) {
-        result = await runSuggest(1)
-        if (!result.ok) {
-          const mapped = mapLlmError(result.error)
-          const errorText = String(result.error || '')
-          const reasonCategory = errorText.includes('OPENAI_API_KEY')
-            ? 'MISSING_OPENAI_KEY'
-            : errorText.includes('401') || errorText.includes('403')
-              ? 'OPENAI_AUTH'
-              : errorText.includes('timeout') || errorText.includes('ETIMEDOUT')
-                ? 'OPENAI_NETWORK'
-                : 'LLM_FAILED'
-          console.error('[ai] LLM failed', {
-            code: mapped.code,
-            reasonCategory,
-            aiSupportEnabled,
-            hasOpenAiKey,
-          })
-          const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
-          const rawQuestion = selectQuestion({
-            dataset,
-            lang,
+        const fallbackQuestion = normalizeQuestion(baseMapped)
+        if (fallbackQuestion && !shouldRejectDuplicateText(fallbackQuestion.text)) {
+          assertQuestionShape(fallbackQuestion, 'llm_failed_fallback')
+          console.log('[coach/suggest][result]', {
+            requestId,
             action,
-            currentGroupCode,
-            currentModeCode,
-            askedIds,
+            prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
+            avoidCell:
+              previousGroupCode && Number.isFinite(Number(previousModeCode))
+                ? `${previousGroupCode}:${Number(previousModeCode)}`
+                : null,
+            baseQuestionId: baseMapped.id,
+            baseQuestionText: baseMapped.text,
+            finalQuestionText: fallbackQuestion?.text ?? null,
+            source: 'fallback',
+            errorCategory: reasonCategory,
           })
-          const fallback = rawQuestion || dataset.list.find((q) => Number(q.is_active) === 1)
-          const normalizedQuestion = normalizeQuestion(
-            fallback ? mapQuestion(fallback, lang) : null
-          )
-          assertQuestionShape(normalizedQuestion, 'llm_failed_retry_fallback')
           sendJson(res, 200, {
             ok: true,
             source: 'fallback',
-            question: normalizedQuestion,
+            question: fallbackQuestion,
             meta: {
               aiSupportEnabled: true,
               modelUsed: null,
@@ -519,29 +651,7 @@ export default async function handler(req, res) {
           })
           return
         }
-        questions = result.data?.questions || []
-        groundedCount = countGroundedQuestions(questions, keywords)
-      }
-
-      if (!questions.length || groundedCount === 0) {
-        console.error('[ai] grounding failed; falling back')
-      } else {
-        const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
-        const normalizedQuestion = normalizeQuestion(questions[0])
-        assertQuestionShape(normalizedQuestion, 'llm_success')
-        sendJson(res, 200, {
-          ok: true,
-          question: normalizedQuestion,
-          data: { questions },
-          groundedCount,
-          meta,
-          usage: {
-            model: meta.modelUsed,
-            tokensIn: meta.tokens.input,
-            tokensOut: meta.tokens.output,
-          },
-        })
-        return
+        attempts += 1
       }
     }
 
@@ -553,6 +663,10 @@ export default async function handler(req, res) {
       currentGroupCode,
       currentModeCode,
       askedIds,
+      avoidCell:
+        previousGroupCode && Number.isFinite(Number(previousModeCode))
+          ? { group: previousGroupCode, mode: Number(previousModeCode) }
+          : null,
     })
     const activeList = dataset.list.filter((q) => Number(q.is_active) === 1)
     if (activeList.length === 0) {
@@ -573,6 +687,31 @@ export default async function handler(req, res) {
       const fallback = activeList[0]
       const normalizedQuestion = normalizeQuestion(mapQuestion(fallback, lang))
       assertQuestionShape(normalizedQuestion, 'fallback_active_first')
+      if (normalizedQuestion && shouldRejectDuplicateText(normalizedQuestion.text)) {
+        const metaQuestionText =
+          lang === 'pl'
+            ? 'Co jeszcze jest niejasne lub ryzykowne?'
+            : 'What is still unclear or risky?'
+        const fallbackQuestion = normalizeQuestion({ text: metaQuestionText })
+        console.log('[coach/suggest][result]', {
+          requestId,
+          action,
+          prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
+          baseQuestionId: fallback?.id ?? null,
+          finalQuestionText: fallbackQuestion?.text ?? null,
+          source: 'fallback',
+          dedupe: true,
+        })
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          question: fallbackQuestion,
+          data: { question: fallbackQuestion },
+          meta,
+          debug: { fallbackUsed: true, dedupe: true },
+        })
+        return
+      }
       sendJson(res, 200, {
         ok: true,
         question: normalizedQuestion,
@@ -584,6 +723,39 @@ export default async function handler(req, res) {
     }
     const normalizedQuestion = normalizeQuestion(mapQuestion(rawQuestion, lang))
     assertQuestionShape(normalizedQuestion, 'fallback_selected')
+    if (normalizedQuestion && shouldRejectDuplicateText(normalizedQuestion.text)) {
+      const metaQuestionText =
+        lang === 'pl'
+          ? 'Co jeszcze jest niejasne lub ryzykowne?'
+          : 'What is still unclear or risky?'
+      const fallbackQuestion = normalizeQuestion({ text: metaQuestionText })
+      console.log('[coach/suggest][result]', {
+        requestId,
+        action,
+        prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
+        baseQuestionId: rawQuestion?.id ?? null,
+        finalQuestionText: fallbackQuestion?.text ?? null,
+        source: 'fallback',
+        dedupe: true,
+      })
+      sendJson(res, 200, {
+        ok: true,
+        source: 'fallback',
+        question: fallbackQuestion,
+        data: { question: fallbackQuestion },
+        meta,
+        debug: { fallbackUsed: true, dedupe: true },
+      })
+      return
+    }
+    console.log('[coach/suggest][result]', {
+      requestId,
+      action,
+      prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
+      baseQuestionId: rawQuestion?.id ?? null,
+      finalQuestionText: normalizedQuestion?.text ?? null,
+      source: 'fallback',
+    })
     sendJson(res, 200, {
       ok: true,
       question: normalizedQuestion,
