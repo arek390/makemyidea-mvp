@@ -480,6 +480,8 @@ type Translations = {
   engineFacilitationNext: string
   engineFacilitationDeepen: string
   engineFacilitationPerspective: string
+  engineFacilitationLoadingLabel: string
+  engineFacilitationLoadingPlaceholder: string
   engineNamePrompt: string
   engineNameLabel: string
   engineNamePlaceholder: string
@@ -802,6 +804,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineFacilitationNext: 'Next question',
     engineFacilitationDeepen: 'Deepen',
     engineFacilitationPerspective: 'Change perspective',
+    engineFacilitationLoadingLabel: 'Generating question…',
+    engineFacilitationLoadingPlaceholder: 'Tailoring a perspective to your board…',
     engineNamePrompt: 'Give this session a name so it’s easier to return to.',
     engineNameLabel: 'Session name',
     engineNamePlaceholder: 'Session name',
@@ -1485,6 +1489,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineFacilitationNext: 'Następne pytanie',
     engineFacilitationDeepen: 'Pogłęb',
     engineFacilitationPerspective: 'Zmień perspektywę',
+    engineFacilitationLoadingLabel: 'Generuję pytanie…',
+    engineFacilitationLoadingPlaceholder: 'Dobieram perspektywę do Twojej tablicy…',
     engineNamePrompt: 'Nadaj nazwę tej sesji, żeby łatwiej do niej wrócić.',
     engineNameLabel: 'Nazwa sesji',
     engineNamePlaceholder: 'Nazwa sesji',
@@ -3411,6 +3417,12 @@ function App() {
     'INIT' | 'FREE_FLOW' | 'FACILITATION_OFFER' | 'FACILITATED_INPUT'
   >('INIT')
   const [engineActivePrompt, setEngineActivePrompt] = useState<FacilitationPrompt | null>(null)
+  const [enginePromptSource, setEnginePromptSource] = useState<'llm' | 'fallback' | null>(null)
+  const [engineFacilitationLoading, setEngineFacilitationLoading] = useState(false)
+  const [engineFacilitationLoadingType, setEngineFacilitationLoadingType] =
+    useState<FacilitationType | null>(null)
+  const [showEngineFacilitationLoadingUI, setShowEngineFacilitationLoadingUI] =
+    useState(false)
   const [engineWeakSignals, setEngineWeakSignals] = useState(0)
   const [engineMediumSignals, setEngineMediumSignals] = useState(0)
   const [engineStrongSignals, setEngineStrongSignals] = useState(0)
@@ -3506,6 +3518,7 @@ function App() {
   const didLogMappingSelfTestRef = useRef(false)
   const lastGravitySuggestionRef = useRef<string | null>(null)
   const engineImportInputRef = useRef<HTMLInputElement | null>(null)
+  const engineFacilitationLoadingTimerRef = useRef<number | null>(null)
   const suggestLoadingTimerRef = useRef<number | null>(null)
   const [feedbackReminder, setFeedbackReminder] = useState<{
     sessionId: string | null
@@ -5814,6 +5827,18 @@ const isAuthFlowInProgress = () => {
 
   const activateFacilitationPrompt = async (type: FacilitationType) => {
     if (!enginePreviewSessionId) return
+    if (engineFacilitationLoading) return
+    setEngineFacilitationLoading(true)
+    setEngineFacilitationLoadingType(type)
+    setShowEngineFacilitationLoadingUI(false)
+    setEngineActivePrompt(null)
+    setEnginePromptSource(null)
+    if (engineFacilitationLoadingTimerRef.current) {
+      window.clearTimeout(engineFacilitationLoadingTimerRef.current)
+    }
+    engineFacilitationLoadingTimerRef.current = window.setTimeout(() => {
+      setShowEngineFacilitationLoadingUI(true)
+    }, 300)
     setEnginePreviewError(null)
     setEngineFacilitationDiagnostics(null)
     const endpoint = '/api/coach/suggest'
@@ -5876,6 +5901,16 @@ const isAuthFlowInProgress = () => {
       }
       applyUsageModel(data.meta)
       void applyUsageToSession(data.meta, enginePreviewSessionId)
+      const tokenInput = Number(data?.meta?.tokens?.input ?? 0)
+      const tokenOutput = Number(data?.meta?.tokens?.output ?? 0)
+      const sourceFromMeta = data?.meta?.source
+      const derivedSource =
+        sourceFromMeta === 'fallback' || sourceFromMeta === 'llm'
+          ? sourceFromMeta
+          : tokenInput || tokenOutput
+            ? 'llm'
+            : 'fallback'
+      setEnginePromptSource(derivedSource)
       const questions = data?.data?.questions as AiQuestion[] | undefined
       const question = data?.data?.question
       const nextText =
@@ -5931,6 +5966,15 @@ const isAuthFlowInProgress = () => {
       setEngineUiState('FREE_FLOW')
       setEngineOfferReason(null)
       setEnginePreviewError(copy.enginePreviewQuestionEmpty)
+      setEnginePromptSource(null)
+    } finally {
+      if (engineFacilitationLoadingTimerRef.current) {
+        window.clearTimeout(engineFacilitationLoadingTimerRef.current)
+        engineFacilitationLoadingTimerRef.current = null
+      }
+      setShowEngineFacilitationLoadingUI(false)
+      setEngineFacilitationLoading(false)
+      setEngineFacilitationLoadingType(null)
     }
   }
 
@@ -7597,6 +7641,33 @@ const isAuthFlowInProgress = () => {
               >
                 {copy.engineFacilitationNote}
               </div>
+              {engineFacilitationLoading && showEngineFacilitationLoadingUI && (
+                <div className="engine-helper engine-facilitation-loading" role="status" aria-live="polite">
+                  <div className="impulse-placeholder">
+                    <div className="impulse-placeholder-line" />
+                    <div className="impulse-placeholder-line short" />
+                  </div>
+                  <p className="muted">{copy.engineFacilitationLoadingPlaceholder}</p>
+                </div>
+              )}
+              {!engineFacilitationLoading && engineActivePrompt?.text && (
+                <div className="engine-helper engine-facilitation-prompt">
+                  <div className="engine-facilitation-question">{engineActivePrompt.text}</div>
+                  {enginePromptSource && (
+                    <span
+                      className={`impulse-source-chip ${
+                        enginePromptSource === 'fallback' ? 'fallback' : 'ai'
+                      }`}
+                    >
+                      {enginePromptSource === 'fallback'
+                        ? uiLanguage === 'Polish'
+                          ? 'Tryb offline (fallback)'
+                          : 'Offline mode (fallback)'
+                        : 'AI'}
+                    </span>
+                  )}
+                </div>
+              )}
               {import.meta.env.DEV && engineActivePrompt && (
                 <div className="engine-helper">
                   {lastLlmSource === 'llm' ? 'AI generated' : 'Deterministic fallback'}
@@ -7624,9 +7695,17 @@ const isAuthFlowInProgress = () => {
                     armIdleWatch('facilitation_next')
                     void activateFacilitationPrompt('NEXT')
                   }}
-                  disabled={!showFacilitationOffer}
+                  disabled={!showFacilitationOffer || engineFacilitationLoading}
                 >
-                  {copy.engineFacilitationNext}
+                  {showEngineFacilitationLoadingUI &&
+                  engineFacilitationLoadingType === 'NEXT' ? (
+                    <>
+                      <span className="button-spinner" aria-hidden="true" />
+                      {copy.engineFacilitationLoadingLabel}
+                    </>
+                  ) : (
+                    copy.engineFacilitationNext
+                  )}
                 </button>
                 <button
                   type="button"
@@ -7637,9 +7716,17 @@ const isAuthFlowInProgress = () => {
                     armIdleWatch('facilitation_deepen')
                     void activateFacilitationPrompt('DEEPEN')
                   }}
-                  disabled={!showFacilitationOffer}
+                  disabled={!showFacilitationOffer || engineFacilitationLoading}
                 >
-                  {copy.engineFacilitationDeepen}
+                  {showEngineFacilitationLoadingUI &&
+                  engineFacilitationLoadingType === 'DEEPEN' ? (
+                    <>
+                      <span className="button-spinner" aria-hidden="true" />
+                      {copy.engineFacilitationLoadingLabel}
+                    </>
+                  ) : (
+                    copy.engineFacilitationDeepen
+                  )}
                 </button>
                 <button
                   type="button"
@@ -7650,9 +7737,17 @@ const isAuthFlowInProgress = () => {
                     armIdleWatch('facilitation_perspective')
                     void activateFacilitationPrompt('PERSPECTIVE')
                   }}
-                  disabled={!showFacilitationOffer}
+                  disabled={!showFacilitationOffer || engineFacilitationLoading}
                 >
-                  {copy.engineFacilitationPerspective}
+                  {showEngineFacilitationLoadingUI &&
+                  engineFacilitationLoadingType === 'PERSPECTIVE' ? (
+                    <>
+                      <span className="button-spinner" aria-hidden="true" />
+                      {copy.engineFacilitationLoadingLabel}
+                    </>
+                  ) : (
+                    copy.engineFacilitationPerspective
+                  )}
                 </button>
               </div>
               </div>

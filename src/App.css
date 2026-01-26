@@ -2411,6 +2411,26 @@ button.ghost.danger:hover {
   color: var(--muted);
 }
 
+.engine-facilitation-loading {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.engine-facilitation-prompt {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: 12px;
+  background: #f7f8fa;
+  border: 1px solid var(--line);
+  color: var(--ink);
+}
+
+.engine-facilitation-question {
+  font-weight: 600;
+  color: var(--navy);
+}
+
 .engine-facilitation-actions {
   display: flex;
   flex-wrap: wrap;
