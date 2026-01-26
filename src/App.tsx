@@ -3527,6 +3527,9 @@ function App() {
     parseError: string | null
   } | null>(null)
   const [engineAskedQuestionIds, setEngineAskedQuestionIds] = useState<string[]>([])
+  const [engineAskedQuestionMeta, setEngineAskedQuestionMeta] = useState<
+    Record<string, { group_code?: string; mode_code?: number }>
+  >({})
   const [engineLastQuestionMeta, setEngineLastQuestionMeta] = useState<{
     id: string
     group_code?: string
@@ -4838,6 +4841,42 @@ const isAuthFlowInProgress = () => {
     }
   }, [enginePreviewItems])
 
+  const questionMatrix = useMemo(() => {
+    const rows = [
+      { key: 'A', labelPl: 'Świat / Środowisko', labelEn: 'World / Environment' },
+      { key: 'B', labelPl: 'Produkt', labelEn: 'Product' },
+      { key: 'C', labelPl: 'Elementy', labelEn: 'Elements' },
+    ]
+    const cols = [
+      { key: 1, labelPl: 'Jak jest?', labelEn: 'As is' },
+      { key: 2, labelPl: 'Co nie działa?', labelEn: 'Not working' },
+      { key: 3, labelPl: 'Jak powinno być?', labelEn: 'Should be' },
+    ]
+    const counts: Record<string, number> = {}
+    rows.forEach((row) => {
+      cols.forEach((col) => {
+        counts[`${row.key}${col.key}`] = 0
+      })
+    })
+    Object.values(engineAskedQuestionMeta).forEach((meta) => {
+      const group = meta?.group_code ? String(meta.group_code).toUpperCase() : ''
+      const mode = Number(meta?.mode_code)
+      if (!['A', 'B', 'C'].includes(group)) return
+      if (![1, 2, 3].includes(mode)) return
+      const key = `${group}${mode}`
+      counts[key] = (counts[key] || 0) + 1
+    })
+    const currentGroup = engineLastQuestionMeta?.group_code
+      ? String(engineLastQuestionMeta.group_code).toUpperCase()
+      : null
+    const currentMode = Number(engineLastQuestionMeta?.mode_code ?? 0)
+    const currentKey =
+      currentGroup && ['A', 'B', 'C'].includes(currentGroup) && [1, 2, 3].includes(currentMode)
+        ? `${currentGroup}${currentMode}`
+        : null
+    return { rows, cols, counts, currentKey }
+  }, [engineAskedQuestionMeta, engineLastQuestionMeta])
+
   const feedbackContext = useMemo(() => {
     const route = typeof window !== 'undefined' ? window.location.pathname : ''
     const sessionId = enginePreviewSessionId || undefined
@@ -5993,6 +6032,9 @@ const isAuthFlowInProgress = () => {
         ? normalized.questions[0]?.id
         : normalized.questionObj?.id
       if (questionId) {
+        const questionMeta = normalized.questions.length
+          ? normalized.questions[0]
+          : normalized.questionObj
         setEngineLastQuestionMeta({
           id: questionId,
           group_code: normalized.questions.length
@@ -6005,6 +6047,15 @@ const isAuthFlowInProgress = () => {
         setEngineAskedQuestionIds((prev) =>
           prev.includes(questionId) ? prev : [...prev, questionId]
         )
+        if (questionMeta?.group_code || questionMeta?.mode_code) {
+          setEngineAskedQuestionMeta((prev) => ({
+            ...prev,
+            [questionId]: {
+              group_code: questionMeta?.group_code,
+              mode_code: questionMeta?.mode_code,
+            },
+          }))
+        }
       }
       resetStuckSignals()
     } catch {
@@ -6247,7 +6298,11 @@ const isAuthFlowInProgress = () => {
     setEngineNameDraft('')
     setEnginePreviewSessionName('')
     setEngineActivePrompt(null)
+    setEnginePromptSource(null)
     setEngineOfferReason(null)
+    setEngineAskedQuestionIds([])
+    setEngineAskedQuestionMeta({})
+    setEngineLastQuestionMeta(null)
     resetStuckSignals()
     setEngineFreeEntryStreak(0)
     setEngineLastEntryAt(null)
@@ -7356,22 +7411,22 @@ const isAuthFlowInProgress = () => {
                 )}
               </div>
             </div>
-            {(enginePreviewSessionId || engineSessionsOpen || engineSessionDetail?.session) && (
-              <div className="engine-meta">
-                <span>{copy.enginePreviewSessionIdLabel}:</span>
-                <span className="engine-meta-value engine-meta-value--muted">
-                  {enginePreviewSessionId
-                    ? formatSessionLabel(enginePreviewSessionName, enginePreviewSessionId)
-                    : copy.enginePreviewSessionEmpty}
-                </span>
-              </div>
-            )}
-          </section>
+          {(enginePreviewSessionId || engineSessionsOpen || engineSessionDetail?.session) && (
+            <div className="engine-meta">
+              <span>{copy.enginePreviewSessionIdLabel}:</span>
+              <span className="engine-meta-value engine-meta-value--muted">
+                {enginePreviewSessionId
+                  ? formatSessionLabel(enginePreviewSessionName, enginePreviewSessionId)
+                  : copy.enginePreviewSessionEmpty}
+              </span>
+            </div>
+          )}
+        </section>
 
-          {engineSessionsOpen && (
-            <section className="engine-panel engine-sessions">
-              <div className="engine-panel-header">
-                <h2>{copy.engineSessionsTitle}</h2>
+        {engineSessionsOpen && (
+          <section className="engine-panel engine-sessions">
+            <div className="engine-panel-header">
+              <h2>{copy.engineSessionsTitle}</h2>
                 <div className="engine-actions">
                   <button
                     type="button"
@@ -7652,6 +7707,48 @@ const isAuthFlowInProgress = () => {
                     {copy.cancel}
                   </button>
                 </div>
+              </div>
+            </section>
+          )}
+
+          {enginePreviewSessionId && (
+            <section className="engine-panel">
+              <div className="engine-panel-header">
+                <h2>{uiLanguage === 'Polish' ? 'Matryca pytań' : 'Question matrix'}</h2>
+                <div className="engine-helper">
+                  {uiLanguage === 'Polish'
+                    ? 'Liczba zadanych pytań w kategoriach + aktualna kategoria'
+                    : 'Question counts by category + current question category'}
+                </div>
+              </div>
+              <div className="engine-question-matrix">
+                <div className="engine-question-matrix-corner" />
+                {questionMatrix.cols.map((col) => (
+                  <div key={col.key} className="engine-question-matrix-col">
+                    {uiLanguage === 'Polish' ? col.labelPl : col.labelEn}
+                  </div>
+                ))}
+                {questionMatrix.rows.map((row) => (
+                  <div key={row.key} className="engine-question-matrix-row">
+                    <div className="engine-question-matrix-row-label">
+                      {uiLanguage === 'Polish' ? row.labelPl : row.labelEn}
+                    </div>
+                    {questionMatrix.cols.map((col) => {
+                      const key = `${row.key}${col.key}`
+                      const count = questionMatrix.counts[key] || 0
+                      const isCurrent = questionMatrix.currentKey === key
+                      return (
+                        <div
+                          key={key}
+                          className={`engine-question-matrix-cell ${isCurrent ? 'is-current' : ''}`}
+                        >
+                          <span className="engine-question-matrix-count">{count}</span>
+                          <span className="engine-question-matrix-code">{key}</span>
+                        </div>
+                      )
+                    })}
+                  </div>
+                ))}
               </div>
             </section>
           )}
