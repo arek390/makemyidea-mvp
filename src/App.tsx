@@ -172,6 +172,46 @@ type AiQuestion = {
   mode_code?: number
 }
 
+type SuggestLabelType = 'ai' | 'fallback'
+
+const normalizeSuggestResponse = (payload: {
+  ok?: boolean
+  question?: string | AiQuestion | null
+  data?: { question?: string | AiQuestion | null; questions?: AiQuestion[] }
+  meta?: LlmUsageMeta
+  source?: string | null
+}) => {
+  const questions = Array.isArray(payload?.data?.questions) ? payload.data.questions : []
+  const questionCandidate =
+    (questions[0] as AiQuestion | undefined) ??
+    (payload?.question as AiQuestion | string | null) ??
+    (payload?.data?.question as AiQuestion | string | null)
+  let questionObj: AiQuestion | null = null
+  if (typeof questionCandidate === 'string') {
+    const text = questionCandidate.trim()
+    questionObj = text ? { text } : null
+  } else if (questionCandidate && typeof questionCandidate === 'object') {
+    const text = typeof questionCandidate.text === 'string' ? questionCandidate.text.trim() : ''
+    questionObj = text ? { ...questionCandidate, text } : null
+  }
+  const questionText = questionObj?.text ?? null
+  const sourceFromMeta = payload?.meta?.source ?? payload?.source ?? null
+  const tokenInput = Number(payload?.meta?.tokens?.input ?? 0)
+  const tokenOutput = Number(payload?.meta?.tokens?.output ?? 0)
+  const labelType: SuggestLabelType =
+    sourceFromMeta === 'fallback'
+      ? 'fallback'
+      : tokenInput || tokenOutput
+        ? 'ai'
+        : 'fallback'
+  return {
+    questionText,
+    questionObj,
+    labelType,
+    questions,
+  }
+}
+
 const WORD_LIMIT = 40
 const SHORT_ENTRY_WORDS = 12
 const DEFAULT_IDLE_THRESHOLD_MS = 15000
@@ -5670,8 +5710,9 @@ const isAuthFlowInProgress = () => {
       let data:
         | {
             ok?: boolean
+            question?: AiQuestion | string | null
             data?: {
-              question?: AiQuestion | null
+              question?: AiQuestion | string | null
               questions?: AiQuestion[]
             }
             meta?: LlmUsageMeta
@@ -5683,7 +5724,7 @@ const isAuthFlowInProgress = () => {
       } catch {
         data = null
       }
-      if (!response.ok || !data) {
+      if (!response.ok || !data || data.ok === false) {
         setEngineApiDebug(
           import.meta.env.VITE_DEBUG_ENGINE === '1'
             ? { endpoint, status: response.status, response: data, rawText }
@@ -5691,35 +5732,34 @@ const isAuthFlowInProgress = () => {
         )
         throw new Error('Request failed')
       }
+      const normalized = normalizeSuggestResponse(data)
+      if (import.meta.env.DEV) {
+        console.log('[ai] suggest response', data)
+        console.log('[ai] suggest normalized', normalized)
+      }
       applyUsageModel(data.meta)
       void applyUsageToSession(data.meta, enginePreviewSessionId)
-      const sourceFromMeta = data?.meta?.source
-      const tokenInput = Number(data?.meta?.tokens?.input ?? 0)
-      const tokenOutput = Number(data?.meta?.tokens?.output ?? 0)
-      const derivedSource =
-        sourceFromMeta === 'fallback' || sourceFromMeta === 'llm'
-          ? sourceFromMeta
-          : tokenInput || tokenOutput
-            ? 'llm'
-            : 'fallback'
-      setImpulseSource(derivedSource)
-      const questions = data?.data?.questions as AiQuestion[] | undefined
-      const question = data?.data?.question
-      const nextText =
-        questions && questions.length
-          ? String(questions[0]?.text || '').trim()
-          : question?.text
+      setImpulseSource(normalized.labelType === 'fallback' ? 'fallback' : 'llm')
       if (typeof data?.groundedCount === 'number') {
         setLastLlmGroundedCount(data.groundedCount)
       }
-      if (questions && questions.length) {
-        setLastLlmGroundedIn(questions[0]?.grounded_in ?? null)
-        setLastLlmWhy(questions[0]?.why_this_question ?? null)
+      if (normalized.questions.length) {
+        setLastLlmGroundedIn(normalized.questions[0]?.grounded_in ?? null)
+        setLastLlmWhy(normalized.questions[0]?.why_this_question ?? null)
+      } else if (normalized.questionObj) {
+        setLastLlmGroundedIn(normalized.questionObj.grounded_in ?? null)
+        setLastLlmWhy(normalized.questionObj.why_this_question ?? null)
       }
-      if (!nextText) {
-        setImpulseQuestion(null)
+      if (normalized.questionText) {
+        setImpulseQuestion(normalized.questionText)
+        if (import.meta.env.DEV) {
+          console.log('[ai] suggest state', {
+            questionText: normalized.questionText,
+            labelType: normalized.labelType,
+          })
+        }
       } else {
-        setImpulseQuestion(nextText)
+        setImpulseQuestion(null)
       }
     } catch {
       setImpulseQuestion(null)
@@ -5887,44 +5927,39 @@ const isAuthFlowInProgress = () => {
       })
       const data = result.json as
         | {
+            ok?: boolean
+            question?: AiQuestion | string | null
             data?: {
-              question?: AiQuestion | null
+              question?: AiQuestion | string | null
               questions?: AiQuestion[]
             }
             meta?: LlmUsageMeta
             groundedCount?: number
           }
         | null
-      if (!result.ok || !data) {
+      if (!result.ok || !data || data.ok === false) {
         setEngineFacilitationDiagnostics(result)
         throw new Error('Request failed')
       }
+      const normalized = normalizeSuggestResponse(data)
+      if (import.meta.env.DEV) {
+        console.log('[ai] facilitation response', data)
+        console.log('[ai] facilitation normalized', normalized)
+      }
       applyUsageModel(data.meta)
       void applyUsageToSession(data.meta, enginePreviewSessionId)
-      const tokenInput = Number(data?.meta?.tokens?.input ?? 0)
-      const tokenOutput = Number(data?.meta?.tokens?.output ?? 0)
-      const sourceFromMeta = data?.meta?.source
-      const derivedSource =
-        sourceFromMeta === 'fallback' || sourceFromMeta === 'llm'
-          ? sourceFromMeta
-          : tokenInput || tokenOutput
-            ? 'llm'
-            : 'fallback'
-      setEnginePromptSource(derivedSource)
-      const questions = data?.data?.questions as AiQuestion[] | undefined
-      const question = data?.data?.question
-      const nextText =
-        questions && questions.length
-          ? String(questions[0]?.text || '').trim()
-          : question?.text?.trim()
+      setEnginePromptSource(normalized.labelType === 'fallback' ? 'fallback' : 'llm')
       if (typeof data?.groundedCount === 'number') {
         setLastLlmGroundedCount(data.groundedCount)
       }
-      if (questions && questions.length) {
-        setLastLlmGroundedIn(questions[0]?.grounded_in ?? null)
-        setLastLlmWhy(questions[0]?.why_this_question ?? null)
+      if (normalized.questions.length) {
+        setLastLlmGroundedIn(normalized.questions[0]?.grounded_in ?? null)
+        setLastLlmWhy(normalized.questions[0]?.why_this_question ?? null)
+      } else if (normalized.questionObj) {
+        setLastLlmGroundedIn(normalized.questionObj.grounded_in ?? null)
+        setLastLlmWhy(normalized.questionObj.why_this_question ?? null)
       }
-      if (!nextText) {
+      if (!normalized.questionText) {
         setEngineFacilitationDiagnostics(result)
         setEngineActivePrompt(null)
         setEngineUiState('FREE_FLOW')
@@ -5938,7 +5973,13 @@ const isAuthFlowInProgress = () => {
         response: data,
         rawText: result.raw,
       } : null)
-      setEngineActivePrompt({ type, text: nextText })
+      setEngineActivePrompt({ type, text: normalized.questionText })
+      if (import.meta.env.DEV) {
+        console.log('[ai] facilitation state', {
+          questionText: normalized.questionText,
+          labelType: normalized.labelType,
+        })
+      }
       setEnginePreviewInput('')
       enginePreviousInput.current = ''
       setEngineUiState('FACILITATED_INPUT')
@@ -5946,15 +5987,20 @@ const isAuthFlowInProgress = () => {
       logFacilitationEvent('facilitation_used', {
         sessionId: enginePreviewSessionId || 'unknown',
         action: type,
-        promptText: nextText,
+        promptText: normalized.questionText,
       })
-      const questionId =
-        questions && questions.length ? questions[0]?.id : question?.id
+      const questionId = normalized.questions.length
+        ? normalized.questions[0]?.id
+        : normalized.questionObj?.id
       if (questionId) {
         setEngineLastQuestionMeta({
           id: questionId,
-          group_code: questions && questions.length ? questions[0]?.group_code : question?.group_code,
-          mode_code: questions && questions.length ? questions[0]?.mode_code : question?.mode_code,
+          group_code: normalized.questions.length
+            ? normalized.questions[0]?.group_code
+            : normalized.questionObj?.group_code,
+          mode_code: normalized.questions.length
+            ? normalized.questions[0]?.mode_code
+            : normalized.questionObj?.mode_code,
         })
         setEngineAskedQuestionIds((prev) =>
           prev.includes(questionId) ? prev : [...prev, questionId]
