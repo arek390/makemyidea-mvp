@@ -218,6 +218,33 @@ const mapQuestion = (question, lang) => ({
   priority: question.priority,
 })
 
+const normalizeQuestion = (input) => {
+  if (!input) return null
+  if (typeof input === 'string') {
+    const text = input.trim()
+    return text ? { text } : null
+  }
+  if (typeof input === 'object') {
+    const text = typeof input.text === 'string' ? input.text.trim() : ''
+    if (!text) return null
+    return { ...input, text }
+  }
+  return null
+}
+
+const assertQuestionShape = (question, context) => {
+  if (process.env.NODE_ENV === 'production') return
+  if (!question) return
+  const valid = typeof question === 'object' && typeof question.text === 'string'
+  if (!valid) {
+    console.error('[coach/suggest][question_shape_invalid]', {
+      context,
+      type: typeof question,
+      value: question,
+    })
+  }
+}
+
 export default async function handler(req, res) {
   console.log('[coach/suggest][boot]', {
     time: new Date().toISOString(),
@@ -428,10 +455,12 @@ export default async function handler(req, res) {
           askedIds,
         })
         const fallback = rawQuestion || dataset.list.find((q) => Number(q.is_active) === 1)
+        const normalizedQuestion = normalizeQuestion(fallback ? mapQuestion(fallback, lang) : null)
+        assertQuestionShape(normalizedQuestion, 'llm_failed_fallback')
         sendJson(res, 200, {
           ok: true,
           source: 'fallback',
-          question: fallback ? mapQuestion(fallback, lang).text : '',
+          question: normalizedQuestion,
           meta: {
             aiSupportEnabled: true,
             modelUsed: null,
@@ -472,10 +501,14 @@ export default async function handler(req, res) {
             askedIds,
           })
           const fallback = rawQuestion || dataset.list.find((q) => Number(q.is_active) === 1)
+          const normalizedQuestion = normalizeQuestion(
+            fallback ? mapQuestion(fallback, lang) : null
+          )
+          assertQuestionShape(normalizedQuestion, 'llm_failed_retry_fallback')
           sendJson(res, 200, {
             ok: true,
             source: 'fallback',
-            question: fallback ? mapQuestion(fallback, lang).text : '',
+            question: normalizedQuestion,
             meta: {
               aiSupportEnabled: true,
               modelUsed: null,
@@ -494,8 +527,11 @@ export default async function handler(req, res) {
         console.error('[ai] grounding failed; falling back')
       } else {
         const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+        const normalizedQuestion = normalizeQuestion(questions[0])
+        assertQuestionShape(normalizedQuestion, 'llm_success')
         sendJson(res, 200, {
           ok: true,
+          question: normalizedQuestion,
           data: { questions },
           groundedCount,
           meta,
@@ -535,15 +571,25 @@ export default async function handler(req, res) {
     }
     if (!rawQuestion) {
       const fallback = activeList[0]
+      const normalizedQuestion = normalizeQuestion(mapQuestion(fallback, lang))
+      assertQuestionShape(normalizedQuestion, 'fallback_active_first')
       sendJson(res, 200, {
         ok: true,
-        data: { question: mapQuestion(fallback, lang) },
+        question: normalizedQuestion,
+        data: { question: normalizedQuestion },
         meta,
         debug: { fallbackUsed: true },
       })
       return
     }
-    sendJson(res, 200, { ok: true, data: { question: mapQuestion(rawQuestion, lang) }, meta })
+    const normalizedQuestion = normalizeQuestion(mapQuestion(rawQuestion, lang))
+    assertQuestionShape(normalizedQuestion, 'fallback_selected')
+    sendJson(res, 200, {
+      ok: true,
+      question: normalizedQuestion,
+      data: { question: normalizedQuestion },
+      meta,
+    })
   } catch (error) {
     console.error('[coach/suggest][LLM_ERROR]', {
       name: error?.name,

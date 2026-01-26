@@ -149,7 +149,17 @@ type Language =
 
 type LlmUsageModel = 'gpt-4.1-mini' | 'gpt-5-nano' | 'gpt-5-mini'
 type LlmUsageTokens = { input?: number; output?: number; total?: number }
-type LlmUsageMeta = { modelUsed?: string | null; aiSupportEnabled?: boolean; tokens?: LlmUsageTokens }
+type LlmUsageMeta = {
+  modelUsed?: string | null
+  aiSupportEnabled?: boolean
+  tokens?: LlmUsageTokens
+  source?: 'llm' | 'fallback'
+  errorCategory?: string | null
+}
+
+type ModelPricing = { input: number; output: number }
+type ModelUsage = { inputTokens: number; outputTokens: number; totalUSD: number }
+type EngineUsage = { perModel: Record<string, ModelUsage>; totalUSD: number; totalTokens: number }
 
 type FacilitationType = 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET'
 type FacilitationPrompt = { type: FacilitationType; text: string }
@@ -169,12 +179,21 @@ const ERASE_EMPTY_SECONDS_STRONG = 10
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
 const FEEDBACK_STORAGE_KEY = 'makemyidea.feedback.v1'
 const LLM_TOKENS_TOTAL_KEY = 'llm_tokens_total'
+const ENGINE_USAGE_KEY = 'engine_usage_v1'
+const ENGINE_FX_KEY = 'engine_fx_usdpln_v1'
 const AUTH_LOGIN_ORIGIN_KEY = 'auth-login-origin'
 const AUTH_LOGIN_REDIRECT_KEY = 'auth-login-redirect'
 const AUTH_OAUTH_ORIGIN_KEY = 'auth_oauth_origin'
 const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
 const POST_AUTH_NEXT_KEY = 'post-auth-next'
 const POST_AUTH_LANG_KEY = 'post-auth-lang'
+const FX_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+const FX_FALLBACK_RATE = 3.55
+const MODEL_PRICING_USD: Record<string, ModelPricing> = {
+  'gpt-4.1-mini': { input: 0.4, output: 1.6 },
+  'gpt-5-mini': { input: 0.25, output: 2.0 },
+  'gpt-5-nano': { input: 0.05, output: 0.4 },
+}
 
 const getOAuthRedirectTo = () => {
   if (typeof window === 'undefined') return ''
@@ -196,6 +215,49 @@ const CANONICAL_HOST = (() => {
   }
 })()
 const CANONICAL_DISPLAY_HOST = CANONICAL_HOST.replace(/^www\./, '')
+
+const createEmptyUsage = (): EngineUsage => ({
+  perModel: {},
+  totalUSD: 0,
+  totalTokens: 0,
+})
+
+const loadEngineUsage = (): EngineUsage => {
+  if (typeof window === 'undefined') return createEmptyUsage()
+  try {
+    const raw = window.sessionStorage.getItem(ENGINE_USAGE_KEY)
+    if (!raw) return createEmptyUsage()
+    const parsed = JSON.parse(raw) as EngineUsage
+    if (!parsed || typeof parsed !== 'object') return createEmptyUsage()
+    return {
+      perModel: parsed.perModel ?? {},
+      totalUSD: Number(parsed.totalUSD ?? 0),
+      totalTokens: Number(parsed.totalTokens ?? 0),
+    }
+  } catch {
+    return createEmptyUsage()
+  }
+}
+
+const saveEngineUsage = (usage: EngineUsage) => {
+  if (typeof window === 'undefined') return
+  window.sessionStorage.setItem(ENGINE_USAGE_KEY, JSON.stringify(usage))
+}
+
+const loadFxCache = () => {
+  if (typeof window === 'undefined') return null
+  try {
+    const raw = window.sessionStorage.getItem(ENGINE_FX_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { rate: number; updatedAt: number } | null
+    if (!parsed || !Number.isFinite(parsed.rate) || !Number.isFinite(parsed.updatedAt)) {
+      return null
+    }
+    return parsed
+  } catch {
+    return null
+  }
+}
 
 type Translations = {
   stepLabel: string
@@ -3163,7 +3225,10 @@ function App() {
   const [labelEditorOpen, setLabelEditorOpen] = useState(false)
   const [ideaPreview, setIdeaPreview] = useState<Idea | null>(null)
   const [impulseQuestion, setImpulseQuestion] = useState<string | null>(null)
+  const [impulseSource, setImpulseSource] = useState<'llm' | 'fallback' | null>(null)
   const [impulseOpen, setImpulseOpen] = useState(false)
+  const [isSuggestLoading, setIsSuggestLoading] = useState(false)
+  const [showSuggestLoadingUI, setShowSuggestLoadingUI] = useState(false)
   const [engineSessionId, setEngineSessionId] = useState<string | null>(null)
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false)
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(false)
@@ -3177,6 +3242,13 @@ function App() {
     const raw = window.localStorage.getItem(LLM_TOKENS_TOTAL_KEY)
     const parsed = Number(raw)
     return Number.isFinite(parsed) ? parsed : 0
+  })
+  const [engineUsage, setEngineUsage] = useState<EngineUsage>(() => loadEngineUsage())
+  const [usdPlnRate, setUsdPlnRate] = useState<number | null>(() => {
+    const cached = loadFxCache()
+    if (!cached) return null
+    if (Date.now() - cached.updatedAt > FX_CACHE_TTL_MS) return null
+    return cached.rate
   })
   const [lastLlmCallAt, setLastLlmCallAt] = useState<string | null>(null)
   const [lastLlmModel, setLastLlmModel] = useState<string | null>(null)
@@ -3219,6 +3291,31 @@ function App() {
       }
       setLastLlmSource('fallback')
       return
+    }
+    const modelUsed = meta?.modelUsed ?? null
+    if (modelUsed && MODEL_PRICING_USD[modelUsed]) {
+      const pricing = MODEL_PRICING_USD[modelUsed]
+      const costUSD =
+        (input / 1_000_000) * pricing.input + (output / 1_000_000) * pricing.output
+      setEngineUsage((prev) => {
+        const prevModel = prev.perModel[modelUsed] || {
+          inputTokens: 0,
+          outputTokens: 0,
+          totalUSD: 0,
+        }
+        const nextModel = {
+          inputTokens: prevModel.inputTokens + input,
+          outputTokens: prevModel.outputTokens + output,
+          totalUSD: prevModel.totalUSD + costUSD,
+        }
+        const next: EngineUsage = {
+          perModel: { ...prev.perModel, [modelUsed]: nextModel },
+          totalUSD: prev.totalUSD + costUSD,
+          totalTokens: prev.totalTokens + delta,
+        }
+        saveEngineUsage(next)
+        return next
+      })
     }
     setLlmTokensTotal((prev) => {
       const next = prev + delta
@@ -3408,6 +3505,7 @@ function App() {
   const didLogMappingSelfTestRef = useRef(false)
   const lastGravitySuggestionRef = useRef<string | null>(null)
   const engineImportInputRef = useRef<HTMLInputElement | null>(null)
+  const suggestLoadingTimerRef = useRef<number | null>(null)
   const [feedbackReminder, setFeedbackReminder] = useState<{
     sessionId: string | null
     visible: boolean
@@ -3710,6 +3808,52 @@ const isAuthFlowInProgress = () => {
   useEffect(() => {
     if (!isEnginePreview) return
     console.log('[engine] route mounted', window.location.href)
+  }, [isEnginePreview])
+
+  useEffect(() => {
+    if (!isEnginePreview) return
+    let cancelled = false
+    const loadFx = async () => {
+      const cached = loadFxCache()
+      if (cached && Date.now() - cached.updatedAt < FX_CACHE_TTL_MS) {
+        if (!cancelled) setUsdPlnRate(cached.rate)
+        return
+      }
+      try {
+        const response = await fetch('/api/fx/usdpln')
+        const payload = (await response.json()) as {
+          ok?: boolean
+          usdpln?: number
+          updatedAt?: number
+        }
+        const rate = Number(payload?.usdpln)
+        if (response.ok && Number.isFinite(rate) && rate > 0) {
+          if (!cancelled) setUsdPlnRate(rate)
+          if (typeof window !== 'undefined') {
+            window.sessionStorage.setItem(
+              ENGINE_FX_KEY,
+              JSON.stringify({ rate, updatedAt: payload?.updatedAt ?? Date.now() })
+            )
+          }
+        } else if (cached && !cancelled) {
+          setUsdPlnRate(cached.rate)
+        } else if (!cancelled) {
+          setUsdPlnRate(FX_FALLBACK_RATE)
+        }
+      } catch {
+        if (cached && !cancelled) {
+          setUsdPlnRate(cached.rate)
+        } else if (!cancelled) {
+          setUsdPlnRate(FX_FALLBACK_RATE)
+        }
+      } finally {
+        // no-op
+      }
+    }
+    void loadFx()
+    return () => {
+      cancelled = true
+    }
   }, [isEnginePreview])
 
   useEffect(() => {
@@ -5460,7 +5604,18 @@ const isAuthFlowInProgress = () => {
   }
 
   const requestImpulse = async () => {
-    if (!engineSessionId) return
+    if (!engineSessionId || isSuggestLoading) return
+    setIsSuggestLoading(true)
+    setShowSuggestLoadingUI(false)
+    setImpulseQuestion(null)
+    setImpulseSource(null)
+    setImpulseOpen(true)
+    if (suggestLoadingTimerRef.current) {
+      window.clearTimeout(suggestLoadingTimerRef.current)
+    }
+    suggestLoadingTimerRef.current = window.setTimeout(() => {
+      setShowSuggestLoadingUI(true)
+    }, 300)
     const boardItems = Object.values(workshopIdeas)
       .flat()
       .map((idea) => ({ type: 'idea', text: idea.text }))
@@ -5531,6 +5686,16 @@ const isAuthFlowInProgress = () => {
       }
       applyUsageModel(data.meta)
       void applyUsageToSession(data.meta, enginePreviewSessionId)
+      const sourceFromMeta = data?.meta?.source
+      const tokenInput = Number(data?.meta?.tokens?.input ?? 0)
+      const tokenOutput = Number(data?.meta?.tokens?.output ?? 0)
+      const derivedSource =
+        sourceFromMeta === 'fallback' || sourceFromMeta === 'llm'
+          ? sourceFromMeta
+          : tokenInput || tokenOutput
+            ? 'llm'
+            : 'fallback'
+      setImpulseSource(derivedSource)
       const questions = data?.data?.questions as AiQuestion[] | undefined
       const question = data?.data?.question
       const nextText =
@@ -5545,14 +5710,19 @@ const isAuthFlowInProgress = () => {
         setLastLlmWhy(questions[0]?.why_this_question ?? null)
       }
       if (!nextText) {
-        setImpulseQuestion(copy.impulseEmpty)
+        setImpulseQuestion(null)
       } else {
         setImpulseQuestion(nextText)
       }
     } catch {
-      setImpulseQuestion(copy.impulseEmpty)
+      setImpulseQuestion(null)
     }
-    setImpulseOpen(true)
+    if (suggestLoadingTimerRef.current) {
+      window.clearTimeout(suggestLoadingTimerRef.current)
+      suggestLoadingTimerRef.current = null
+    }
+    setShowSuggestLoadingUI(false)
+    setIsSuggestLoading(false)
   }
 
   const keepOnlyUserIdeas = () => {
@@ -6951,6 +7121,19 @@ const isAuthFlowInProgress = () => {
     const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
     return new Intl.NumberFormat(locale).format(Math.max(0, Math.floor(value || 0)))
   }
+  const formatUsd = (value: number) =>
+    new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(
+      Math.max(0, value || 0)
+    )
+  const formatPln = (value: number) =>
+    new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+      Math.max(0, value || 0)
+    )
+  const totalCostUsd = engineUsage.totalUSD
+  const totalCostPln = usdPlnRate ? totalCostUsd * usdPlnRate : null
+  const modelUsageEntries = Object.entries(engineUsage.perModel)
+    .filter(([, usage]) => (usage?.inputTokens || 0) + (usage?.outputTokens || 0) > 0)
+    .sort((a, b) => (b[1]?.totalUSD || 0) - (a[1]?.totalUSD || 0))
 
     return withDevOverlay(
       <div className="app engine-preview" data-testid="active-session">
@@ -7003,6 +7186,30 @@ const isAuthFlowInProgress = () => {
             >
               {`${formatTokenTotal(currentTokensTotal)} tok`}
             </button>
+            <div className="llm-cost-panel" aria-live="polite">
+              <div className="llm-cost-line">{`Cost: $${formatUsd(totalCostUsd)}`}</div>
+              <div className="llm-cost-line">
+                {usdPlnRate ? `Cost (PLN): ${formatPln(totalCostPln || 0)} zł` : 'PLN: …'}
+              </div>
+              <details className="llm-cost-details">
+                <summary>Breakdown</summary>
+                <div className="llm-cost-breakdown">
+                  <div className="llm-cost-row">
+                    Total tokens: {formatTokenTotal(engineUsage.totalTokens)}
+                  </div>
+                  <div className="llm-cost-row">{`Total USD: $${formatUsd(totalCostUsd)}`}</div>
+                  <div className="llm-cost-row">
+                    {usdPlnRate ? `Total PLN: ${formatPln(totalCostPln || 0)} zł` : 'Total PLN: …'}
+                  </div>
+                  {modelUsageEntries.map(([model, usage]) => (
+                    <div key={model} className="llm-cost-row">
+                      {model}: {formatTokenTotal(usage.inputTokens)} in /{' '}
+                      {formatTokenTotal(usage.outputTokens)} out · ${formatUsd(usage.totalUSD)}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </div>
           </div>
         </header>
         <main className="engine-main">
@@ -8435,8 +8642,17 @@ const isAuthFlowInProgress = () => {
                 <p>{copy.workshopIntro}</p>
               </div>
               <div className="action-stack">
-                <button type="button" className="primary" onClick={() => void requestImpulse()}>
-                  {copy.impulseButtonLabel}
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={isSuggestLoading}
+                  onClick={() => void requestImpulse()}
+                  aria-busy={isSuggestLoading}
+                >
+                  {showSuggestLoadingUI && (
+                    <span className="button-spinner" aria-hidden="true" />
+                  )}
+                  {showSuggestLoadingUI ? 'Generuję pytanie…' : copy.impulseButtonLabel}
                 </button>
                 <button type="button" className="primary" onClick={() => void addLlmIdeas()}>
                   {copy.ideaGenerator}
@@ -8819,7 +9035,28 @@ const isAuthFlowInProgress = () => {
               </button>
             </div>
             <div className="modal-body">
-              <p>{impulseQuestion || copy.impulseEmpty}</p>
+              {isSuggestLoading ? (
+                showSuggestLoadingUI ? (
+                  <div className="impulse-placeholder" role="status" aria-live="polite">
+                    <div className="impulse-placeholder-line" />
+                    <div className="impulse-placeholder-line short" />
+                    <p className="muted">Dobieram perspektywę do Twojej tablicy…</p>
+                  </div>
+                ) : (
+                  <div className="impulse-placeholder" aria-hidden="true" />
+                )
+              ) : (
+                <p>{impulseQuestion || copy.impulseEmpty}</p>
+              )}
+              {!isSuggestLoading && impulseQuestion && impulseSource && (
+                <span
+                  className={`impulse-source-chip ${
+                    impulseSource === 'fallback' ? 'fallback' : 'ai'
+                  }`}
+                >
+                  {impulseSource === 'fallback' ? 'Tryb offline (fallback)' : 'AI'}
+                </span>
+              )}
               {import.meta.env.DEV && (
                 <p className="muted">
                   {lastLlmSource === 'llm' ? 'AI generated' : 'Deterministic fallback'}

@@ -33,6 +33,7 @@ import {
   parseJsonObject,
 } from './llm/llmRouter.mjs'
 import coachSuggestHandler from './api/coach/suggest.js'
+import fxUsdPlnHandler from './api/fx/usdpln.js'
 import llmPingHandler from './api/llm/ping.js'
 import {
   buildContextPrompt,
@@ -351,6 +352,12 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/ping' && req.method === 'GET') {
     sendJson(res, 200, { ok: true, env: 'local', ts: new Date().toISOString() })
+    return
+  }
+
+  if (url.pathname === '/api/fx/usdpln' && req.method === 'GET') {
+    const resShim = createResShim(res)
+    await fxUsdPlnHandler(req, resShim)
     return
   }
 
