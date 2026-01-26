@@ -6044,17 +6044,28 @@ const isAuthFlowInProgress = () => {
         response: data,
         rawText: result.raw,
       } : null)
-      setEngineActivePrompt({ type, text: normalized.questionText })
+      const questionText = normalized.questionText
+      if (!questionText) {
+        if (import.meta.env.DEV) {
+          console.warn('[ai] facilitation missing questionText')
+        }
+        setEngineActivePrompt(null)
+        setEngineUiState('FREE_FLOW')
+        setEngineOfferReason(null)
+        setEnginePreviewError(copy.enginePreviewQuestionEmpty)
+        return
+      }
+      setEngineActivePrompt({ type, text: questionText })
       if (import.meta.env.DEV) {
         console.log('[ai] facilitation state', {
-          questionText: normalized.questionText,
+          questionText,
           labelType: normalized.labelType,
         })
       }
-      setEngineLastQuestionText(normalized.questionText)
+      setEngineLastQuestionText(questionText)
       setEngineAskedQuestionTexts((prev) => {
-        if (prev.includes(normalized.questionText)) return prev
-        return [...prev, normalized.questionText]
+        if (prev.includes(questionText)) return prev
+        return [...prev, questionText]
       })
       setEnginePreviewInput('')
       enginePreviousInput.current = ''
