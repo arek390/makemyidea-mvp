@@ -6056,6 +6056,20 @@ const isAuthFlowInProgress = () => {
             },
           }))
         }
+      } else {
+        const questionMeta = normalized.questions.length
+          ? normalized.questions[0]
+          : normalized.questionObj
+        if (questionMeta?.group_code || questionMeta?.mode_code) {
+          const syntheticId = `anon-${Date.now()}-${Math.random().toString(16).slice(2)}`
+          setEngineAskedQuestionMeta((prev) => ({
+            ...prev,
+            [syntheticId]: {
+              group_code: questionMeta?.group_code,
+              mode_code: questionMeta?.mode_code,
+            },
+          }))
+        }
       }
       resetStuckSignals()
     } catch {
