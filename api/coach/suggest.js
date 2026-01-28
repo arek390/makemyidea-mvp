@@ -296,6 +296,23 @@ export default async function handler(req, res) {
     (typeof crypto !== 'undefined' && crypto.randomUUID
       ? crypto.randomUUID()
       : `req-${Date.now()}-${Math.random().toString(16).slice(2)}`)
+  const logStage = (stage, details = {}) => {
+    console.info('[coach/suggest][stage]', {
+      requestId,
+      stage,
+      time: new Date().toISOString(),
+      ...details,
+    })
+  }
+  const sendErrorWithId = (status, code, message, errorCategory, meta) => {
+    sendJson(res, status, {
+      ok: false,
+      code,
+      message,
+      requestId,
+      meta: { ...(meta || {}), errorCategory },
+    })
+  }
   console.log('[coach/suggest][boot]', {
     requestId,
     time: new Date().toISOString(),
@@ -336,11 +353,16 @@ export default async function handler(req, res) {
     return
   }
   try {
+    logStage('parse')
     const body = await readJsonBody(req)
-    if (!body) {
-      sendError(res, 400, 'INVALID_JSON', 'Invalid JSON body.')
+    const isEmptyObject =
+      body && typeof body === 'object' && !Array.isArray(body) && Object.keys(body).length === 0
+    if (!body || isEmptyObject) {
+      logStage('parse_error', { reason: !body ? 'invalid_json' : 'empty_body' })
+      sendErrorWithId(400, 'BAD_REQUEST', 'Invalid JSON body', !body ? 'INVALID_JSON' : 'EMPTY_BODY')
       return
     }
+    logStage('route')
     const aiSupportEnabled = resolveAiSupportEnabled(req, body)
     const killSwitch = process.env.AI_SUPPORT_DISABLED === 'true'
     const aiSupportHeader = req.headers['x-ai-support']
@@ -402,11 +424,12 @@ export default async function handler(req, res) {
     if (!aiSupportEnabled) {
       const reason = killSwitch ? 'kill-switch' : 'aiSupport=off'
       console.log(`[ai] LLM skipped: ${reason}`)
+      logStage('fallback', { reason })
     }
 
     if (process.env.NODE_ENV !== 'production') {
       if (!sessionName || !Array.isArray(boardEntriesRaw)) {
-        sendError(res, 400, 'MISSING_CONTEXT', 'Missing session context.')
+        sendErrorWithId(400, 'MISSING_CONTEXT', 'Missing session context.', 'MISSING_CONTEXT')
         return
       }
     }
@@ -571,6 +594,7 @@ export default async function handler(req, res) {
     const actionNormalized = String(action || 'NEXT').toUpperCase()
 
     if (aiSupportEnabled) {
+      logStage('llm', { aiSupportEnabled: true })
       const limitedEntries = boardEntries.slice(0, 30)
       const keywords = [
         ...extractKeywords(sessionName),
@@ -760,6 +784,7 @@ export default async function handler(req, res) {
           aiSupportEnabled,
           hasOpenAiKey,
         })
+        logStage('fallback', { reasonCategory })
         const fallbackQuestion = normalizeQuestion(baseMapped)
         if (fallbackQuestion && !shouldRejectDuplicateText(fallbackQuestion.text)) {
           assertQuestionShape(fallbackQuestion, 'llm_failed_fallback')
@@ -799,6 +824,7 @@ export default async function handler(req, res) {
       }
     }
 
+    logStage('fallback', { reason: aiSupportEnabled ? 'llm_unavailable' : 'ai_support_disabled' })
     const meta = buildMeta({ aiSupportEnabled: false, modelUsed: null, escalated: false })
     const baseSelection = selectBaseQuestion(askedIds, actionNormalized)
     const rawQuestion = baseSelection.question
@@ -916,6 +942,7 @@ export default async function handler(req, res) {
       message: error?.message,
       stack: typeof error?.stack === 'string' ? error.stack.slice(0, 1000) : null,
     })
-    sendError(res, 500, 'EXCEPTION', 'Server error.')
+    logStage('error', { name: error?.name, message: error?.message })
+    sendErrorWithId(500, 'SERVER_ERROR', 'Server error.', error?.code || 'UNHANDLED_EXCEPTION')
   }
 }
