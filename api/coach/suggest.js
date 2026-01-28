@@ -1,7 +1,12 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { runLlmTask, createRateLimiter } from '../../llm/llmRouter.mjs'
-import { ensureSessionState, getSessionState, updateSessionStateRow } from '../../engine/sessionRepository.mjs'
+import {
+  ensureSessionState,
+  getSessionState,
+  getSessionStoreType,
+  updateSessionStateRow,
+} from '../../engine/storage/sessionStore.mjs'
 import {
   buildMeta,
   readJsonBody,
@@ -324,6 +329,10 @@ export default async function handler(req, res) {
     vercelEnv: process.env.VERCEL_ENV,
     node: process.version,
   })
+  console.info('[coach/suggest][store]', {
+    requestId,
+    store: getSessionStoreType(),
+  })
   if (!req.body) {
     console.error('[coach/suggest][input]', 'Missing request body', { requestId })
   }
@@ -441,8 +450,8 @@ export default async function handler(req, res) {
       cellPointers: {},
     }
     if (body.sessionId) {
-      ensureSessionState(body.sessionId)
-      const sessionState = getSessionState(body.sessionId)
+      await ensureSessionState(body.sessionId)
+      const sessionState = await getSessionState(body.sessionId)
       if (sessionState) {
         const storedCell =
           sessionState.current_group_code && Number.isFinite(Number(sessionState.current_mode_code))
@@ -466,13 +475,19 @@ export default async function handler(req, res) {
 
     const persistMemory = () => {
       if (!body.sessionId) return
-      updateSessionStateRow({
+      void updateSessionStateRow({
         sessionId: body.sessionId,
         current_group_code: memory.currentCell?.group ?? null,
         current_mode_code: memory.currentCell?.mode ?? null,
         recent_cells: JSON.stringify(memory.recentCells || []),
         visit_counts: JSON.stringify(memory.visitCounts || {}),
         cell_pointers: JSON.stringify(memory.cellPointers || {}),
+      }).catch((error) => {
+        console.error('[coach/suggest][session_state_update_failed]', {
+          requestId,
+          name: error?.name,
+          message: error?.message,
+        })
       })
     }
 
@@ -943,6 +958,10 @@ export default async function handler(req, res) {
       stack: typeof error?.stack === 'string' ? error.stack.slice(0, 1000) : null,
     })
     logStage('error', { name: error?.name, message: error?.message })
+    if (error?.code === 'ENV_MISSING') {
+      sendErrorWithId(500, 'ENV_MISSING', error?.message || 'Missing environment configuration.', 'ENV_MISSING')
+      return
+    }
     sendErrorWithId(500, 'SERVER_ERROR', 'Server error.', error?.code || 'UNHANDLED_EXCEPTION')
   }
 }
