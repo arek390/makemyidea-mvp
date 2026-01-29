@@ -48,21 +48,6 @@ export const ReportPage = ({
     if (!cacheBase) return null
     return `report_reclass::${cacheBase}::${language}`
   }, [cacheBase, language])
-  const cellsPayload = useMemo(() => {
-    const toTexts = (items: { text?: string | null }[]) =>
-      items.map((item) => String(item.text || '').trim()).filter(Boolean)
-    return {
-      A1: toTexts(grouped.cells.A1),
-      B1: toTexts(grouped.cells.B1),
-      C1: toTexts(grouped.cells.C1),
-      A2: toTexts(grouped.cells.A2),
-      B2: toTexts(grouped.cells.B2),
-      C2: toTexts(grouped.cells.C2),
-      A3: toTexts(grouped.cells.A3),
-      B3: toTexts(grouped.cells.B3),
-      C3: toTexts(grouped.cells.C3),
-    }
-  }, [grouped])
   const emptyMessages = {
     today: t.aiEmptyA1,
     change: t.aiEmptyA2,
