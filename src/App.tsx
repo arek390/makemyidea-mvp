@@ -280,6 +280,17 @@ const getEntryCellId = (item: EngineBoardItem) => {
   return group && mode ? `${group}${mode}` : null
 }
 
+const cellCodeToMatrix = (cellCode: string) => {
+  const code = String(cellCode || '').trim().toUpperCase()
+  if (!/^[ABC][123]$/.test(code)) return null
+  const group = code[0]
+  const mode = Number(code[1])
+  return {
+    matrix_row: toMatrixRowKey(group) ?? null,
+    matrix_col: toMatrixColKey(mode) ?? null,
+  }
+}
+
 const createEmptyUsage = (): EngineUsage => ({
   perModel: {},
   totalUSD: 0,
@@ -2268,6 +2279,7 @@ function App() {
   const [engineEditLoading, setEngineEditLoading] = useState(false)
   const [enginePreviewEditId, setEnginePreviewEditId] = useState<string | null>(null)
   const [enginePreviewEditText, setEnginePreviewEditText] = useState('')
+  const [engineAssignLoading, setEngineAssignLoading] = useState(false)
   const [engineEntryDeleteId, setEngineEntryDeleteId] = useState<string | null>(null)
   const [engineApiDebug, setEngineApiDebug] = useState<{
     endpoint: string
@@ -2288,6 +2300,9 @@ function App() {
     Record<string, { group_code?: string; mode_code?: number }>
   >({})
   const [engineAskedQuestionTexts, setEngineAskedQuestionTexts] = useState<string[]>([])
+  const [engineAskedQuestionTextById, setEngineAskedQuestionTextById] = useState<
+    Record<string, string>
+  >({})
   const [enginePrevQuestionMeta, setEnginePrevQuestionMeta] = useState<{
     group_code?: string
     mode_code?: number
@@ -3682,14 +3697,20 @@ const isAuthFlowInProgress = () => {
       id: item.id || `idea-${index + 1}`,
       text: item.text,
       label: item.label ?? null,
+      questionId: item.question_id ?? null,
       matrixRow: item.matrix_row ?? null,
       matrixCol: item.matrix_col ?? null,
+    }))
+    const questions = Object.entries(engineAskedQuestionTextById).map(([id, text]) => ({
+      id,
+      text,
     }))
     return {
       sessionName,
       date: new Date().toLocaleString(locale),
       userName,
       ideas,
+      questions,
     }
   }
 
@@ -4881,6 +4902,10 @@ const isAuthFlowInProgress = () => {
         ? normalized.questions[0]?.id
         : normalized.questionObj?.id
       if (questionId) {
+        setEngineAskedQuestionTextById((prev) => ({
+          ...prev,
+          [questionId]: questionText,
+        }))
         const questionMeta = normalized.questions.length
           ? normalized.questions[0]
           : normalized.questionObj
@@ -5129,6 +5154,7 @@ const isAuthFlowInProgress = () => {
         type: 'idea',
         text,
         label: null,
+        question_id: entryType === 'facilitated_input' ? engineLastQuestionMeta?.id ?? null : null,
         created_at: now,
         entry_type: entryType,
         prompt_type: engineActivePrompt?.type || null,
@@ -5231,6 +5257,7 @@ const isAuthFlowInProgress = () => {
     setEngineAskedQuestionMeta({})
     setEngineLastQuestionMeta(null)
     setEngineAskedQuestionTexts([])
+    setEngineAskedQuestionTextById({})
     setEnginePrevQuestionMeta(null)
     setEngineLastQuestionText(null)
     setEngineRecentCells([])
@@ -5302,6 +5329,11 @@ const isAuthFlowInProgress = () => {
       .map(({ item }) => item)
   }, [enginePreviewItems])
 
+  const engineUnassignedItems = useMemo(
+    () => enginePreviewItems.filter((item) => !item.matrix_row || !item.matrix_col),
+    [enginePreviewItems]
+  )
+
   const buildSessionDetailForSave = async (): Promise<EngineSessionDetail | null> => {
     if (!enginePreviewSessionId) return null
     const now = Date.now()
@@ -5326,6 +5358,127 @@ const isAuthFlowInProgress = () => {
       },
       boardItems: localDetail?.boardItems ?? enginePreviewItems,
       askedQuestionIds: localDetail?.askedQuestionIds ?? engineAskedQuestionIds,
+    }
+  }
+
+  const assignNaItems = async () => {
+    if (engineAssignLoading) return
+    if (!enginePreviewSessionId) {
+      showEngineNotice('Brak aktywnej sesji.', 'error')
+      return
+    }
+    if (!aiSupportEnabled) {
+      showEngineNotice('AI jest wyłączony.', 'error')
+      return
+    }
+    if (engineUnassignedItems.length === 0) {
+      showEngineNotice('Brak wpisów N/A.', 'success')
+      return
+    }
+    setEngineAssignLoading(true)
+    try {
+      const items = engineUnassignedItems.map((item) => ({
+        id: item.id,
+        text: item.text,
+      }))
+      const matrixDefinition = {
+        rows: {
+          A: 'world (otoczenie, rynek, kontekst, ograniczenia zewnętrzne)',
+          B: 'product (produkt/system jako całość, architektura, jak działa)',
+          C: 'elements (konstrukcja, budowa, podzespoły, elementy składowe)',
+        },
+        cols: {
+          1: 'as_is (stan obecny)',
+          2: 'not_working (problemy, tarcia, co zmienić)',
+          3: 'should_be (pożądany stan / pomysł)',
+        },
+      }
+      const response = await fetch('/api/coach/suggest', {
+        method: 'POST',
+        headers: llmHeaders,
+        body: JSON.stringify({
+          action: 'assign_na',
+          locale: uiLanguage === 'Polish' ? 'pl' : 'en',
+          items,
+          matrixDefinition,
+        }),
+      })
+      const raw = await response.text()
+      let data: {
+        ok?: boolean
+        assignments?: { id: string; cellCode: string; confidence?: number }[]
+        usage?: {
+          model: string | null
+          inputTokens: number
+          outputTokens: number
+          totalTokens: number
+        }
+      } | null = null
+      try {
+        data = JSON.parse(raw)
+      } catch {
+        data = null
+      }
+      if (!response.ok || !data || data.ok === false) {
+        showEngineNotice('Nie udało się przypisać wpisów.', 'error')
+        return
+      }
+      const assignments = Array.isArray(data.assignments) ? data.assignments : []
+      if (!assignments.length) {
+        showEngineNotice('Brak przypisań z AI.', 'success')
+        return
+      }
+      const byId = new Map(assignments.map((entry) => [entry.id, entry.cellCode]))
+      const updatedItems = enginePreviewItems.map((item) => {
+        if (item.matrix_row && item.matrix_col) return item
+        const cellCode = byId.get(item.id)
+        if (!cellCode) return item
+        const mapped = cellCodeToMatrix(cellCode)
+        if (!mapped?.matrix_row || !mapped?.matrix_col) return item
+        return { ...item, matrix_row: mapped.matrix_row, matrix_col: mapped.matrix_col }
+      })
+      setEnginePreviewItems(updatedItems)
+      if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
+        setEngineSessionDetail((prev) =>
+          prev ? { ...prev, boardItems: updatedItems } : prev
+        )
+      }
+      const detail = await getSession(enginePreviewSessionId)
+      if (detail?.session) {
+        const updatedDetail: EngineSessionDetail = {
+          ...detail,
+          boardItems: detail.boardItems.map((item) => {
+            if (item.matrix_row && item.matrix_col) return item
+            const cellCode = byId.get(item.id)
+            if (!cellCode) return item
+            const mapped = cellCodeToMatrix(cellCode)
+            if (!mapped?.matrix_row || !mapped?.matrix_col) return item
+            return { ...item, matrix_row: mapped.matrix_row, matrix_col: mapped.matrix_col }
+          }),
+        }
+        await updateSession(updatedDetail)
+        if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
+          setEngineSessionDetail(updatedDetail)
+        }
+      }
+      if (data.usage) {
+        const meta: LlmUsageMeta = {
+          aiSupportEnabled: true,
+          modelUsed: data.usage.model ?? null,
+          tokens: {
+            input: data.usage.inputTokens,
+            output: data.usage.outputTokens,
+            total: data.usage.totalTokens,
+          },
+        }
+        applyUsageModel(meta)
+        void applyUsageToSession(meta, enginePreviewSessionId)
+      }
+      showEngineNotice('Uzupełniono wpisy N/A.', 'success')
+    } catch {
+      showEngineNotice('Nie udało się przypisać wpisów.', 'error')
+    } finally {
+      setEngineAssignLoading(false)
     }
   }
 
@@ -6752,6 +6905,25 @@ const isAuthFlowInProgress = () => {
             <section className="engine-panel">
               <div className="engine-panel-header">
                 <h2>{copy.enginePreviewBoardItemsTitle}</h2>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={assignNaItems}
+                  disabled={
+                    engineAssignLoading ||
+                    engineUnassignedItems.length === 0 ||
+                    !aiSupportEnabled
+                  }
+                  title={
+                    !aiSupportEnabled
+                      ? 'AI jest wyłączony'
+                      : engineUnassignedItems.length === 0
+                        ? 'Brak wpisów N/A'
+                        : 'Uzupełnij N/A (AI)'
+                  }
+                >
+                  {engineAssignLoading ? 'Uzupełniam…' : 'Uzupełnij N/A (AI)'}
+                </button>
                 <button
                   type="button"
                   className={`ghost engine-help-trigger engine-facilitation-actions--fade ${

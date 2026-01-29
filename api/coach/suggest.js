@@ -332,6 +332,39 @@ const buildSummaryPrompt = ({ locale, sessionName, cells }) => {
   return { summaryInput, instructions }
 }
 
+const MODEL_PRICING_USD = {
+  'gpt-4.1-mini': { input: 0.4, output: 1.6 },
+  'gpt-5-mini': { input: 0.25, output: 2.0 },
+  'gpt-5-nano': { input: 0.05, output: 0.4 },
+}
+
+const resolveFxUsdPln = () => {
+  const raw = Number(process.env.FX_USD_PLN || 0)
+  return Number.isFinite(raw) && raw > 0 ? raw : 4.0
+}
+
+const buildUsagePayload = (meta) => {
+  const model = meta?.modelUsed || null
+  const inputTokens = Number(meta?.tokens?.input ?? 0)
+  const outputTokens = Number(meta?.tokens?.output ?? 0)
+  const totalTokens = Number(meta?.tokens?.total ?? inputTokens + outputTokens)
+  const pricing = model && MODEL_PRICING_USD[model]
+  const costUsd = pricing
+    ? (inputTokens / 1_000_000) * pricing.input + (outputTokens / 1_000_000) * pricing.output
+    : 0
+  const fxUsdPln = resolveFxUsdPln()
+  const costPln = costUsd * fxUsdPln
+  return {
+    model,
+    inputTokens,
+    outputTokens,
+    totalTokens,
+    costUsd,
+    fxUsdPln,
+    costPln,
+  }
+}
+
 const buildSummaryFallback = (locale, errorCategory, note) => {
   const noData = locale === 'pl'
     ? 'Brak wystarczających danych do podsumowania.'
@@ -344,6 +377,15 @@ const buildSummaryFallback = (locale, errorCategory, note) => {
       today: base,
       change: base,
       product: base,
+    },
+    usage: {
+      model: null,
+      inputTokens: 0,
+      outputTokens: 0,
+      totalTokens: 0,
+      costUsd: 0,
+      fxUsdPln: resolveFxUsdPln(),
+      costPln: 0,
     },
     meta: {
       aiSupportEnabled: false,
@@ -558,6 +600,151 @@ export default async function handler(req, res) {
 
     const actionNormalized = String(action || 'NEXT').toUpperCase()
 
+    if (actionNormalized === 'ASSIGN_NA') {
+      const locale = normalizeLang(body.locale || body.language || 'pl')
+      const items = Array.isArray(body.items) ? body.items : []
+      const matrixDefinition = body.matrixDefinition
+      if (!Array.isArray(items) || !items.length || !matrixDefinition) {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          assignments: [],
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: {
+            aiSupportEnabled: false,
+            modelUsed: null,
+            escalated: false,
+            tokens: { input: 0, output: 0, total: 0 },
+            errorCategory: 'EMPTY_INPUT',
+          },
+        })
+        return
+      }
+      if (!aiSupportEnabled || killSwitch || !hasOpenAiKey) {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          assignments: [],
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: {
+            aiSupportEnabled: false,
+            modelUsed: null,
+            escalated: false,
+            tokens: { input: 0, output: 0, total: 0 },
+            errorCategory: killSwitch
+              ? 'AI_DISABLED'
+              : !hasOpenAiKey
+                ? 'MISSING_OPENAI_KEY'
+                : 'AI_DISABLED',
+          },
+        })
+        return
+      }
+      const promptInput = items
+        .slice(0, 120)
+        .map((item) => `- id:${item.id} | text:${String(item.text || '').trim().replace(/\s+/g, ' ')}`)
+        .join('\n')
+      const instructions = [
+        'You classify workshop notes into a 3x3 matrix.',
+        'Rows: A=world (otoczenie, rynek, kontekst, ograniczenia zewnętrzne),',
+        'B=product (produkt/system jako całość, architektura, jak działa),',
+        'C=elements (konstrukcja, budowa, podzespoły, elementy składowe).',
+        'Cols: 1=as_is (stan obecny), 2=not_working (problemy, tarcia, co zmienić), 3=should_be (pożądany stan / pomysł).',
+        'Return STRICT JSON ONLY:',
+        '{"assignments":[{"id":"...","cellCode":"B2","confidence":0.72}]}',
+        'Only use cellCode A1..C3.',
+        locale === 'pl' ? 'Write in Polish.' : 'Write in English.',
+      ].join(' ')
+      const parseAssignments = (payload) => {
+        if (!payload || typeof payload !== 'object' || !Array.isArray(payload.assignments)) return null
+        const normalized = payload.assignments
+          .map((entry) => ({
+            id: String(entry?.id || '').trim(),
+            cellCode: coerceCellId(entry?.cellCode),
+            confidence: Number(entry?.confidence ?? 0),
+          }))
+          .filter((entry) => entry.id && entry.cellCode)
+        if (!normalized.length) return null
+        return normalized
+      }
+      const callAssign = async (modelSet) =>
+        runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'assign-na',
+          input: `Matrix definition: ${JSON.stringify(matrixDefinition)}\n${promptInput}`,
+          language: locale === 'pl' ? 'Polish' : 'English',
+          taskInstructions: instructions,
+          parseResponse: (value) => {
+            try {
+              const parsed = JSON.parse(value)
+              return parsed ?? null
+            } catch {
+              return null
+            }
+          },
+          fallbackData: null,
+          models: modelSet,
+          maxOutputTokens: 600,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+      const defaultModels = {
+        default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
+        preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+        escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+      }
+      const escalateModels = {
+        default: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+        preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+        escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+      }
+      try {
+        let result = await callAssign(defaultModels)
+        let assignments = result.ok ? parseAssignments(result.data) : null
+        const avgConfidence =
+          assignments && assignments.length
+            ? assignments.reduce((sum, entry) => sum + (entry.confidence || 0), 0) /
+              assignments.length
+            : 0
+        if (!assignments || avgConfidence < 0.6) {
+          const retry = await callAssign(escalateModels)
+          if (retry.ok) {
+            result = retry
+            assignments = parseAssignments(retry.data)
+          }
+        }
+        if (result.ok && assignments) {
+          const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          sendJson(res, 200, {
+            ok: true,
+            source: 'llm',
+            assignments,
+            usage: buildUsagePayload(meta),
+            meta,
+          })
+          return
+        }
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          assignments: [],
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
+        })
+        return
+      } catch {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          assignments: [],
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
+        })
+        return
+      }
+    }
+
     if (!aiSupportEnabled && actionNormalized !== 'REPORT_SUMMARY') {
       const fallbackText =
         lang === 'pl'
@@ -760,22 +947,24 @@ export default async function handler(req, res) {
                 reason: String(entry?.reason || ''),
               }))
               .filter((entry) => entry.id)
-            sendJson(res, 200, {
-              ok: true,
-              source: 'llm',
-              summary: result.data.summary,
-              classifications,
-              meta,
-            })
-          } else {
-            sendJson(res, 200, {
-              ok: true,
-              source: 'llm',
-              summary: result.data,
-              meta,
-            })
-          }
-          return
+        sendJson(res, 200, {
+          ok: true,
+          source: 'llm',
+          summary: result.data.summary,
+          classifications,
+          usage: buildUsagePayload(meta),
+          meta,
+        })
+      } else {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'llm',
+          summary: result.data,
+          usage: buildUsagePayload(meta),
+          meta,
+        })
+      }
+      return
         }
         sendJson(res, 200, buildSummaryFallback(locale, 'LLM_FAILED'))
         return

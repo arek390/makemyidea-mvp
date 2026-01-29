@@ -34,6 +34,7 @@ export const reportCopy: Record<
     aiEmptyA3: string
     tableEntry: string
     tableLabel: string
+    tableQuestion: string
     labelMissing: string
     noEntries: string
     placeholder: string
@@ -71,6 +72,7 @@ export const reportCopy: Record<
     aiEmptyA3: 'No entries in A3/B3/C3 – summary not generated.',
     tableEntry: 'Entry',
     tableLabel: 'Label',
+    tableQuestion: 'Question',
     labelMissing: 'label not defined',
     noEntries: 'No entries',
     placeholder: 'Placeholder content — to be completed in later versions.',
@@ -107,6 +109,7 @@ export const reportCopy: Record<
     aiEmptyA3: 'Brak wpisów w perspektywach A3/B3/C3 – nie generuję podsumowania.',
     tableEntry: 'Wpis',
     tableLabel: 'Etykieta',
+    tableQuestion: 'Pytanie',
     labelMissing: 'etykieta niezdefiniowana',
     noEntries: 'Brak wpisów',
     placeholder: 'Treść przykładowa — do uzupełnienia w kolejnych wersjach.',

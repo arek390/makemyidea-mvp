@@ -2,6 +2,7 @@ export type ReportIdea = {
   id: string
   text: string
   label?: string | null
+  questionId?: string | null
   matrixRow?: string | null
   matrixCol?: string | null
 }
@@ -11,6 +12,7 @@ export type ReportSnapshot = {
   date: string
   userName: string
   ideas: ReportIdea[]
+  questions?: { id: string; text: string }[]
 }
 
 const escapeCsv = (value: string) => {

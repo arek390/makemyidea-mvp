@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { reportCopy, type ReportLang } from './reportI18n'
 import { downloadReportCsv, type ReportSnapshot } from './exportCsv'
 import { groupItemsByCell } from './cellMapping'
+import { UsageBadge } from '../components/UsageBadge'
 
 type ReportPageProps = {
   snapshot: ReportSnapshot
@@ -19,6 +20,15 @@ type AiClassification = {
   shouldMove: boolean
   reason?: string
 }
+type SummaryUsage = {
+  model: string | null
+  inputTokens: number
+  outputTokens: number
+  totalTokens: number
+  costUsd: number
+  fxUsdPln: number
+  costPln: number
+}
 
 export const ReportPage = ({
   snapshot,
@@ -33,7 +43,18 @@ export const ReportPage = ({
   const [aiNotice, setAiNotice] = useState<string | null>(null)
   const [aiPartialNote, setAiPartialNote] = useState<string | null>(null)
   const [summaryItems, setSummaryItems] = useState(snapshot.ideas)
+  const [summaryUsage, setSummaryUsage] = useState<SummaryUsage | null>(null)
   const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
+  const questionLookup = useMemo(() => {
+    const map = new Map<string, string>()
+    const questions = Array.isArray(snapshot.questions) ? snapshot.questions : []
+    questions.forEach((question) => {
+      const id = String(question?.id || '').trim()
+      const text = String(question?.text || '').trim()
+      if (id && text) map.set(id, text)
+    })
+    return map
+  }, [snapshot.questions])
   const cacheBase = useMemo(() => {
     if (typeof window === 'undefined') return null
     const sessionId = window.sessionStorage.getItem('reportReturnSessionId') || ''
@@ -122,6 +143,7 @@ export const ReportPage = ({
   const runSummary = async () => {
     setAiNotice(null)
     setAiPartialNote(null)
+    setSummaryUsage(null)
     if (!aiSupportEnabled) {
       setAiNotice(t.aiDisabled)
       return
@@ -187,6 +209,7 @@ export const ReportPage = ({
         source?: 'llm' | 'fallback'
         summary?: AiSummary
         classifications?: AiClassification[]
+        usage?: SummaryUsage
         meta?: { errorCategory?: string }
       } | null = null
       try {
@@ -215,6 +238,9 @@ export const ReportPage = ({
         if (reclassCacheKey && typeof window !== 'undefined') {
           window.sessionStorage.setItem(reclassCacheKey, JSON.stringify(data.classifications))
         }
+      }
+      if (data.usage) {
+        setSummaryUsage(data.usage)
       }
       if (data.source === 'fallback' || data.meta?.errorCategory) {
         setAiNotice(t.aiUnavailable)
@@ -308,6 +334,14 @@ export const ReportPage = ({
             >
               {aiLoading ? t.aiGenerating : aiSummary ? t.aiRegenerate : t.aiGenerate}
             </button>
+            {summaryUsage && (
+              <UsageBadge
+                totalTokens={summaryUsage.totalTokens}
+                costPln={summaryUsage.costPln}
+                model={summaryUsage.model}
+                locale={language === 'pl' ? 'pl-PL' : 'en-US'}
+              />
+            )}
             {aiNotice && <span className="muted">{aiNotice}</span>}
             {aiPartialNote && <span className="muted">{aiPartialNote}</span>}
             {!aiSupportEnabled && <span className="muted">{t.aiDisabled}</span>}
@@ -337,20 +371,25 @@ export const ReportPage = ({
             <table className="report-table">
               <thead>
                 <tr>
+                  <th>{t.tableQuestion}</th>
                   <th>{t.tableEntry}</th>
                   <th>{t.tableLabel}</th>
                 </tr>
               </thead>
               <tbody>
-                {snapshot.ideas.length === 0 ? (
+                {summaryItems.length === 0 ? (
                   <tr>
-                    <td colSpan={2}>{t.noEntries}</td>
+                    <td colSpan={3}>{t.noEntries}</td>
                   </tr>
                 ) : (
-                  snapshot.ideas.map((idea) => {
+                  summaryItems.map((idea) => {
                     const label = idea.label?.trim() ? idea.label.trim() : t.labelMissing
+                    const questionText = idea.questionId
+                      ? questionLookup.get(idea.questionId) || '—'
+                      : '—'
                     return (
                       <tr key={idea.id}>
+                        <td>{questionText}</td>
                         <td>{idea.text || '—'}</td>
                         <td>{label}</td>
                       </tr>

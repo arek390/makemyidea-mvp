@@ -3,6 +3,7 @@ export type EngineBoardItem = {
   type: 'idea' | 'observation' | 'doubt' | 'question'
   text: string
   label?: string | null
+  question_id?: string | null
   created_at?: number
   entry_type?: 'free_input' | 'facilitated_input'
   prompt_type?: 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET' | null

@@ -1730,6 +1730,12 @@
   margin: 0 0 0.35rem;
 }
 
+.report-usage-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
 .report-table-wrapper {
   overflow-x: auto;
 }
