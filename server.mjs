@@ -45,6 +45,7 @@ import {
 } from './src/lib/llm/contextInterpreter.mjs'
 
 const PORT = Number(process.env.PORT || 8787)
+const HOST = process.env.HOST || '127.0.0.1'
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY || ''
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || '*'
 const DEBUG_UI = process.env.DEBUG_UI === 'true'
@@ -292,19 +293,15 @@ const resolveAiSupportEnabled = (req, body) => {
 
 const normalizeLanguage = (language) => {
   if (!language) return 'English'
-  return language === 'Swiss' ? 'German' : language
+  return language
 }
 
 const normalizeEngineLanguage = (language) => {
   if (!language) return 'pl'
   const normalized = language.toLowerCase()
   if (normalized.startsWith('en') || normalized.includes('english')) return 'en'
-  if (normalized.startsWith('de') || normalized.includes('german')) return 'de'
   if (normalized.startsWith('pl') || normalized.includes('polish')) return 'pl'
-  if (normalized.startsWith('es') || normalized.includes('spanish')) return 'es'
-  if (normalized.startsWith('hi') || normalized.includes('hindi')) return 'hi'
-  if (normalized.startsWith('zh') || normalized.includes('chinese')) return 'zh'
-  return normalized.slice(0, 2)
+  return 'en'
 }
 
 const nowMs = () => Date.now()
@@ -355,7 +352,15 @@ const server = http.createServer(async (req, res) => {
 
   if (url.pathname === '/api/coach/suggest' || url.pathname === '/coach/suggest') {
     const resShim = createResShim(res)
-    await coachSuggestHandler(req, resShim)
+    try {
+      await coachSuggestHandler(req, resShim)
+    } catch (error) {
+      console.error('[server][coach/suggest] unhandled error', {
+        name: error?.name,
+        message: error?.message,
+      })
+      sendJson(res, 500, { ok: false, error: 'SERVER_ERROR', message: 'Server error.' })
+    }
     return
   }
 
@@ -999,6 +1004,6 @@ const server = http.createServer(async (req, res) => {
   sendJson(res, 404, { error: 'Not found' })
 })
 
-server.listen(PORT, () => {
-  console.log(`LLM server running on http://localhost:${PORT}`)
+server.listen(PORT, HOST, () => {
+  console.log(`LLM server running on http://${HOST}:${PORT}`)
 })

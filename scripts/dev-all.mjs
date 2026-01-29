@@ -14,6 +14,7 @@ const backend = spawn(nodeCommand, ['server.mjs'], {
   env: {
     ...process.env,
     PORT: process.env.PORT || '8787',
+    HOST: process.env.HOST || '127.0.0.1',
   },
 })
 

@@ -29,6 +29,10 @@ SQLite notes:
 - `data/engine.sqlite*` is local runtime state and is intentionally not tracked by git.
 - It will be created automatically on first run (e.g., `npm run dev:all`).
 
+Local dev server host:
+- Default host is `127.0.0.1` to avoid EPERM on some macOS setups.
+- Override with `HOST=0.0.0.0` only if you want LAN access.
+
 If `better-sqlite3` fails to build on macOS, install the Xcode Command Line Tools:
 
 ```bash
@@ -97,6 +101,14 @@ Run all tests:
 ```bash
 npm test
 ```
+
+## Engine report (PL/EN)
+
+In the Engine view, start a session and click **Utwórz raport** in the “Sesja” panel.  
+Inside the report view you can use:
+- **Print** – opens the print dialog
+- **Download PDF** – also opens the print dialog (use “Save as PDF”)
+- **Export data (CSV)** – downloads `ideas.csv`, `questions.csv`, `responses.csv`
 
 You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
 
