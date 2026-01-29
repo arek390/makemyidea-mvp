@@ -1,5 +1,6 @@
 import { reportCopy, type ReportLang } from './reportI18n'
 import { downloadReportCsv, type ReportSnapshot } from './exportCsv'
+import { groupItemsByCell } from './cellMapping'
 
 type ReportPageProps = {
   snapshot: ReportSnapshot
@@ -9,6 +10,7 @@ type ReportPageProps = {
 
 export const ReportPage = ({ snapshot, language, onBack }: ReportPageProps) => {
   const t = reportCopy[language]
+  const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
   return (
     <div className="report-page">
       <header className="report-header">
@@ -130,6 +132,34 @@ export const ReportPage = ({ snapshot, language, onBack }: ReportPageProps) => {
           <h2>{t.appendices}</h2>
           <p>{t.placeholder}</p>
         </section>
+        {debug && (
+          <section className="report-section">
+            <h2>DEBUG: Matrix mapping</h2>
+            <p className="muted">Counts per cell (A1..C3) + sample items.</p>
+            <div className="report-debug-grid">
+              {Object.entries(debug.cells).map(([cellId, items]) => (
+                <div key={cellId} className="report-debug-card">
+                  <strong>
+                    {cellId} · {items.length}
+                  </strong>
+                  <ul>
+                    {items.slice(0, 2).map((item) => (
+                      <li key={`${cellId}-${item.id}`}>{item.text || '—'}</li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+              <div className="report-debug-card">
+                <strong>UNASSIGNED · {debug.unassigned.length}</strong>
+                <ul>
+                  {debug.unassigned.slice(0, 2).map((item) => (
+                    <li key={`UNASSIGNED-${item.id}`}>{item.text || '—'}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </section>
+        )}
       </main>
     </div>
   )

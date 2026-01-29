@@ -1,4 +1,10 @@
-export type ReportIdea = { id: string; text: string; label?: string | null }
+export type ReportIdea = {
+  id: string
+  text: string
+  label?: string | null
+  matrixRow?: string | null
+  matrixCol?: string | null
+}
 
 export type ReportSnapshot = {
   sessionName: string

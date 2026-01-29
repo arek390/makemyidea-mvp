@@ -257,6 +257,21 @@ const CANONICAL_HOST = (() => {
 })()
 const CANONICAL_DISPLAY_HOST = CANONICAL_HOST.replace(/^www\./, '')
 
+const toMatrixRowKey = (groupCode?: string | null) => {
+  const group = String(groupCode || '').toUpperCase()
+  if (group === 'A') return 'world'
+  if (group === 'B') return 'product'
+  if (group === 'C') return 'elements'
+  return null
+}
+
+const toMatrixColKey = (modeCode?: number | null) => {
+  if (modeCode === 1) return 'as_is'
+  if (modeCode === 2) return 'not_working'
+  if (modeCode === 3) return 'should_be'
+  return null
+}
+
 const createEmptyUsage = (): EngineUsage => ({
   perModel: {},
   totalUSD: 0,
@@ -3659,6 +3674,8 @@ const isAuthFlowInProgress = () => {
       id: item.id || `idea-${index + 1}`,
       text: item.text,
       label: item.label ?? null,
+      matrixRow: item.matrix_row ?? null,
+      matrixCol: item.matrix_col ?? null,
     }))
     return {
       sessionName,
@@ -5089,6 +5106,16 @@ const isAuthFlowInProgress = () => {
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      // Source of truth for report cell mapping: EngineBoardItem.matrix_row/matrix_col.
+      // We attach them only for facilitated inputs based on the current question meta.
+      const mappedRow =
+        entryType === 'facilitated_input'
+          ? toMatrixRowKey(engineLastQuestionMeta?.group_code ?? null)
+          : null
+      const mappedCol =
+        entryType === 'facilitated_input'
+          ? toMatrixColKey(engineLastQuestionMeta?.mode_code ?? null)
+          : null
       const newItem: EngineBoardItem = {
         id: itemId,
         type: 'idea',
@@ -5097,6 +5124,8 @@ const isAuthFlowInProgress = () => {
         created_at: now,
         entry_type: entryType,
         prompt_type: engineActivePrompt?.type || null,
+        matrix_row: mappedRow,
+        matrix_col: mappedCol,
       }
       setEnginePreviewItems((prev) => [newItem, ...prev])
       setEnginePreviewInput('')

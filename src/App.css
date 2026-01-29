@@ -1737,6 +1737,24 @@
   font-weight: 700;
 }
 
+.report-debug-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+}
+
+.report-debug-card {
+  border: 1px dashed #d0c9bd;
+  border-radius: 12px;
+  padding: 0.6rem 0.75rem;
+  background: #faf8f3;
+}
+
+.report-debug-card ul {
+  margin: 0.35rem 0 0;
+  padding-left: 1.1rem;
+}
+
 @media print {
   .report-header .report-actions {
     display: none;
