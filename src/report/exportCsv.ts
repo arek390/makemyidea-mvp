@@ -13,6 +13,7 @@ export type ReportSnapshot = {
   userName: string
   ideas: ReportIdea[]
   questions?: { id: string; text: string }[]
+  sourceUpdatedAt?: number | null
 }
 
 const escapeCsv = (value: string) => {

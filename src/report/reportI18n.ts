@@ -32,6 +32,9 @@ export const reportCopy: Record<
     aiEmptyA1: string
     aiEmptyA2: string
     aiEmptyA3: string
+    reportUpdate: string
+    reportUpdated: string
+    reportNoChanges: string
     tableEntry: string
     tableLabel: string
     tableQuestion: string
@@ -70,6 +73,9 @@ export const reportCopy: Record<
     aiEmptyA1: 'No entries in A1/B1/C1 – summary not generated.',
     aiEmptyA2: 'No entries in A2/B2/C2 – summary not generated.',
     aiEmptyA3: 'No entries in A3/B3/C3 – summary not generated.',
+    reportUpdate: 'Update report',
+    reportUpdated: 'Report updated.',
+    reportNoChanges: 'No changes to apply.',
     tableEntry: 'Entry',
     tableLabel: 'Label',
     tableQuestion: 'Question',
@@ -107,6 +113,9 @@ export const reportCopy: Record<
     aiEmptyA1: 'Brak wpisów w perspektywach A1/B1/C1 – nie generuję podsumowania.',
     aiEmptyA2: 'Brak wpisów w perspektywach A2/B2/C2 – nie generuję podsumowania.',
     aiEmptyA3: 'Brak wpisów w perspektywach A3/B3/C3 – nie generuję podsumowania.',
+    reportUpdate: 'Aktualizuj raport',
+    reportUpdated: 'Raport został zaktualizowany.',
+    reportNoChanges: 'Brak zmian do wprowadzenia.',
     tableEntry: 'Wpis',
     tableLabel: 'Etykieta',
     tableQuestion: 'Pytanie',

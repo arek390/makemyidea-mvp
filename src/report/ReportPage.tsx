@@ -44,6 +44,7 @@ export const ReportPage = ({
   const [aiPartialNote, setAiPartialNote] = useState<string | null>(null)
   const [summaryItems, setSummaryItems] = useState(snapshot.ideas)
   const [summaryUsage, setSummaryUsage] = useState<SummaryUsage | null>(null)
+  const [updateNotice, setUpdateNotice] = useState<string | null>(null)
   const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
   const questionLookup = useMemo(() => {
     const map = new Map<string, string>()
@@ -139,6 +140,40 @@ export const ReportPage = ({
       // ignore
     }
   }, [summaryCacheKey, reclassCacheKey])
+
+  useEffect(() => {
+    if (!updateNotice) return
+    const timer = window.setTimeout(() => setUpdateNotice(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [updateNotice])
+
+  const showUpdate = (() => {
+    if (typeof window === 'undefined') return true
+    return !(window.history.state && window.history.state.newlyCreated === true)
+  })()
+
+  const handleUpdateReport = () => {
+    if (typeof window === 'undefined') return
+    const sessionId = window.sessionStorage.getItem('reportReturnSessionId') || ''
+    const sourceUpdatedAt = Number(snapshot.sourceUpdatedAt || 0)
+    if (!sessionId) {
+      setUpdateNotice(t.reportUpdated)
+      return
+    }
+    const storedRaw = window.sessionStorage.getItem(
+      `report_source_updated_at::${sessionId}`
+    )
+    const stored = Number(storedRaw || 0)
+    if (!sourceUpdatedAt || sourceUpdatedAt <= stored) {
+      setUpdateNotice(t.reportNoChanges)
+      return
+    }
+    window.sessionStorage.setItem(
+      `report_source_updated_at::${sessionId}`,
+      String(sourceUpdatedAt)
+    )
+    setUpdateNotice(t.reportUpdated)
+  }
 
   const runSummary = async () => {
     setAiNotice(null)
@@ -265,6 +300,11 @@ export const ReportPage = ({
           <button type="button" className="ghost" onClick={onBack}>
             {t.back}
           </button>
+          {showUpdate && (
+            <button type="button" className="ghost" onClick={handleUpdateReport}>
+              {t.reportUpdate}
+            </button>
+          )}
           <button type="button" className="ghost" onClick={() => window.print()}>
             {t.print}
           </button>
@@ -345,6 +385,7 @@ export const ReportPage = ({
             {aiNotice && <span className="muted">{aiNotice}</span>}
             {aiPartialNote && <span className="muted">{aiPartialNote}</span>}
             {!aiSupportEnabled && <span className="muted">{t.aiDisabled}</span>}
+            {updateNotice && <span className="muted">{updateNotice}</span>}
           </div>
           <div className="report-summary-block">
             <h3>{t.summaryToday}</h3>

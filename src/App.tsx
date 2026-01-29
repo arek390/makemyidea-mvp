@@ -472,6 +472,7 @@ type Translations = {
   finalReportIntro: string
   reportLanguageLabel: string
   reportLanguageHint: string
+  enginePreviewOpenReport: string
   productLabel: string
   spacesLabel: string
   timeFramesLabel: string
@@ -842,6 +843,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     reportLanguageLabel: 'Report language',
     reportLanguageHint:
       'Language selection will be used for report translation in a later version.',
+    enginePreviewOpenReport: 'Open report',
     productLabel: 'Product',
     spacesLabel: 'Where do we look?',
     timeFramesLabel: 'Observation / thinking level',
@@ -1279,6 +1281,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     reportLanguageLabel: 'Język raportu',
     reportLanguageHint:
       'Wybór języka będzie użyty do tłumaczenia raportu w późniejszej wersji.',
+    enginePreviewOpenReport: 'Przejdź do raportu',
     productLabel: 'Produkt',
     spacesLabel: 'Gdzie patrzymy?',
     timeFramesLabel: 'Poziom obserwacji / myślenia',
@@ -3705,12 +3708,17 @@ const isAuthFlowInProgress = () => {
       id,
       text,
     }))
+    const sourceUpdatedAt = reportIdeas.reduce(
+      (max, item) => Math.max(max, Number(item.created_at || 0)),
+      0
+    )
     return {
       sessionName,
       date: new Date().toLocaleString(locale),
       userName,
       ideas,
       questions,
+      sourceUpdatedAt,
     }
   }
 
@@ -6521,17 +6529,41 @@ const isAuthFlowInProgress = () => {
                         if (typeof window !== 'undefined') {
                           const returnPath =
                             window.location.pathname + window.location.search
+                          const sessionId = enginePreviewSessionId || ''
                           window.sessionStorage.setItem('reportReturnPath', returnPath)
-                          window.sessionStorage.setItem(
-                            'reportReturnSessionId',
-                            enginePreviewSessionId || ''
+                          window.sessionStorage.setItem('reportReturnSessionId', sessionId)
+                          const existed =
+                            sessionId &&
+                            window.sessionStorage.getItem(`report_exists::${sessionId}`) ===
+                              'true'
+                          if (sessionId) {
+                            window.sessionStorage.setItem(`report_exists::${sessionId}`, 'true')
+                            const sourceUpdatedAt =
+                              enginePreviewItems.reduce(
+                                (max, item) => Math.max(max, Number(item.created_at || 0)),
+                                0
+                              ) || 0
+                            window.sessionStorage.setItem(
+                              `report_source_updated_at::${sessionId}`,
+                              String(sourceUpdatedAt)
+                            )
+                          }
+                          window.history.pushState(
+                            { newlyCreated: !existed },
+                            '',
+                            '/report'
                           )
-                          window.history.pushState({}, '', '/report')
                           setReportViewOpen(true)
                         }
                       }}
                     >
-                      {copy.enginePreviewCreateReport}
+                      {enginePreviewSessionId &&
+                      typeof window !== 'undefined' &&
+                      window.sessionStorage.getItem(
+                        `report_exists::${enginePreviewSessionId}`
+                      ) === 'true'
+                        ? copy.enginePreviewOpenReport
+                        : copy.enginePreviewCreateReport}
                     </button>
                   </div>
                 )}
