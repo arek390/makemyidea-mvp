@@ -2308,6 +2308,10 @@ function App() {
     sessionId: string | null
     visible: boolean
   } | null>(null)
+  const [reportViewOpen, setReportViewOpen] = useState(() => {
+    if (typeof window === 'undefined') return false
+    return window.location.pathname.replace(/\/+$/, '') === '/report'
+  })
 
   const languageOptions: Language[] = ['English', 'Polish']
 
@@ -2587,10 +2591,12 @@ const isAuthFlowInProgress = () => {
       ? 5000
       : DEFAULT_IDLE_THRESHOLD_MS
   const postAddGraceMs = isE2EEnabled() ? 200 : 7000
-  const normalizedPath =
-    typeof window !== 'undefined' ? window.location.pathname.replace(/\/+$/, '') : ''
+  // Routing is handled manually using window.location.pathname (no router library).
+  const rawPath = typeof window !== 'undefined' ? window.location.pathname : ''
+  const normalizedPath = rawPath.replace(/\/+$/, '')
   const isEnginePreview = normalizedPath === '/engine'
-  const isReport = normalizedPath === '/report'
+  const isReportPath = normalizedPath === '/report' || normalizedPath.endsWith('/report')
+  const isReport = isReportPath || reportViewOpen
   const isWorkInProgress = normalizedPath === '/wip'
   const isIdeaGrid = normalizedPath === '/grid'
   const isLogin = normalizedPath === '/login'
@@ -2603,6 +2609,24 @@ const isAuthFlowInProgress = () => {
     if (!isEnginePreview) return
     console.log('[engine] route mounted', window.location.href)
   }, [isEnginePreview])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const handlePopState = () => {
+      const nextPath = window.location.pathname.replace(/\/+$/, '')
+      setReportViewOpen(nextPath === '/report' || nextPath.endsWith('/report'))
+    }
+    window.addEventListener('popstate', handlePopState)
+    return () => {
+      window.removeEventListener('popstate', handlePopState)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (isReport && showLanding) {
+      setShowLanding(false)
+    }
+  }, [isReport, showLanding])
 
   useEffect(() => {
     if (!isEnginePreview) return
@@ -2737,8 +2761,9 @@ const isAuthFlowInProgress = () => {
     if (authSession?.user) return
     const path = window.location.pathname
     let target = path
+    const isReportPath = path.replace(/\/+$/, '') === '/report' || path.endsWith('/report')
 
-    if (!canEnterApp) {
+    if (!canEnterApp && !isReportPath) {
       if (
         path !== '/' &&
         !path.startsWith('/login') &&
@@ -2761,6 +2786,7 @@ const isAuthFlowInProgress = () => {
         isGuest,
         hasActiveGuestSession,
         canEnterApp,
+        isReportPath,
         target,
       })
     }
@@ -3620,16 +3646,24 @@ const isAuthFlowInProgress = () => {
     const sessionNameCandidate =
       enginePreviewSessionName || engineSessionDetail?.session?.name || productName || ''
     const sessionName = sessionNameCandidate.trim() ? sessionNameCandidate.trim() : '—'
+    const userNameCandidate =
+      authSession?.user?.user_metadata?.full_name ||
+      authSession?.user?.user_metadata?.name ||
+      authSession?.user?.email ||
+      ''
+    const userName = String(userNameCandidate || '').trim() || '—'
     const reportIdeas = engineSessionDetail?.boardItems?.length
       ? engineSessionDetail.boardItems
       : enginePreviewItems
     const ideas = reportIdeas.map((item, index) => ({
       id: item.id || `idea-${index + 1}`,
       text: item.text,
+      label: item.label ?? null,
     }))
     return {
       sessionName,
       date: new Date().toLocaleString(locale),
+      userName,
       ideas,
     }
   }
@@ -5851,6 +5885,28 @@ const isAuthFlowInProgress = () => {
     )
   }
 
+  if (isReport) {
+    const reportLanguage = uiLanguage === 'Polish' ? 'pl' : 'en'
+    const snapshot = getReportSessionSnapshot()
+    const handleReportBack = () => {
+      if (typeof window === 'undefined') return
+      const storedPath = window.sessionStorage.getItem('reportReturnPath')
+      if (storedPath) {
+        window.history.pushState({}, '', storedPath)
+        window.sessionStorage.removeItem('reportReturnPath')
+        window.sessionStorage.removeItem('reportReturnSessionId')
+      } else if (window.history.length > 1) {
+        window.history.back()
+      } else {
+        window.history.pushState({}, '', '/engine')
+      }
+      setReportViewOpen(false)
+    }
+    return withDevOverlay(
+      <ReportPage snapshot={snapshot} language={reportLanguage} onBack={handleReportBack} />
+    )
+  }
+
   if (isLogin) {
     const isGuestActive = isGuestMode()
     if (showSupabaseConfigError) {
@@ -6026,6 +6082,11 @@ const isAuthFlowInProgress = () => {
     )
   }
 
+  if (import.meta.env.DEV && typeof window !== 'undefined') {
+    const view = isReport ? 'report' : isEnginePreview ? 'engine' : showLanding ? 'landing' : 'app'
+    console.log('[router] path=', rawPath, '-> view=', view)
+  }
+
   if (isEnginePreview) {
     const hasSupabaseSession = Boolean(authSession?.user?.id)
     const guestAllowed = guestEntryAllowed
@@ -6119,21 +6180,6 @@ const isAuthFlowInProgress = () => {
     return new Intl.NumberFormat(locale).format(Math.max(0, Math.floor(value || 0)))
   }
 
-  if (isReport) {
-    const reportLanguage = uiLanguage === 'Polish' ? 'pl' : 'en'
-    const snapshot = getReportSessionSnapshot()
-    const handleReportBack = () => {
-      if (typeof window === 'undefined') return
-      if (window.history.length > 1) {
-        window.history.back()
-        return
-      }
-      window.location.href = '/engine'
-    }
-    return withDevOverlay(
-      <ReportPage snapshot={snapshot} language={reportLanguage} onBack={handleReportBack} />
-    )
-  }
   const formatUsd = (value: number) =>
     new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(
       Math.max(0, value || 0)
@@ -6274,7 +6320,15 @@ const isAuthFlowInProgress = () => {
                         markUserInitiatedInteraction('pointer')
                         setEngineLastInputActivityAt(Date.now())
                         if (typeof window !== 'undefined') {
-                          window.location.href = '/report'
+                          const returnPath =
+                            window.location.pathname + window.location.search
+                          window.sessionStorage.setItem('reportReturnPath', returnPath)
+                          window.sessionStorage.setItem(
+                            'reportReturnSessionId',
+                            enginePreviewSessionId || ''
+                          )
+                          window.history.pushState({}, '', '/report')
+                          setReportViewOpen(true)
                         }
                       }}
                     >

@@ -38,6 +38,9 @@ export const ReportPage = ({ snapshot, language, onBack }: ReportPageProps) => {
           <p>
             <strong>{t.date}:</strong> {snapshot.date || '—'}
           </p>
+          <p>
+            <strong>{t.userName}:</strong> {snapshot.userName || '—'}
+          </p>
         </section>
 
         <section id="toc" className="report-section">
@@ -53,7 +56,7 @@ export const ReportPage = ({ snapshot, language, onBack }: ReportPageProps) => {
               <a href="#map">{t.perspectiveMap}</a>
             </li>
             <li>
-              <a href="#responses">{t.collectedResponses}</a>
+              <a href="#responses">{t.collectedIdeas}</a>
             </li>
             <li>
               <a href="#insights">{t.insights}</a>
@@ -83,8 +86,34 @@ export const ReportPage = ({ snapshot, language, onBack }: ReportPageProps) => {
         </section>
 
         <section id="responses" className="report-section">
-          <h2>{t.collectedResponses}</h2>
-          <p>{t.placeholder}</p>
+          <h2>{t.collectedIdeas}</h2>
+          <div className="report-table-wrapper">
+            <table className="report-table">
+              <thead>
+                <tr>
+                  <th>{t.tableEntry}</th>
+                  <th>{t.tableLabel}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {snapshot.ideas.length === 0 ? (
+                  <tr>
+                    <td colSpan={2}>{t.noEntries}</td>
+                  </tr>
+                ) : (
+                  snapshot.ideas.map((idea) => {
+                    const label = idea.label?.trim() ? idea.label.trim() : t.labelMissing
+                    return (
+                      <tr key={idea.id}>
+                        <td>{idea.text || '—'}</td>
+                        <td>{label}</td>
+                      </tr>
+                    )
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section id="insights" className="report-section">

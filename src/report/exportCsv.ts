@@ -1,8 +1,9 @@
-export type ReportIdea = { id: string; text: string }
+export type ReportIdea = { id: string; text: string; label?: string | null }
 
 export type ReportSnapshot = {
   sessionName: string
   date: string
+  userName: string
   ideas: ReportIdea[]
 }
 
@@ -16,8 +17,12 @@ const escapeCsv = (value: string) => {
 
 export const downloadReportCsv = (snapshot: ReportSnapshot) => {
   const rows: string[] = []
-  rows.push(['sessionName', 'date'].map(escapeCsv).join(','))
-  rows.push([snapshot.sessionName || '—', snapshot.date || '—'].map(escapeCsv).join(','))
+  rows.push(['sessionName', 'date', 'userName'].map(escapeCsv).join(','))
+  rows.push(
+    [snapshot.sessionName || '—', snapshot.date || '—', snapshot.userName || '—']
+      .map(escapeCsv)
+      .join(',')
+  )
   rows.push('')
   rows.push(['ideas'].join(','))
   rows.push(['id', 'text'].map(escapeCsv).join(','))

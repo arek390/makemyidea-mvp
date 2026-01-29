@@ -12,13 +12,18 @@ export const reportCopy: Record<
     toc: string
     sessionName: string
     date: string
+    userName: string
     sessionGoal: string
     executiveSummary: string
     perspectiveMap: string
-    collectedResponses: string
+    collectedIdeas: string
     insights: string
     nextSteps: string
     appendices: string
+    tableEntry: string
+    tableLabel: string
+    labelMissing: string
+    noEntries: string
     placeholder: string
   }
 > = {
@@ -32,13 +37,18 @@ export const reportCopy: Record<
     toc: 'Table of contents',
     sessionName: 'Session',
     date: 'Date',
+    userName: 'User',
     sessionGoal: 'Session goal',
     executiveSummary: 'Executive summary',
     perspectiveMap: 'Perspective / questions map',
-    collectedResponses: 'Collected responses',
+    collectedIdeas: 'Collected ideas and observations',
     insights: 'Insights & patterns',
     nextSteps: 'Recommendations / next steps',
     appendices: 'Appendices (raw data + metadata)',
+    tableEntry: 'Entry',
+    tableLabel: 'Label',
+    labelMissing: 'label not defined',
+    noEntries: 'No entries',
     placeholder: 'Placeholder content — to be completed in later versions.',
   },
   pl: {
@@ -51,13 +61,18 @@ export const reportCopy: Record<
     toc: 'Spis treści',
     sessionName: 'Sesja',
     date: 'Data',
+    userName: 'Użytkownik',
     sessionGoal: 'Cel sesji',
     executiveSummary: 'Podsumowanie',
     perspectiveMap: 'Mapa perspektyw / pytań',
-    collectedResponses: 'Zebrane odpowiedzi',
+    collectedIdeas: 'Zebrane pomysły i obserwacje',
     insights: 'Wnioski i wzorce',
     nextSteps: 'Rekomendacje / następne kroki',
     appendices: 'Załączniki (surowe dane + metadane)',
+    tableEntry: 'Wpis',
+    tableLabel: 'Etykieta',
+    labelMissing: 'etykieta niezdefiniowana',
+    noEntries: 'Brak wpisów',
     placeholder: 'Treść przykładowa — do uzupełnienia w kolejnych wersjach.',
   },
 }
