@@ -63,9 +63,6 @@ export const ReportPage = ({
       C3: toTexts(grouped.cells.C3),
     }
   }, [grouped])
-  const emptyToday = !cellsPayload.A1.length && !cellsPayload.B1.length && !cellsPayload.C1.length
-  const emptyChange = !cellsPayload.A2.length && !cellsPayload.B2.length && !cellsPayload.C2.length
-  const emptyProduct = !cellsPayload.A3.length && !cellsPayload.B3.length && !cellsPayload.C3.length
   const emptyMessages = {
     today: t.aiEmptyA1,
     change: t.aiEmptyA2,
