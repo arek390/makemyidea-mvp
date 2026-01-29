@@ -34,7 +34,6 @@ export const ReportPage = ({
   const [aiPartialNote, setAiPartialNote] = useState<string | null>(null)
   const [summaryItems, setSummaryItems] = useState(snapshot.ideas)
   const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
-  const grouped = useMemo(() => groupItemsByCell(summaryItems), [summaryItems])
   const cacheBase = useMemo(() => {
     if (typeof window === 'undefined') return null
     const sessionId = window.sessionStorage.getItem('reportReturnSessionId') || ''
