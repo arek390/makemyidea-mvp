@@ -9,7 +9,6 @@ type ReportPageProps = {
 
 export const ReportPage = ({ snapshot, language, onBack }: ReportPageProps) => {
   const t = reportCopy[language]
-
   return (
     <div className="report-page">
       <header className="report-header">
