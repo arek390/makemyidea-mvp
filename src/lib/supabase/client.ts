@@ -41,8 +41,10 @@ if (import.meta.env.DEV && typeof window !== 'undefined') {
 }
 
 if (!supabaseUrl || !supabaseAnonKey) {
-  // eslint-disable-next-line no-console
-  console.warn('Missing Supabase env vars for client.')
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console
+    console.warn('Auth disabled: missing Supabase env vars for client.')
+  }
 }
 
 const resolveAuthStorage = () => {

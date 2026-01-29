@@ -16,12 +16,12 @@ if (rawValues.VITE_SUPABASE_ANON_KEY.length !== values.VITE_SUPABASE_ANON_KEY.le
 const missing = required.filter((key) => !values[key])
 
 if (missing.length) {
-  console.error(
-    `[env] Missing required build-time env: ${missing.join(
+  console.warn(
+    `[env] Missing build-time env: ${missing.join(
       ', '
-    )}. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel Environment Variables (Preview/Production) and redeploy without build cache.`
+    )}. Supabase auth will be disabled for this build.`
   )
-  process.exit(1)
+  process.exit(0)
 }
 
 let parsedUrl

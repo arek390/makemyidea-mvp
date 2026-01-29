@@ -39,6 +39,8 @@ import {
   isGuestMode,
   readGuestSessions,
 } from './lib/guest'
+import { ReportPage } from './report/ReportPage'
+import type { ReportSnapshot } from './report/exportCsv'
 
 type StepId = 1 | 2 | 3 | 4
 type SpaceSlot = 'supersystem' | 'subsystem'
@@ -135,17 +137,7 @@ const ENGINE_ENTRY_LABEL_COLORS: Record<string, string> = {
   'następny krok (action)': '#C7F0E0',
 }
 
-type Language =
-  | 'English'
-  | 'Chinese'
-  | 'Spanish'
-  | 'Hindi'
-  | 'Polish'
-  | 'German'
-
-  | 'Swiss'
-  | 'Italian'
-  | 'French'
+type Language = 'English' | 'Polish'
 
 type LlmUsageModel = 'gpt-4.1-mini' | 'gpt-5-nano' | 'gpt-5-mini'
 type LlmUsageTokens = { input?: number; output?: number; total?: number }
@@ -253,7 +245,7 @@ const getOAuthRedirectTo = () => {
   return `${origin}/auth/callback`
 }
 const MISSING_SUPABASE_ENV_MESSAGE =
-  'Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY in build-time env (check Vercel Environment Variables for Preview/Production).'
+  'Auth disabled in this environment (missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).'
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
 const CANONICAL_HOST = (() => {
@@ -471,6 +463,7 @@ type Translations = {
   enginePreviewSessionEmpty: string
   enginePreviewCreateSession: string
   enginePreviewReset: string
+  enginePreviewCreateReport: string
   enginePreviewBoardItemsTitle: string
   engineEntryLabelHint: string
   feedbackButtonLabel: string
@@ -542,6 +535,52 @@ type Translations = {
   engineWordLimitReached: string
   openReportPanel: string
   reportSnapshotTitle: string
+  reportTitle: string
+  reportPrint: string
+  reportDownloadPdf: string
+  reportExportCsv: string
+  reportCoverTitle: string
+  reportTocTitle: string
+  reportSessionGoalTitle: string
+  reportExecutiveSummaryTitle: string
+  reportPerspectiveMapTitle: string
+  reportCollectedResponsesTitle: string
+  reportQuestionsTableTitle: string
+  reportIdeasTableTitle: string
+  reportResponsesTableTitle: string
+  reportInsightsTitle: string
+  reportRecommendationsTitle: string
+  reportAppendicesTitle: string
+  reportNotProvided: string
+  reportNoData: string
+  reportSessionMetaTitle: string
+  reportExportLinksTitle: string
+  reportAuthorLabel: string
+  reportParticipantsLabel: string
+  reportDateRangeLabel: string
+  reportSessionNameLabel: string
+  reportQuestionsLabel: string
+  reportIdeasLabel: string
+  reportCellsVisitedLabel: string
+  reportDuplicatesLabel: string
+  reportKeywordsTitle: string
+  reportPerspectiveVisited: string
+  reportPerspectiveQuestions: string
+  reportQuestionIdLabel: string
+  reportQuestionTextLabel: string
+  reportQuestionSourceLabel: string
+  reportQuestionCellLabel: string
+  reportIdeaIdLabel: string
+  reportIdeaTextLabel: string
+  reportIdeaTagsLabel: string
+  reportIdeaCreatedLabel: string
+  reportAnswerQuestionLabel: string
+  reportAnswerTextLabel: string
+  reportAnswerCreatedLabel: string
+  reportRecommendationExpandIdeas: string
+  reportRecommendationExplorePerspectives: string
+  reportRecommendationDeduplicate: string
+  reportRecommendationPrioritize: string
   close: string
   editIdeaTitle: string
   generatedIdeaTitle: string
@@ -794,6 +833,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewSessionEmpty: 'Not created yet',
     enginePreviewCreateSession: 'Create session',
     enginePreviewReset: 'Save and close session',
+    enginePreviewCreateReport: 'Create report',
     enginePreviewBoardItemsTitle: 'Board',
     engineEntryLabelHint: 'Click to add or change label',
     feedbackButtonLabel: 'Feedback',
@@ -868,6 +908,52 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineWordLimitReached: 'Word limit reached.',
     openReportPanel: 'Open report panel',
     reportSnapshotTitle: 'Workshop report snapshot',
+    reportTitle: 'Session report',
+    reportPrint: 'Print',
+    reportDownloadPdf: 'Download PDF',
+    reportExportCsv: 'Export data (CSV)',
+    reportCoverTitle: 'Cover',
+    reportTocTitle: 'Table of contents',
+    reportSessionGoalTitle: 'Session goal',
+    reportExecutiveSummaryTitle: 'Executive summary',
+    reportPerspectiveMapTitle: 'Perspective / questions map',
+    reportCollectedResponsesTitle: 'Collected responses',
+    reportQuestionsTableTitle: 'Questions',
+    reportIdeasTableTitle: 'Ideas',
+    reportResponsesTableTitle: 'Responses',
+    reportInsightsTitle: 'Insights & patterns',
+    reportRecommendationsTitle: 'Recommendations / next steps',
+    reportAppendicesTitle: 'Appendices',
+    reportNotProvided: 'Not provided',
+    reportNoData: 'No data available.',
+    reportSessionMetaTitle: 'Session metadata',
+    reportExportLinksTitle: 'Export links',
+    reportAuthorLabel: 'Author',
+    reportParticipantsLabel: 'Participants',
+    reportDateRangeLabel: 'Date',
+    reportSessionNameLabel: 'Session name',
+    reportQuestionsLabel: 'Questions',
+    reportIdeasLabel: 'Ideas',
+    reportCellsVisitedLabel: 'Cells visited',
+    reportDuplicatesLabel: 'Duplicates',
+    reportKeywordsTitle: 'Top themes',
+    reportPerspectiveVisited: 'Visited',
+    reportPerspectiveQuestions: 'Questions',
+    reportQuestionIdLabel: 'ID',
+    reportQuestionTextLabel: 'Question',
+    reportQuestionSourceLabel: 'Source',
+    reportQuestionCellLabel: 'Cell',
+    reportIdeaIdLabel: 'ID',
+    reportIdeaTextLabel: 'Idea',
+    reportIdeaTagsLabel: 'Tags',
+    reportIdeaCreatedLabel: 'Created',
+    reportAnswerQuestionLabel: 'Question',
+    reportAnswerTextLabel: 'Answer',
+    reportAnswerCreatedLabel: 'Created',
+    reportRecommendationExpandIdeas: 'Expand ideas before moving to evaluation.',
+    reportRecommendationExplorePerspectives: 'Explore additional perspectives in the 3×3 map.',
+    reportRecommendationDeduplicate: 'Deduplicate similar ideas to reduce noise.',
+    reportRecommendationPrioritize: 'Prioritize the strongest ideas and define next actions.',
     close: 'Close',
     editIdeaTitle: 'Edit idea',
     generatedIdeaTitle: 'Generated idea',
@@ -979,282 +1065,6 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       'Warranty service',
       'Second-life reuse',
       'Disassembly planning',
-    ],
-    cellLabel: (spaceLabel, timeLabel) => `${spaceLabel} + ${timeLabel}`,
-  },
-  German: {
-    stepLabel: 'Schritt',
-    appTitle: 'Idea Clarity Grid',
-    landingHeroTitle: 'Ideenchaos in ein klares Produkt verwandeln.',
-    landingHeroSubtitle: 'Kein Moderator. Keine Haftnotizen. Keine Zeitverschwendung.',
-    landingIntroTitleLines: [
-      CANONICAL_DISPLAY_HOST,
-      'führt dich Schritt für Schritt',
-      'durch die Produktdefinition.',
-    ],
-    landingIntroSubtextLines: [
-      'Online oder vor Ort.',
-      'Allein oder mit Team.',
-      'KI-Unterstützung (wenn du willst), aber...',
-      'immer von {emphasis} gesteuert.',
-    ],
-    landingIntroSubtextEmphasis: 'dir',
-    landingCta: 'Starte mit einer Idee, sieh es wirken.',
-    landingThreeStepsCta: 'Get started in 3 steps',
-    landingThreeStepsTitle: '3 Schritte',
-    landingBeforeLead: 'Wenn dir das bekannt vorkommt — du bist hier richtig.',
-    landingBeforeList: ['❌ Chaos', '❌ Verlorene Notizen', '❌ Keine Entscheidungen'],
-    landingBeforeEmphasis: {
-      strong: 'Viel Energie.',
-      medium: 'Wenig Entscheidungen.',
-      rest: 'Kein echter Fortschritt.',
-    },
-    landingAfterLead: 'Jetzt arbeitet der Prozess für dich.',
-    landingAfterList: ['✅ Prozess', '✅ Strukturierte Fragen', '✅ Bericht'],
-    landingWhyLead: 'Wir ersetzen Denken nicht. Wir entfernen Reibung.',
-    landingWhyLines: [
-      CANONICAL_DISPLAY_HOST,
-      'strukturiert das Gespräch',
-      'hält die Prozesslogik',
-      'ordnet Wissen in Echtzeit',
-      'lässt den Menschen das Wichtigste: Entscheidungen und Kreativität',
-      'KI hilft. Menschen entscheiden.',
-    ],
-    landingWhoTitle: 'Für wen?',
-    landingWhoList: [
-      '🚀 Du hast eine Idee, weißt aber nicht, wie du sie definierst',
-      '🛠️ Du bist Dev / PM und willst echte Analyse, kein Brainstorming „zum Spaß“',
-      '🤝 Du arbeitest mit einem verteilten oder hybriden Team',
-      '⏱️ Du willst Ergebnisse jetzt, nicht nach drei Workshops',
-    ],
-    landingFinalLines: ['Du brauchst keine perfekte Idee.', 'Du brauchst einen guten Prozess.'],
-    impulseButtonLabel: 'Gib mir einen Impuls',
-    impulseTitle: 'Vorgeschlagene Frage',
-    impulseEmpty: 'Noch keine Frage verfügbar.',
-    impulseClose: 'Schließen',
-    report: 'Bericht',
-    llmSettings: 'LLM-Einstellungen',
-    languageLabel: 'Sprache',
-    steps: {
-      1: 'Erzähl uns von deinem neuen Produkt',
-      2: 'Idea Clarity Grid Szenariobestätigung',
-      3: 'Idea Clarity Grid Workshop',
-      4: 'Abschlussbericht',
-    },
-  step1Intro: 'Definieren Sie das Produkt, die Räume und die Beobachtungs- / Denkebenen für die Analyse.',
-  productDescriptionLabel: 'Beschreiben Sie Ihr neues Produkt',
-  productDescriptionPlaceholder:
-    'Für wen ist es gedacht, welche Altersgruppe, welcher Markt, Materialien, Hauptfunktion usw.',
-  productDescriptionDoneLabel: 'Fertig',
-    productNameSuggestionsLabel:
-      'Namensvorschläge basierend auf Ihrer Beschreibung (Name in das Namensfeld ziehen)',
-  productNameLabel: 'Nennen Sie Ihr neues Produkt',
-  productNamePlaceholder: 'z.B. modularer Batteriespeicher',
-  step1SpacesTitle: 'Wo schauen wir hin?',
-  step1TimeframesTitle: 'Beobachtungs- / Denkebene',
-  step1DragHint: 'Optionen in die Zielfelder unten ziehen',
-  step1DropHere: 'Hier ablegen...',
-  step1SystemLabel: 'Produkt',
-  step1SystemLocked: 'Gesperrt',
-  spaceListTitle: 'Ort-/Raumliste',
-  spaceListHint: 'Wählen Sie bis zu 5 aus.',
-    timeListTitle: 'Liste der Beobachtungs- / Denkebenen',
-    timeListHint: 'Wählen Sie bis zu 5 aus.',
-    finalSpacesList: 'Endgültige Raumliste',
-    finalTimesList: 'Endgültige Beobachtungs- / Denkebenen',
-    noSelectionYet: 'Noch keine Auswahl.',
-    warningMax5: 'Bitte halten Sie die Auswahl auf höchstens 5 Einträge.',
-    scenarioIntro:
-      'Szenarien werden für jede Raum- und Zeitrahmenkombination erzeugt. Wählen Sie eines aus und verfeinern Sie die Achsendefinitionen.',
-    chooseScenario: 'Dieses Szenario wählen',
-    spaceLabel: 'Wo schauen wir hin?',
-    timeLabel: 'Beobachtungs- / Denkebene',
-    axisSpaceLabel: 'Wo schauen wir hin?',
-    axisTimeLabel: 'Beobachtungs- / Denkebene',
-    axisSubsystem: 'Elemente',
-    axisSystem: 'Produkt',
-    axisSupersystem: 'Welt',
-    axisPast: 'Wie ist es?',
-    axisNow: 'Was funktioniert nicht?',
-    axisFuture: 'Wie sollte es sein?',
-    workshopIntro:
-      'Nutzen Sie das Fragezeichen-Symbol für Impulse. Verwenden Sie das Ideen-Symbol, um eigene Notizen hinzuzufügen.',
-    legendQuestion: 'Unterstützende Frage',
-    legendIdea: 'Neue Idee',
-    showIdeaLabel: 'Idee anzeigen',
-    supportiveQuestionTooltip: 'Unterstützende Frage',
-    addIdeaTooltip: 'Idee hinzufügen',
-    editIdeaTooltip: 'Klicken zum Bearbeiten',
-    ideaPlaceholder: 'Schreiben Sie Ihre Idee (max. 50 Wörter)',
-    wordCount: (count) => `Verbleibend ${Math.max(0, 50 - count)} Wörter`,
-    cancel: 'Abbrechen',
-    saveIdea: 'Speichern',
-    ideaGenerator: 'Gib mir Ideen',
-    labelEditorLabel: 'Label-Editor',
-    keepOnlyMyIdeasLabel: 'Nur meine Ideen behalten',
-    confirmRemoveIdeasTitle: 'Bist du sicher?',
-    confirmRemoveIdeasMessage: 'Alle KI-generierten Ideen werden entfernt.',
-    confirmYes: 'JA',
-    confirmNo: 'NEIN',
-    nextStepPrefix: 'Nächster Schritt: ',
-    previousStepPrefix: 'Vorheriger Schritt: ',
-    previousStepNone: 'Vorheriger Schritt: keiner',
-    nextStepCompleted: 'Nächster Schritt: abgeschlossen',
-    finalReportIntro: 'Zusammenfassung der bisher gesammelten Workshop-Daten.',
-    reportLanguageLabel: 'Berichtssprache',
-    reportLanguageHint:
-      'Die Sprachauswahl wird in einer späteren Version für die Übersetzung verwendet.',
-    productLabel: 'Produkt',
-    spacesLabel: 'Wo schauen wir hin?',
-    timeFramesLabel: 'Beobachtungs- / Denkebene',
-    totalScenariosLabel: 'Gesamte Szenarien',
-    chosenScenarioLabel: 'Gewähltes Szenario',
-    spaceDefinitionsLabel: 'Raumdefinitionen',
-    timeDefinitionsLabel: 'Zeitdefinitionen',
-    totalIdeasLabel: 'Gesamtideen',
-    cellsWithIdeasLabel: 'Felder mit Ideen',
-    ideasGeneratedLabel: 'KI-generierte Ideen',
-    ideasUserLabel: 'Benutzerideen',
-    noIdeasLabel: 'Noch keine Ideen.',
-    confirmProductLabel: 'Produktnamen bestätigen',
-    selectedLanguageLabel: 'Gewählte Sprache',
-    notSet: 'Nicht festgelegt',
-    notSelected: 'Nicht ausgewählt',
-    noScenarioConfirmed: 'Noch kein Szenario bestätigt.',
-    enginePreviewTitle: 'Fragen-Engine Vorschau',
-    enginePreviewLandingLink: 'Landing page',
-    enginePreviewLink: 'Engine Vorschau',
-    enginePreviewSessionTitle: 'Sitzung',
-    enginePreviewSessionIdLabel: 'Sitzungs-ID',
-    enginePreviewSessionEmpty: 'Noch nicht erstellt',
-    enginePreviewCreateSession: 'Sitzung erstellen',
-    enginePreviewReset: 'Sitzung schließen',
-    enginePreviewBoardItemsTitle: 'Board-Elemente',
-    enginePreviewBoardItemPlaceholder: 'Board-Element beschreiben...',
-    enginePreviewAddItem: 'Hinzufügen',
-    enginePreviewBoardItemsEmpty: 'Noch keine Elemente.',
-    enginePreviewNextQuestionTitle: 'Nächste Frage',
-    enginePreviewSuggestQuestion: 'Nächste Frage',
-    enginePreviewQuestionEmpty: 'Noch keine Frage.',
-    enginePreviewNextAction: 'Nächste Frage',
-    enginePreviewSwapAction: 'Tauschen',
-    enginePreviewSimplifyAction: 'Vereinfachen',
-    enginePreviewDeepenAction: 'Vertiefen',
-    enginePreviewAnswerPlaceholder: 'Antwort eingeben...',
-    enginePreviewSubmitAnswer: 'Antwort senden',
-    enginePreviewNoMoreQuestions: 'Schritt abgeschlossen / keine weiteren Fragen.',
-    enginePreviewBackToApp: 'Zurück zur App',
-    enginePreviewMetaGroup: 'Gruppe',
-    enginePreviewMetaMode: 'Modus',
-    enginePreviewMetaCategory: 'Kategorie',
-    enginePreviewMetaDifficulty: 'Schwierigkeit',
-    openReportPanel: 'Berichtspanel öffnen',
-    reportSnapshotTitle: 'Workshop-Berichtsübersicht',
-    close: 'Schließen',
-    editIdeaTitle: 'Idee bearbeiten',
-    generatedIdeaTitle: 'Generierte Idee',
-    questionsTitle: 'Unterstützende Fragen',
-    nextQuestionsLabel: 'Next 10 guiding questions',
-    prevQuestionsLabel: 'Previous 10 guiding questions',
-    labelEditorTitle: 'Label-Editor',
-    labelEditorSave: 'Speichern',
-    labelEditorAdd: 'Label hinzufügen',
-    removeLabelAriaLabel: 'Label entfernen',
-    labelDropPlaceholder: 'Label hier ablegen',
-    noLabelText: 'Kein Label',
-    save: 'Speichern',
-    llmSettingsTitle: 'OpenAI-Servereinstellungen',
-    llmSettingsIntro:
-      'Verbinden Sie Ihren Server mit OpenAI (OPENAI_API_KEY) und geben Sie die API-Basis-URL an.',
-    llmApiBaseLabel: 'API-Basis-URL',
-    llmApiBasePlaceholder: 'http://localhost:8787',
-    llmSettingsSave: 'Speichern',
-    llmSettingsSaved: 'Gespeichert.',
-    llmSettingsCostNote:
-      'Die Nutzung Ihres API-Schlüssels wird Ihrem OpenAI-Konto gemäß deren Preisen berechnet.',
-    llmStatusOnline: 'Serverstatus: online',
-    llmStatusOffline: 'Serverstatus: offline',
-    llmStatusUnknown: 'Serverstatus: unbekannt',
-    llmTestConnection: 'Verbindung testen',
-    llmEnableConnection: 'OpenAI aktivieren',
-    llmDisableConnection: 'OpenAI deaktivieren',
-    questionTemplate: (spaceDef, timeDef) =>
-      `Wie könnte "${spaceDef}" auf "${timeDef}" reagieren und eine neue Chance eröffnen?`,
-    questionTemplates: (productName, spaceDef, timeDef) => [
-      `Welche unerfüllte Nutzerbedürfnis rund um "${productName}" zeigt sich in "${spaceDef}" während "${timeDef}"?`,
-      `Welche neuen Nutzertrends könnten "${productName}" in "${spaceDef}" für "${timeDef}" verändern?`,
-      `Welche Standards, Vorschriften oder Sicherheitsanforderungen entstehen für "${productName}" in "${spaceDef}" während "${timeDef}"?`,
-      `Welche State‑of‑the‑Art‑Technologie oder Materialien verbessern "${productName}" in "${spaceDef}" für "${timeDef}"?`,
-      `Wo liegt der größte Leistungs‑Engpass für "${productName}" in "${spaceDef}" während "${timeDef}"?`,
-      `Wie sieht der beste Preis‑Leistungs‑Trade‑off für "${productName}" in "${spaceDef}" während "${timeDef}" aus?`,
-      `Für welche Features würden Nutzer in "${spaceDef}" während "${timeDef}" mehr bezahlen – und was ist Pflicht?`,
-      `Wie können Service, Software oder Datenebenen "${productName}" in "${spaceDef}" während "${timeDef}" aufwerten?`,
-      `Wie sollte "${productName}" in "${spaceDef}" während "${timeDef}" mit anderen Produkten vernetzt sein – und welchen Nutzen bringt das?`,
-      `Welche Alternative könnte "${productName}" bei Preis oder Leistung in "${spaceDef}" während "${timeDef}" schlagen?`,
-      `Welche Haltbarkeits‑, Wartungs‑ oder Lebensdauer‑Erwartungen muss "${productName}" in "${spaceDef}" für "${timeDef}" erfüllen?`,
-    ],
-    llmIdeaTemplate: (spaceDef, timeDef) =>
-      `Überlegen Sie, wie ${spaceDef} mit ${timeDef} verknüpft ist, um Kunden-, Designer- und Systemperspektiven zu erschließen.`,
-    subsystemFallback: 'Schlüsselkomponenten: Struktur, Energiequelle, Steuerungsebene',
-    subsystemTemplate: (productName) =>
-      `Schlüsselkomponenten: ${productName}-Gehäuse, Kernmodul, Schnittstellenschicht`,
-    timeDefs: {
-      past: (timeFrame) => `Frühere Phase von ${timeFrame}`,
-      now: (timeFrame) => `Aktueller Stand von ${timeFrame}`,
-      future: (timeFrame) => `Nächste Entwicklung von ${timeFrame}`,
-    },
-    analyzedProduct: 'Analysiertes Produkt',
-    leadSpaceSuggestions: (productName) => [
-      `Integration von ${productName} in ein Nutzer-Ökosystem`,
-      `Wo ${productName} installiert ist`,
-    ],
-    leadTimeSuggestions: (productName) => [
-      `${productName} frühe Fertigung`,
-      `${productName} Kernmontage`,
-    ],
-    spaceSuggestions: [
-      'Wohnumgebung',
-      'Fahrzeugkabine',
-      'Industrieanlage',
-      'Außeneinsatz',
-      'Kühlraum',
-      'Hohe Hitzeeinwirkung',
-      'Feuchte Umgebung',
-      'Gesundheitswesen',
-      'Einzelhandelsfläche',
-      'Lagerhaltung',
-      'Büroarbeitsplatz',
-      'Öffentliche Infrastruktur',
-      'Maritime Umgebung',
-      'Luftfahrtkabine',
-      'Baustelle',
-      'Smart-City-Netz',
-      'Landwirtschaftliche Fläche',
-      'Rechenzentrum',
-      'Klassenzimmer',
-      'Sportanlage',
-    ],
-    timeSuggestions: [
-      'Produktion beim Zulieferer',
-      'Interne Montage',
-      'Qualitätsprüfung',
-      'Endprüfung',
-      'Verpackungsprozess',
-      'Distributionshandling',
-      'Nutzungsphase beim Kunden',
-      'Wartungszyklus',
-      'Reparaturablauf',
-      'End-of-Life-Abwicklung',
-      'Recyclingprozess',
-      'Komponentenvorbereitung',
-      'Rohstoffbeschaffung',
-      'Komponentenfertigung',
-      'Oberflächenbearbeitung',
-      'Zuliefererlogistik',
-      'Installation & Inbetriebnahme',
-      'Garantieservice',
-      'Zweitnutzung',
-      'Demontageplanung',
     ],
     cellLabel: (spaceLabel, timeLabel) => `${spaceLabel} + ${timeLabel}`,
   },
@@ -1454,6 +1264,52 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     noScenarioConfirmed: 'Brak potwierdzonego scenariusza.',
     openReportPanel: 'Otwórz panel raportu',
     reportSnapshotTitle: 'Podgląd raportu z warsztatu',
+    reportTitle: 'Raport z sesji',
+    reportPrint: 'Drukuj',
+    reportDownloadPdf: 'Pobierz PDF',
+    reportExportCsv: 'Eksport danych (CSV)',
+    reportCoverTitle: 'Okładka',
+    reportTocTitle: 'Spis treści',
+    reportSessionGoalTitle: 'Cel sesji',
+    reportExecutiveSummaryTitle: 'Streszczenie wykonawcze',
+    reportPerspectiveMapTitle: 'Mapa perspektyw / pytań',
+    reportCollectedResponsesTitle: 'Zebrane odpowiedzi',
+    reportQuestionsTableTitle: 'Pytania',
+    reportIdeasTableTitle: 'Pomysły',
+    reportResponsesTableTitle: 'Odpowiedzi',
+    reportInsightsTitle: 'Wnioski i wzorce',
+    reportRecommendationsTitle: 'Rekomendacje / następne kroki',
+    reportAppendicesTitle: 'Aneksy',
+    reportNotProvided: 'Nie podano',
+    reportNoData: 'Brak danych.',
+    reportSessionMetaTitle: 'Metadane sesji',
+    reportExportLinksTitle: 'Eksport',
+    reportAuthorLabel: 'Autor',
+    reportParticipantsLabel: 'Uczestnicy',
+    reportDateRangeLabel: 'Data',
+    reportSessionNameLabel: 'Nazwa sesji',
+    reportQuestionsLabel: 'Pytania',
+    reportIdeasLabel: 'Pomysły',
+    reportCellsVisitedLabel: 'Odwiedzone komórki',
+    reportDuplicatesLabel: 'Duplikaty',
+    reportKeywordsTitle: 'Najczęstsze motywy',
+    reportPerspectiveVisited: 'Odwiedzone',
+    reportPerspectiveQuestions: 'Pytania',
+    reportQuestionIdLabel: 'ID',
+    reportQuestionTextLabel: 'Pytanie',
+    reportQuestionSourceLabel: 'Źródło',
+    reportQuestionCellLabel: 'Komórka',
+    reportIdeaIdLabel: 'ID',
+    reportIdeaTextLabel: 'Pomysł',
+    reportIdeaTagsLabel: 'Tagi',
+    reportIdeaCreatedLabel: 'Utworzono',
+    reportAnswerQuestionLabel: 'Pytanie',
+    reportAnswerTextLabel: 'Odpowiedź',
+    reportAnswerCreatedLabel: 'Utworzono',
+    reportRecommendationExpandIdeas: 'Rozwiń listę pomysłów przed oceną.',
+    reportRecommendationExplorePerspectives: 'Sprawdź dodatkowe perspektywy w siatce 3×3.',
+    reportRecommendationDeduplicate: 'Usuń duplikaty, aby zmniejszyć szum.',
+    reportRecommendationPrioritize: 'Nadaj priorytety najlepszym pomysłom i ustal kolejne kroki.',
     close: 'Zamknij',
     editIdeaTitle: 'Edytuj pomysł',
     generatedIdeaTitle: 'Wygenerowany pomysł',
@@ -1479,6 +1335,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewSessionEmpty: 'Jeszcze nie utworzono',
     enginePreviewCreateSession: 'Utwórz sesję',
     enginePreviewReset: 'Zapisz i zamknij sesję',
+    enginePreviewCreateReport: 'Utwórz raport',
     enginePreviewBoardItemsTitle: 'Tablica',
     engineEntryLabelHint: 'Kliknij żeby dodać lub zmienić etykietę',
     feedbackButtonLabel: 'Feedback',
@@ -1667,1057 +1524,10 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     ],
     cellLabel: (spaceLabel, timeLabel) => `${spaceLabel} + ${timeLabel}`,
   },
-  Chinese: {
-    stepLabel: '步骤',
-    appTitle: 'Idea Clarity Grid',
-    landingHeroTitle: '把想法的混乱变成清晰的产品。',
-    landingHeroSubtitle: '无需主持人。无需便利贴。无需浪费时间。',
-    landingIntroTitleLines: [
-      CANONICAL_DISPLAY_HOST,
-      '一步一步引导你',
-      '完成产品定义。',
-    ],
-    landingIntroSubtextLines: [
-      '线上或线下。',
-      '独立或团队。',
-      'AI 支持（如果你需要），但...',
-      '始终由{emphasis}掌控。',
-    ],
-    landingIntroSubtextEmphasis: '你',
-    landingCta: '从想法开始，看看效果。',
-    landingThreeStepsCta: 'Get started in 3 steps',
-    landingThreeStepsTitle: '3 步',
-    landingBeforeLead: '如果有任何一句听起来熟悉——你来对了地方。',
-    landingBeforeList: ['❌ 混乱', '❌ 笔记丢失', '❌ 没有决策'],
-    landingBeforeEmphasis: {
-      strong: '很多精力。',
-      medium: '很少决策。',
-      rest: '没有实质进展。',
-    },
-    landingAfterLead: '现在流程为你工作。',
-    landingAfterList: ['✅ 流程', '✅ 结构化问题', '✅ 报告'],
-    landingWhyLead: '我们不取代思考。我们去掉摩擦。',
-    landingWhyLines: [
-      CANONICAL_DISPLAY_HOST,
-      '让对话结构化',
-      '确保流程逻辑',
-      '实时整理知识',
-      '把关键留给人：决策与创造力',
-      'AI 帮助，人来决定。',
-    ],
-    landingWhoTitle: '适合谁？',
-    landingWhoList: [
-      '🚀 有想法，但不知道怎么定义',
-      '🛠️ 你是开发者 / PM，想要真正的分析而不是“为了气氛”的头脑风暴',
-      '🤝 分布式或混合团队',
-      '⏱️ 想要现在就看到结果，而不是三次工作坊之后',
-    ],
-    landingFinalLines: ['你不需要完美的想法。', '你需要一个好流程。'],
-    impulseButtonLabel: '给我一个启发',
-    impulseTitle: '推荐问题',
-    impulseEmpty: '暂时没有可用的问题。',
-    impulseClose: '关闭',
-    report: '报告',
-    llmSettings: 'LLM 设置',
-    languageLabel: '语言',
-    steps: {
-      1: '介绍你的新产品',
-      2: 'Idea Clarity Grid 情景确认',
-      3: 'Idea Clarity Grid 工作坊',
-      4: '最终报告',
-    },
-  step1Intro: '定义产品、观察视角与分析层级。',
-  productDescriptionLabel: '描述你的新产品',
-  productDescriptionPlaceholder:
-    '面向谁、年龄层、市场、材料、主要功能等。',
-  productDescriptionDoneLabel: '完成',
-    productNameSuggestionsLabel: '基于描述的名称建议（拖到产品名称字段）',
-  productNameLabel: '为你的新产品命名',
-  productNamePlaceholder: '例如：模块化电池包',
-  step1SpacesTitle: '我们看向哪里？',
-  step1TimeframesTitle: '观察 / 思考层级',
-  step1DragHint: '将选项拖到下方目标区域',
-  step1DropHere: '放这里…',
-  step1SystemLabel: '产品',
-  step1SystemLocked: '已锁定',
-  spaceListTitle: '场景/空间列表',
-  spaceListHint: '最多选择 5 个。',
-    timeListTitle: '观察/思考层级列表',
-    timeListHint: '最多选择 5 个。',
-    finalSpacesList: '最终空间列表',
-    finalTimesList: '最终观察/思考层级列表',
-    noSelectionYet: '尚未选择。',
-    warningMax5: '请将空间和观察/思考层级的选择控制在 5 个以内。',
-    scenarioIntro: '系统会为每一对空间与层级生成情景。请选择一个并完善轴定义。',
-    chooseScenario: '选择此情景',
-    spaceLabel: '我们看向哪里？',
-    timeLabel: '观察 / 思考层级',
-    axisSpaceLabel: '我们看向哪里？',
-    axisTimeLabel: '观察 / 思考层级',
-    axisSubsystem: '元素',
-    axisSystem: '产品',
-    axisSupersystem: '世界',
-    axisPast: '现状如何？',
-    axisNow: '哪里失效？',
-    axisFuture: '理想应当如何？',
-    workshopIntro: '点击问号图标获取提示；点击灯泡图标添加想法。',
-    legendQuestion: '支持性问题',
-    legendIdea: '新想法',
-    showIdeaLabel: '显示想法',
-    supportiveQuestionTooltip: '支持性问题',
-    addIdeaTooltip: '添加想法',
-    editIdeaTooltip: '点击编辑',
-    ideaPlaceholder: '输入你的想法（最多 50 词）',
-    wordCount: (count) => `剩余 ${Math.max(0, 50 - count)} 词`,
-    cancel: '取消',
-    saveIdea: '保存',
-    ideaGenerator: '给我一些想法',
-    labelEditorLabel: '标签编辑器',
-    keepOnlyMyIdeasLabel: '只保留我的想法',
-    confirmRemoveIdeasTitle: '你确定吗？',
-    confirmRemoveIdeasMessage: '这将删除所有 AI 生成的想法。',
-    confirmYes: '是',
-    confirmNo: '否',
-    nextStepPrefix: '下一步：',
-    previousStepPrefix: '上一步：',
-    previousStepNone: '上一步：无',
-    nextStepCompleted: '下一步：已完成',
-    finalReportIntro: '当前工作坊数据摘要。',
-    reportLanguageLabel: '报告语言',
-    reportLanguageHint: '语言选择将在后续版本用于报告翻译。',
-    productLabel: '产品',
-    spacesLabel: '我们看向哪里？',
-    timeFramesLabel: '观察 / 思考层级',
-    totalScenariosLabel: '情景总数',
-    chosenScenarioLabel: '已选情景',
-    spaceDefinitionsLabel: '空间定义',
-    timeDefinitionsLabel: '时间定义',
-    totalIdeasLabel: '想法总数',
-    cellsWithIdeasLabel: '有想法的单元格',
-    ideasGeneratedLabel: 'AI 生成的想法',
-    ideasUserLabel: '用户想法',
-    noIdeasLabel: '暂无想法。',
-    confirmProductLabel: '确认产品名称',
-    selectedLanguageLabel: '选择的语言',
-    notSet: '未设置',
-    notSelected: '未选择',
-    noScenarioConfirmed: '尚未确认情景。',
-    enginePreviewTitle: '问题引擎预览',
-    enginePreviewLandingLink: 'Landing page',
-    enginePreviewLink: '引擎预览',
-    enginePreviewSessionTitle: '会话',
-    enginePreviewSessionIdLabel: '会话 ID',
-    enginePreviewSessionEmpty: '尚未创建',
-    enginePreviewCreateSession: '创建会话',
-    enginePreviewReset: '关闭会话',
-    enginePreviewBoardItemsTitle: '看板条目',
-    enginePreviewBoardItemPlaceholder: '描述一个看板条目...',
-    enginePreviewAddItem: '添加',
-    enginePreviewBoardItemsEmpty: '暂无条目。',
-    enginePreviewNextQuestionTitle: '下一题',
-    enginePreviewSuggestQuestion: '下一题',
-    enginePreviewQuestionEmpty: '暂无问题。',
-    enginePreviewNextAction: '下一题',
-    enginePreviewSwapAction: '更换',
-    enginePreviewSimplifyAction: '简化',
-    enginePreviewDeepenAction: '加深',
-    enginePreviewAnswerPlaceholder: '输入你的回答...',
-    enginePreviewSubmitAnswer: '提交回答',
-    enginePreviewNoMoreQuestions: '步骤完成 / 没有更多问题。',
-    enginePreviewBackToApp: '返回应用',
-    enginePreviewMetaGroup: '组别',
-    enginePreviewMetaMode: '模式',
-    enginePreviewMetaCategory: '类别',
-    enginePreviewMetaDifficulty: '难度',
-    openReportPanel: '打开报告面板',
-    reportSnapshotTitle: '工作坊报告快照',
-    close: '关闭',
-    editIdeaTitle: '编辑想法',
-    generatedIdeaTitle: '生成的想法',
-    questionsTitle: '引导性问题',
-    nextQuestionsLabel: 'Next 10 guiding questions',
-    prevQuestionsLabel: 'Previous 10 guiding questions',
-    labelEditorTitle: '标签编辑器',
-    labelEditorSave: '保存',
-    labelEditorAdd: '添加标签',
-    removeLabelAriaLabel: '删除标签',
-    labelDropPlaceholder: '拖入标签',
-    noLabelText: '无标签',
-    save: '保存',
-    llmSettingsTitle: 'OpenAI 服务器设置',
-    llmSettingsIntro: '在服务器端设置 OPENAI_API_KEY，并填写 API 地址。',
-    llmApiBaseLabel: 'API 地址',
-    llmApiBasePlaceholder: 'http://localhost:8787',
-    llmSettingsSave: '保存',
-    llmSettingsSaved: '已保存。',
-    llmSettingsCostNote: '使用你的 API Key 会按 OpenAI 定价计费到你的账户。',
-    llmStatusOnline: '服务器状态：在线',
-    llmStatusOffline: '服务器状态：离线',
-    llmStatusUnknown: '服务器状态：未知',
-    llmTestConnection: '测试连接',
-    llmEnableConnection: '启用 OpenAI',
-    llmDisableConnection: '关闭 OpenAI',
-    questionTemplate: (spaceDef, timeDef) =>
-      `“${spaceDef}”如何回应“${timeDef}”并发现新的机会？`,
-    questionTemplates: (productName, spaceDef, timeDef) => [
-      `关于“${productName}”，在“${spaceDef}”的“${timeDef}”中有哪些未被满足的用户需求？`,
-      `哪些新行为或趋势会改变“${productName}”在“${spaceDef}”的“${timeDef}”？`,
-      `在“${spaceDef}”的“${timeDef}”，有哪些标准/法规/安全期待影响“${productName}”？`,
-      `有哪些先进技术或材料可以提升“${productName}”在“${spaceDef}”的“${timeDef}”？`,
-      `“${productName}”在“${spaceDef}”的“${timeDef}”中最大的性能瓶颈是什么？`,
-      `“${productName}”在“${spaceDef}”的“${timeDef}”如何取得最佳性价比？`,
-      `在“${spaceDef}”的“${timeDef}”，用户愿意为“${productName}”付费的功能是什么？哪些必须是标配？`,
-      `服务/软件/数据层如何增强“${productName}”在“${spaceDef}”的“${timeDef}”？`,
-      `“${productName}”在“${spaceDef}”的“${timeDef}”应如何与其他产品互联，并带来哪些用户收益？`,
-      `哪些替代方案可能以价格或性能击败“${productName}”在“${spaceDef}”的“${timeDef}”？`,
-      `“${productName}”在“${spaceDef}”的“${timeDef}”需要满足哪些耐久、维护或生命周期期待？`,
-    ],
-    llmIdeaTemplate: (spaceDef, timeDef) =>
-      `思考 ${spaceDef} 与 ${timeDef} 的关联，以发掘客户、设计师和系统视角。`,
-    subsystemFallback: '关键组件：结构、能源来源、控制层',
-    subsystemTemplate: (productName) =>
-      `关键组件：${productName} 外壳、核心模块、接口层`,
-    timeDefs: {
-      past: (timeFrame) => `${timeFrame} 的早期阶段`,
-      now: (timeFrame) => `${timeFrame} 的当前状态`,
-      future: (timeFrame) => `${timeFrame} 的下一阶段`,
-    },
-    analyzedProduct: '被分析的产品',
-    leadSpaceSuggestions: (productName) => [
-      `${productName} 在用户生态中的集成`,
-      `${productName} 的安装位置`,
-    ],
-    leadTimeSuggestions: (productName) => [
-      `${productName} 的早期制造`,
-      `${productName} 的核心装配`,
-    ],
-    spaceSuggestions: [
-      '家庭环境',
-      '车辆座舱',
-      '工业产线',
-      '户外使用',
-      '冷藏环境',
-      '高温环境',
-      '潮湿环境',
-      '医疗场景',
-      '零售展示',
-      '仓储',
-      '办公空间',
-      '公共基础设施',
-      '海洋环境',
-      '航空座舱',
-      '施工现场',
-      '智慧城市网络',
-      '农业场地',
-      '数据中心',
-      '教室',
-      '体育场馆',
-    ],
-    timeSuggestions: [
-      '供应商生产流程',
-      '内部装配',
-      '质量检验',
-      '最终测试',
-      '包装流程',
-      '分销处理',
-      '客户使用阶段',
-      '维护周期',
-      '维修流程',
-      '产品生命周期末端',
-      '回收流程',
-      '组件准备',
-      '原材料采购',
-      '组件制造',
-      '表面处理',
-      '供应商物流',
-      '安装与调试',
-      '保修服务',
-      '二次利用',
-      '拆解规划',
-    ],
-    cellLabel: (spaceLabel, timeLabel) => `${spaceLabel} + ${timeLabel}`,
-  },
-  Swiss: {
-    stepLabel: 'Schritt',
-    appTitle: 'Idea Clarity Grid',
-    landingHeroTitle: 'Ideenchaos in ein klares Produkt verwandeln.',
-    landingHeroSubtitle: 'Kein Moderator. Keine Haftnotizen. Keine Zeitverschwendung.',
-    landingIntroTitleLines: [
-      CANONICAL_DISPLAY_HOST,
-      'führt dich Schritt für Schritt',
-      'durch die Produktdefinition.',
-    ],
-    landingIntroSubtextLines: [
-      'Online oder vor Ort.',
-      'Allein oder mit Team.',
-      'KI-Unterstützung (wenn du willst), aber...',
-      'immer von {emphasis} gesteuert.',
-    ],
-    landingIntroSubtextEmphasis: 'dir',
-    landingCta: 'Starte mit einer Idee, sieh es wirken.',
-    landingThreeStepsCta: 'Get started in 3 steps',
-    landingThreeStepsTitle: '3 Schritte',
-    landingBeforeLead: 'Wenn dir das bekannt vorkommt — du bist hier richtig.',
-    landingBeforeList: ['❌ Chaos', '❌ Verlorene Notizen', '❌ Keine Entscheidungen'],
-    landingBeforeEmphasis: {
-      strong: 'Viel Energie.',
-      medium: 'Wenig Entscheidungen.',
-      rest: 'Kein echter Fortschritt.',
-    },
-    landingAfterLead: 'Jetzt arbeitet der Prozess für dich.',
-    landingAfterList: ['✅ Prozess', '✅ Strukturierte Fragen', '✅ Bericht'],
-    landingWhyLead: 'Wir ersetzen Denken nicht. Wir entfernen Reibung.',
-    landingWhyLines: [
-      CANONICAL_DISPLAY_HOST,
-      'strukturiert das Gespräch',
-      'hält die Prozesslogik',
-      'ordnet Wissen in Echtzeit',
-      'lässt den Menschen das Wichtigste: Entscheidungen und Kreativität',
-      'KI hilft. Menschen entscheiden.',
-    ],
-    landingWhoTitle: 'Für wen?',
-    landingWhoList: [
-      '🚀 Du hast eine Idee, weißt aber nicht, wie du sie definierst',
-      '🛠️ Du bist Dev / PM und willst echte Analyse, kein Brainstorming „zum Spaß“',
-      '🤝 Du arbeitest mit einem verteilten oder hybriden Team',
-      '⏱️ Du willst Ergebnisse jetzt, nicht nach drei Workshops',
-    ],
-    landingFinalLines: ['Du brauchst keine perfekte Idee.', 'Du brauchst einen guten Prozess.'],
-    impulseButtonLabel: 'Gib mir einen Impuls',
-    impulseTitle: 'Vorgeschlagene Frage',
-    impulseEmpty: 'Keine Frage verfügbar.',
-    impulseClose: 'Schliessen',
-    report: 'Bericht',
-    llmSettings: 'LLM-Einstellungen',
-    languageLabel: 'Sprache',
-    steps: {
-      1: 'Erzähl uns von deinem neuen Produkt',
-      2: 'Idea Clarity Grid Szenariobestätigung',
-      3: 'Idea Clarity Grid Workshop',
-      4: 'Schlussbericht',
-    },
-  step1Intro: 'Definieren Sie Produkt, Räume und Beobachtungs- / Denkebenen für die Analyse.',
-  productDescriptionLabel: 'Beschreiben Sie Ihr neues Produkt',
-  productDescriptionPlaceholder:
-    'Für wen, welche Altersgruppe, welcher Markt, Materialien, Hauptfunktion usw.',
-  productDescriptionDoneLabel: 'Fertig',
-    productNameSuggestionsLabel:
-      'Namensvorschläge basierend auf Ihrer Beschreibung (Name in das Namensfeld ziehen)',
-  productNameLabel: 'Nennen Sie Ihr neues Produkt',
-  productNamePlaceholder: 'z.B. modularer Batteriespeicher',
-  step1SpacesTitle: 'Wo schauen wir hin?',
-  step1TimeframesTitle: 'Beobachtungs- / Denkebene',
-  step1DragHint: 'Optionen in die Zielfelder unten ziehen',
-  step1DropHere: 'Hier ablegen...',
-  step1SystemLabel: 'Produkt',
-  step1SystemLocked: 'Gesperrt',
-  spaceListTitle: 'Ort-/Raumliste',
-  spaceListHint: 'Bis zu 5 auswählen.',
-    timeListTitle: 'Liste der Beobachtungs- / Denkebenen',
-    timeListHint: 'Bis zu 5 auswählen.',
-    finalSpacesList: 'Endgültige Raumliste',
-    finalTimesList: 'Endgültige Beobachtungs- / Denkebenen',
-    noSelectionYet: 'Noch keine Auswahl.',
-    warningMax5: 'Bitte maximal 5 Einträge auswählen.',
-    scenarioIntro:
-      'Szenarien werden für jede Raum- und Zeitrahmenkombination erzeugt. Wählen Sie eines aus und verfeinern Sie die Achsendefinitionen.',
-    chooseScenario: 'Dieses Szenario wählen',
-    spaceLabel: 'Wo schauen wir hin?',
-    timeLabel: 'Beobachtungs- / Denkebene',
-    axisSpaceLabel: 'Wo schauen wir hin?',
-    axisTimeLabel: 'Beobachtungs- / Denkebene',
-    axisSubsystem: 'Elemente',
-    axisSystem: 'Produkt',
-    axisSupersystem: 'Welt',
-    axisPast: 'Wie ist es?',
-    axisNow: 'Was funktioniert nicht?',
-    axisFuture: 'Wie sollte es sein?',
-    workshopIntro:
-      'Nutzen Sie das Fragezeichen-Symbol für Impulse. Verwenden Sie das Ideen-Symbol, um eigene Notizen hinzuzufügen.',
-    legendQuestion: 'Unterstützende Frage',
-    legendIdea: 'Neue Idee',
-    showIdeaLabel: 'Idee anzeigen',
-    supportiveQuestionTooltip: 'Unterstützende Frage',
-    addIdeaTooltip: 'Idee hinzufügen',
-    editIdeaTooltip: 'Klicken zum Bearbeiten',
-    ideaPlaceholder: 'Schreiben Sie Ihre Idee (max. 50 Wörter)',
-    wordCount: (count) => `Verbleibend ${Math.max(0, 50 - count)} Wörter`,
-    cancel: 'Abbrechen',
-    saveIdea: 'Speichern',
-    ideaGenerator: 'Gib mir Ideen',
-    labelEditorLabel: 'Label-Editor',
-    keepOnlyMyIdeasLabel: 'Nur meine Ideen behalten',
-    confirmRemoveIdeasTitle: 'Bist du sicher?',
-    confirmRemoveIdeasMessage: 'Alle KI-generierten Ideen werden entfernt.',
-    confirmYes: 'JA',
-    confirmNo: 'NEIN',
-    nextStepPrefix: 'Nächster Schritt: ',
-    previousStepPrefix: 'Vorheriger Schritt: ',
-    previousStepNone: 'Vorheriger Schritt: keiner',
-    nextStepCompleted: 'Nächster Schritt: abgeschlossen',
-    finalReportIntro: 'Zusammenfassung der bisher gesammelten Workshop-Daten.',
-    reportLanguageLabel: 'Berichtssprache',
-    reportLanguageHint:
-      'Die Sprachauswahl wird in einer späteren Version für die Übersetzung verwendet.',
-    productLabel: 'Produkt',
-    spacesLabel: 'Wo schauen wir hin?',
-    timeFramesLabel: 'Beobachtungs- / Denkebene',
-    totalScenariosLabel: 'Gesamte Szenarien',
-    chosenScenarioLabel: 'Gewähltes Szenario',
-    spaceDefinitionsLabel: 'Raumdefinitionen',
-    timeDefinitionsLabel: 'Zeitdefinitionen',
-    totalIdeasLabel: 'Gesamtideen',
-    cellsWithIdeasLabel: 'Felder mit Ideen',
-    ideasGeneratedLabel: 'KI-generierte Ideen',
-    ideasUserLabel: 'Benutzerideen',
-    noIdeasLabel: 'Noch keine Ideen.',
-    confirmProductLabel: 'Produktnamen bestätigen',
-    selectedLanguageLabel: 'Gewählte Sprache',
-    notSet: 'Nicht festgelegt',
-    notSelected: 'Nicht ausgewählt',
-    noScenarioConfirmed: 'Noch kein Szenario bestätigt.',
-    enginePreviewTitle: 'Fragen-Engine Vorschau',
-    enginePreviewLandingLink: 'Landing page',
-    enginePreviewLink: 'Engine Vorschau',
-    enginePreviewSessionTitle: 'Sitzung',
-    enginePreviewSessionIdLabel: 'Sitzungs-ID',
-    enginePreviewSessionEmpty: 'Noch nicht erstellt',
-    enginePreviewCreateSession: 'Sitzung erstellen',
-    enginePreviewReset: 'Sitzung schließen',
-    enginePreviewBoardItemsTitle: 'Board-Elemente',
-    enginePreviewBoardItemPlaceholder: 'Board-Element beschreiben...',
-    enginePreviewAddItem: 'Hinzufügen',
-    enginePreviewBoardItemsEmpty: 'Noch keine Elemente.',
-    enginePreviewNextQuestionTitle: 'Nächste Frage',
-    enginePreviewSuggestQuestion: 'Nächste Frage',
-    enginePreviewQuestionEmpty: 'Noch keine Frage.',
-    enginePreviewNextAction: 'Nächste Frage',
-    enginePreviewSwapAction: 'Tauschen',
-    enginePreviewSimplifyAction: 'Vereinfachen',
-    enginePreviewDeepenAction: 'Vertiefen',
-    enginePreviewAnswerPlaceholder: 'Antwort eingeben...',
-    enginePreviewSubmitAnswer: 'Antwort senden',
-    enginePreviewNoMoreQuestions: 'Schritt abgeschlossen / keine weiteren Fragen.',
-    enginePreviewBackToApp: 'Zurück zur App',
-    enginePreviewMetaGroup: 'Gruppe',
-    enginePreviewMetaMode: 'Modus',
-    enginePreviewMetaCategory: 'Kategorie',
-    enginePreviewMetaDifficulty: 'Schwierigkeit',
-    openReportPanel: 'Berichtspanel öffnen',
-    reportSnapshotTitle: 'Workshop-Berichtsübersicht',
-    close: 'Schliessen',
-    editIdeaTitle: 'Idee bearbeiten',
-    generatedIdeaTitle: 'Generierte Idee',
-    questionsTitle: 'Unterstützende Fragen',
-    nextQuestionsLabel: 'Next 10 guiding questions',
-    prevQuestionsLabel: 'Previous 10 guiding questions',
-    labelEditorTitle: 'Label-Editor',
-    labelEditorSave: 'Speichern',
-    labelEditorAdd: 'Label hinzufügen',
-    removeLabelAriaLabel: 'Label entfernen',
-    labelDropPlaceholder: 'Label hier ablegen',
-    noLabelText: 'Kein Label',
-    save: 'Speichern',
-    llmSettingsTitle: 'OpenAI-Servereinstellungen',
-    llmSettingsIntro:
-      'Verbinden Sie Ihren Server mit OpenAI (OPENAI_API_KEY) und geben Sie die API-Basis-URL an.',
-    llmApiBaseLabel: 'API-Basis-URL',
-    llmApiBasePlaceholder: 'http://localhost:8787',
-    llmSettingsSave: 'Speichern',
-    llmSettingsSaved: 'Gespeichert.',
-    llmSettingsCostNote:
-      'Die Nutzung Ihres API-Schlüssels wird Ihrem OpenAI-Konto gemäß deren Preisen berechnet.',
-    llmStatusOnline: 'Serverstatus: online',
-    llmStatusOffline: 'Serverstatus: offline',
-    llmStatusUnknown: 'Serverstatus: unbekannt',
-    llmTestConnection: 'Verbindung testen',
-    llmEnableConnection: 'OpenAI aktivieren',
-    llmDisableConnection: 'OpenAI deaktivieren',
-    questionTemplate: (spaceDef, timeDef) =>
-      `Wie könnte "${spaceDef}" auf "${timeDef}" reagieren und eine neue Chance eröffnen?`,
-    questionTemplates: (productName, spaceDef, timeDef) => [
-      `Welche unerfüllte Nutzerbedürfnis rund um "${productName}" zeigt sich in "${spaceDef}" während "${timeDef}"?`,
-      `Welche neuen Nutzertrends könnten "${productName}" in "${spaceDef}" für "${timeDef}" verändern?`,
-      `Welche Standards, Vorschriften oder Sicherheitsanforderungen entstehen für "${productName}" in "${spaceDef}" während "${timeDef}"?`,
-      `Welche State‑of‑the‑Art‑Technologie oder Materialien verbessern "${productName}" in "${spaceDef}" für "${timeDef}"?`,
-      `Wo liegt der größte Leistungs‑Engpass für "${productName}" in "${spaceDef}" während "${timeDef}"?`,
-      `Wie sieht der beste Preis‑Leistungs‑Trade‑off für "${productName}" in "${spaceDef}" während "${timeDef}" aus?`,
-      `Für welche Features würden Nutzer in "${spaceDef}" während "${timeDef}" mehr bezahlen – und was ist Pflicht?`,
-      `Wie können Service, Software oder Datenebenen "${productName}" in "${spaceDef}" während "${timeDef}" aufwerten?`,
-      `Wie sollte "${productName}" in "${spaceDef}" während "${timeDef}" mit anderen Produkten vernetzt sein – und welchen Nutzen bringt das?`,
-      `Welche Alternative könnte "${productName}" bei Preis oder Leistung in "${spaceDef}" während "${timeDef}" schlagen?`,
-      `Welche Haltbarkeits‑, Wartungs‑ oder Lebensdauer‑Erwartungen muss "${productName}" in "${spaceDef}" für "${timeDef}" erfüllen?`,
-    ],
-    llmIdeaTemplate: (spaceDef, timeDef) =>
-      `Überlegen Sie, wie ${spaceDef} mit ${timeDef} verknüpft ist, um Kunden-, Designer- und Systemperspektiven zu erschliessen.`,
-    subsystemFallback: 'Schlüsselkomponenten: Struktur, Energiequelle, Steuerungsebene',
-    subsystemTemplate: (productName) =>
-      `Schlüsselkomponenten: ${productName}-Gehäuse, Kernmodul, Schnittstellenschicht`,
-    timeDefs: {
-      past: (timeFrame) => `Frühere Phase von ${timeFrame}`,
-      now: (timeFrame) => `Aktueller Stand von ${timeFrame}`,
-      future: (timeFrame) => `Nächste Entwicklung von ${timeFrame}`,
-    },
-    analyzedProduct: 'Analysiertes Produkt',
-    leadSpaceSuggestions: (productName) => [
-      `Integration von ${productName} in ein Nutzer-Ökosystem`,
-      `Wo ${productName} installiert ist`,
-    ],
-    leadTimeSuggestions: (productName) => [
-      `${productName} frühe Fertigung`,
-      `${productName} Kernmontage`,
-    ],
-    spaceSuggestions: [
-      'Wohnumgebung',
-      'Fahrzeugkabine',
-      'Industrieanlage',
-      'Ausseneinsatz',
-      'Kühlraum',
-      'Hohe Hitzeeinwirkung',
-      'Feuchte Umgebung',
-      'Gesundheitswesen',
-      'Einzelhandelsfläche',
-      'Lagerhaltung',
-      'Büroarbeitsplatz',
-      'Öffentliche Infrastruktur',
-      'Maritime Umgebung',
-      'Luftfahrtkabine',
-      'Baustelle',
-      'Smart-City-Netz',
-      'Landwirtschaftliche Fläche',
-      'Rechenzentrum',
-      'Klassenzimmer',
-      'Sportanlage',
-    ],
-    timeSuggestions: [
-      'Produktion beim Zulieferer',
-      'Interne Montage',
-      'Qualitätsprüfung',
-      'Endprüfung',
-      'Verpackungsprozess',
-      'Distributionshandling',
-      'Nutzungsphase beim Kunden',
-      'Wartungszyklus',
-      'Reparaturablauf',
-      'End-of-Life-Abwicklung',
-      'Recyclingprozess',
-      'Komponentenvorbereitung',
-      'Rohstoffbeschaffung',
-      'Komponentenfertigung',
-      'Oberflächenbearbeitung',
-      'Zuliefererlogistik',
-      'Installation & Inbetriebnahme',
-      'Garantieservice',
-      'Zweitnutzung',
-      'Demontageplanung',
-    ],
-    cellLabel: (spaceLabel, timeLabel) => `${spaceLabel} + ${timeLabel}`,
-  },
-  Italian: {
-    stepLabel: 'Passo',
-    appTitle: 'Idea Clarity Grid',
-    landingHeroTitle: "Trasforma il caos delle idee in un prodotto chiaro.",
-    landingHeroSubtitle: 'Niente moderatore. Niente post-it. Niente tempo perso.',
-    landingIntroTitleLines: [
-      CANONICAL_DISPLAY_HOST,
-      'ti guida passo dopo passo',
-      'nella definizione del prodotto.',
-    ],
-    landingIntroSubtextLines: [
-      'Online o on-site.',
-      'Da solo o in team.',
-      'Supporto AI (se vuoi), ma...',
-      'sempre guidato da {emphasis}.',
-    ],
-    landingIntroSubtextEmphasis: 'te',
-    landingCta: "Parti da un'idea, guarda come funziona.",
-    landingThreeStepsCta: 'Get started in 3 steps',
-    landingThreeStepsTitle: '3 passi',
-    landingBeforeLead: 'Se anche uno ti suona familiare — sei nel posto giusto.',
-    landingBeforeList: ['❌ Caos', '❌ Note perse', '❌ Nessuna decisione'],
-    landingBeforeEmphasis: {
-      strong: 'Tanta energia.',
-      medium: 'Poche decisioni.',
-      rest: 'Zero vero progresso.',
-    },
-    landingAfterLead: 'Ora il processo lavora per te.',
-    landingAfterList: ['✅ Processo', '✅ Domande strutturate', '✅ Report'],
-    landingWhyLead: 'Non sostituiamo il pensiero. Rimuoviamo l’attrito.',
-    landingWhyLines: [
-      CANONICAL_DISPLAY_HOST,
-      'struttura la conversazione',
-      'tiene la logica del processo',
-      'organizza la conoscenza in tempo reale',
-      'lascia alle persone ciò che conta: decisioni e creatività',
-      'AI aiuta. L’umano decide.',
-    ],
-    landingWhoTitle: 'Per chi?',
-    landingWhoList: [
-      '🚀 Hai un’idea ma non sai definirla bene',
-      '🛠️ Sei dev / PM e vuoi analisi vera, non brainstorming “per sport”',
-      '🤝 Lavori con un team distribuito o ibrido',
-      '⏱️ Vuoi risultati ora, non dopo tre workshop',
-    ],
-    landingFinalLines: ['Non ti serve un’idea perfetta.', 'Ti serve un buon processo.'],
-    impulseButtonLabel: 'Dammi un impulso',
-    impulseTitle: 'Domanda suggerita',
-    impulseEmpty: 'Nessuna domanda disponibile.',
-    impulseClose: 'Chiudi',
-    report: 'Rapporto',
-    llmSettings: 'Impostazioni LLM',
-    languageLabel: 'Lingua',
-    steps: {
-      1: 'Raccontaci del tuo nuovo prodotto',
-      2: 'Conferma scenario Idea Clarity Grid',
-      3: 'Workshop Idea Clarity Grid',
-      4: 'Rapporto finale',
-    },
-  step1Intro: 'Definisci prodotto, spazi e livelli di osservazione per l’analisi.',
-  productDescriptionLabel: 'Descrivi il tuo nuovo prodotto',
-  productDescriptionPlaceholder:
-    'Per chi è, fascia d’età, mercato, materiali, funzione principale, ecc.',
-  productDescriptionDoneLabel: 'Fatto',
-    productNameSuggestionsLabel:
-      'Suggerimenti di nome basati sulla descrizione (trascina nel campo nome prodotto)',
-  productNameLabel: 'Dai un nome al tuo nuovo prodotto',
-  productNamePlaceholder: 'es. pacco batteria modulare',
-    step1SpacesTitle: 'Dove guardiamo?',
-    step1TimeframesTitle: 'Livello di osservazione / pensiero',
-  step1DragHint: 'Trascina le opzioni nei campi sottostanti',
-  step1DropHere: 'Rilascia qui...',
-    step1SystemLabel: 'Prodotto',
-  step1SystemLocked: 'Bloccato',
-  spaceListTitle: 'Elenco luoghi / spazi',
-  spaceListHint: 'Seleziona fino a 5.',
-    timeListTitle: 'Elenco livelli di osservazione / pensiero',
-    timeListHint: 'Seleziona fino a 5.',
-    finalSpacesList: 'Elenco spazi finali',
-    finalTimesList: 'Elenco livelli di osservazione / pensiero finali',
-    noSelectionYet: 'Nessuna selezione.',
-    warningMax5: 'Mantieni la selezione entro 5 voci per spazi e livelli.',
-    scenarioIntro:
-      'Gli scenari vengono generati per ogni coppia spazio/tempo. Selezionane uno e affina le definizioni degli assi.',
-    chooseScenario: 'Scegli questo scenario',
-    spaceLabel: 'Dove guardiamo?',
-    timeLabel: 'Livello di osservazione / pensiero',
-    axisSpaceLabel: 'Dove guardiamo?',
-    axisTimeLabel: 'Livello di osservazione / pensiero',
-    axisSubsystem: 'Elementi',
-    axisSystem: 'Prodotto',
-    axisSupersystem: 'Mondo',
-    axisPast: 'Com’è?',
-    axisNow: 'Cosa non funziona?',
-    axisFuture: 'Come dovrebbe essere',
-    workshopIntro:
-      'Usa l’icona domanda per ottenere spunti. Usa l’icona idea per aggiungere i tuoi post-it.',
-    legendQuestion: 'Domanda di supporto',
-    legendIdea: 'Nuova idea',
-    showIdeaLabel: 'Mostra idea',
-    supportiveQuestionTooltip: 'Domanda di supporto',
-    addIdeaTooltip: 'Inserisci idea',
-    editIdeaTooltip: 'Clicca per modificare',
-    ideaPlaceholder: 'Scrivi la tua idea (max 50 parole)',
-    wordCount: (count) => `Restano ${Math.max(0, 50 - count)} parole`,
-    cancel: 'Annulla',
-    saveIdea: 'Salva',
-    ideaGenerator: 'Dammi delle idee',
-    labelEditorLabel: 'Editor etichette',
-    keepOnlyMyIdeasLabel: 'Tieni solo le mie idee',
-    confirmRemoveIdeasTitle: 'Sei sicuro?',
-    confirmRemoveIdeasMessage: 'Questo rimuoverà tutte le idee generate dall’AI.',
-    confirmYes: 'SÌ',
-    confirmNo: 'NO',
-    nextStepPrefix: 'Passo successivo: ',
-    previousStepPrefix: 'Passo precedente: ',
-    previousStepNone: 'Passo precedente: nessuno',
-    nextStepCompleted: 'Passo successivo: completato',
-    finalReportIntro: 'Sintesi dei dati raccolti durante il workshop.',
-    reportLanguageLabel: 'Lingua del rapporto',
-    reportLanguageHint:
-      'La lingua selezionata verrà usata per la traduzione del rapporto in una versione successiva.',
-    productLabel: 'Prodotto',
-    spacesLabel: 'Dove guardiamo?',
-    timeFramesLabel: 'Livello di osservazione / pensiero',
-    totalScenariosLabel: 'Totale scenari',
-    chosenScenarioLabel: 'Scenario scelto',
-    spaceDefinitionsLabel: 'Definizioni dello spazio',
-    timeDefinitionsLabel: 'Definizioni del tempo',
-    totalIdeasLabel: 'Totale idee',
-    cellsWithIdeasLabel: 'Celle con idee',
-    ideasGeneratedLabel: 'Idee generate dall’AI',
-    ideasUserLabel: 'Idee dell’utente',
-    noIdeasLabel: 'Nessuna idea.',
-    confirmProductLabel: 'Conferma nome prodotto',
-    selectedLanguageLabel: 'Lingua selezionata',
-    notSet: 'Non impostato',
-    notSelected: 'Non selezionato',
-    noScenarioConfirmed: 'Nessuno scenario confermato.',
-    openReportPanel: 'Apri pannello rapporto',
-    reportSnapshotTitle: 'Snapshot del rapporto',
-    close: 'Chiudi',
-    editIdeaTitle: 'Modifica idea',
-    generatedIdeaTitle: 'Idea generata',
-    questionsTitle: 'Domande guida',
-    nextQuestionsLabel: 'Next 10 guiding questions',
-    prevQuestionsLabel: 'Previous 10 guiding questions',
-    labelEditorTitle: 'Editor etichette',
-    labelEditorSave: 'Salva',
-    labelEditorAdd: 'Aggiungi etichetta',
-    removeLabelAriaLabel: 'Rimuovi etichetta',
-    labelDropPlaceholder: 'Trascina etichetta',
-    noLabelText: 'Nessuna etichetta',
-    save: 'Salva',
-    llmSettingsTitle: 'Impostazioni server OpenAI',
-    llmSettingsIntro:
-      'Collega il tuo server a OpenAI (OPENAI_API_KEY) e inserisci l’URL API.',
-    llmApiBaseLabel: 'URL API',
-    llmApiBasePlaceholder: 'http://localhost:8787',
-    llmSettingsSave: 'Salva',
-    llmSettingsSaved: 'Salvato.',
-    llmSettingsCostNote:
-      'L’uso della tua chiave API addebita i costi al tuo account OpenAI secondo il loro listino.',
-    llmStatusOnline: 'Stato server: online',
-    llmStatusOffline: 'Stato server: offline',
-    llmStatusUnknown: 'Stato server: sconosciuto',
-    llmTestConnection: 'Test connessione',
-    llmEnableConnection: 'Attiva OpenAI',
-    llmDisableConnection: 'Disattiva OpenAI',
-    questionTemplate: (spaceDef, timeDef) =>
-      `Come potrebbe "${spaceDef}" rispondere a "${timeDef}" e rivelare una nuova opportunità?`,
-    questionTemplates: (productName, spaceDef, timeDef) => [
-      `Quale bisogno utente non soddisfatto legato a "${productName}" emerge in "${spaceDef}" durante "${timeDef}"?`,
-      `Quali nuovi comportamenti o trend possono cambiare "${productName}" in "${spaceDef}" per "${timeDef}"?`,
-      `Quali standard, normative o aspettative di sicurezza influenzano "${productName}" in "${spaceDef}" durante "${timeDef}"?`,
-      `Quale tecnologia o materiale state-of-the-art può migliorare "${productName}" in "${spaceDef}" per "${timeDef}"?`,
-      `Dov’è il principale collo di bottiglia prestazionale di "${productName}" in "${spaceDef}" durante "${timeDef}"?`,
-      `Qual è il miglior compromesso price vs performance per "${productName}" in "${spaceDef}" durante "${timeDef}"?`,
-      `Per quali funzioni gli utenti in "${spaceDef}" durante "${timeDef}" pagherebbero di più, e cosa è obbligatorio?`,
-      `Come servizi, software o dati possono potenziare "${productName}" in "${spaceDef}" durante "${timeDef}"?`,
-      `Come dovrebbe "${productName}" comunicare con altri prodotti in "${spaceDef}" durante "${timeDef}" e quale beneficio per l’utente ne deriva?`,
-      `Quale alternativa potrebbe superare "${productName}" per prezzo o prestazioni in "${spaceDef}" durante "${timeDef}"?`,
-      `Quali requisiti di durata, manutenzione o ciclo di vita deve soddisfare "${productName}" in "${spaceDef}" per "${timeDef}"?`,
-    ],
-    llmIdeaTemplate: (spaceDef, timeDef) =>
-      `Valuta come ${spaceDef} si collega a ${timeDef} per scoprire prospettive di clienti, designer e sistema.`,
-    subsystemFallback: 'Componenti chiave: struttura, fonte di energia, livello di controllo',
-    subsystemTemplate: (productName) =>
-      `Componenti chiave: involucro ${productName}, modulo centrale, livello di interfaccia`,
-    timeDefs: {
-      past: (timeFrame) => `Fase precedente di ${timeFrame}`,
-      now: (timeFrame) => `Stato attuale di ${timeFrame}`,
-      future: (timeFrame) => `Evoluzione futura di ${timeFrame}`,
-    },
-    analyzedProduct: 'Prodotto analizzato',
-    leadSpaceSuggestions: (productName) => [
-      `Integrazione di ${productName} nell’ecosistema utente`,
-      `Dove ${productName} è installato`,
-    ],
-    leadTimeSuggestions: (productName) => [
-      `${productName} produzione iniziale`,
-      `${productName} assemblaggio principale`,
-    ],
-    spaceSuggestions: [
-      'Ambiente domestico',
-      'Abitacolo del veicolo',
-      'Linea industriale',
-      'Uso esterno',
-      'Cella frigorifera',
-      'Esposizione ad alte temperature',
-      'Ambiente umido',
-      'Ambiente sanitario',
-      'Esposizione retail',
-      'Magazzino',
-      'Spazio ufficio',
-      'Infrastruttura pubblica',
-      'Ambiente marino',
-      'Cabina aerospaziale',
-      'Cantiere',
-      'Rete smart city',
-      'Campo agricolo',
-      'Data center',
-      'Aula',
-      'Impianto sportivo',
-    ],
-    timeSuggestions: [
-      'Processo produttivo del fornitore',
-      'Assemblaggio interno',
-      'Ispezione qualità',
-      'Test finale',
-      'Processo di confezionamento',
-      'Gestione distribuzione',
-      'Fase di utilizzo cliente',
-      'Ciclo di manutenzione',
-      'Flusso di riparazione',
-      'Fine vita del prodotto',
-      'Processo di riciclo',
-      'Preparazione componenti',
-      'Approvvigionamento materie prime',
-      'Fabbricazione componenti',
-      'Finitura superficiale',
-      'Logistica fornitori',
-      'Installazione e collaudo',
-      'Servizio in garanzia',
-      'Riutilizzo seconda vita',
-      'Pianificazione smontaggio',
-    ],
-    cellLabel: (spaceLabel, timeLabel) => `${spaceLabel} + ${timeLabel}`,
-  },
-  French: {
-    stepLabel: 'Étape',
-    appTitle: 'Idea Clarity Grid',
-    landingHeroTitle: 'Transforme le chaos des idées en produit clair.',
-    landingHeroSubtitle: 'Pas de modérateur. Pas de post-it. Pas de temps perdu.',
-    landingIntroTitleLines: [
-      CANONICAL_DISPLAY_HOST,
-      'te guide pas à pas',
-      'dans la définition du produit.',
-    ],
-    landingIntroSubtextLines: [
-      'En ligne ou sur site.',
-      'Seul ou en équipe.',
-      'Soutien IA (si tu veux), mais...',
-      'toujours piloté par {emphasis}.',
-    ],
-    landingIntroSubtextEmphasis: 'toi',
-    landingCta: 'Commence avec une idée, vois comment ça marche.',
-    landingThreeStepsCta: 'Get started in 3 steps',
-    landingThreeStepsTitle: '3 étapes',
-    landingBeforeLead: 'Si l’un te parle — tu es au bon endroit.',
-    landingBeforeList: ['❌ Chaos', '❌ Notes perdues', '❌ Pas de décisions'],
-    landingBeforeEmphasis: {
-      strong: 'Beaucoup d’énergie.',
-      medium: 'Peu de décisions.',
-      rest: 'Zéro vrai progrès.',
-    },
-    landingAfterLead: 'Maintenant, le processus travaille pour toi.',
-    landingAfterList: ['✅ Processus', '✅ Questions structurées', '✅ Rapport'],
-    landingWhyLead: 'Nous ne remplaçons pas la réflexion. Nous supprimons la friction.',
-    landingWhyLines: [
-      CANONICAL_DISPLAY_HOST,
-      'structure la conversation',
-      'garde la logique du processus',
-      'organise la connaissance en temps réel',
-      'laisse l’essentiel aux gens : décisions et créativité',
-      'L’IA aide. L’humain décide.',
-    ],
-    landingWhoTitle: 'Pour qui ?',
-    landingWhoList: [
-      '🚀 Tu as une idée mais tu ne sais pas la définir',
-      '🛠️ Tu es dev / PM et veux une vraie analyse, pas un brainstorming “pour le sport”',
-      '🤝 Tu travailles avec une équipe distribuée ou hybride',
-      '⏱️ Tu veux des résultats maintenant, pas après trois ateliers',
-    ],
-    landingFinalLines: ['Tu n’as pas besoin d’une idée parfaite.', 'Tu as besoin d’un bon processus.'],
-    impulseButtonLabel: 'Donne-moi un impulsion',
-    impulseTitle: 'Question suggérée',
-    impulseEmpty: 'Aucune question disponible.',
-    impulseClose: 'Fermer',
-    report: 'Rapport',
-    llmSettings: 'Paramètres LLM',
-    languageLabel: 'Langue',
-    steps: {
-      1: 'Parlez-nous de votre nouveau produit',
-      2: 'Confirmation du scénario Idea Clarity Grid',
-      3: 'Atelier Idea Clarity Grid',
-      4: 'Rapport final',
-    },
-  step1Intro: 'Définissez le produit, les espaces et le niveau d’observation pour l’analyse.',
-  productDescriptionLabel: 'Décrivez votre nouveau produit',
-  productDescriptionPlaceholder:
-    'Pour qui, tranche d’âge, marché, matériaux, fonction principale, etc.',
-  productDescriptionDoneLabel: 'Terminé',
-    productNameSuggestionsLabel:
-      'Suggestions de nom basées sur votre description (glissez dans le champ du nom)',
-  productNameLabel: 'Donnez un nom à votre nouveau produit',
-  productNamePlaceholder: 'ex. pack batterie modulaire',
-    step1SpacesTitle: 'Où regardons-nous ?',
-    step1TimeframesTitle: 'Niveau d’observation / de réflexion',
-  step1DragHint: 'Glissez les options dans les zones ci-dessous',
-  step1DropHere: 'Déposez ici...',
-    step1SystemLabel: 'Produit',
-  step1SystemLocked: 'Verrouillé',
-  spaceListTitle: 'Liste des lieux / espaces',
-  spaceListHint: 'Sélectionnez jusqu’à 5.',
-    timeListTitle: 'Liste des niveaux d’observation / de réflexion',
-    timeListHint: 'Sélectionnez jusqu’à 5.',
-    finalSpacesList: 'Liste finale des espaces',
-    finalTimesList: 'Liste finale des niveaux d’observation / de réflexion',
-    noSelectionYet: 'Aucune sélection.',
-    warningMax5: 'Veuillez limiter la sélection à 5 éléments.',
-    scenarioIntro:
-      'Des scénarios sont générés pour chaque paire espace/temps. Sélectionnez-en un et affinez les définitions des axes.',
-    chooseScenario: 'Choisir ce scénario',
-    spaceLabel: 'Où regardons-nous ?',
-    timeLabel: 'Niveau d’observation / de réflexion',
-    axisSpaceLabel: 'Où regardons-nous ?',
-    axisTimeLabel: 'Niveau d’observation / de réflexion',
-    axisSubsystem: 'Éléments',
-    axisSystem: 'Produit',
-    axisSupersystem: 'Monde',
-    axisPast: 'Comment est-ce ?',
-    axisNow: 'Qu’est-ce qui ne marche pas ?',
-    axisFuture: 'Comment cela devrait-il être',
-    workshopIntro:
-      'Utilisez l’icône question pour des pistes. Utilisez l’icône idée pour ajouter vos post-it.',
-    legendQuestion: 'Question de soutien',
-    legendIdea: 'Nouvelle idée',
-    showIdeaLabel: 'Afficher l’idée',
-    supportiveQuestionTooltip: 'Question de soutien',
-    addIdeaTooltip: 'Ajouter une idée',
-    editIdeaTooltip: 'Cliquez pour modifier',
-    ideaPlaceholder: 'Saisissez votre idée (max 50 mots)',
-    wordCount: (count) => `Il reste ${Math.max(0, 50 - count)} mots`,
-    cancel: 'Annuler',
-    saveIdea: 'Enregistrer',
-    ideaGenerator: 'Donne-moi des idées',
-    labelEditorLabel: 'Éditeur d’étiquettes',
-    keepOnlyMyIdeasLabel: 'Garder uniquement mes idées',
-    confirmRemoveIdeasTitle: 'Êtes-vous sûr ?',
-    confirmRemoveIdeasMessage: 'Cela supprimera toutes les idées générées par l’IA.',
-    confirmYes: 'OUI',
-    confirmNo: 'NON',
-    nextStepPrefix: 'Étape suivante : ',
-    previousStepPrefix: 'Étape précédente : ',
-    previousStepNone: 'Étape précédente : aucune',
-    nextStepCompleted: 'Étape suivante : terminée',
-    finalReportIntro: 'Synthèse des données recueillies pendant l’atelier.',
-    reportLanguageLabel: 'Langue du rapport',
-    reportLanguageHint:
-      'La langue sélectionnée sera utilisée pour la traduction du rapport dans une version ultérieure.',
-    productLabel: 'Produit',
-    spacesLabel: 'Où regardons-nous ?',
-    timeFramesLabel: 'Niveau d’observation / de réflexion',
-    totalScenariosLabel: 'Nombre total de scénarios',
-    chosenScenarioLabel: 'Scénario choisi',
-    spaceDefinitionsLabel: 'Définitions des espaces',
-    timeDefinitionsLabel: 'Définitions du temps',
-    totalIdeasLabel: 'Nombre total d’idées',
-    cellsWithIdeasLabel: 'Cellules avec idées',
-    ideasGeneratedLabel: 'Idées générées par l’IA',
-    ideasUserLabel: 'Idées de l’utilisateur',
-    noIdeasLabel: 'Aucune idée.',
-    confirmProductLabel: 'Confirmer le nom du produit',
-    selectedLanguageLabel: 'Langue sélectionnée',
-    notSet: 'Non défini',
-    notSelected: 'Non sélectionné',
-    noScenarioConfirmed: 'Aucun scénario confirmé.',
-    openReportPanel: 'Ouvrir le panneau du rapport',
-    reportSnapshotTitle: 'Aperçu du rapport',
-    close: 'Fermer',
-    editIdeaTitle: 'Modifier l’idée',
-    generatedIdeaTitle: 'Idée générée',
-    questionsTitle: 'Questions de soutien',
-    nextQuestionsLabel: 'Next 10 guiding questions',
-    prevQuestionsLabel: 'Previous 10 guiding questions',
-    labelEditorTitle: 'Éditeur d’étiquettes',
-    labelEditorSave: 'Enregistrer',
-    labelEditorAdd: 'Ajouter une étiquette',
-    removeLabelAriaLabel: 'Supprimer l’étiquette',
-    labelDropPlaceholder: 'Déposez une étiquette',
-    noLabelText: 'Aucune étiquette',
-    save: 'Enregistrer',
-    llmSettingsTitle: 'Paramètres serveur OpenAI',
-    llmSettingsIntro:
-      'Connectez votre serveur à OpenAI (OPENAI_API_KEY) et indiquez l’URL API.',
-    llmApiBaseLabel: 'URL API',
-    llmApiBasePlaceholder: 'http://localhost:8787',
-    llmSettingsSave: 'Enregistrer',
-    llmSettingsSaved: 'Enregistré.',
-    llmSettingsCostNote:
-      'L’utilisation de votre clé API sera facturée à votre compte OpenAI selon leur tarification.',
-    llmStatusOnline: 'Statut serveur : en ligne',
-    llmStatusOffline: 'Statut serveur : hors ligne',
-    llmStatusUnknown: 'Statut serveur : inconnu',
-    llmTestConnection: 'Tester la connexion',
-    llmEnableConnection: 'Activer OpenAI',
-    llmDisableConnection: 'Désactiver OpenAI',
-    questionTemplate: (spaceDef, timeDef) =>
-      `Comment "${spaceDef}" pourrait-il répondre à "${timeDef}" et révéler une nouvelle opportunité ?`,
-    questionTemplates: (productName, spaceDef, timeDef) => [
-      `Quel besoin utilisateur non satisfait lié à "${productName}" apparaît dans "${spaceDef}" pendant "${timeDef}" ?`,
-      `Quels nouveaux comportements ou tendances pourraient transformer "${productName}" dans "${spaceDef}" pour "${timeDef}" ?`,
-      `Quelles normes, réglementations ou attentes de sécurité affectent "${productName}" dans "${spaceDef}" pendant "${timeDef}" ?`,
-      `Quelle technologie ou matériau de pointe peut améliorer "${productName}" dans "${spaceDef}" pour "${timeDef}" ?`,
-      `Quel est le principal goulot de performance de "${productName}" dans "${spaceDef}" pendant "${timeDef}" ?`,
-      `Quel est le meilleur compromis price vs performance pour "${productName}" dans "${spaceDef}" pendant "${timeDef}" ?`,
-      `Pour quelles fonctions les utilisateurs dans "${spaceDef}" pendant "${timeDef}" paieraient-ils plus, et qu’est-ce qui est obligatoire ?`,
-      `Comment des services, logiciels ou données peuvent-ils renforcer "${productName}" dans "${spaceDef}" pendant "${timeDef}" ?`,
-      `Comment "${productName}" devrait-il se connecter à d’autres produits dans "${spaceDef}" pendant "${timeDef}" et quels bénéfices utilisateur en résultent ?`,
-      `Quelle alternative pourrait battre "${productName}" en prix ou en performance dans "${spaceDef}" pendant "${timeDef}" ?`,
-      `Quelles exigences de durabilité, maintenance ou cycle de vie "${productName}" doit-il respecter dans "${spaceDef}" pour "${timeDef}" ?`,
-    ],
-    llmIdeaTemplate: (spaceDef, timeDef) =>
-      `Considérez comment ${spaceDef} se connecte à ${timeDef} pour révéler des perspectives client, designer et système.`,
-    subsystemFallback: 'Composants clés : structure, source d’énergie, couche de contrôle',
-    subsystemTemplate: (productName) =>
-      `Composants clés : boîtier ${productName}, module central, couche d’interface`,
-    timeDefs: {
-      past: (timeFrame) => `Étape précédente de ${timeFrame}`,
-      now: (timeFrame) => `État actuel de ${timeFrame}`,
-      future: (timeFrame) => `Évolution future de ${timeFrame}`,
-    },
-    analyzedProduct: 'Produit analysé',
-    leadSpaceSuggestions: (productName) => [
-      `Intégration de ${productName} dans l’écosystème utilisateur`,
-      `Où ${productName} est installé`,
-    ],
-    leadTimeSuggestions: (productName) => [
-      `${productName} fabrication initiale`,
-      `${productName} assemblage principal`,
-    ],
-    spaceSuggestions: [
-      'Environnement domestique',
-      'Habitacle de véhicule',
-      'Ligne industrielle',
-      'Usage extérieur',
-      'Chambre froide',
-      'Exposition à forte chaleur',
-      'Environnement humide',
-      'Secteur médical',
-      'Présentoir retail',
-      'Entrepôt',
-      'Espace de bureau',
-      'Infrastructure publique',
-      'Environnement marin',
-      'Cabine aéronautique',
-      'Chantier',
-      'Réseau smart city',
-      'Champ agricole',
-      'Centre de données',
-      'Salle de classe',
-      'Installation sportive',
-    ],
-    timeSuggestions: [
-      'Processus de production du fournisseur',
-      'Assemblage interne',
-      'Contrôle qualité',
-      'Test final',
-      'Processus d’emballage',
-      'Gestion de distribution',
-      'Phase d’utilisation client',
-      'Cycle de maintenance',
-      'Processus de réparation',
-      'Fin de vie du produit',
-      'Processus de recyclage',
-      'Préparation des composants',
-      'Approvisionnement des matières premières',
-      'Fabrication des composants',
-      'Finition de surface',
-      'Logistique fournisseur',
-      'Installation et mise en service',
-      'Service de garantie',
-      'Réutilisation seconde vie',
-      'Planification du démontage',
-    ],
-    cellLabel: (spaceLabel, timeLabel) => `${spaceLabel} + ${timeLabel}`,
-  },
 }
 
 const polishTranslations: Translations = translations.Polish
-const languageFallbacks: Partial<Record<Language, Language>> = {
-  Spanish: 'English',
-  Hindi: 'English',
-}
+const languageFallbacks: Partial<Record<Language, Language>> = {}
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -2771,43 +1581,6 @@ const elementSuggestionFallbacks: Record<Language, string[]> = {
     'Sensors',
     'Materials',
   ],
-
-  Spanish: [
-    'Housing',
-    'Core module',
-    'Interface layer',
-    'Fasteners',
-    'Surface finish',
-    'Electronics',
-    'Packaging',
-    'Power unit',
-    'Sensors',
-    'Materials',
-  ],
-  Hindi: [
-    'Housing',
-    'Core module',
-    'Interface layer',
-    'Fasteners',
-    'Surface finish',
-    'Electronics',
-    'Packaging',
-    'Power unit',
-    'Sensors',
-    'Materials',
-  ],
-  German: [
-    'Gehäuse',
-    'Kernmodul',
-    'Schnittstelle',
-    'Befestigungen',
-    'Oberfläche',
-    'Elektronik',
-    'Verpackung',
-    'Stromversorgung',
-    'Sensoren',
-    'Materialien',
-  ],
   Polish: [
     'Obudowa',
     'Moduł główny',
@@ -2819,54 +1592,6 @@ const elementSuggestionFallbacks: Record<Language, string[]> = {
     'Zasilanie',
     'Czujniki',
     'Materiały',
-  ],
-  Chinese: [
-    '外壳',
-    '核心模块',
-    '接口层',
-    '紧固件',
-    '表面处理',
-    '电子部件',
-    '包装',
-    '供电单元',
-    '传感器',
-    '材料',
-  ],
-  Swiss: [
-    'Gehäuse',
-    'Kernmodul',
-    'Schnittstelle',
-    'Befestigungen',
-    'Oberfläche',
-    'Elektronik',
-    'Verpackung',
-    'Stromversorgung',
-    'Sensoren',
-    'Materialien',
-  ],
-  Italian: [
-    'Scocca',
-    'Modulo principale',
-    'Interfaccia',
-    'Fissaggi',
-    'Finitura',
-    'Elettronica',
-    'Imballaggio',
-    'Alimentazione',
-    'Sensori',
-    'Materiali',
-  ],
-  French: [
-    'Boîtier',
-    'Module principal',
-    'Interface',
-    'Fixations',
-    'Finition',
-    'Électronique',
-    'Emballage',
-    'Alimentation',
-    'Capteurs',
-    'Matériaux',
   ],
 }
 
@@ -3276,7 +2001,7 @@ function App() {
   const [activeIdeaCell, setActiveIdeaCell] = useState<string | null>(null)
   const [ideaDraft, setIdeaDraft] = useState<string>('')
   const [hoveredCell, setHoveredCell] = useState<{ space: string; time: string } | null>(null)
-  const [reportOpen, setReportOpen] = useState(false)
+  const [reportSnapshotOpen, setReportSnapshotOpen] = useState(false)
   const [labelEditorOpen, setLabelEditorOpen] = useState(false)
   const [ideaPreview, setIdeaPreview] = useState<Idea | null>(null)
   const [impulseQuestion, setImpulseQuestion] = useState<string | null>(null)
@@ -3584,17 +2309,12 @@ function App() {
     visible: boolean
   } | null>(null)
 
-  const languageOptions: Language[] = [
-    'English',
-    'Chinese',
-    'Spanish',
-    'Hindi',
-    'Polish',
-    'German',
-  ]
+  const languageOptions: Language[] = ['English', 'Polish']
 
   const uiLanguageOptions: Language[] = ['Polish', 'English']
 
+  const hasSupabaseEnv = supabaseEnvDiag.hasUrl && supabaseEnvDiag.hasAnon
+  const authDisabled = !hasSupabaseEnv
   const isAuthed = Boolean(authSession?.user?.id)
   const isGuest = isGuestMode() === true
   const hasActiveGuestSession = isGuest ? getStorageSessionCount() > 0 : false
@@ -3602,7 +2322,7 @@ function App() {
     isGuest &&
     (typeof window !== 'undefined' &&
       new URLSearchParams(window.location.search).get('guest') === '1')
-  const canEnterApp = isAuthed || guestEntryAllowed
+  const canEnterApp = isAuthed || guestEntryAllowed || authDisabled
 
   const applySessionLanguage = (value?: string) => {
     if (!value) return
@@ -3870,6 +2590,7 @@ const isAuthFlowInProgress = () => {
   const normalizedPath =
     typeof window !== 'undefined' ? window.location.pathname.replace(/\/+$/, '') : ''
   const isEnginePreview = normalizedPath === '/engine'
+  const isReport = normalizedPath === '/report'
   const isWorkInProgress = normalizedPath === '/wip'
   const isIdeaGrid = normalizedPath === '/grid'
   const isLogin = normalizedPath === '/login'
@@ -3933,6 +2654,7 @@ const isAuthFlowInProgress = () => {
     let cancelled = false
     if (!client) {
       setAuthLoading(false)
+      setAuthResolved(true)
       setAuthError(MISSING_SUPABASE_ENV_MESSAGE)
       return () => {
         cancelled = true
@@ -3969,12 +2691,12 @@ const isAuthFlowInProgress = () => {
   }, [])
 
   useEffect(() => {
-    if (!isProtectedRoute || authLoading) return
+    if (!isProtectedRoute || authLoading || authDisabled) return
     if (!authSession) {
       const next = window.location.pathname + window.location.search
       window.location.href = `/login?next=${encodeURIComponent(next)}`
     }
-  }, [isProtectedRoute, authLoading, authSession])
+  }, [isProtectedRoute, authLoading, authSession, authDisabled])
 
   useEffect(() => {
     if (!authResolved) return
@@ -4892,6 +3614,26 @@ const isAuthFlowInProgress = () => {
         : null
     return { rows, cols, counts, currentKey }
   }, [engineAskedQuestionMeta, engineLastQuestionMeta])
+
+  const getReportSessionSnapshot = (): ReportSnapshot => {
+    const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
+    const sessionNameCandidate =
+      enginePreviewSessionName || engineSessionDetail?.session?.name || productName || ''
+    const sessionName = sessionNameCandidate.trim() ? sessionNameCandidate.trim() : '—'
+    const reportIdeas = engineSessionDetail?.boardItems?.length
+      ? engineSessionDetail.boardItems
+      : enginePreviewItems
+    const ideas = reportIdeas.map((item, index) => ({
+      id: item.id || `idea-${index + 1}`,
+      text: item.text,
+    }))
+    return {
+      sessionName,
+      date: new Date().toLocaleString(locale),
+      ideas,
+    }
+  }
+
 
   const feedbackContext = useMemo(() => {
     const route = typeof window !== 'undefined' ? window.location.pathname : ''
@@ -7111,9 +5853,6 @@ const isAuthFlowInProgress = () => {
 
   if (isLogin) {
     const isGuestActive = isGuestMode()
-    const hasSupabaseEnv =
-      Boolean(import.meta.env.VITE_SUPABASE_URL) &&
-      Boolean(import.meta.env.VITE_SUPABASE_ANON_KEY)
     if (showSupabaseConfigError) {
       return withDevOverlay(
         <div className="app auth-screen">
@@ -7158,7 +5897,7 @@ const isAuthFlowInProgress = () => {
                   type="button"
                   className="primary"
                   onClick={handleGoogleLogin}
-                  disabled={loginOauthLoading}
+                  disabled={loginOauthLoading || authDisabled}
                 >
                   {loginOauthLoading ? copy.loginGoogleLoading : copy.loginGoogleCta}
                 </button>
@@ -7199,18 +5938,20 @@ const isAuthFlowInProgress = () => {
                     />
                   </div>
                   <div className="actions">
-                    <button
-                      type="button"
-                      className={loginAuthMode === 'signin' ? 'primary' : 'ghost'}
-                      onClick={() => setLoginAuthMode('signin')}
-                    >
+                  <button
+                    type="button"
+                    className={loginAuthMode === 'signin' ? 'primary' : 'ghost'}
+                    onClick={() => setLoginAuthMode('signin')}
+                    disabled={authDisabled}
+                  >
                       Sign in
                     </button>
-                    <button
-                      type="button"
-                      className={loginAuthMode === 'signup' ? 'primary' : 'ghost'}
-                      onClick={() => setLoginAuthMode('signup')}
-                    >
+                  <button
+                    type="button"
+                    className={loginAuthMode === 'signup' ? 'primary' : 'ghost'}
+                    onClick={() => setLoginAuthMode('signup')}
+                    disabled={authDisabled}
+                  >
                       Sign up
                     </button>
                   </div>
@@ -7219,7 +5960,7 @@ const isAuthFlowInProgress = () => {
                       type="button"
                       className="primary"
                       onClick={handlePasswordAuth}
-                      disabled={loginSending}
+                      disabled={loginSending || authDisabled}
                     >
                       {loginSending ? '...' : loginAuthMode === 'signin' ? 'Sign in' : 'Sign up'}
                     </button>
@@ -7231,7 +5972,7 @@ const isAuthFlowInProgress = () => {
                     type="button"
                     className="primary"
                     onClick={handleMagicLink}
-                    disabled={loginSending || loginCooldownSeconds > 0}
+                    disabled={loginSending || loginCooldownSeconds > 0 || authDisabled}
                   >
                     {loginSending
                       ? copy.loginEmailSending
@@ -7318,7 +6059,7 @@ const isAuthFlowInProgress = () => {
         </div>
       )
     }
-    if (!hasSupabaseSession && !guestAllowed) {
+    if (!hasSupabaseSession && !guestAllowed && !authDisabled) {
       const next =
         typeof window !== 'undefined'
           ? window.location.pathname + window.location.search
@@ -7344,11 +6085,9 @@ const isAuthFlowInProgress = () => {
       )
     }
     const enginePlaceholder =
-      engineUiState === 'FACILITATED_INPUT' && engineActivePrompt
-        ? engineActivePrompt.text
-        : enginePreviewItems.length === 0
-          ? copy.enginePlaceholderInitial
-          : copy.enginePlaceholderContinue
+      enginePreviewItems.length === 0
+        ? copy.enginePlaceholderInitial
+        : copy.enginePlaceholderContinue
 
     const formatSessionLabel = (name: string | null | undefined, id: string) => {
       if (name && name.trim()) {
@@ -7365,6 +6104,7 @@ const isAuthFlowInProgress = () => {
   const engineRemainingWords = Math.max(0, WORD_LIMIT - countWords(enginePreviewInput))
   const isEngineWordLimitReached =
     enginePreviewInput.trim().length > 0 && countWords(enginePreviewInput) >= WORD_LIMIT
+  const showEngineInputCaret = !engineInputFocused && !enginePreviewInput.trim()
   const showFacilitationOffer =
     engineUiState === 'FACILITATION_OFFER' ||
     engineOfferReason === 'idle' ||
@@ -7377,6 +6117,22 @@ const isAuthFlowInProgress = () => {
   const formatTokenTotal = (value: number) => {
     const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
     return new Intl.NumberFormat(locale).format(Math.max(0, Math.floor(value || 0)))
+  }
+
+  if (isReport) {
+    const reportLanguage = uiLanguage === 'Polish' ? 'pl' : 'en'
+    const snapshot = getReportSessionSnapshot()
+    const handleReportBack = () => {
+      if (typeof window === 'undefined') return
+      if (window.history.length > 1) {
+        window.history.back()
+        return
+      }
+      window.location.href = '/engine'
+    }
+    return withDevOverlay(
+      <ReportPage snapshot={snapshot} language={reportLanguage} onBack={handleReportBack} />
+    )
   }
   const formatUsd = (value: number) =>
     new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(
@@ -7469,12 +6225,17 @@ const isAuthFlowInProgress = () => {
             </div>
           </div>
         </header>
+        {authDisabled && (
+          <div className="engine-error" role="status">
+            {MISSING_SUPABASE_ENV_MESSAGE}
+          </div>
+        )}
         <main className="engine-main">
           {feedbackReminderBanner}
-          <section className="engine-panel">
+          <section className="engine-panel engine-panel-session">
             <div className="engine-panel-header">
               <h1>{copy.enginePreviewSessionTitle}</h1>
-              <div className="engine-actions">
+              <div className="engine-actions engine-actions-session">
                 {!enginePreviewSessionId && !engineSessionsOpen && (
                   <button
                     type="button"
@@ -7492,18 +6253,34 @@ const isAuthFlowInProgress = () => {
                   </button>
                 )}
                 {enginePreviewSessionId && (
-                  <button
-                    type="button"
-                    className="ghost"
-                    data-testid="session-close"
-                    onClick={() => {
-                      markUserInitiatedInteraction('pointer')
-                      setEngineLastInputActivityAt(Date.now())
-                      closeEnginePreviewSession()
-                    }}
-                  >
-                    {copy.enginePreviewReset}
-                  </button>
+                  <div className="engine-actions-group">
+                    <button
+                      type="button"
+                      className="ghost"
+                      data-testid="session-close"
+                      onClick={() => {
+                        markUserInitiatedInteraction('pointer')
+                        setEngineLastInputActivityAt(Date.now())
+                        closeEnginePreviewSession()
+                      }}
+                    >
+                      {copy.enginePreviewReset}
+                    </button>
+                    <button
+                      type="button"
+                      className="ghost"
+                      data-testid="session-report"
+                      onClick={() => {
+                        markUserInitiatedInteraction('pointer')
+                        setEngineLastInputActivityAt(Date.now())
+                        if (typeof window !== 'undefined') {
+                          window.location.href = '/report'
+                        }
+                      }}
+                    >
+                      {copy.enginePreviewCreateReport}
+                    </button>
+                  </div>
                 )}
                 {!enginePreviewSessionId && (
                   <button
@@ -7911,32 +6688,6 @@ const isAuthFlowInProgress = () => {
                   <p className="muted">{copy.engineFacilitationLoadingPlaceholder}</p>
                 </div>
               )}
-              {!engineFacilitationLoading && engineActivePrompt?.text && (
-                <div className="engine-helper engine-facilitation-prompt">
-                  <div className="engine-facilitation-question">{engineActivePrompt.text}</div>
-                  {enginePromptSource && (
-                    <span
-                      className={`impulse-source-chip ${
-                        enginePromptSource === 'fallback' ? 'fallback' : 'ai'
-                      }`}
-                    >
-                      {enginePromptSource === 'fallback'
-                        ? uiLanguage === 'Polish'
-                          ? 'Tryb offline (fallback)'
-                          : 'Offline mode (fallback)'
-                        : 'AI'}
-                    </span>
-                  )}
-                </div>
-              )}
-              {import.meta.env.DEV && engineActivePrompt && (
-                <div className="engine-helper">
-                  {lastLlmSource === 'llm' ? 'AI generated' : 'Deterministic fallback'}
-                  {lastLlmWhy && (
-                    <span className="muted"> · {lastLlmWhy}</span>
-                  )}
-                </div>
-              )}
               {uiLanguage === 'English' && copy.engineQuestionsWipNote && (
                 <div className="engine-helper">{copy.engineQuestionsWipNote}</div>
               )}
@@ -7947,27 +6698,6 @@ const isAuthFlowInProgress = () => {
                 data-testid="facilitation-buttons"
                 aria-hidden={!showFacilitationOffer}
               >
-                <button
-                  type="button"
-                  className="ghost"
-                  data-testid="facilitation-next"
-                  onClick={() => {
-                    setFacilitationCooldown('NEXT')
-                    armIdleWatch('facilitation_next')
-                    void activateFacilitationPrompt('NEXT')
-                  }}
-                  disabled={!showFacilitationOffer || engineFacilitationLoading}
-                >
-                  {showEngineFacilitationLoadingUI &&
-                  engineFacilitationLoadingType === 'NEXT' ? (
-                    <>
-                      <span className="button-spinner" aria-hidden="true" />
-                      {copy.engineFacilitationLoadingLabel}
-                    </>
-                  ) : (
-                    copy.engineFacilitationNext
-                  )}
-                </button>
                 <button
                   type="button"
                   className="ghost"
@@ -8037,58 +6767,87 @@ const isAuthFlowInProgress = () => {
                 </div>
               )}
               <div className="engine-board-input">
-                <textarea
-                  data-testid="engine-input"
-                  ref={engineInputRef}
-                  value={enginePreviewInput}
-                  onChange={(event) => {
-                    handleEnginePreviewInputChange(event)
-                    engineIdleTriggered.current = false
-                    clearEngineIdleTimer('input_change')
-                    setEngineLastInputActivityAt(Date.now())
-                    logFacilitationEvent('idle_timer_reset', { reason: 'input_change', at: Date.now() })
-                  }}
-                  onPointerDown={() => {
-                    markUserInitiatedInteraction('pointer')
-                    engineAllowIdleWithoutFocusRef.current = false
-                    if (engineUiState === 'INIT') {
-                      setEngineUiState('FREE_FLOW')
-                    }
-                    engineIdleTriggered.current = false
-                    clearEngineIdleTimer('pointer')
-                    setEngineLastInputActivityAt(Date.now())
-                    logFacilitationEvent('idle_timer_reset', { reason: 'pointer', at: Date.now() })
-                  }}
-                  onKeyDown={() => {
-                    markUserInitiatedInteraction('keystroke')
-                    engineAllowIdleWithoutFocusRef.current = false
-                    if (engineOfferReason) {
-                      setEngineOfferReason(null)
-                      if (engineUiState === 'FACILITATION_OFFER') {
+                {!engineFacilitationLoading && engineActivePrompt?.text && (
+                  <div className="engine-helper engine-facilitation-prompt">
+                    <div className="engine-facilitation-question">{engineActivePrompt.text}</div>
+                    {enginePromptSource && (
+                      <span className="impulse-source-row">
+                        <span
+                          className={`impulse-source-chip ${
+                            enginePromptSource === 'fallback' ? 'fallback' : 'ai'
+                          }`}
+                        >
+                          {enginePromptSource === 'fallback'
+                            ? uiLanguage === 'Polish'
+                              ? 'Tryb offline (fallback)'
+                              : 'Offline mode (fallback)'
+                            : 'AI'}
+                        </span>
+                        {import.meta.env.DEV && (
+                          <span className="impulse-source-note">
+                            {lastLlmSource === 'llm' ? 'AI generated' : 'Deterministic fallback'}
+                            {lastLlmWhy ? ` · ${lastLlmWhy}` : ''}
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </div>
+                )}
+                <div className="engine-input-field">
+                  {showEngineInputCaret && <span className="engine-input-caret" aria-hidden="true" />}
+                  <textarea
+                    data-testid="engine-input"
+                    ref={engineInputRef}
+                    value={enginePreviewInput}
+                    onChange={(event) => {
+                      handleEnginePreviewInputChange(event)
+                      engineIdleTriggered.current = false
+                      clearEngineIdleTimer('input_change')
+                      setEngineLastInputActivityAt(Date.now())
+                      logFacilitationEvent('idle_timer_reset', { reason: 'input_change', at: Date.now() })
+                    }}
+                    onPointerDown={() => {
+                      markUserInitiatedInteraction('pointer')
+                      engineAllowIdleWithoutFocusRef.current = false
+                      if (engineUiState === 'INIT') {
                         setEngineUiState('FREE_FLOW')
                       }
-                    }
-                    if (engineUiState === 'INIT') {
-                      setEngineUiState('FREE_FLOW')
-                    }
-                    engineIdleTriggered.current = false
-                    clearEngineIdleTimer('keystroke')
-                    setEngineLastInputActivityAt(Date.now())
-                    logFacilitationEvent('idle_timer_reset', { reason: 'keystroke', at: Date.now() })
-                  }}
-                  onFocus={() => {
-                    setEngineInputFocused(true)
-                    engineAllowIdleWithoutFocusRef.current = false
-                    logFacilitationEvent('input_focus', { sessionId: getEngineSessionKey() })
-                  }}
-                  onBlur={() => {
-                    setEngineInputFocused(false)
-                    clearEngineIdleTimer('input_blur')
-                    logFacilitationEvent('input_blur', { sessionId: getEngineSessionKey() })
-                  }}
-                  placeholder={enginePlaceholder}
-                  rows={3}
-                />
+                      engineIdleTriggered.current = false
+                      clearEngineIdleTimer('pointer')
+                      setEngineLastInputActivityAt(Date.now())
+                      logFacilitationEvent('idle_timer_reset', { reason: 'pointer', at: Date.now() })
+                    }}
+                    onKeyDown={() => {
+                      markUserInitiatedInteraction('keystroke')
+                      engineAllowIdleWithoutFocusRef.current = false
+                      if (engineOfferReason) {
+                        setEngineOfferReason(null)
+                        if (engineUiState === 'FACILITATION_OFFER') {
+                          setEngineUiState('FREE_FLOW')
+                        }
+                      }
+                      if (engineUiState === 'INIT') {
+                        setEngineUiState('FREE_FLOW')
+                      }
+                      engineIdleTriggered.current = false
+                      clearEngineIdleTimer('keystroke')
+                      setEngineLastInputActivityAt(Date.now())
+                      logFacilitationEvent('idle_timer_reset', { reason: 'keystroke', at: Date.now() })
+                    }}
+                    onFocus={() => {
+                      setEngineInputFocused(true)
+                      engineAllowIdleWithoutFocusRef.current = false
+                      logFacilitationEvent('input_focus', { sessionId: getEngineSessionKey() })
+                    }}
+                    onBlur={() => {
+                      setEngineInputFocused(false)
+                      clearEngineIdleTimer('input_blur')
+                      logFacilitationEvent('input_blur', { sessionId: getEngineSessionKey() })
+                    }}
+                    placeholder={enginePlaceholder}
+                    rows={3}
+                  />
+                </div>
                 <div className="engine-input-footer">
                 <span className="engine-word-count">
                   {isEngineWordLimitReached
@@ -8395,7 +7154,7 @@ const isAuthFlowInProgress = () => {
           )}
         </div>
         {!showLanding && activeStep !== 1 && (
-          <button className="report-button" type="button" onClick={() => setReportOpen(true)}>
+          <button className="report-button" type="button" onClick={() => setReportSnapshotOpen(true)}>
             <IconReport />
             <span>{copy.report}</span>
           </button>
@@ -9271,7 +8030,7 @@ const isAuthFlowInProgress = () => {
                 {copy.previousStepPrefix}
                 {stepTitle(3)}
               </button>
-              <button type="button" className="secondary" onClick={() => setReportOpen(true)}>
+              <button type="button" className="secondary" onClick={() => setReportSnapshotOpen(true)}>
                 {copy.openReportPanel}
               </button>
               <button type="button" className="primary" disabled>
@@ -9399,31 +8158,33 @@ const isAuthFlowInProgress = () => {
                 <p>{impulseQuestion || copy.impulseEmpty}</p>
               )}
               {!isSuggestLoading && impulseQuestion && impulseSource && (
-                <span
-                  className={`impulse-source-chip ${
-                    impulseSource === 'fallback' ? 'fallback' : 'ai'
-                  }`}
-                >
-                  {impulseSource === 'fallback' ? 'Tryb offline (fallback)' : 'AI'}
+                <span className="impulse-source-row">
+                  <span
+                    className={`impulse-source-chip ${
+                      impulseSource === 'fallback' ? 'fallback' : 'ai'
+                    }`}
+                  >
+                    {impulseSource === 'fallback' ? 'Tryb offline (fallback)' : 'AI'}
+                  </span>
+                  {import.meta.env.DEV && (
+                    <span className="impulse-source-note">
+                      {lastLlmSource === 'llm' ? 'AI generated' : 'Deterministic fallback'}
+                      {lastLlmWhy ? ` · ${lastLlmWhy}` : ''}
+                    </span>
+                  )}
                 </span>
-              )}
-              {import.meta.env.DEV && (
-                <p className="muted">
-                  {lastLlmSource === 'llm' ? 'AI generated' : 'Deterministic fallback'}
-                  {lastLlmWhy ? ` · ${lastLlmWhy}` : ''}
-                </p>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {reportOpen && (
+      {reportSnapshotOpen && (
         <div className="modal" role="dialog" aria-modal="true">
           <div className="modal-content">
             <div className="modal-header">
               <h2>{copy.reportSnapshotTitle}</h2>
-              <button type="button" className="ghost" onClick={() => setReportOpen(false)}>
+              <button type="button" className="ghost" onClick={() => setReportSnapshotOpen(false)}>
                 {copy.close}
               </button>
             </div>

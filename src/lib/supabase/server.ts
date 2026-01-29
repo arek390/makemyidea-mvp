@@ -12,7 +12,11 @@ export const createSupabaseServerClient = (cookies: CookieHandlers) => {
   const supabaseAnonKey = process.env.VITE_SUPABASE_ANON_KEY || ''
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error('Missing Supabase env vars for server.')
+    if (process.env.NODE_ENV !== 'production') {
+      // eslint-disable-next-line no-console
+      console.warn('Auth disabled: missing Supabase env vars for server.')
+    }
+    return null
   }
 
   return createServerClient(supabaseUrl, supabaseAnonKey, { cookies })
