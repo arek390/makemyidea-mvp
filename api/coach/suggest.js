@@ -355,6 +355,67 @@ const buildSummaryFallback = (locale, errorCategory, note) => {
   }
 }
 
+const isValidCellId = (value) => /^[ABC][123]$/.test(String(value || '').trim())
+
+const coerceCellId = (value) => {
+  const raw = String(value || '').trim().toUpperCase()
+  return isValidCellId(raw) ? raw : null
+}
+
+const buildReclassPrompt = ({ locale, sessionName, entries }) => {
+  const lines = entries.slice(0, 120).map((entry) => {
+    const text = String(entry.text || '').trim().replace(/\s+/g, ' ')
+    const current = coerceCellId(entry.currentCellId) || 'B2'
+    return `- id:${entry.id} | current:${current} | text:${text}`
+  })
+  const semantics = [
+    'Rows: A=world (otoczenie, rynek, kontekst, ograniczenia zewnętrzne),',
+    'B=product (produkt/system jako całość, architektura, jak działa),',
+    'C=elements (konstrukcja, budowa, podzespoły, elementy składowe).',
+    'Cols: 1=as_is (stan obecny), 2=not_working (problemy, tarcia, co zmienić), 3=should_be (pożądany stan / pomysł).',
+    'If uncertain or unreadable, keep current cell and set confidence < 0.6 with shouldMove=false.',
+    'Do not hallucinate.',
+  ].join(' ')
+  const instructions = [
+    'You are an R&D facilitator. Classify each entry into the 3x3 matrix using the semantics above.',
+    semantics,
+    'Return STRICT JSON ONLY:',
+    '{"classifications":[{"id":"...","suggestedCellId":"B2","confidence":0.82,"shouldMove":true,"reason":"..."}]}',
+    locale === 'pl' ? 'Write reasons in Polish.' : 'Write reasons in English.',
+  ].join(' ')
+  const input = [`Session: ${sessionName || '—'}`, ...lines].join('\n')
+  return { input, instructions }
+}
+
+const buildSummaryWithReclassPrompt = ({ locale, sessionName, entries }) => {
+  const lines = entries.slice(0, 120).map((entry) => {
+    const text = String(entry.text || '').trim().replace(/\s+/g, ' ')
+    const current = coerceCellId(entry.currentCellId) || 'B2'
+    return `- id:${entry.id} | current:${current} | text:${text}`
+  })
+  const semantics = [
+    'Rows: A=world (otoczenie, rynek, kontekst, ograniczenia zewnętrzne),',
+    'B=product (produkt/system jako całość, architektura, jak działa),',
+    'C=elements (konstrukcja, budowa, podzespoły, elementy składowe).',
+    'Cols: 1=as_is (stan obecny), 2=not_working (problemy, tarcia, co zmienić), 3=should_be (pożądany stan / pomysł).',
+  ].join(' ')
+  const instructions = [
+    'You are an R&D facilitator. First classify entries into the 3x3 matrix using the semantics.',
+    semantics,
+    'If uncertain or unreadable, keep current cell and set confidence < 0.6 with shouldMove=false.',
+    'Do NOT hallucinate. Ignore irrelevant/unreadable items in summaries.',
+    'Use this rule to apply moves: if shouldMove=true AND confidence>=0.75, use suggestedCellId; otherwise keep current.',
+    'Then produce three summaries:',
+    'today uses A1+B1+C1, change uses A2+B2+C2, product uses A3+B3+C3.',
+    'Return STRICT JSON ONLY:',
+    '{"classifications":[{"id":"...","suggestedCellId":"B2","confidence":0.82,"shouldMove":true,"reason":"..."}],',
+    '"summary":{"today":"...","change":"...","product":"..."}}',
+    locale === 'pl' ? 'Write summaries and reasons in Polish.' : 'Write summaries and reasons in English.',
+  ].join(' ')
+  const input = [`Session: ${sessionName || '—'}`, ...lines].join('\n')
+  return { input, instructions }
+}
+
 export default async function handler(req, res) {
   const requestId =
     req.headers['x-request-id'] ||
@@ -497,16 +558,148 @@ export default async function handler(req, res) {
 
     const actionNormalized = String(action || 'NEXT').toUpperCase()
 
+    if (!aiSupportEnabled && actionNormalized !== 'REPORT_SUMMARY') {
+      const fallbackText =
+        lang === 'pl'
+          ? actionNormalized === 'DEEPEN'
+            ? 'Co warto doprecyzować lub pogłębić w tym wątku?'
+            : actionNormalized === 'PERSPECTIVE'
+              ? 'Z jakiej jeszcze perspektywy warto na to spojrzeć?'
+              : 'Co jest tutaj najważniejsze do doprecyzowania?'
+          : actionNormalized === 'DEEPEN'
+            ? 'What should we clarify or explore deeper here?'
+            : actionNormalized === 'PERSPECTIVE'
+              ? 'What other perspective is worth considering?'
+              : 'What is the most important thing to clarify here?'
+      const fallbackQuestion = normalizeQuestion({ text: fallbackText })
+      sendJson(res, 200, {
+        ok: true,
+        source: 'fallback',
+        question: fallbackQuestion,
+        data: { question: fallbackQuestion },
+        meta: buildMeta({ aiSupportEnabled: false, modelUsed: null, escalated: false }),
+      })
+      return
+    }
+
+    if (actionNormalized === 'RECLASSIFY_ENTRIES') {
+      const locale = normalizeLang(body.locale || body.language || 'pl')
+      const entries = Array.isArray(body.entries) ? body.entries : []
+      if (!entries.length) {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          classifications: [],
+          meta: {
+            aiSupportEnabled: false,
+            modelUsed: null,
+            escalated: false,
+            tokens: { input: 0, output: 0, total: 0 },
+            errorCategory: 'EMPTY_INPUT',
+          },
+        })
+        return
+      }
+      if (!aiSupportEnabled || killSwitch || !hasOpenAiKey) {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          classifications: [],
+          meta: {
+            aiSupportEnabled: false,
+            modelUsed: null,
+            escalated: false,
+            tokens: { input: 0, output: 0, total: 0 },
+            errorCategory: killSwitch
+              ? 'AI_DISABLED'
+              : !hasOpenAiKey
+                ? 'MISSING_OPENAI_KEY'
+                : 'AI_DISABLED',
+          },
+        })
+        return
+      }
+      const { input, instructions } = buildReclassPrompt({
+        locale,
+        sessionName,
+        entries,
+      })
+      try {
+        const result = await runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'report-reclass',
+          input,
+          language: locale === 'pl' ? 'Polish' : 'English',
+          taskInstructions: instructions,
+          parseResponse: (value) => {
+            try {
+              const parsed = JSON.parse(value)
+              if (!parsed || typeof parsed !== 'object') return null
+              if (!Array.isArray(parsed.classifications)) return null
+              return parsed
+            } catch {
+              return null
+            }
+          },
+          fallbackData: null,
+          models: {
+            default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
+            preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+          },
+          maxOutputTokens: 700,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+        if (result.ok && result.data?.classifications) {
+          const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          const classifications = result.data.classifications
+            .map((entry) => ({
+              id: String(entry?.id || ''),
+              suggestedCellId: coerceCellId(entry?.suggestedCellId) || 'B2',
+              confidence: Number(entry?.confidence ?? 0),
+              shouldMove: Boolean(entry?.shouldMove),
+              reason: String(entry?.reason || ''),
+            }))
+            .filter((entry) => entry.id)
+          sendJson(res, 200, {
+            ok: true,
+            source: 'llm',
+            classifications,
+            meta,
+          })
+          return
+        }
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          classifications: [],
+          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
+        })
+        return
+      } catch {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          classifications: [],
+          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
+        })
+        return
+      }
+    }
+
     if (actionNormalized === 'REPORT_SUMMARY') {
       const locale = normalizeLang(body.locale || body.language || 'pl')
       const cells = body.cells || {}
+      const entries = Array.isArray(body.entries) ? body.entries : []
       const allSections = [
         pickCellTexts(cells, ['A1', 'B1', 'C1']),
         pickCellTexts(cells, ['A2', 'B2', 'C2']),
         pickCellTexts(cells, ['A3', 'B3', 'C3']),
       ]
       const hasAnyContent = allSections.some((section) => section.length > 0)
-      if (!hasAnyContent) {
+      if (!hasAnyContent && entries.length === 0) {
         sendJson(res, 200, buildSummaryFallback(locale, 'EMPTY_INPUT'))
         return
       }
@@ -519,30 +712,27 @@ export default async function handler(req, res) {
         sendJson(res, 200, buildSummaryFallback(locale, reasonCategory))
         return
       }
-      const { summaryInput, instructions } = buildSummaryPrompt({
-        locale,
-        sessionName,
-        cells,
-      })
+      const prompt = entries.length
+        ? buildSummaryWithReclassPrompt({ locale, sessionName, entries })
+        : buildSummaryPrompt({ locale, sessionName, cells })
       try {
         const result = await runLlmTask({
           apiKey: process.env.OPENAI_API_KEY,
           aiSupportEnabled: true,
           task: 'report-summary',
-          input: summaryInput,
+          input: prompt.summaryInput || prompt.input,
           language: locale === 'pl' ? 'Polish' : 'English',
-          taskInstructions: instructions,
+          taskInstructions: prompt.instructions,
           parseResponse: (value) => {
             try {
               const parsed = JSON.parse(value)
               if (!parsed || typeof parsed !== 'object') return null
-              if (
-                typeof parsed.today !== 'string' ||
-                typeof parsed.change !== 'string' ||
-                typeof parsed.product !== 'string'
-              ) {
-                return null
+              if (entries.length) {
+                if (!parsed.summary || typeof parsed.summary !== 'object') return null
+                if (!Array.isArray(parsed.classifications)) return null
+                return parsed
               }
+              if (!parsed.today || !parsed.change || !parsed.product) return null
               return parsed
             } catch {
               return null
@@ -560,12 +750,31 @@ export default async function handler(req, res) {
         })
         if (result.ok && result.data) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
-          sendJson(res, 200, {
-            ok: true,
-            source: 'llm',
-            summary: result.data,
-            meta,
-          })
+          if (entries.length && result.data.summary && result.data.classifications) {
+            const classifications = result.data.classifications
+              .map((entry) => ({
+                id: String(entry?.id || ''),
+                suggestedCellId: coerceCellId(entry?.suggestedCellId) || 'B2',
+                confidence: Number(entry?.confidence ?? 0),
+                shouldMove: Boolean(entry?.shouldMove),
+                reason: String(entry?.reason || ''),
+              }))
+              .filter((entry) => entry.id)
+            sendJson(res, 200, {
+              ok: true,
+              source: 'llm',
+              summary: result.data.summary,
+              classifications,
+              meta,
+            })
+          } else {
+            sendJson(res, 200, {
+              ok: true,
+              source: 'llm',
+              summary: result.data,
+              meta,
+            })
+          }
           return
         }
         sendJson(res, 200, buildSummaryFallback(locale, 'LLM_FAILED'))

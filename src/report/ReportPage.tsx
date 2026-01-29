@@ -12,6 +12,13 @@ type ReportPageProps = {
 }
 
 type AiSummary = { today: string; change: string; product: string }
+type AiClassification = {
+  id: string
+  suggestedCellId: string
+  confidence: number
+  shouldMove: boolean
+  reason?: string
+}
 
 export const ReportPage = ({
   snapshot,
@@ -25,14 +32,22 @@ export const ReportPage = ({
   const [aiLoading, setAiLoading] = useState(false)
   const [aiNotice, setAiNotice] = useState<string | null>(null)
   const [aiPartialNote, setAiPartialNote] = useState<string | null>(null)
+  const [summaryItems, setSummaryItems] = useState(snapshot.ideas)
   const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
-  const grouped = useMemo(() => groupItemsByCell(snapshot.ideas), [snapshot.ideas])
-  const cacheKey = useMemo(() => {
+  const grouped = useMemo(() => groupItemsByCell(summaryItems), [summaryItems])
+  const cacheBase = useMemo(() => {
     if (typeof window === 'undefined') return null
     const sessionId = window.sessionStorage.getItem('reportReturnSessionId') || ''
-    const keyBase = sessionId || snapshot.sessionName || 'unknown'
-    return `report_ai_summary::${keyBase}::${language}`
-  }, [language, snapshot.sessionName])
+    return sessionId || snapshot.sessionName || 'unknown'
+  }, [snapshot.sessionName])
+  const summaryCacheKey = useMemo(() => {
+    if (!cacheBase) return null
+    return `report_ai_summary::${cacheBase}::${language}`
+  }, [cacheBase, language])
+  const reclassCacheKey = useMemo(() => {
+    if (!cacheBase) return null
+    return `report_reclass::${cacheBase}::${language}`
+  }, [cacheBase, language])
   const cellsPayload = useMemo(() => {
     const toTexts = (items: { text?: string | null }[]) =>
       items.map((item) => String(item.text || '').trim()).filter(Boolean)
@@ -57,19 +72,71 @@ export const ReportPage = ({
     product: t.aiEmptyA3,
   }
 
+  const ensureAssignedCell = (item: (typeof snapshot.ideas)[number]) => {
+    if (item.matrixRow && item.matrixCol) return item
+    return { ...item, matrixRow: 'product', matrixCol: 'not_working' }
+  }
+
+  const cellIdFor = (item: (typeof snapshot.ideas)[number]) => {
+    const row = String(item.matrixRow || '').toLowerCase()
+    const col = String(item.matrixCol || '').toLowerCase()
+    const group = row === 'world' ? 'A' : row === 'product' ? 'B' : row === 'elements' ? 'C' : null
+    const mode = col === 'as_is' ? '1' : col === 'not_working' ? '2' : col === 'should_be' ? '3' : null
+    return group && mode ? `${group}${mode}` : 'B2'
+  }
+
+  const applyClassification = (
+    items: (typeof snapshot.ideas)[number][],
+    classifications: AiClassification[]
+  ) => {
+    const byId = new Map(classifications.map((c) => [c.id, c]))
+    return items.map((item) => {
+      const entry = byId.get(item.id)
+      if (!entry) return item
+      if (!entry.shouldMove || entry.confidence < 0.75) return item
+      const cell = entry.suggestedCellId
+      if (!cell) return item
+      const group = cell[0]
+      const mode = cell[1]
+      const matrixRow =
+        group === 'A' ? 'world' : group === 'B' ? 'product' : group === 'C' ? 'elements' : item.matrixRow
+      const matrixCol =
+        mode === '1'
+          ? 'as_is'
+          : mode === '2'
+            ? 'not_working'
+            : mode === '3'
+              ? 'should_be'
+              : item.matrixCol
+      return { ...item, matrixRow, matrixCol }
+    })
+  }
+
   useEffect(() => {
-    if (!cacheKey || typeof window === 'undefined') return
-    const cached = window.sessionStorage.getItem(cacheKey)
-    if (!cached) return
+    if (!summaryCacheKey || typeof window === 'undefined') return
+    const cached = window.sessionStorage.getItem(summaryCacheKey)
+    if (cached) {
+      try {
+        const parsed = JSON.parse(cached) as AiSummary
+        if (parsed?.today && parsed?.change && parsed?.product) {
+          setAiSummary(parsed)
+        }
+      } catch {
+        // ignore
+      }
+    }
+    if (!reclassCacheKey) return
+    const cachedReclass = window.sessionStorage.getItem(reclassCacheKey)
+    if (!cachedReclass) return
     try {
-      const parsed = JSON.parse(cached) as AiSummary
-      if (parsed?.today && parsed?.change && parsed?.product) {
-        setAiSummary(parsed)
+      const parsed = JSON.parse(cachedReclass) as AiClassification[]
+      if (Array.isArray(parsed) && parsed.length) {
+        setSummaryItems((prev) => applyClassification(prev, parsed))
       }
     } catch {
       // ignore
     }
-  }, [cacheKey])
+  }, [summaryCacheKey, reclassCacheKey])
 
   const runSummary = async () => {
     setAiNotice(null)
@@ -78,7 +145,30 @@ export const ReportPage = ({
       setAiNotice(t.aiDisabled)
       return
     }
-    if (emptyToday && emptyChange && emptyProduct) {
+    const ensuredItems = summaryItems.map(ensureAssignedCell)
+    const groupedEnsured = groupItemsByCell(ensuredItems)
+    const toTexts = (items: { text?: string | null }[]) =>
+      items.map((item) => String(item.text || '').trim()).filter(Boolean)
+    const ensuredCells = {
+      A1: toTexts(groupedEnsured.cells.A1),
+      B1: toTexts(groupedEnsured.cells.B1),
+      C1: toTexts(groupedEnsured.cells.C1),
+      A2: toTexts(groupedEnsured.cells.A2),
+      B2: toTexts(groupedEnsured.cells.B2),
+      C2: toTexts(groupedEnsured.cells.C2),
+      A3: toTexts(groupedEnsured.cells.A3),
+      B3: toTexts(groupedEnsured.cells.B3),
+      C3: toTexts(groupedEnsured.cells.C3),
+    }
+    const ensuredEmptyToday =
+      !ensuredCells.A1.length && !ensuredCells.B1.length && !ensuredCells.C1.length
+    const ensuredEmptyChange =
+      !ensuredCells.A2.length && !ensuredCells.B2.length && !ensuredCells.C2.length
+    const ensuredEmptyProduct =
+      !ensuredCells.A3.length && !ensuredCells.B3.length && !ensuredCells.C3.length
+
+    setSummaryItems(ensuredItems)
+    if (ensuredEmptyToday && ensuredEmptyChange && ensuredEmptyProduct) {
       setAiSummary({
         today: emptyMessages.today,
         change: emptyMessages.change,
@@ -86,11 +176,16 @@ export const ReportPage = ({
       })
       return
     }
-    if (emptyToday || emptyChange || emptyProduct) {
+    if (ensuredEmptyToday || ensuredEmptyChange || ensuredEmptyProduct) {
       setAiPartialNote(t.aiPartialNote)
     }
     setAiLoading(true)
     try {
+      const entriesPayload = ensuredItems.map((item) => ({
+        id: item.id,
+        text: item.text,
+        currentCellId: cellIdFor(item),
+      }))
       const response = await fetch('/api/coach/suggest', {
         method: 'POST',
         headers: {
@@ -101,7 +196,8 @@ export const ReportPage = ({
           action: 'report_summary',
           locale: language,
           sessionName: snapshot.sessionName || '',
-          cells: cellsPayload,
+          entries: entriesPayload,
+          cells: ensuredCells,
         }),
       })
       const raw = await response.text()
@@ -109,6 +205,7 @@ export const ReportPage = ({
         ok?: boolean
         source?: 'llm' | 'fallback'
         summary?: AiSummary
+        classifications?: AiClassification[]
         meta?: { errorCategory?: string }
       } | null = null
       try {
@@ -126,16 +223,23 @@ export const ReportPage = ({
         return
       }
       const summary = {
-        today: emptyToday ? emptyMessages.today : data.summary.today,
-        change: emptyChange ? emptyMessages.change : data.summary.change,
-        product: emptyProduct ? emptyMessages.product : data.summary.product,
+        today: ensuredEmptyToday ? emptyMessages.today : data.summary.today,
+        change: ensuredEmptyChange ? emptyMessages.change : data.summary.change,
+        product: ensuredEmptyProduct ? emptyMessages.product : data.summary.product,
       }
       setAiSummary(summary)
+      if (data.classifications && data.classifications.length) {
+        const updated = applyClassification(ensuredItems, data.classifications)
+        setSummaryItems(updated)
+        if (reclassCacheKey && typeof window !== 'undefined') {
+          window.sessionStorage.setItem(reclassCacheKey, JSON.stringify(data.classifications))
+        }
+      }
       if (data.source === 'fallback' || data.meta?.errorCategory) {
         setAiNotice(t.aiUnavailable)
       }
-      if (cacheKey && typeof window !== 'undefined') {
-        window.sessionStorage.setItem(cacheKey, JSON.stringify(summary))
+      if (summaryCacheKey && typeof window !== 'undefined') {
+        window.sessionStorage.setItem(summaryCacheKey, JSON.stringify(summary))
       }
       if (onAiUsage && data.meta) {
         onAiUsage(data.meta)
