@@ -272,6 +272,14 @@ const toMatrixColKey = (modeCode?: number | null) => {
   return null
 }
 
+const getEntryCellId = (item: EngineBoardItem) => {
+  const row = String(item.matrix_row || '').toLowerCase()
+  const col = String(item.matrix_col || '').toLowerCase()
+  const group = row === 'world' ? 'A' : row === 'product' ? 'B' : row === 'elements' ? 'C' : null
+  const mode = col === 'as_is' ? '1' : col === 'not_working' ? '2' : col === 'should_be' ? '3' : null
+  return group && mode ? `${group}${mode}` : null
+}
+
 const createEmptyUsage = (): EngineUsage => ({
   perModel: {},
   totalUSD: 0,
@@ -5932,7 +5940,16 @@ const isAuthFlowInProgress = () => {
       setReportViewOpen(false)
     }
     return withDevOverlay(
-      <ReportPage snapshot={snapshot} language={reportLanguage} onBack={handleReportBack} />
+      <ReportPage
+        snapshot={snapshot}
+        language={reportLanguage}
+        onBack={handleReportBack}
+        aiSupportEnabled={aiSupportEnabled}
+        onAiUsage={(meta) => {
+          applyUsageModel(meta as LlmUsageMeta)
+          void applyUsageToSession(meta as LlmUsageMeta, enginePreviewSessionId)
+        }}
+      />
     )
   }
 
@@ -6979,6 +6996,19 @@ const isAuthFlowInProgress = () => {
                       setEngineEntryHint((prev) => ({ ...prev, visible: false }))
                     }
                   >
+                    {(() => {
+                      const cellId = getEntryCellId(item)
+                      return (
+                        <button
+                          type="button"
+                          className={`engine-entry-cell ${cellId ? '' : 'is-na'}`}
+                          title={cellId ? `Cell ${cellId}` : 'N/A'}
+                          disabled
+                        >
+                          {cellId || 'N/A'}
+                        </button>
+                      )
+                    })()}
                     <div className="engine-entry-main">
                       {enginePreviewEditId === item.id ? (
                         <div className="engine-entry-edit" onClick={(event) => event.stopPropagation()}>

@@ -15,11 +15,23 @@ export const reportCopy: Record<
     userName: string
     sessionGoal: string
     executiveSummary: string
+    summaryToday: string
+    summaryChange: string
+    summaryProduct: string
     perspectiveMap: string
     collectedIdeas: string
     insights: string
     nextSteps: string
     appendices: string
+    aiGenerate: string
+    aiRegenerate: string
+    aiGenerating: string
+    aiDisabled: string
+    aiUnavailable: string
+    aiPartialNote: string
+    aiEmptyA1: string
+    aiEmptyA2: string
+    aiEmptyA3: string
     tableEntry: string
     tableLabel: string
     labelMissing: string
@@ -40,11 +52,23 @@ export const reportCopy: Record<
     userName: 'User',
     sessionGoal: 'Session goal',
     executiveSummary: 'Executive summary',
+    summaryToday: 'What I see today',
+    summaryChange: 'What I want to change',
+    summaryProduct: 'My product concept',
     perspectiveMap: 'Perspective / questions map',
     collectedIdeas: 'Collected ideas and observations',
     insights: 'Insights & patterns',
     nextSteps: 'Recommendations / next steps',
     appendices: 'Appendices (raw data + metadata)',
+    aiGenerate: 'Generate AI summary',
+    aiRegenerate: 'Regenerate',
+    aiGenerating: 'Generating…',
+    aiDisabled: 'AI support is disabled.',
+    aiUnavailable: 'AI unavailable — showing fallback.',
+    aiPartialNote: 'Some cells are empty; summary generated from available entries.',
+    aiEmptyA1: 'No entries in A1/B1/C1 – summary not generated.',
+    aiEmptyA2: 'No entries in A2/B2/C2 – summary not generated.',
+    aiEmptyA3: 'No entries in A3/B3/C3 – summary not generated.',
     tableEntry: 'Entry',
     tableLabel: 'Label',
     labelMissing: 'label not defined',
@@ -64,11 +88,23 @@ export const reportCopy: Record<
     userName: 'Użytkownik',
     sessionGoal: 'Cel sesji',
     executiveSummary: 'Podsumowanie',
+    summaryToday: 'To widzę dzisiaj',
+    summaryChange: 'To chcę zmienić',
+    summaryProduct: 'To mój pomysł na produkt',
     perspectiveMap: 'Mapa perspektyw / pytań',
     collectedIdeas: 'Zebrane pomysły i obserwacje',
     insights: 'Wnioski i wzorce',
     nextSteps: 'Rekomendacje / następne kroki',
     appendices: 'Załączniki (surowe dane + metadane)',
+    aiGenerate: 'Generuj podsumowanie AI',
+    aiRegenerate: 'Generuj ponownie',
+    aiGenerating: 'Generuję…',
+    aiDisabled: 'Obsługa AI jest wyłączona.',
+    aiUnavailable: 'AI niedostępne — pokazuję fallback.',
+    aiPartialNote: 'Część pól jest pusta — podsumowanie na podstawie dostępnych wpisów.',
+    aiEmptyA1: 'Brak wpisów w perspektywach A1/B1/C1 – nie generuję podsumowania.',
+    aiEmptyA2: 'Brak wpisów w perspektywach A2/B2/C2 – nie generuję podsumowania.',
+    aiEmptyA3: 'Brak wpisów w perspektywach A3/B3/C3 – nie generuję podsumowania.',
     tableEntry: 'Wpis',
     tableLabel: 'Etykieta',
     labelMissing: 'etykieta niezdefiniowana',

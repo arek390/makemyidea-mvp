@@ -1,3 +1,4 @@
+import { useEffect, useMemo, useState } from 'react'
 import { reportCopy, type ReportLang } from './reportI18n'
 import { downloadReportCsv, type ReportSnapshot } from './exportCsv'
 import { groupItemsByCell } from './cellMapping'
@@ -6,11 +7,145 @@ type ReportPageProps = {
   snapshot: ReportSnapshot
   language: ReportLang
   onBack: () => void
+  aiSupportEnabled: boolean
+  onAiUsage?: (meta: unknown) => void
 }
 
-export const ReportPage = ({ snapshot, language, onBack }: ReportPageProps) => {
+type AiSummary = { today: string; change: string; product: string }
+
+export const ReportPage = ({
+  snapshot,
+  language,
+  onBack,
+  aiSupportEnabled,
+  onAiUsage,
+}: ReportPageProps) => {
   const t = reportCopy[language]
+  const [aiSummary, setAiSummary] = useState<AiSummary | null>(null)
+  const [aiLoading, setAiLoading] = useState(false)
+  const [aiNotice, setAiNotice] = useState<string | null>(null)
+  const [aiPartialNote, setAiPartialNote] = useState<string | null>(null)
   const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
+  const grouped = useMemo(() => groupItemsByCell(snapshot.ideas), [snapshot.ideas])
+  const cacheKey = useMemo(() => {
+    if (typeof window === 'undefined') return null
+    const sessionId = window.sessionStorage.getItem('reportReturnSessionId') || ''
+    const keyBase = sessionId || snapshot.sessionName || 'unknown'
+    return `report_ai_summary::${keyBase}::${language}`
+  }, [language, snapshot.sessionName])
+  const cellsPayload = useMemo(() => {
+    const toTexts = (items: { text?: string | null }[]) =>
+      items.map((item) => String(item.text || '').trim()).filter(Boolean)
+    return {
+      A1: toTexts(grouped.cells.A1),
+      B1: toTexts(grouped.cells.B1),
+      C1: toTexts(grouped.cells.C1),
+      A2: toTexts(grouped.cells.A2),
+      B2: toTexts(grouped.cells.B2),
+      C2: toTexts(grouped.cells.C2),
+      A3: toTexts(grouped.cells.A3),
+      B3: toTexts(grouped.cells.B3),
+      C3: toTexts(grouped.cells.C3),
+    }
+  }, [grouped])
+  const emptyToday = !cellsPayload.A1.length && !cellsPayload.B1.length && !cellsPayload.C1.length
+  const emptyChange = !cellsPayload.A2.length && !cellsPayload.B2.length && !cellsPayload.C2.length
+  const emptyProduct = !cellsPayload.A3.length && !cellsPayload.B3.length && !cellsPayload.C3.length
+  const emptyMessages = {
+    today: t.aiEmptyA1,
+    change: t.aiEmptyA2,
+    product: t.aiEmptyA3,
+  }
+
+  useEffect(() => {
+    if (!cacheKey || typeof window === 'undefined') return
+    const cached = window.sessionStorage.getItem(cacheKey)
+    if (!cached) return
+    try {
+      const parsed = JSON.parse(cached) as AiSummary
+      if (parsed?.today && parsed?.change && parsed?.product) {
+        setAiSummary(parsed)
+      }
+    } catch {
+      // ignore
+    }
+  }, [cacheKey])
+
+  const runSummary = async () => {
+    setAiNotice(null)
+    setAiPartialNote(null)
+    if (!aiSupportEnabled) {
+      setAiNotice(t.aiDisabled)
+      return
+    }
+    if (emptyToday && emptyChange && emptyProduct) {
+      setAiSummary({
+        today: emptyMessages.today,
+        change: emptyMessages.change,
+        product: emptyMessages.product,
+      })
+      return
+    }
+    if (emptyToday || emptyChange || emptyProduct) {
+      setAiPartialNote(t.aiPartialNote)
+    }
+    setAiLoading(true)
+    try {
+      const response = await fetch('/api/coach/suggest', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-ai-support': aiSupportEnabled ? 'on' : 'off',
+        },
+        body: JSON.stringify({
+          action: 'report_summary',
+          locale: language,
+          sessionName: snapshot.sessionName || '',
+          cells: cellsPayload,
+        }),
+      })
+      const raw = await response.text()
+      let data: {
+        ok?: boolean
+        source?: 'llm' | 'fallback'
+        summary?: AiSummary
+        meta?: { errorCategory?: string }
+      } | null = null
+      try {
+        data = JSON.parse(raw)
+      } catch {
+        data = null
+      }
+      if (!response.ok || !data || data.ok === false || !data.summary) {
+        setAiNotice(t.aiUnavailable)
+        setAiSummary({
+          today: emptyMessages.today,
+          change: emptyMessages.change,
+          product: emptyMessages.product,
+        })
+        return
+      }
+      const summary = {
+        today: emptyToday ? emptyMessages.today : data.summary.today,
+        change: emptyChange ? emptyMessages.change : data.summary.change,
+        product: emptyProduct ? emptyMessages.product : data.summary.product,
+      }
+      setAiSummary(summary)
+      if (data.source === 'fallback' || data.meta?.errorCategory) {
+        setAiNotice(t.aiUnavailable)
+      }
+      if (cacheKey && typeof window !== 'undefined') {
+        window.sessionStorage.setItem(cacheKey, JSON.stringify(summary))
+      }
+      if (onAiUsage && data.meta) {
+        onAiUsage(data.meta)
+      }
+    } catch {
+      setAiNotice(t.aiUnavailable)
+    } finally {
+      setAiLoading(false)
+    }
+  }
   return (
     <div className="report-page">
       <header className="report-header">
@@ -79,7 +214,31 @@ export const ReportPage = ({ snapshot, language, onBack }: ReportPageProps) => {
 
         <section id="summary" className="report-section">
           <h2>{t.executiveSummary}</h2>
-          <p>{t.placeholder}</p>
+          <div className="report-summary-actions">
+            <button
+              type="button"
+              className="ghost"
+              onClick={runSummary}
+              disabled={aiLoading || !aiSupportEnabled}
+            >
+              {aiLoading ? t.aiGenerating : aiSummary ? t.aiRegenerate : t.aiGenerate}
+            </button>
+            {aiNotice && <span className="muted">{aiNotice}</span>}
+            {aiPartialNote && <span className="muted">{aiPartialNote}</span>}
+            {!aiSupportEnabled && <span className="muted">{t.aiDisabled}</span>}
+          </div>
+          <div className="report-summary-block">
+            <h3>{t.summaryToday}</h3>
+            <p>{aiSummary?.today || t.placeholder}</p>
+          </div>
+          <div className="report-summary-block">
+            <h3>{t.summaryChange}</h3>
+            <p>{aiSummary?.change || t.placeholder}</p>
+          </div>
+          <div className="report-summary-block">
+            <h3>{t.summaryProduct}</h3>
+            <p>{aiSummary?.product || t.placeholder}</p>
+          </div>
         </section>
 
         <section id="map" className="report-section">

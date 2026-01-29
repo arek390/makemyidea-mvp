@@ -295,6 +295,66 @@ const safeParseJson = (value, fallback) => {
   }
 }
 
+const pickCellTexts = (cells, keys) =>
+  keys.flatMap((key) =>
+    Array.isArray(cells?.[key])
+      ? cells[key].map((text) => String(text || '').trim()).filter(Boolean)
+      : []
+  )
+
+const buildSummaryPrompt = ({ locale, sessionName, cells }) => {
+  const section = (label, keys) => {
+    const items = pickCellTexts(cells, keys).slice(0, 30)
+    const header = `${label} (cells ${keys.join('+')}):`
+    if (!items.length) return `${header}\n- [EMPTY]`
+    return `${header}\n${items.map((text) => `- ${text}`).join('\n')}`
+  }
+  const summaryInput = [
+    `Session: ${sessionName || '—'}`,
+    section(locale === 'pl' ? 'TODAY' : 'TODAY', ['A1', 'B1', 'C1']),
+    section(locale === 'pl' ? 'CHANGE' : 'CHANGE', ['A2', 'B2', 'C2']),
+    section(locale === 'pl' ? 'PRODUCT' : 'PRODUCT', ['A3', 'B3', 'C3']),
+  ].join('\n\n')
+
+  const instructions = [
+    'You are a facilitation assistant. Summarize only what is present in the input.',
+    'Ignore unreadable, mistaken paste, or irrelevant entries.',
+    'Do NOT hallucinate new facts. Do NOT mention excluded items.',
+    'Return STRICT JSON ONLY in this shape:',
+    '{"today":"...","change":"...","product":"..."}',
+    'Each field should be 2-6 sentences or short bullets.',
+    'If content is too sparse, write a short "insufficient data" note.',
+    locale === 'pl'
+      ? 'Write in Polish.'
+      : 'Write in English.',
+  ].join(' ')
+
+  return { summaryInput, instructions }
+}
+
+const buildSummaryFallback = (locale, errorCategory, note) => {
+  const noData = locale === 'pl'
+    ? 'Brak wystarczających danych do podsumowania.'
+    : 'Insufficient data to generate a summary.'
+  const base = note || noData
+  return {
+    ok: true,
+    source: 'fallback',
+    summary: {
+      today: base,
+      change: base,
+      product: base,
+    },
+    meta: {
+      aiSupportEnabled: false,
+      modelUsed: null,
+      escalated: false,
+      tokens: { input: 0, output: 0, total: 0 },
+      errorCategory,
+    },
+  }
+}
+
 export default async function handler(req, res) {
   const requestId =
     req.headers['x-request-id'] ||
@@ -399,8 +459,7 @@ export default async function handler(req, res) {
       openAIKeyLen: openAiKeyLen,
       nodeEnv: process.env.NODE_ENV || null,
     })
-    const dataset = loadQuestionsFromCsvOnce()
-    const lang = normalizeLang(body.lang || body.language || 'pl')
+    const lang = normalizeLang(body.lang || body.language || body.locale || 'pl')
     const action = body.action || 'NEXT'
     const askedIds = Array.isArray(body.askedIds) ? body.askedIds : []
     const askedTexts = Array.isArray(body.askedTexts)
@@ -435,6 +494,89 @@ export default async function handler(req, res) {
       console.log(`[ai] LLM skipped: ${reason}`)
       logStage('fallback', { reason })
     }
+
+    const actionNormalized = String(action || 'NEXT').toUpperCase()
+
+    if (actionNormalized === 'REPORT_SUMMARY') {
+      const locale = normalizeLang(body.locale || body.language || 'pl')
+      const cells = body.cells || {}
+      const allSections = [
+        pickCellTexts(cells, ['A1', 'B1', 'C1']),
+        pickCellTexts(cells, ['A2', 'B2', 'C2']),
+        pickCellTexts(cells, ['A3', 'B3', 'C3']),
+      ]
+      const hasAnyContent = allSections.some((section) => section.length > 0)
+      if (!hasAnyContent) {
+        sendJson(res, 200, buildSummaryFallback(locale, 'EMPTY_INPUT'))
+        return
+      }
+      if (!aiSupportEnabled || killSwitch || !hasOpenAiKey) {
+        const reasonCategory = killSwitch
+          ? 'AI_DISABLED'
+          : !hasOpenAiKey
+            ? 'MISSING_OPENAI_KEY'
+            : 'AI_DISABLED'
+        sendJson(res, 200, buildSummaryFallback(locale, reasonCategory))
+        return
+      }
+      const { summaryInput, instructions } = buildSummaryPrompt({
+        locale,
+        sessionName,
+        cells,
+      })
+      try {
+        const result = await runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'report-summary',
+          input: summaryInput,
+          language: locale === 'pl' ? 'Polish' : 'English',
+          taskInstructions: instructions,
+          parseResponse: (value) => {
+            try {
+              const parsed = JSON.parse(value)
+              if (!parsed || typeof parsed !== 'object') return null
+              if (
+                typeof parsed.today !== 'string' ||
+                typeof parsed.change !== 'string' ||
+                typeof parsed.product !== 'string'
+              ) {
+                return null
+              }
+              return parsed
+            } catch {
+              return null
+            }
+          },
+          fallbackData: null,
+          models: {
+            default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
+            preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+          },
+          maxOutputTokens: 700,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+        if (result.ok && result.data) {
+          const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          sendJson(res, 200, {
+            ok: true,
+            source: 'llm',
+            summary: result.data,
+            meta,
+          })
+          return
+        }
+        sendJson(res, 200, buildSummaryFallback(locale, 'LLM_FAILED'))
+        return
+      } catch {
+        sendJson(res, 200, buildSummaryFallback(locale, 'LLM_FAILED'))
+        return
+      }
+    }
+
+    const dataset = loadQuestionsFromCsvOnce()
 
     if (process.env.NODE_ENV !== 'production') {
       if (!sessionName || !Array.isArray(boardEntriesRaw)) {
@@ -605,8 +747,6 @@ export default async function handler(req, res) {
       if (askedTextSet.has(normalized)) return true
       return false
     }
-
-    const actionNormalized = String(action || 'NEXT').toUpperCase()
 
     if (aiSupportEnabled) {
       logStage('llm', { aiSupportEnabled: true })

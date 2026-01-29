@@ -1714,6 +1714,22 @@
   padding-left: 1.25rem;
 }
 
+.report-summary-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.report-summary-block {
+  margin-bottom: 1rem;
+}
+
+.report-summary-block h3 {
+  margin: 0 0 0.35rem;
+}
+
 .report-table-wrapper {
   overflow-x: auto;
 }
@@ -3031,6 +3047,29 @@ button.ghost.danger:hover {
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
+}
+
+.engine-entry-cell {
+  position: absolute;
+  right: 12px;
+  bottom: 8px;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: none;
+  background: #2f5cff;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.engine-entry-cell.is-na {
+  background: #9aa0a6;
+  color: #fff;
 }
 
 .engine-entry-action {
