@@ -13,6 +13,11 @@ type ReportPageProps = {
   diagnosticsEnabled: boolean
   naFillStatus?: 'idle' | 'running' | 'done' | 'error'
   onAiUsage?: (meta: unknown) => void
+  onReportMetaChange?: (meta: {
+    summary?: AiSummary | null
+    lastSummaryTextHash?: string | null
+    createdAt?: number | null
+  }) => void
 }
 
 type AiSummary = { today: string; change: string; product: string }
@@ -45,12 +50,17 @@ export const ReportPage = ({
   diagnosticsEnabled,
   naFillStatus,
   onAiUsage,
+  onReportMetaChange,
 }: ReportPageProps) => {
   const t = reportCopy[language]
-  const [aiSummary, setAiSummary] = useState<AiSummary | null>(null)
+  const [aiSummary, setAiSummary] = useState<AiSummary | null>(
+    snapshot.reportMeta?.summary ?? null
+  )
   const [aiNotice, setAiNotice] = useState<string | null>(null)
   const [summaryStatus, setSummaryStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
-  const [lastSummaryTextHash, setLastSummaryTextHash] = useState<string | null>(null)
+  const [lastSummaryTextHash, setLastSummaryTextHash] = useState<string | null>(
+    snapshot.reportMeta?.lastSummaryTextHash ?? null
+  )
   const [summaryItems, setSummaryItems] = useState(snapshot.ideas)
   const [summaryUsage, setSummaryUsage] = useState<SummaryUsage | null>(null)
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
@@ -105,9 +115,12 @@ export const ReportPage = ({
     return sessionId || snapshot.sessionName || 'unknown'
   }, [snapshot.sessionName])
   const summaryCacheKey = useMemo(() => {
+    if (snapshot.sessionId) {
+      return `report_ai_summary::${snapshot.sessionId}::${language}`
+    }
     if (!cacheBase) return null
     return `report_ai_summary::${cacheBase}::${language}`
-  }, [cacheBase, language])
+  }, [cacheBase, language, snapshot.sessionId])
   const reclassCacheKey = useMemo(() => {
     if (!cacheBase) return null
     return `report_reclass::${cacheBase}::${language}`
@@ -306,6 +319,11 @@ export const ReportPage = ({
         )
         setLastSummaryTextHash(computeSummaryTextFingerprint)
       }
+      onReportMetaChange?.({
+        summary: emptySummary,
+        lastSummaryTextHash: computeSummaryTextFingerprint,
+        createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
+      })
       setSummaryStatus('done')
       return
     }
@@ -375,6 +393,11 @@ export const ReportPage = ({
         )
         setLastSummaryTextHash(computeSummaryTextFingerprint)
       }
+      onReportMetaChange?.({
+        summary,
+        lastSummaryTextHash: computeSummaryTextFingerprint,
+        createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
+      })
       if (onAiUsage && data.meta) {
         onAiUsage(data.meta)
       }

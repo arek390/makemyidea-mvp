@@ -8,12 +8,18 @@ export type ReportIdea = {
 }
 
 export type ReportSnapshot = {
+  sessionId?: string | null
   sessionName: string
   date: string
   userName: string
   ideas: ReportIdea[]
   questions?: { id: string; text: string }[]
   sourceUpdatedAt?: number | null
+  reportMeta?: {
+    createdAt?: number | null
+    lastSummaryTextHash?: string | null
+    summary?: { today: string; change: string; product: string } | null
+  } | null
 }
 
 const escapeCsv = (value: string) => {

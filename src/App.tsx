@@ -3724,13 +3724,21 @@ const isAuthFlowInProgress = () => {
       (max, item) => Math.max(max, Number(item.created_at || 0)),
       0
     )
+    const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id || null
+    const reportMeta =
+      engineSessionDetail?.session?.id && engineSessionDetail.session.id === sessionId
+        ? engineSessionDetail.report
+        : null
+    const cloudReportMeta = sessionId ? cloudSessionPayloads[sessionId]?.report || null : null
     return {
+      sessionId,
       sessionName,
       date: new Date().toLocaleString(locale),
       userName,
       ideas,
       questions,
       sourceUpdatedAt,
+      reportMeta: reportMeta || cloudReportMeta || null,
     }
   }
 
@@ -5459,8 +5467,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
     window.sessionStorage.setItem('reportReturnPath', returnPath)
     window.sessionStorage.setItem('reportReturnSessionId', sessionId)
     const existed =
-      sessionId &&
-      window.sessionStorage.getItem(`report_exists::${sessionId}`) === 'true'
+      (sessionId && window.sessionStorage.getItem(`report_exists::${sessionId}`) === 'true') ||
+      Boolean(getReportMetaForSession(sessionId)?.created_at)
     if (sessionId) {
       window.sessionStorage.setItem(`report_exists::${sessionId}`, 'true')
       const sourceUpdatedAt =
@@ -5472,6 +5480,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
         `report_source_updated_at::${sessionId}`,
         String(sourceUpdatedAt)
       )
+      if (!existed) {
+        void markReportCreated(sessionId)
+      }
     }
     window.history.pushState({ newlyCreated: !existed }, '', '/report')
     setReportViewOpen(true)
@@ -5527,6 +5538,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       },
       boardItems: normalizeBoardItems(enginePreviewItems),
       askedQuestionIds: localDetail?.askedQuestionIds ?? engineAskedQuestionIds,
+      report: localDetail?.report ?? engineSessionDetail?.report ?? null,
     }
   }
 
@@ -5831,6 +5843,42 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (!isEnginePreview) return
     void fetchEngineSessions()
   }, [isEnginePreview, authSession?.user?.id])
+
+  const getReportMetaForSession = (sessionId: string | null) => {
+    if (!sessionId) return null
+    if (engineSessionDetail?.session?.id === sessionId && engineSessionDetail?.report) {
+      return engineSessionDetail.report
+    }
+    const cloudMeta = cloudSessionPayloads[sessionId]?.report
+    if (cloudMeta) return cloudMeta
+    return null
+  }
+
+  const markReportCreated = async (sessionId: string) => {
+    const now = Date.now()
+    const detail = await getSession(sessionId)
+    if (!detail?.session) return
+    const existing = detail.report || null
+    if (existing?.created_at) return
+    const updatedDetail: EngineSessionDetail = {
+      ...detail,
+      report: {
+        ...(existing || {}),
+        created_at: now,
+        updated_at: now,
+        lastSummaryTextHash: existing?.lastSummaryTextHash ?? null,
+        summary: existing?.summary ?? null,
+      },
+      session: { ...detail.session, updated_at: now },
+    }
+    await updateSession(updatedDetail)
+    if (engineSessionDetail?.session?.id === sessionId) {
+      setEngineSessionDetail(updatedDetail)
+    }
+    if (authSession?.user?.id) {
+      await saveSessionToCloud(authSession.user.id, updatedDetail, uiLanguage)
+    }
+  }
 
   const deleteEngineSession = async (sessionId: string) => {
     setEngineSessionsError(null)
@@ -6372,6 +6420,33 @@ const isMissingLabel = (item: EngineBoardItem) => {
         aiSupportEnabled={aiSupportEnabled}
         diagnosticsEnabled={showDiagnostics}
         naFillStatus={naFillStatus}
+        onReportMetaChange={async (meta) => {
+          const sessionId = snapshot.sessionId || enginePreviewSessionId
+          if (!sessionId) return
+          const detail = await getSession(sessionId)
+          if (!detail?.session) return
+          const existing = detail.report || null
+          const nextReport = {
+            ...(existing || {}),
+            summary: meta.summary ?? existing?.summary ?? null,
+            lastSummaryTextHash:
+              meta.lastSummaryTextHash ?? existing?.lastSummaryTextHash ?? null,
+            created_at: meta.createdAt ?? existing?.created_at ?? Date.now(),
+            updated_at: Date.now(),
+          }
+          const updatedDetail: EngineSessionDetail = {
+            ...detail,
+            report: nextReport,
+            session: { ...detail.session, updated_at: Date.now() },
+          }
+          await updateSession(updatedDetail)
+          if (engineSessionDetail?.session?.id === sessionId) {
+            setEngineSessionDetail(updatedDetail)
+          }
+          if (authSession?.user?.id) {
+            await saveSessionToCloud(authSession.user.id, updatedDetail, uiLanguage)
+          }
+        }}
         onAiUsage={(meta) => {
           applyUsageModel(meta as LlmUsageMeta)
           void applyUsageToSession(meta as LlmUsageMeta, enginePreviewSessionId)
@@ -6821,9 +6896,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     >
                       {enginePreviewSessionId &&
                       typeof window !== 'undefined' &&
-                      window.sessionStorage.getItem(
+                      (window.sessionStorage.getItem(
                         `report_exists::${enginePreviewSessionId}`
-                      ) === 'true'
+                      ) === 'true' ||
+                        Boolean(getReportMetaForSession(enginePreviewSessionId)?.created_at))
                         ? copy.enginePreviewOpenReport
                         : copy.enginePreviewCreateReport}
                     </button>

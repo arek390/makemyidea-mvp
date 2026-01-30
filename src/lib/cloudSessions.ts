@@ -1,4 +1,9 @@
-import type { EngineBoardItem, EngineSessionDetail, EngineSessionSummary } from '../storage/sessionStore'
+import type {
+  EngineBoardItem,
+  EngineSessionDetail,
+  EngineSessionSummary,
+  ReportMeta,
+} from '../storage/sessionStore'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from './supabase/types'
 import { supabase } from './supabase/client'
@@ -20,6 +25,7 @@ export type CloudSessionPayload = {
   boardItems: EngineBoardItem[]
   askedQuestionIds: string[]
   uiLanguage?: string
+  report?: ReportMeta | null
 }
 
 export type CloudSessionRecord = {
@@ -116,6 +122,7 @@ export const listCloudSessions = async (userId: string): Promise<CloudSessionRec
       session: summary,
       boardItems: payload?.boardItems || [],
       askedQuestionIds: payload?.askedQuestionIds || [],
+      report: payload?.report || null,
     }
     return {
       sessionId,

@@ -30,12 +30,27 @@ export type EngineSessionDetail = {
   session: EngineSessionSummary | null
   boardItems: EngineBoardItem[]
   askedQuestionIds: string[]
+  report?: ReportMeta | null
 }
 
 export type StoredSession = {
   session: EngineSessionSummary
   boardItems: EngineBoardItem[]
   askedQuestionIds: string[]
+  report?: ReportMeta | null
+}
+
+export type ReportSummary = {
+  today: string
+  change: string
+  product: string
+}
+
+export type ReportMeta = {
+  created_at?: number | null
+  updated_at?: number | null
+  lastSummaryTextHash?: string | null
+  summary?: ReportSummary | null
 }
 
 export const STORAGE_KEY = 'engine-sessions-v1'
@@ -118,6 +133,7 @@ export const getSession = async (id: string): Promise<EngineSessionDetail | null
     session: normalizeSession(stored.session),
     boardItems: stored.boardItems || [],
     askedQuestionIds: stored.askedQuestionIds || [],
+    report: stored.report || null,
   }
 }
 
@@ -142,6 +158,7 @@ export const createSession = async (input?: {
     session,
     boardItems: [],
     askedQuestionIds: [],
+    report: null,
   }
   const sessions = readStore()
   sessions[id] = record
@@ -156,6 +173,7 @@ export const updateSession = async (detail: EngineSessionDetail): Promise<void> 
     session: normalizeSession(detail.session),
     boardItems: detail.boardItems || [],
     askedQuestionIds: detail.askedQuestionIds || [],
+    report: detail.report || null,
   }
   writeStore(sessions)
 }
@@ -207,6 +225,7 @@ export const importSessions = async (records: StoredSession[]): Promise<{ import
         created_at: item.created_at || now,
       })),
       askedQuestionIds: record.askedQuestionIds || [],
+      report: record.report || null,
     }
     imported += 1
   })
