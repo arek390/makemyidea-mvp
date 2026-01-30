@@ -2360,6 +2360,7 @@ function App() {
   const suggestLoadingTimerRef = useRef<number | null>(null)
   const reportOpenHandledRef = useRef(false)
   const reportOpenPrevRef = useRef(false)
+  const autoOpenedMissingLabelRef = useRef(false)
   const [feedbackReminder, setFeedbackReminder] = useState<{
     sessionId: string | null
     visible: boolean
@@ -5412,6 +5413,10 @@ const limitWords = (value: string, maxWords: number) => {
                 setHighlightMissingLabels(true)
                 const first = missingLabelEntries[0]
                 if (first && typeof window !== 'undefined') {
+                  if (!autoOpenedMissingLabelRef.current) {
+                    setEngineLabelEditorId(first.id)
+                    autoOpenedMissingLabelRef.current = true
+                  }
                   window.setTimeout(() => {
                     const element = document.querySelector(
                       `[data-testid=\"entry-row-${first.id}\"]`
