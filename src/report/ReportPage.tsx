@@ -9,6 +9,7 @@ type ReportPageProps = {
   language: ReportLang
   onBack: () => void
   aiSupportEnabled: boolean
+  diagnosticsEnabled: boolean
   onAiUsage?: (meta: unknown) => void
 }
 
@@ -35,6 +36,7 @@ export const ReportPage = ({
   language,
   onBack,
   aiSupportEnabled,
+  diagnosticsEnabled,
   onAiUsage,
 }: ReportPageProps) => {
   const t = reportCopy[language]
@@ -179,6 +181,9 @@ export const ReportPage = ({
     setAiNotice(null)
     setAiPartialNote(null)
     setSummaryUsage(null)
+    if (!diagnosticsEnabled) {
+      return
+    }
     if (!aiSupportEnabled) {
       setAiNotice(t.aiDisabled)
       return
@@ -229,6 +234,7 @@ export const ReportPage = ({
         headers: {
           'Content-Type': 'application/json',
           'x-ai-support': aiSupportEnabled ? 'on' : 'off',
+          ...(diagnosticsEnabled ? { 'x-diagnostics': '1' } : {}),
         },
         body: JSON.stringify({
           action: 'report_summary',
@@ -366,15 +372,17 @@ export const ReportPage = ({
         <section id="summary" className="report-section">
           <h2>{t.executiveSummary}</h2>
           <div className="report-summary-actions">
-            <button
-              type="button"
-              className="ghost"
-              onClick={runSummary}
-              disabled={aiLoading || !aiSupportEnabled}
-            >
-              {aiLoading ? t.aiGenerating : aiSummary ? t.aiRegenerate : t.aiGenerate}
-            </button>
-            {summaryUsage && (
+            {diagnosticsEnabled && (
+              <button
+                type="button"
+                className="ghost"
+                onClick={runSummary}
+                disabled={aiLoading || !aiSupportEnabled}
+              >
+                {aiLoading ? t.aiGenerating : aiSummary ? t.aiRegenerate : t.aiGenerate}
+              </button>
+            )}
+            {diagnosticsEnabled && summaryUsage && (
               <UsageBadge
                 totalTokens={summaryUsage.totalTokens}
                 costPln={summaryUsage.costPln}
@@ -382,9 +390,9 @@ export const ReportPage = ({
                 locale={language === 'pl' ? 'pl-PL' : 'en-US'}
               />
             )}
-            {aiNotice && <span className="muted">{aiNotice}</span>}
-            {aiPartialNote && <span className="muted">{aiPartialNote}</span>}
-            {!aiSupportEnabled && <span className="muted">{t.aiDisabled}</span>}
+            {diagnosticsEnabled && aiNotice && <span className="muted">{aiNotice}</span>}
+            {diagnosticsEnabled && aiPartialNote && <span className="muted">{aiPartialNote}</span>}
+            {diagnosticsEnabled && !aiSupportEnabled && <span className="muted">{t.aiDisabled}</span>}
             {updateNotice && <span className="muted">{updateNotice}</span>}
           </div>
           <div className="report-summary-block">

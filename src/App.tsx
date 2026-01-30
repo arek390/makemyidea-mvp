@@ -39,6 +39,7 @@ import {
   isGuestMode,
   readGuestSessions,
 } from './lib/guest'
+import { DIAGNOSTICS_STORAGE_KEY, isAdminUser } from './lib/diagnostics'
 import { ReportPage } from './report/ReportPage'
 import type { ReportSnapshot } from './report/exportCsv'
 
@@ -77,25 +78,6 @@ type OptionItem = {
 type TimeOptionItem = {
   id: number
   label: string
-}
-
-type FeedbackEntry = {
-  id: string
-  timestamp: string
-  context: {
-    language: string
-    route: string
-    sessionId?: string
-    matrixCell?: { row: string; col: string }
-    questionId?: string
-  }
-  feedback: {
-    doing: string
-    unclear: string
-    workaround: string
-    suggestion: string
-    keywords: string
-  }
 }
 
 type LabelItem = {
@@ -218,7 +200,6 @@ const SHORT_ENTRY_WORDS = 12
 const DEFAULT_IDLE_THRESHOLD_MS = 15000
 const ERASE_EMPTY_SECONDS_STRONG = 10
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
-const FEEDBACK_STORAGE_KEY = 'makemyidea.feedback.v1'
 const LLM_TOKENS_TOTAL_KEY = 'llm_tokens_total'
 const ENGINE_USAGE_KEY = 'engine_usage_v1'
 const ENGINE_FX_KEY = 'engine_fx_usdpln_v1'
@@ -503,14 +484,11 @@ type Translations = {
   engineEntryLabelHint: string
   feedbackButtonLabel: string
   feedbackTitle: string
-  feedbackDoingLabel: string
-  feedbackUnclearLabel: string
-  feedbackWorkaroundLabel: string
-  feedbackSuggestionLabel: string
-  feedbackKeywordsLabel: string
-  feedbackSave: string
-  feedbackCancel: string
-  feedbackExport: string
+  feedbackMessageLabel: string
+  feedbackMessagePlaceholder: string
+  feedbackSend: string
+  feedbackSent: string
+  feedbackPrivacyNote: string
   feedbackReminderText: string
   feedbackReminderSend: string
   feedbackReminderDismiss: string
@@ -648,6 +626,8 @@ type Translations = {
   llmDisableConnection: string
   aiSupportOn: string
   aiSupportOff: string
+  diagnosticsOn: string
+  diagnosticsOff: string
   questionTemplates: (productName: string, spaceDef: string, timeDef: string) => string[]
   questionTemplate: (spaceDef: string, timeDef: string) => string
   llmIdeaTemplate: (spaceDef: string, timeDef: string) => string
@@ -874,14 +854,11 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineEntryLabelHint: 'Click to add or change label',
     feedbackButtonLabel: 'Feedback',
     feedbackTitle: 'Feedback',
-    feedbackDoingLabel: 'What were you doing?',
-    feedbackUnclearLabel: 'What was unclear or difficult?',
-    feedbackWorkaroundLabel: 'What did you do instead?',
-    feedbackSuggestionLabel: 'What would help most?',
-    feedbackKeywordsLabel: 'Words or phrases you used (if relevant)',
-    feedbackSave: 'Save feedback',
-    feedbackCancel: 'Cancel',
-    feedbackExport: 'Export feedback',
+    feedbackMessageLabel: 'Your feedback',
+    feedbackMessagePlaceholder: 'Tell us what worked, what was hard, what to improve…',
+    feedbackSend: 'Send feedback by email',
+    feedbackSent: 'Thanks! Your feedback has been sent.',
+    feedbackPrivacyNote: 'Do not include sensitive data.',
     feedbackReminderText:
       'If you have a moment, please send feedback from this session — it really helps us improve.',
     feedbackReminderSend: 'Send feedback via email',
@@ -1024,6 +1001,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     llmDisableConnection: 'Disable OpenAI',
     aiSupportOn: 'AI support ON',
     aiSupportOff: 'AI support OFF',
+    diagnosticsOn: 'Diagnostics ON',
+    diagnosticsOff: 'Diagnostics OFF',
     questionTemplate: (spaceDef, timeDef) =>
       `How could "${spaceDef}" respond to "${timeDef}" and reveal a new opportunity?`,
     questionTemplates: (productName, spaceDef, timeDef) => [
@@ -1377,14 +1356,11 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineEntryLabelHint: 'Kliknij żeby dodać lub zmienić etykietę',
     feedbackButtonLabel: 'Feedback',
     feedbackTitle: 'Feedback',
-    feedbackDoingLabel: 'Co robiłeś/aś?',
-    feedbackUnclearLabel: 'Co było niejasne lub trudne?',
-    feedbackWorkaroundLabel: 'Co zrobiłeś/aś zamiast tego?',
-    feedbackSuggestionLabel: 'Co najbardziej by pomogło?',
-    feedbackKeywordsLabel: 'Słowa lub frazy, których użyłeś/aś (jeśli dotyczy)',
-    feedbackSave: 'Zapisz feedback',
-    feedbackCancel: 'Anuluj',
-    feedbackExport: 'Eksportuj feedback',
+    feedbackMessageLabel: 'Twoja wiadomość / feedback',
+    feedbackMessagePlaceholder: 'Napisz, co działało, co było trudne, co poprawić…',
+    feedbackSend: 'Wyślij feedback emailem',
+    feedbackSent: 'Dzięki! Feedback został wysłany.',
+    feedbackPrivacyNote: 'Nie dodawaj danych wrażliwych.',
     feedbackReminderText:
       'Jeśli masz chwilę, wyślij nam feedback z tej sesji — bardzo pomoże w dalszym rozwoju.',
     feedbackReminderSend: 'Wyślij feedback e-mailem',
@@ -1462,6 +1438,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     llmDisableConnection: 'Wyłącz OpenAI',
     aiSupportOn: 'AI support ON',
     aiSupportOff: 'AI support OFF',
+    diagnosticsOn: 'Diagnostyka ON',
+    diagnosticsOff: 'Diagnostyka OFF',
     questionTemplate: (spaceDef, timeDef) =>
       `Jak "${spaceDef}" może odpowiedzieć na "${timeDef}" i ujawnić nową szansę?`,
     questionTemplates: (productName, spaceDef, timeDef) => [
@@ -2051,6 +2029,7 @@ function App() {
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(false)
   const [llmApiBase, setLlmApiBase] = useState(DEFAULT_LLM_API_BASE)
   const [aiSupportEnabled, setAiSupportEnabled] = useState(true)
+  const [diagnosticsEnabled, setDiagnosticsEnabled] = useState(false)
   const [llmStatus, setLlmStatus] = useState<'unknown' | 'online' | 'offline'>('unknown')
   const [llmSaved, setLlmSaved] = useState(false)
   const [llmUsageModel, setLlmUsageModel] = useState<LlmUsageModel | null>(null)
@@ -2081,12 +2060,21 @@ function App() {
     message?: string | null
     error?: string | null
   } | null>(null)
+  const isAdmin = useMemo(() => isAdminUser(authSession), [authSession])
+  const diagnosticsEnabledForUser = isAdmin && diagnosticsEnabled
+  const showDiagnostics = diagnosticsEnabledForUser
   const llmHeaders = useMemo(
-    () => ({
-      'Content-Type': 'application/json',
-      'x-ai-support': aiSupportEnabled ? 'on' : 'off',
-    }),
-    [aiSupportEnabled]
+    () => {
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-ai-support': aiSupportEnabled ? 'on' : 'off',
+      }
+      if (diagnosticsEnabledForUser) {
+        headers['x-diagnostics'] = '1'
+      }
+      return headers
+    },
+    [aiSupportEnabled, diagnosticsEnabledForUser]
   )
   const resolveUsageModel = (meta?: LlmUsageMeta): LlmUsageModel | null => {
     if (!meta || meta.aiSupportEnabled === false || !meta.modelUsed) return null
@@ -2318,13 +2306,11 @@ function App() {
     mode_code?: number
   } | null>(null)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
-  const [feedbackForm, setFeedbackForm] = useState({
-    doing: '',
-    unclear: '',
-    workaround: '',
-    suggestion: '',
-    keywords: '',
-  })
+  const [feedbackMessage, setFeedbackMessage] = useState('')
+  const [feedbackHoneypot, setFeedbackHoneypot] = useState('')
+  const [feedbackSending, setFeedbackSending] = useState(false)
+  const [feedbackCooldown, setFeedbackCooldown] = useState(0)
+  const [feedbackNotice, setFeedbackNotice] = useState<{ message: string; variant: 'success' | 'error' } | null>(null)
   const [engineEntryHint, setEngineEntryHint] = useState<{
     x: number
     y: number
@@ -2526,34 +2512,6 @@ const isAuthFlowInProgress = () => {
       }
     }
   }, [])
-
-  const readFeedbackEntries = (): FeedbackEntry[] => {
-    if (typeof window === 'undefined') return []
-    try {
-      const raw = window.localStorage.getItem(FEEDBACK_STORAGE_KEY)
-      if (!raw) return []
-      const parsed = JSON.parse(raw)
-      return Array.isArray(parsed) ? parsed : []
-    } catch {
-      return []
-    }
-  }
-
-  const writeFeedbackEntries = (entries: FeedbackEntry[]) => {
-    if (typeof window === 'undefined') return
-    try {
-      window.localStorage.setItem(FEEDBACK_STORAGE_KEY, JSON.stringify(entries))
-    } catch {
-      // ignore write errors
-    }
-  }
-
-  const createFeedbackId = () => {
-    if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
-      return crypto.randomUUID()
-    }
-    return `fb_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
-  }
 
   const getEngineSessionKey = () => enginePreviewSessionId ?? 'new'
 
@@ -3421,6 +3379,20 @@ const isAuthFlowInProgress = () => {
   }, [])
 
   useEffect(() => {
+    if (!authResolved) return
+    if (!isAdmin) {
+      setDiagnosticsEnabled(false)
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(DIAGNOSTICS_STORAGE_KEY)
+      }
+      return
+    }
+    if (typeof window === 'undefined') return
+    const stored = window.localStorage.getItem(DIAGNOSTICS_STORAGE_KEY)
+    setDiagnosticsEnabled(stored === 'true')
+  }, [authResolved, isAdmin])
+
+  useEffect(() => {
     if (!aiSupportEnabled) {
       setLlmStatus('offline')
       return
@@ -3735,67 +3707,69 @@ const isAuthFlowInProgress = () => {
     return { route, sessionId, matrixCell }
   }, [debugMatrixData, enginePreviewSessionId, isEnginePreview])
 
-  const sendFeedbackEmail = (sessionId: string | null) => {
+  const sendFeedbackEmail = async (sessionId: string | null) => {
     if (typeof window === 'undefined') return
-    const subject = encodeURIComponent(`${CANONICAL_DISPLAY_HOST} feedback`)
-    const note =
-      uiLanguage === 'English'
-        ? 'The JSON file has been downloaded. Please attach it to this email.'
-        : 'Plik JSON został pobrany. Dołącz go proszę do tej wiadomości.'
-    const body = encodeURIComponent(
-      `Feedback from session:\n` +
-        `Session ID: ${sessionId ?? 'n/a'}\n` +
-        `Route: ${feedbackContext.route}\n` +
-        `Language: ${uiLanguage}\n` +
-        `Timestamp: ${new Date().toISOString()}\n\n` +
-        `${note}`
-    )
-    window.location.href = `mailto:areklupierz@gmail.com?subject=${subject}&body=${body}`
-  }
-
-  const exportFeedbackJson = () => {
-    if (typeof window === 'undefined') return
-    const entries = readFeedbackEntries()
-    const payload = JSON.stringify(entries, null, 2)
-    const blob = new Blob([payload], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    const date = new Date().toISOString().slice(0, 10)
-    link.href = url
-    link.download = `makemyidea-feedback-${date}.json`
-    link.click()
-    URL.revokeObjectURL(url)
-  }
-
-  const saveFeedbackEntry = () => {
-    const entry: FeedbackEntry = {
-      id: createFeedbackId(),
-      timestamp: new Date().toISOString(),
-      context: {
-        language: uiLanguage,
-        route: feedbackContext.route,
-        sessionId: feedbackContext.sessionId,
-        matrixCell: feedbackContext.matrixCell,
-        questionId: engineLastQuestionMeta?.id,
-      },
-      feedback: {
-        doing: feedbackForm.doing.trim(),
-        unclear: feedbackForm.unclear.trim(),
-        workaround: feedbackForm.workaround.trim(),
-        suggestion: feedbackForm.suggestion.trim(),
-        keywords: feedbackForm.keywords.trim(),
-      },
+    if (feedbackSending) return
+    const trimmed = feedbackMessage.trim()
+    if (trimmed.length < 10 || trimmed.length > 4000) {
+      setFeedbackNotice({
+        message:
+          uiLanguage === 'English'
+            ? 'Please enter at least 10 characters.'
+            : 'Wpisz co najmniej 10 znaków.',
+        variant: 'error',
+      })
+      return
     }
-    const next = [...readFeedbackEntries(), entry]
-    writeFeedbackEntries(next)
-    setFeedbackForm({
-      doing: '',
-      unclear: '',
-      workaround: '',
-      suggestion: '',
-      keywords: '',
-    })
-    setFeedbackOpen(false)
+    if (feedbackCooldown > 0) return
+    setFeedbackSending(true)
+    setFeedbackNotice(null)
+    try {
+      const response = await fetch('/api/feedback/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: trimmed,
+          website: feedbackHoneypot,
+          meta: {
+            sessionId: sessionId ?? feedbackContext.sessionId,
+            page: feedbackContext.route,
+            lang: uiLanguage === 'Polish' ? 'pl' : 'en',
+          },
+        }),
+      })
+      const data = await response.json().catch(() => null)
+      if (!response.ok || !data?.ok) {
+        if (response.status === 429 && data?.retryAfter) {
+          const seconds = Number(data.retryAfter) || 30
+          setFeedbackCooldown(seconds)
+          const message =
+            uiLanguage === 'English'
+              ? `Please wait ${seconds}s before sending again.`
+              : `Odczekaj ${seconds}s przed kolejną wiadomością.`
+          setFeedbackNotice({ message, variant: 'error' })
+          return
+        }
+        const message =
+          uiLanguage === 'English'
+            ? 'Unable to send feedback. Please try again.'
+            : 'Nie udało się wysłać feedbacku. Spróbuj ponownie.'
+        setFeedbackNotice({ message, variant: 'error' })
+        return
+      }
+      setFeedbackNotice({ message: copy.feedbackSent, variant: 'success' })
+      setFeedbackMessage('')
+      setFeedbackHoneypot('')
+      setFeedbackCooldown(45)
+    } catch {
+      const message =
+        uiLanguage === 'English'
+          ? 'Unable to send feedback. Please try again.'
+          : 'Nie udało się wysłać feedbacku. Spróbuj ponownie.'
+      setFeedbackNotice({ message, variant: 'error' })
+    } finally {
+      setFeedbackSending(false)
+    }
   }
 
   useEffect(() => {
@@ -3844,6 +3818,14 @@ const isAuthFlowInProgress = () => {
     }, 1000)
     return () => window.clearInterval(timer)
   }, [loginCooldownSeconds])
+
+  useEffect(() => {
+    if (feedbackCooldown <= 0) return
+    const timer = window.setInterval(() => {
+      setFeedbackCooldown((prev) => Math.max(0, prev - 1))
+    }, 1000)
+    return () => window.clearInterval(timer)
+  }, [feedbackCooldown])
 
   useEffect(() => {
     if (!showLanding) return
@@ -3920,10 +3902,7 @@ const isAuthFlowInProgress = () => {
             type="button"
             className="primary"
             onClick={() => {
-              exportFeedbackJson()
-              window.setTimeout(() => {
-                sendFeedbackEmail(feedbackReminder.sessionId)
-              }, 350)
+              setFeedbackOpen(true)
               setFeedbackReminder((prev) => (prev ? { ...prev, visible: false } : prev))
             }}
           >
@@ -3940,6 +3919,12 @@ const isAuthFlowInProgress = () => {
       </div>
     ) : null
 
+  const feedbackTrimmed = feedbackMessage.trim()
+  const feedbackTooShort = feedbackTrimmed.length < 10
+  const feedbackTooLong = feedbackTrimmed.length > 4000
+  const feedbackDisabled =
+    feedbackSending || feedbackCooldown > 0 || feedbackTooShort || feedbackTooLong
+
   const feedbackPanel = feedbackOpen ? (
     <div className="feedback-panel">
       <div className="feedback-panel-header">
@@ -3950,63 +3935,56 @@ const isAuthFlowInProgress = () => {
       </div>
       <div className="feedback-panel-body">
         <label>
-          <span>{copy.feedbackDoingLabel}</span>
+          <span>{copy.feedbackMessageLabel}</span>
           <textarea
-            value={feedbackForm.doing}
-            onChange={(event) =>
-              setFeedbackForm((prev) => ({ ...prev, doing: event.target.value }))
-            }
+            value={feedbackMessage}
+            onChange={(event) => setFeedbackMessage(event.target.value)}
+            placeholder={copy.feedbackMessagePlaceholder}
+            rows={5}
           />
         </label>
-        <label>
-          <span>{copy.feedbackUnclearLabel}</span>
-          <textarea
-            value={feedbackForm.unclear}
-            onChange={(event) =>
-              setFeedbackForm((prev) => ({ ...prev, unclear: event.target.value }))
-            }
-          />
-        </label>
-        <label>
-          <span>{copy.feedbackWorkaroundLabel}</span>
-          <textarea
-            value={feedbackForm.workaround}
-            onChange={(event) =>
-              setFeedbackForm((prev) => ({ ...prev, workaround: event.target.value }))
-            }
-          />
-        </label>
-        <label>
-          <span>{copy.feedbackSuggestionLabel}</span>
-          <textarea
-            value={feedbackForm.suggestion}
-            onChange={(event) =>
-              setFeedbackForm((prev) => ({ ...prev, suggestion: event.target.value }))
-            }
-          />
-        </label>
-        <label>
-          <span>{copy.feedbackKeywordsLabel}</span>
-          <textarea
-            value={feedbackForm.keywords}
-            onChange={(event) =>
-              setFeedbackForm((prev) => ({ ...prev, keywords: event.target.value }))
-            }
+        <label className="sr-only" aria-hidden="true">
+          <span>Website</span>
+          <input
+            type="text"
+            value={feedbackHoneypot}
+            onChange={(event) => setFeedbackHoneypot(event.target.value)}
+            tabIndex={-1}
+            autoComplete="off"
           />
         </label>
       </div>
       <div className="feedback-panel-actions">
-        <button type="button" className="ghost" onClick={exportFeedbackJson}>
-          {copy.feedbackExport}
-        </button>
         <div className="feedback-panel-action-group">
-          <button type="button" className="primary" onClick={saveFeedbackEntry}>
-            {copy.feedbackSave}
+          <button
+            type="button"
+            className="primary"
+            onClick={() => {
+              void sendFeedbackEmail(null)
+            }}
+            disabled={feedbackDisabled}
+          >
+            {copy.feedbackSend}
           </button>
           <button type="button" className="ghost" onClick={() => setFeedbackOpen(false)}>
-            {copy.feedbackCancel}
+            {copy.close}
           </button>
         </div>
+      </div>
+      <div className="feedback-panel-body">
+        {feedbackNotice && (
+          <div className={`engine-notice engine-notice--${feedbackNotice.variant}`} role="status">
+            {feedbackNotice.message}
+          </div>
+        )}
+        {feedbackCooldown > 0 && (
+          <div className="muted">
+            {uiLanguage === 'English'
+              ? `You can send another message in ${feedbackCooldown}s.`
+              : `Możesz wysłać kolejną wiadomość za ${feedbackCooldown}s.`}
+          </div>
+        )}
+        <div className="muted">{copy.feedbackPrivacyNote}</div>
       </div>
     </div>
   ) : null
@@ -5558,8 +5536,10 @@ const isAuthFlowInProgress = () => {
       window.localStorage.removeItem(AUTH_LOGIN_REDIRECT_KEY)
       window.localStorage.removeItem(AUTH_OAUTH_ORIGIN_KEY)
       window.localStorage.removeItem(AUTH_FLOW_IN_PROGRESS_KEY)
+      window.localStorage.removeItem(DIAGNOSTICS_STORAGE_KEY)
       window.sessionStorage.removeItem('last_oauth_code')
     }
+    setDiagnosticsEnabled(false)
     window.location.href = '/'
   }
 
@@ -6106,6 +6086,7 @@ const isAuthFlowInProgress = () => {
         language={reportLanguage}
         onBack={handleReportBack}
         aiSupportEnabled={aiSupportEnabled}
+        diagnosticsEnabled={showDiagnostics}
         onAiUsage={(meta) => {
           applyUsageModel(meta as LlmUsageMeta)
           void applyUsageToSession(meta as LlmUsageMeta, enginePreviewSessionId)
@@ -6427,55 +6408,80 @@ const isAuthFlowInProgress = () => {
                 {engineNotice.message}
               </span>
             )}
-            <button
-              className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
-              type="button"
-              onClick={() => {
-                const nextEnabled = !aiSupportEnabled
-                setAiSupportEnabled(nextEnabled)
-                localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
-                if (nextEnabled) {
-                  void checkLlmStatus(normalizeApiBase(llmApiBase))
-                } else {
-                  setLlmStatus('offline')
-                }
-              }}
-            >
-              {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
-            </button>
-            <button
-              className={`ai-support-toggle llm-usage-indicator ${llmUsageClass}`}
-              type="button"
-              aria-label="LLM usage indicator"
-              title="LLM usage indicator"
-              disabled
-            >
-              {`${formatTokenTotal(currentTokensTotal)} tok`}
-            </button>
-            <div className="llm-cost-panel" aria-live="polite">
-              <div className="llm-cost-line">{`Cost: $${formatUsd(totalCostUsd)}`}</div>
-              <div className="llm-cost-line">
-                {usdPlnRate ? `Cost (PLN): ${formatPln(totalCostPln || 0)} zł` : 'PLN: …'}
-              </div>
-              <details className="llm-cost-details">
-                <summary>Breakdown</summary>
-                <div className="llm-cost-breakdown">
-                  <div className="llm-cost-row">
-                    Total tokens: {formatTokenTotal(engineUsage.totalTokens)}
+            {isDiagEnabled() && (
+              <span className="muted">
+                auth: {authSession?.user?.email ?? '—'}
+              </span>
+            )}
+            {isAdmin && (
+              <button
+                className={`ai-support-toggle diagnostics-toggle ${showDiagnostics ? 'on' : 'off'}`}
+                type="button"
+                onClick={() => {
+                  const nextEnabled = !showDiagnostics
+                  setDiagnosticsEnabled(nextEnabled)
+                  localStorage.setItem(
+                    DIAGNOSTICS_STORAGE_KEY,
+                    nextEnabled ? 'true' : 'false'
+                  )
+                }}
+              >
+                {showDiagnostics ? copy.diagnosticsOn : copy.diagnosticsOff}
+              </button>
+            )}
+            {showDiagnostics && (
+              <>
+                <button
+                  className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
+                  type="button"
+                  onClick={() => {
+                    const nextEnabled = !aiSupportEnabled
+                    setAiSupportEnabled(nextEnabled)
+                    localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
+                    if (nextEnabled) {
+                      void checkLlmStatus(normalizeApiBase(llmApiBase))
+                    } else {
+                      setLlmStatus('offline')
+                    }
+                  }}
+                >
+                  {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
+                </button>
+                <button
+                  className={`ai-support-toggle llm-usage-indicator ${llmUsageClass}`}
+                  type="button"
+                  aria-label="LLM usage indicator"
+                  title="LLM usage indicator"
+                  disabled
+                >
+                  {`${formatTokenTotal(currentTokensTotal)} tok`}
+                </button>
+                <div className="llm-cost-panel" aria-live="polite">
+                  <div className="llm-cost-line">{`Cost: $${formatUsd(totalCostUsd)}`}</div>
+                  <div className="llm-cost-line">
+                    {usdPlnRate ? `Cost (PLN): ${formatPln(totalCostPln || 0)} zł` : 'PLN: …'}
                   </div>
-                  <div className="llm-cost-row">{`Total USD: $${formatUsd(totalCostUsd)}`}</div>
-                  <div className="llm-cost-row">
-                    {usdPlnRate ? `Total PLN: ${formatPln(totalCostPln || 0)} zł` : 'Total PLN: …'}
-                  </div>
-                  {modelUsageEntries.map(([model, usage]) => (
-                    <div key={model} className="llm-cost-row">
-                      {model}: {formatTokenTotal(usage.inputTokens)} in /{' '}
-                      {formatTokenTotal(usage.outputTokens)} out · ${formatUsd(usage.totalUSD)}
+                  <details className="llm-cost-details">
+                    <summary>Breakdown</summary>
+                    <div className="llm-cost-breakdown">
+                      <div className="llm-cost-row">
+                        Total tokens: {formatTokenTotal(engineUsage.totalTokens)}
+                      </div>
+                      <div className="llm-cost-row">{`Total USD: $${formatUsd(totalCostUsd)}`}</div>
+                      <div className="llm-cost-row">
+                        {usdPlnRate ? `Total PLN: ${formatPln(totalCostPln || 0)} zł` : 'Total PLN: …'}
+                      </div>
+                      {modelUsageEntries.map(([model, usage]) => (
+                        <div key={model} className="llm-cost-row">
+                          {model}: {formatTokenTotal(usage.inputTokens)} in /{' '}
+                          {formatTokenTotal(usage.outputTokens)} out · ${formatUsd(usage.totalUSD)}
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </details>
                 </div>
-              </details>
-            </div>
+              </>
+            )}
           </div>
         </header>
         {authDisabled && (
@@ -6891,7 +6897,7 @@ const isAuthFlowInProgress = () => {
             </section>
           )}
 
-          {enginePreviewSessionId && (
+          {enginePreviewSessionId && showDiagnostics && (
             <section className="engine-panel">
               <div className="engine-panel-header">
                 <h2>{uiLanguage === 'Polish' ? 'Matryca pytań' : 'Question matrix'}</h2>
@@ -6937,25 +6943,27 @@ const isAuthFlowInProgress = () => {
             <section className="engine-panel">
               <div className="engine-panel-header">
                 <h2>{copy.enginePreviewBoardItemsTitle}</h2>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={assignNaItems}
-                  disabled={
-                    engineAssignLoading ||
-                    engineUnassignedItems.length === 0 ||
-                    !aiSupportEnabled
-                  }
-                  title={
-                    !aiSupportEnabled
-                      ? 'AI jest wyłączony'
-                      : engineUnassignedItems.length === 0
-                        ? 'Brak wpisów N/A'
-                        : 'Uzupełnij N/A (AI)'
-                  }
-                >
-                  {engineAssignLoading ? 'Uzupełniam…' : 'Uzupełnij N/A (AI)'}
-                </button>
+                {showDiagnostics && (
+                  <button
+                    type="button"
+                    className="ghost"
+                    onClick={assignNaItems}
+                    disabled={
+                      engineAssignLoading ||
+                      engineUnassignedItems.length === 0 ||
+                      !aiSupportEnabled
+                    }
+                    title={
+                      !aiSupportEnabled
+                        ? 'AI jest wyłączony'
+                        : engineUnassignedItems.length === 0
+                          ? 'Brak wpisów N/A'
+                          : 'Uzupełnij N/A (AI)'
+                    }
+                  >
+                    {engineAssignLoading ? 'Uzupełniam…' : 'Uzupełnij N/A (AI)'}
+                  </button>
+                )}
                 <button
                   type="button"
                   className={`ghost engine-help-trigger engine-facilitation-actions--fade ${
@@ -7074,7 +7082,7 @@ const isAuthFlowInProgress = () => {
                 {!engineFacilitationLoading && engineActivePrompt?.text && (
                   <div className="engine-helper engine-facilitation-prompt">
                     <div className="engine-facilitation-question">{engineActivePrompt.text}</div>
-                    {enginePromptSource && (
+                    {showDiagnostics && enginePromptSource && (
                       <span className="impulse-source-row">
                         <span
                           className={`impulse-source-chip ${
@@ -7436,7 +7444,23 @@ const isAuthFlowInProgress = () => {
             </select>
           </label>
         )}
-        {!showLanding && (
+        {!showLanding && isAdmin && (
+          <button
+            className={`ai-support-toggle diagnostics-toggle ${showDiagnostics ? 'on' : 'off'}`}
+            type="button"
+            onClick={() => {
+              const nextEnabled = !showDiagnostics
+              setDiagnosticsEnabled(nextEnabled)
+              localStorage.setItem(
+                DIAGNOSTICS_STORAGE_KEY,
+                nextEnabled ? 'true' : 'false'
+              )
+            }}
+          >
+            {showDiagnostics ? copy.diagnosticsOn : copy.diagnosticsOff}
+          </button>
+        )}
+        {!showLanding && showDiagnostics && (
           <button
             className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
             type="button"
@@ -8474,7 +8498,7 @@ const isAuthFlowInProgress = () => {
               ) : (
                 <p>{impulseQuestion || copy.impulseEmpty}</p>
               )}
-              {!isSuggestLoading && impulseQuestion && impulseSource && (
+              {!isSuggestLoading && impulseQuestion && impulseSource && showDiagnostics && (
                 <span className="impulse-source-row">
                   <span
                     className={`impulse-source-chip ${
@@ -8920,29 +8944,31 @@ const isAuthFlowInProgress = () => {
                 </button>
                 {llmSaved && <span className="muted">{copy.llmSettingsSaved}</span>}
               </div>
-              <div className="actions llm-toggle">
-                <button
-                  type="button"
-                  className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
-                  onClick={() => {
-                    const nextEnabled = !aiSupportEnabled
-                    setAiSupportEnabled(nextEnabled)
-                    localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
-                    if (nextEnabled) {
-                      void checkLlmStatus(normalizeApiBase(llmApiBase))
-                    } else {
-                      setLlmStatus('offline')
-                    }
-                  }}
-                >
-                  {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
-                </button>
-                {import.meta.env.DEV && (
-                  <button type="button" className="ghost" onClick={handleLlmPing}>
-                    LLM ping
+              {showDiagnostics && (
+                <div className="actions llm-toggle">
+                  <button
+                    type="button"
+                    className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
+                    onClick={() => {
+                      const nextEnabled = !aiSupportEnabled
+                      setAiSupportEnabled(nextEnabled)
+                      localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
+                      if (nextEnabled) {
+                        void checkLlmStatus(normalizeApiBase(llmApiBase))
+                      } else {
+                        setLlmStatus('offline')
+                      }
+                    }}
+                  >
+                    {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
                   </button>
-                )}
-              </div>
+                  {import.meta.env.DEV && (
+                    <button type="button" className="ghost" onClick={handleLlmPing}>
+                      LLM ping
+                    </button>
+                  )}
+                </div>
+              )}
               {import.meta.env.DEV && llmPingResult && (
                 <div className="engine-helper">
                   {llmPingResult.error

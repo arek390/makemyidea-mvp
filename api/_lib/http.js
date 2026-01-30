@@ -1,4 +1,7 @@
+import { createSupabaseServerClient } from './supabaseServer.js'
+
 const MAX_INPUT_CHARS = 10_000
+const ADMIN_EMAIL = 'arektest8@gmail.com'
 
 export const readJsonBody = async (req) => {
   if (req.body && typeof req.body === 'object') return req.body
@@ -46,6 +49,36 @@ export const resolveAiSupportEnabled = (req, body) => {
   }
   if (body && typeof body.aiSupportEnabled === 'boolean') return body.aiSupportEnabled
   return true
+}
+
+const resolveHeaderValue = (req, name) => {
+  const header =
+    req.headers[name] ||
+    (typeof req.headers.get === 'function' ? req.headers.get(name) : null)
+  const headerValue = Array.isArray(header) ? header[0] : header
+  return typeof headerValue === 'string' ? headerValue : null
+}
+
+const parseBooleanHeader = (value) => {
+  if (typeof value !== 'string') return null
+  const normalized = value.toLowerCase().trim()
+  if (['on', 'true', '1', 'yes'].includes(normalized)) return true
+  if (['off', 'false', '0', 'no'].includes(normalized)) return false
+  return null
+}
+
+export const resolveDiagnosticsEnabled = async (req, res) => {
+  const headerValue = resolveHeaderValue(req, 'x-diagnostics')
+  const requested = parseBooleanHeader(headerValue)
+  if (!requested) return false
+  try {
+    const supabase = createSupabaseServerClient(req, res)
+    const { data, error } = await supabase.auth.getUser()
+    if (error || !data?.user?.email) return false
+    return String(data.user.email).toLowerCase() === ADMIN_EMAIL
+  } catch {
+    return false
+  }
 }
 
 export const buildMeta = ({ aiSupportEnabled, modelUsed, tokens, escalated }) => {

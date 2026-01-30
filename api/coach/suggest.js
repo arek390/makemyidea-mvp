@@ -11,6 +11,7 @@ import {
   buildMeta,
   readJsonBody,
   resolveAiSupportEnabled,
+  resolveDiagnosticsEnabled,
   sendError,
   sendJson,
   mapLlmError,
@@ -536,6 +537,7 @@ export default async function handler(req, res) {
     }
     logStage('route')
     const aiSupportEnabled = resolveAiSupportEnabled(req, body)
+    const diagnosticsEnabled = await resolveDiagnosticsEnabled(req, res)
     const killSwitch = process.env.AI_SUPPORT_DISABLED === 'true'
     const aiSupportHeader = req.headers['x-ai-support']
     const hasOpenAiKey = Boolean(process.env.OPENAI_API_KEY)
@@ -604,6 +606,22 @@ export default async function handler(req, res) {
       const locale = normalizeLang(body.locale || body.language || 'pl')
       const items = Array.isArray(body.items) ? body.items : []
       const matrixDefinition = body.matrixDefinition
+      if (!diagnosticsEnabled) {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          assignments: [],
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: {
+            aiSupportEnabled: false,
+            modelUsed: null,
+            escalated: false,
+            tokens: { input: 0, output: 0, total: 0 },
+            errorCategory: 'DIAGNOSTICS_DISABLED',
+          },
+        })
+        return
+      }
       if (!Array.isArray(items) || !items.length || !matrixDefinition) {
         sendJson(res, 200, {
           ok: true,
@@ -880,6 +898,10 @@ export default async function handler(req, res) {
       const locale = normalizeLang(body.locale || body.language || 'pl')
       const cells = body.cells || {}
       const entries = Array.isArray(body.entries) ? body.entries : []
+      if (!diagnosticsEnabled) {
+        sendJson(res, 200, buildSummaryFallback(locale, 'DIAGNOSTICS_DISABLED'))
+        return
+      }
       const allSections = [
         pickCellTexts(cells, ['A1', 'B1', 'C1']),
         pickCellTexts(cells, ['A2', 'B2', 'C2']),

@@ -162,3 +162,12 @@ If you add server-side write/merge logic later, use a server-only key:
 ```
 SUPABASE_SERVICE_ROLE_KEY=... # do NOT expose to the browser
 ```
+
+## Feedback email (Vercel)
+
+Feedback is sent server-side via Resend.
+
+```
+RESEND_API_KEY=...
+RESEND_FROM="MakeMyIdea.work <no-reply@makemyidea.work>"
+```
