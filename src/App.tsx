@@ -5935,7 +5935,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
     try {
       const data = await getSession(sessionId)
       if (!data) throw new Error('Missing session')
-      const normalizedItems = normalizeBoardItems(data.boardItems ?? [])
+      const cloudPayload = cloudSessionPayloads[sessionId]
+      const sourceItems =
+        cloudPayload?.boardItems && cloudPayload.boardItems.length
+          ? cloudPayload.boardItems
+          : data.boardItems ?? []
+      const normalizedItems = normalizeBoardItems(sourceItems)
       setEngineSessionDetail({ ...data, boardItems: normalizedItems })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
@@ -5956,7 +5961,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
       if (cloudPayload?.uiLanguage) {
         applySessionLanguage(cloudPayload.uiLanguage)
       }
-      const normalizedItems = normalizeBoardItems(data.boardItems ?? [])
+      const sourceItems =
+        cloudPayload?.boardItems && cloudPayload.boardItems.length
+          ? cloudPayload.boardItems
+          : data.boardItems ?? []
+      const normalizedItems = normalizeBoardItems(sourceItems)
       setEngineSessionDetail({ ...data, boardItems: normalizedItems })
       setEnginePreviewSessionId(data.session?.id ?? null)
       setEnginePreviewSessionName(data.session?.name ?? '')
