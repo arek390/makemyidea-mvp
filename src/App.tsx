@@ -2339,7 +2339,7 @@ function App() {
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [feedbackMessage, setFeedbackMessage] = useState('')
   const [feedbackHoneypot, setFeedbackHoneypot] = useState('')
-  const [feedbackSending, setFeedbackSending] = useState(false)
+  const [feedbackSending] = useState(false)
   const [feedbackCooldown, setFeedbackCooldown] = useState(0)
   const [feedbackNotice, setFeedbackNotice] = useState<{ message: string; variant: 'success' | 'error' } | null>(null)
   const [engineEntryHint, setEngineEntryHint] = useState<{
@@ -3749,7 +3749,6 @@ const isAuthFlowInProgress = () => {
 
   const sendFeedbackEmail = async (sessionId: string | null) => {
     if (typeof window === 'undefined') return
-    if (feedbackSending) return
     const trimmed = feedbackMessage.trim()
     if (trimmed.length < 10 || trimmed.length > 4000) {
       setFeedbackNotice({
@@ -3761,55 +3760,30 @@ const isAuthFlowInProgress = () => {
       })
       return
     }
-    if (feedbackCooldown > 0) return
-    setFeedbackSending(true)
-    setFeedbackNotice(null)
-    try {
-      const response = await fetch('/api/feedback/send', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          message: trimmed,
-          website: feedbackHoneypot,
-          meta: {
-            sessionId: sessionId ?? feedbackContext.sessionId,
-            page: feedbackContext.route,
-            lang: uiLanguage === 'Polish' ? 'pl' : 'en',
-          },
-        }),
-      })
-      const data = await response.json().catch(() => null)
-      if (!response.ok || !data?.ok) {
-        if (response.status === 429 && data?.retryAfter) {
-          const seconds = Number(data.retryAfter) || 30
-          setFeedbackCooldown(seconds)
-          const message =
-            uiLanguage === 'English'
-              ? `Please wait ${seconds}s before sending again.`
-              : `Odczekaj ${seconds}s przed kolejną wiadomością.`
-          setFeedbackNotice({ message, variant: 'error' })
-          return
-        }
-        const message =
-          uiLanguage === 'English'
-            ? 'Unable to send feedback. Please try again.'
-            : 'Nie udało się wysłać feedbacku. Spróbuj ponownie.'
-        setFeedbackNotice({ message, variant: 'error' })
-        return
-      }
-      setFeedbackNotice({ message: copy.feedbackSent, variant: 'success' })
-      setFeedbackMessage('')
-      setFeedbackHoneypot('')
-      setFeedbackCooldown(45)
-    } catch {
-      const message =
-        uiLanguage === 'English'
-          ? 'Unable to send feedback. Please try again.'
-          : 'Nie udało się wysłać feedbacku. Spróbuj ponownie.'
-      setFeedbackNotice({ message, variant: 'error' })
-    } finally {
-      setFeedbackSending(false)
+    if (feedbackCooldown > 0) {
+      setFeedbackCooldown(0)
     }
+    setFeedbackNotice(null)
+    const to = 'arektest8@gmail.com'
+    const subject = 'Feedback – makemyidea.work'
+    const sessionName =
+      enginePreviewSessionName || sessionId || feedbackContext.sessionId || ''
+    const body = [
+      'Feedback z aplikacji makemyidea.work',
+      '',
+      'Sesja:',
+      sessionName || '—',
+      '',
+      'Treść feedbacku:',
+      '--------------------------------',
+      trimmed,
+      '--------------------------------',
+    ].join('\n')
+    const mailtoUrl =
+      `mailto:${to}` +
+      `?subject=${encodeURIComponent(subject)}` +
+      `&body=${encodeURIComponent(body)}`
+    window.location.href = mailtoUrl
   }
 
   useEffect(() => {
@@ -5862,8 +5836,33 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineSessionsError(null)
     setEngineDeleteLoadingId(sessionId)
     try {
+      const userId = authSession?.user?.id || null
+      if (userId && client) {
+        const { error } = await client
+          .from('user_sessions')
+          .delete()
+          .eq('session_id', sessionId)
+          .eq('user_id', userId)
+        if (error) {
+          if (import.meta.env.DEV) {
+            console.error('[engine session delete] failed', {
+              code: error.code,
+              message: error.message,
+              sessionId,
+              userId,
+            })
+          }
+          throw error
+        }
+      }
       await deleteSession(sessionId)
       setEngineSessions((prev) => prev.filter((session) => session.id !== sessionId))
+      setCloudSessionPayloads((prev) => {
+        if (!prev[sessionId]) return prev
+        const next = { ...prev }
+        delete next[sessionId]
+        return next
+      })
       if (engineSessionDetail?.session?.id === sessionId) {
         setEngineSessionDetail(null)
       }
@@ -5874,6 +5873,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się usunąć sesji. ${message}`)
       logSessionStore('engine_session_delete_failed', { sessionId, message })
+      showEngineNotice('Nie udało się usunąć sesji (brak uprawnień).', 'error')
     } finally {
       setEngineDeleteLoadingId(null)
     }

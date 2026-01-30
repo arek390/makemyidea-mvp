@@ -45,44 +45,63 @@ const resolveSubject = (lang) => {
 }
 
 export default async function handler(req, res) {
+  const requestId =
+    typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : `fb-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`
   if (req.method !== 'POST') {
-    sendJson(res, 405, { ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['POST'] })
+    sendJson(res, 405, {
+      ok: false,
+      error: 'METHOD_NOT_ALLOWED',
+      allowed: ['POST'],
+      requestId,
+    })
     return
   }
 
   const apiKey = process.env.RESEND_API_KEY
   const from = process.env.RESEND_FROM
   if (!apiKey || !from) {
-    sendJson(res, 500, { ok: false, error: 'EMAIL_NOT_CONFIGURED' })
+    console.error('[feedback-email] missing env', {
+      requestId,
+      hasApiKey: Boolean(apiKey),
+      hasFrom: Boolean(from),
+    })
+    sendJson(res, 500, { ok: false, error: 'EMAIL_NOT_CONFIGURED', requestId })
     return
   }
 
   const ip = getClientIp(req)
   const rate = checkRateLimit(ip)
   if (!rate.allowed) {
-    sendJson(res, 429, { ok: false, error: 'RATE_LIMITED', retryAfter: rate.retryAfter })
+    sendJson(res, 429, {
+      ok: false,
+      error: 'RATE_LIMITED',
+      retryAfter: rate.retryAfter,
+      requestId,
+    })
     return
   }
 
   const body = await readJsonBody(req)
   if (!body) {
-    sendJson(res, 400, { ok: false, error: 'INVALID_JSON' })
+    sendJson(res, 400, { ok: false, error: 'INVALID_JSON', requestId })
     return
   }
 
   const honeypot = String(body.website || '').trim()
   if (honeypot) {
-    sendJson(res, 400, { ok: false, error: 'HONEYPOT' })
+    sendJson(res, 400, { ok: false, error: 'HONEYPOT', requestId })
     return
   }
 
   const message = String(body.message || '').trim()
   if (!message || message.length < 10) {
-    sendJson(res, 400, { ok: false, error: 'MESSAGE_TOO_SHORT' })
+    sendJson(res, 400, { ok: false, error: 'MESSAGE_TOO_SHORT', requestId })
     return
   }
   if (message.length > 4000) {
-    sendJson(res, 400, { ok: false, error: 'MESSAGE_TOO_LONG' })
+    sendJson(res, 400, { ok: false, error: 'MESSAGE_TOO_LONG', requestId })
     return
   }
 
@@ -128,17 +147,29 @@ export default async function handler(req, res) {
         to: [toEmail],
         subject,
         text,
+        reply_to: userEmail || undefined,
       }),
     })
 
     if (!response.ok) {
       const errorText = await response.text()
-      sendJson(res, 502, { ok: false, error: 'EMAIL_SEND_FAILED', details: errorText })
+      console.error('[feedback-email] failed', {
+        requestId,
+        status: response.status,
+        errorText: errorText.slice(0, 300),
+      })
+      sendJson(res, 502, { ok: false, error: 'EMAIL_SEND_FAILED', requestId })
       return
     }
 
-    sendJson(res, 200, { ok: true })
+    console.log('[feedback-email] sent', { requestId, len: message.length })
+    sendJson(res, 200, { ok: true, requestId })
   } catch (error) {
-    sendJson(res, 500, { ok: false, error: 'EMAIL_SEND_FAILED', message: String(error) })
+    console.error('[feedback-email] failed', {
+      requestId,
+      name: error?.name,
+      message: error?.message,
+    })
+    sendJson(res, 500, { ok: false, error: 'EMAIL_SEND_FAILED', requestId })
   }
 }
