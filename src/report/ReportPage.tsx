@@ -56,6 +56,39 @@ export const ReportPage = ({
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
   const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
   const summaryAutoAttempted = useRef(false)
+
+  const isEmptySummaryText = (text: string | null | undefined, lang: 'pl' | 'en') => {
+    const value = String(text || '').trim()
+    if (!value) return true
+    const lower = value.toLowerCase()
+    if (lang === 'pl') {
+      const phrases = [
+        'brak wystarczających danych',
+        'brak bezpośrednich informacji',
+        'nie generuję podsumowania',
+        'brak wpisów',
+        'brak informacji',
+        'zbyt mało informacji',
+      ]
+      if (phrases.some((phrase) => lower.includes(phrase))) return true
+      if (/brak.*(danych|informacji|wpis(ów|ow)).*/i.test(value)) return true
+      if (/nie generuj[eę].*podsumowania/i.test(value)) return true
+      if (/\([A-C][1-3]\)/.test(value) && /brak/i.test(value)) return true
+      return false
+    }
+    const phrases = [
+      'not enough data',
+      'insufficient data',
+      'no direct information',
+      'no entries',
+      'cannot generate',
+    ]
+    if (phrases.some((phrase) => lower.includes(phrase))) return true
+    if (/not enough|insufficient|no (direct )?information|no entries|cannot generate/i.test(value)) {
+      return true
+    }
+    return false
+  }
   const questionLookup = useMemo(() => {
     const map = new Map<string, string>()
     const questions = Array.isArray(snapshot.questions) ? snapshot.questions : []
@@ -79,17 +112,16 @@ export const ReportPage = ({
     if (!cacheBase) return null
     return `report_reclass::${cacheBase}::${language}`
   }, [cacheBase, language])
-  const computeBoardHash = useMemo(() => {
+  const computeBoardFingerprint = useMemo(() => {
     const items = summaryItems
       .map((item) => ({
-        id: item.id,
+        id: String(item.id || '').trim(),
         text: String(item.text || '').trim(),
-        row: item.matrixRow || '',
-        col: item.matrixCol || '',
-        label: item.label || '',
+        label: item.label ?? null,
+        matrix: `${item.matrixRow ?? ''}|${item.matrixCol ?? ''}`,
       }))
       .sort((a, b) => a.id.localeCompare(b.id))
-    const payload = items.map((item) => `${item.id}|${item.row}|${item.col}|${item.label}|${item.text}`).join('||')
+    const payload = JSON.stringify(items)
     let hash = 0
     for (let i = 0; i < payload.length; i += 1) {
       hash = (hash << 5) - hash + payload.charCodeAt(i)
@@ -268,9 +300,9 @@ export const ReportPage = ({
       if (summaryCacheKey && typeof window !== 'undefined') {
         window.sessionStorage.setItem(
           summaryCacheKey,
-          JSON.stringify({ summary: emptySummary, hash: computeBoardHash })
+          JSON.stringify({ summary: emptySummary, hash: computeBoardFingerprint })
         )
-        setLastSummaryHash(computeBoardHash)
+        setLastSummaryHash(computeBoardFingerprint)
       }
       setSummaryStatus('done')
       return
@@ -337,9 +369,9 @@ export const ReportPage = ({
       if (summaryCacheKey && typeof window !== 'undefined') {
         window.sessionStorage.setItem(
           summaryCacheKey,
-          JSON.stringify({ summary, hash: computeBoardHash })
+          JSON.stringify({ summary, hash: computeBoardFingerprint })
         )
-        setLastSummaryHash(computeBoardHash)
+        setLastSummaryHash(computeBoardFingerprint)
       }
       if (onAiUsage && data.meta) {
         onAiUsage(data.meta)
@@ -354,15 +386,39 @@ export const ReportPage = ({
 
   const generateSummaryIfNeeded = async () => {
     if (summaryStatus === 'running') return
-    if (computeBoardHash && lastSummaryHash && computeBoardHash === lastSummaryHash) return
     if (summaryAutoAttempted.current) return
+    const stored = lastSummaryHash
+    const current = computeBoardFingerprint
+    const hasSummary = Boolean(
+      aiSummary && (aiSummary.today || aiSummary.change || aiSummary.product)
+    )
+    if (stored && current === stored) return
+    if (!stored && hasSummary) {
+      if (summaryCacheKey && typeof window !== 'undefined') {
+        window.sessionStorage.setItem(
+          summaryCacheKey,
+          JSON.stringify({ summary: aiSummary, hash: current })
+        )
+      }
+      setLastSummaryHash(current)
+      return
+    }
     summaryAutoAttempted.current = true
     await runSummary()
   }
 
   useEffect(() => {
     void generateSummaryIfNeeded()
-  }, [computeBoardHash, lastSummaryHash])
+  }, [computeBoardFingerprint, lastSummaryHash, aiSummary])
+
+  const cleanedSummary = useMemo(() => {
+    const lang = language === 'pl' ? 'pl' : 'en'
+    return {
+      today: isEmptySummaryText(aiSummary?.today, lang) ? null : aiSummary?.today || null,
+      change: isEmptySummaryText(aiSummary?.change, lang) ? null : aiSummary?.change || null,
+      product: isEmptySummaryText(aiSummary?.product, lang) ? null : aiSummary?.product || null,
+    }
+  }, [aiSummary, language])
   return (
     <div className="report-page">
       <header className="report-header">
@@ -447,33 +503,33 @@ export const ReportPage = ({
                 locale={language === 'pl' ? 'pl-PL' : 'en-US'}
               />
             )}
-            {summaryStatus === 'running' && <span className="muted">{t.summaryGenerating}</span>}
-            {diagnosticsEnabled && aiNotice && <span className="muted">{aiNotice}</span>}
-            {diagnosticsEnabled && !aiSupportEnabled && <span className="muted">{t.aiDisabled}</span>}
-            {updateNotice && <span className="muted">{updateNotice}</span>}
-          </div>
-          {Boolean(aiSummary?.today?.trim()) && (
+          {summaryStatus === 'running' && <span className="muted">{t.summaryGenerating}</span>}
+          {diagnosticsEnabled && aiNotice && <span className="muted">{aiNotice}</span>}
+          {diagnosticsEnabled && !aiSupportEnabled && <span className="muted">{t.aiDisabled}</span>}
+          {updateNotice && <span className="muted">{updateNotice}</span>}
+        </div>
+          {Boolean(cleanedSummary.today) && (
             <div className="report-summary-block">
               <h3>{t.summaryToday}</h3>
-              <p>{aiSummary?.today}</p>
+              <p>{cleanedSummary.today}</p>
             </div>
           )}
-          {Boolean(aiSummary?.change?.trim()) && (
+          {Boolean(cleanedSummary.change) && (
             <div className="report-summary-block">
               <h3>{t.summaryChange}</h3>
-              <p>{aiSummary?.change}</p>
+              <p>{cleanedSummary.change}</p>
             </div>
           )}
-          {Boolean(aiSummary?.product?.trim()) && (
+          {Boolean(cleanedSummary.product) && (
             <div className="report-summary-block">
               <h3>{t.summaryProduct}</h3>
-              <p>{aiSummary?.product}</p>
+              <p>{cleanedSummary.product}</p>
             </div>
           )}
           {summaryStatus === 'done' &&
-            !aiSummary?.today?.trim() &&
-            !aiSummary?.change?.trim() &&
-            !aiSummary?.product?.trim() && (
+            !cleanedSummary.today &&
+            !cleanedSummary.change &&
+            !cleanedSummary.product && (
               <div className="report-summary-block">
                 <h3>{t.summaryEmptyTitle}</h3>
                 <p>{t.summaryEmptyBody}</p>

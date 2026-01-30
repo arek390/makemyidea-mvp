@@ -923,7 +923,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineFacilitationDeepen: 'Deepen',
     engineFacilitationPerspective: 'Change perspective',
     engineFacilitationLoadingLabel: 'Generating question…',
-    engineFacilitationLoadingPlaceholder: 'Tailoring a perspective to your board…',
+    engineFacilitationLoadingPlaceholder: 'Picking the best perspective for your board',
     engineNamePrompt: 'Give this session a name so it’s easier to return to.',
     engineNameLabel: 'Session name',
     engineNamePlaceholder: 'Session name',
@@ -1433,7 +1433,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineFacilitationDeepen: 'Pogłęb',
     engineFacilitationPerspective: 'Zmień perspektywę',
     engineFacilitationLoadingLabel: 'Generuję pytanie…',
-    engineFacilitationLoadingPlaceholder: 'Dobieram perspektywę do Twojej tablicy…',
+    engineFacilitationLoadingPlaceholder: 'Dobieram perspektywę do Twojej tablicy',
     engineNamePrompt: 'Nadaj nazwę tej sesji, żeby łatwiej do niej wrócić.',
     engineNameLabel: 'Nazwa sesji',
     engineNamePlaceholder: 'Nazwa sesji',
@@ -2246,6 +2246,7 @@ function App() {
     useState<FacilitationType | null>(null)
   const [showEngineFacilitationLoadingUI, setShowEngineFacilitationLoadingUI] =
     useState(false)
+  const [engineFacilitationLoadingDots, setEngineFacilitationLoadingDots] = useState(0)
   const [engineWeakSignals, setEngineWeakSignals] = useState(0)
   const [engineMediumSignals, setEngineMediumSignals] = useState(0)
   const [engineStrongSignals, setEngineStrongSignals] = useState(0)
@@ -5453,6 +5454,19 @@ const limitWords = (value: string, maxWords: number) => {
     setHighlightMissingLabels(false)
   }, [highlightMissingLabels, missingLabelCount])
 
+  useEffect(() => {
+    if (!engineFacilitationLoading || !showEngineFacilitationLoadingUI) {
+      setEngineFacilitationLoadingDots(0)
+      return
+    }
+
+    const intervalId = window.setInterval(() => {
+      setEngineFacilitationLoadingDots((prev) => (prev + 1) % 4)
+    }, 420)
+
+    return () => window.clearInterval(intervalId)
+  }, [engineFacilitationLoading, showEngineFacilitationLoadingUI])
+
   const openReportView = () => {
     if (typeof window === 'undefined') return
     const returnPath = window.location.pathname + window.location.search
@@ -7201,15 +7215,6 @@ const limitWords = (value: string, maxWords: number) => {
               >
                 {copy.engineFacilitationNote}
               </div>
-              {engineFacilitationLoading && showEngineFacilitationLoadingUI && (
-                <div className="engine-helper engine-facilitation-loading" role="status" aria-live="polite">
-                  <div className="impulse-placeholder">
-                    <div className="impulse-placeholder-line" />
-                    <div className="impulse-placeholder-line short" />
-                  </div>
-                  <p className="muted">{copy.engineFacilitationLoadingPlaceholder}</p>
-                </div>
-              )}
               {uiLanguage === 'English' && copy.engineQuestionsWipNote && (
                 <div className="engine-helper">{copy.engineQuestionsWipNote}</div>
               )}
@@ -7289,10 +7294,18 @@ const limitWords = (value: string, maxWords: number) => {
                 </div>
               )}
               <div className="engine-board-input">
-                {!engineFacilitationLoading && engineActivePrompt?.text && (
+                {(engineFacilitationLoading && showEngineFacilitationLoadingUI
+                  ? copy.engineFacilitationLoadingPlaceholder
+                  : engineActivePrompt?.text) && (
                   <div className="engine-helper engine-facilitation-prompt">
-                    <div className="engine-facilitation-question">{engineActivePrompt.text}</div>
-                    {showDiagnostics && enginePromptSource && (
+                    <div className="engine-facilitation-question">
+                      {engineFacilitationLoading && showEngineFacilitationLoadingUI
+                        ? `${copy.engineFacilitationLoadingPlaceholder}${'.'.repeat(
+                            engineFacilitationLoadingDots
+                          )}`
+                        : engineActivePrompt?.text}
+                    </div>
+                    {!engineFacilitationLoading && showDiagnostics && enginePromptSource && (
                       <span className="impulse-source-row">
                         <span
                           className={`impulse-source-chip ${
@@ -7420,19 +7433,20 @@ const limitWords = (value: string, maxWords: number) => {
                       setEngineEntryHint((prev) => ({ ...prev, visible: false }))
                     }
                   >
-                    {(() => {
-                      const cellId = getEntryCellId(item)
-                      return (
-                        <button
-                          type="button"
-                          className={`engine-entry-cell ${cellId ? '' : 'is-na'}`}
-                          title={cellId ? `Cell ${cellId}` : 'N/A'}
-                          disabled
-                        >
-                          {cellId || 'N/A'}
-                        </button>
-                      )
-                    })()}
+                    {showDiagnostics &&
+                      (() => {
+                        const cellId = getEntryCellId(item)
+                        return (
+                          <button
+                            type="button"
+                            className={`engine-entry-cell ${cellId ? '' : 'is-na'}`}
+                            title={cellId ? `Cell ${cellId}` : 'N/A'}
+                            disabled
+                          >
+                            {cellId || 'N/A'}
+                          </button>
+                        )
+                      })()}
                     <div className="engine-entry-main">
                       {enginePreviewEditId === item.id ? (
                         <div className="engine-entry-edit" onClick={(event) => event.stopPropagation()}>

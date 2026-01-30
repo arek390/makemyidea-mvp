@@ -79,9 +79,9 @@ export const reportCopy: Record<
     aiEmptyA2: 'No entries in A2/B2/C2 – summary not generated.',
     aiEmptyA3: 'No entries in A3/B3/C3 – summary not generated.',
     summaryGenerating: 'Creating summary…',
-    summaryEmptyTitle: 'Want a summary? Add 2–3 more notes.',
+    summaryEmptyTitle: 'You’ll get a summary once you add a few more notes',
     summaryEmptyBody:
-      'Right now there isn’t enough on the board to create a useful summary. Add a few short notes (like sticky notes), and I’ll generate a clear summary to help you decide the next step.',
+      'Right now there isn’t enough on the board to create a summary that truly helps you move forward. Add 2–3 short notes (like sticky notes) and I’ll generate a clear summary and suggested next steps.',
     reportUpdate: 'Update report',
     reportUpdated: 'Report updated.',
     reportNoChanges: 'No changes to apply.',
@@ -125,9 +125,9 @@ export const reportCopy: Record<
     aiEmptyA2: 'Brak wpisów w perspektywach A2/B2/C2 – nie generuję podsumowania.',
     aiEmptyA3: 'Brak wpisów w perspektywach A3/B3/C3 – nie generuję podsumowania.',
     summaryGenerating: 'Tworzę podsumowanie…',
-    summaryEmptyTitle: 'Chcesz podsumowanie? Dodaj jeszcze 2–3 wpisy.',
+    summaryEmptyTitle: 'Podsumowanie pojawi się, gdy dopiszesz kilka wpisów',
     summaryEmptyBody:
-      'Na razie na tablicy jest zbyt mało informacji, żeby sensownie podsumować kierunek. Dopisz kilka krótkich wpisów (jak post-it), a wrócę z konkretnym podsumowaniem, które pomoże Ci zrobić następny krok.',
+      'Na razie na tablicy jest zbyt mało konkretnych informacji, żeby przygotować podsumowanie, które realnie pomoże iść dalej. Dodaj 2–3 krótkie wpisy (jak post-it) — wtedy wygeneruję klarowne podsumowanie i kolejne kroki.',
     reportUpdate: 'Aktualizuj raport',
     reportUpdated: 'Raport został zaktualizowany.',
     reportNoChanges: 'Brak zmian do wprowadzenia.',

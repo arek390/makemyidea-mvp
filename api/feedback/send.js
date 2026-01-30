@@ -114,6 +114,8 @@ export default async function handler(req, res) {
     `User agent: ${userAgent || 'n/a'}`,
   ].join('\n')
 
+  const toEmail = process.env.FEEDBACK_TO_EMAIL || 'arektest8@gmail.com'
+
   try {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -123,7 +125,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         from,
-        to: ['contact@makemyidea.work'],
+        to: [toEmail],
         subject,
         text,
       }),
