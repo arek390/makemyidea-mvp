@@ -5467,8 +5467,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
     window.sessionStorage.setItem('reportReturnPath', returnPath)
     window.sessionStorage.setItem('reportReturnSessionId', sessionId)
     const existed =
-      (sessionId && window.sessionStorage.getItem(`report_exists::${sessionId}`) === 'true') ||
-      Boolean(getReportMetaForSession(sessionId)?.created_at)
+      Boolean(getReportMetaForSession(sessionId)?.created_at) ||
+      (isGuestMode() &&
+        sessionId &&
+        window.sessionStorage.getItem(`report_exists::${sessionId}`) === 'true')
     if (sessionId) {
       window.sessionStorage.setItem(`report_exists::${sessionId}`, 'true')
       const sourceUpdatedAt =
@@ -5840,9 +5842,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   useEffect(() => {
-    if (!isEnginePreview) return
+    if (!isEnginePreview && !isReport) return
     void fetchEngineSessions()
-  }, [isEnginePreview, authSession?.user?.id])
+  }, [isEnginePreview, isReport, authSession?.user?.id])
 
   const getReportMetaForSession = (sessionId: string | null) => {
     if (!sessionId) return null
@@ -5854,6 +5856,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return null
   }
 
+  const reportSessionId = isReport
+    ? enginePreviewSessionId || engineSessionDetail?.session?.id || null
+    : null
+
+  useEffect(() => {
+    if (!isReport) return
+    if (!reportSessionId) return
+    if (getReportMetaForSession(reportSessionId)?.created_at) return
+    void markReportCreated(reportSessionId)
+  }, [isReport, reportSessionId, cloudSessionPayloads, engineSessionDetail])
+
   const markReportCreated = async (sessionId: string) => {
     const now = Date.now()
     const detail = await getSession(sessionId)
@@ -5864,6 +5877,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       ...detail,
       report: {
         ...(existing || {}),
+        id: existing?.id ?? sessionId,
         created_at: now,
         updated_at: now,
         lastSummaryTextHash: existing?.lastSummaryTextHash ?? null,
@@ -5877,6 +5891,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
     if (authSession?.user?.id) {
       await saveSessionToCloud(authSession.user.id, updatedDetail, uiLanguage)
+      console.log('[REPORT_CREATE] saved report', {
+        reportId: updatedDetail.report?.id ?? sessionId,
+        sessionId,
+        persisted: true,
+      })
     }
   }
 
@@ -6398,6 +6417,24 @@ const isMissingLabel = (item: EngineBoardItem) => {
   if (isReport) {
     const reportLanguage = uiLanguage === 'Polish' ? 'pl' : 'en'
     const snapshot = getReportSessionSnapshot()
+    const handleReportLogout = async () => {
+      const sessionId = snapshot.sessionId || enginePreviewSessionId
+      if (sessionId) {
+        const detail = await getSession(sessionId)
+        if (detail?.session) {
+          const now = Date.now()
+          const updatedDetail: EngineSessionDetail = {
+            ...detail,
+            session: { ...detail.session, updated_at: now },
+          }
+          await updateSession(updatedDetail)
+          if (authSession?.user?.id) {
+            await saveSessionToCloud(authSession.user.id, updatedDetail, uiLanguage)
+          }
+        }
+      }
+      await handleLogout()
+    }
     const handleReportBack = () => {
       if (typeof window === 'undefined') return
       const storedPath = window.sessionStorage.getItem('reportReturnPath')
@@ -6417,6 +6454,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         snapshot={snapshot}
         language={reportLanguage}
         onBack={handleReportBack}
+        onLogout={handleReportLogout}
         aiSupportEnabled={aiSupportEnabled}
         diagnosticsEnabled={showDiagnostics}
         naFillStatus={naFillStatus}
@@ -6428,6 +6466,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           const existing = detail.report || null
           const nextReport = {
             ...(existing || {}),
+            id: existing?.id ?? sessionId,
             summary: meta.summary ?? existing?.summary ?? null,
             lastSummaryTextHash:
               meta.lastSummaryTextHash ?? existing?.lastSummaryTextHash ?? null,

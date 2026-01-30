@@ -9,6 +9,7 @@ type ReportPageProps = {
   snapshot: ReportSnapshot
   language: ReportLang
   onBack: () => void
+  onLogout: () => void
   aiSupportEnabled: boolean
   diagnosticsEnabled: boolean
   naFillStatus?: 'idle' | 'running' | 'done' | 'error'
@@ -46,6 +47,7 @@ export const ReportPage = ({
   snapshot,
   language,
   onBack,
+  onLogout,
   aiSupportEnabled,
   diagnosticsEnabled,
   naFillStatus,
@@ -451,6 +453,9 @@ export const ReportPage = ({
         <div className="report-actions">
           <button type="button" className="ghost" onClick={onBack}>
             {t.back}
+          </button>
+          <button type="button" className="ghost" onClick={onLogout}>
+            {t.logout}
           </button>
           {showUpdate && (
             <button type="button" className="ghost" onClick={handleUpdateReport}>

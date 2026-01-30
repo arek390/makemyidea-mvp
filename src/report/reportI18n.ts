@@ -38,6 +38,7 @@ export const reportCopy: Record<
     reportUpdate: string
     reportUpdated: string
     reportNoChanges: string
+    logout: string
     naAssigning: string
     naAssigningError: string
     tableEntry: string
@@ -58,7 +59,7 @@ export const reportCopy: Record<
     toc: 'Table of contents',
     sessionName: 'Session',
     date: 'Date',
-    userName: 'User',
+    userName: 'Report author',
     sessionGoal: 'Session goal',
     executiveSummary: 'Executive summary',
     summaryToday: 'What I see today',
@@ -85,6 +86,7 @@ export const reportCopy: Record<
     reportUpdate: 'Update report',
     reportUpdated: 'Report updated.',
     reportNoChanges: 'No changes to apply.',
+    logout: 'Log out',
     naAssigning: 'Assigning entries…',
     naAssigningError: 'Unable to assign entries automatically.',
     tableEntry: 'Entry',
@@ -104,7 +106,7 @@ export const reportCopy: Record<
     toc: 'Spis treści',
     sessionName: 'Sesja',
     date: 'Data',
-    userName: 'Użytkownik',
+    userName: 'Autor raportu',
     sessionGoal: 'Cel sesji',
     executiveSummary: 'Podsumowanie',
     summaryToday: 'To widzę dzisiaj',
@@ -131,6 +133,7 @@ export const reportCopy: Record<
     reportUpdate: 'Aktualizuj raport',
     reportUpdated: 'Raport został zaktualizowany.',
     reportNoChanges: 'Brak zmian do wprowadzenia.',
+    logout: 'Wyloguj',
     naAssigning: 'Uzupełnianie przypisań…',
     naAssigningError: 'Nie udało się uzupełnić przypisań automatycznie.',
     tableEntry: 'Wpis',

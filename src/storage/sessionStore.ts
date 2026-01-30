@@ -47,6 +47,7 @@ export type ReportSummary = {
 }
 
 export type ReportMeta = {
+  id?: string | null
   created_at?: number | null
   updated_at?: number | null
   lastSummaryTextHash?: string | null
