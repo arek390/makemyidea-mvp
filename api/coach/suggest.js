@@ -606,22 +606,6 @@ export default async function handler(req, res) {
       const locale = normalizeLang(body.locale || body.language || 'pl')
       const items = Array.isArray(body.items) ? body.items : []
       const matrixDefinition = body.matrixDefinition
-      if (!diagnosticsEnabled) {
-        sendJson(res, 200, {
-          ok: true,
-          source: 'fallback',
-          assignments: [],
-          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
-          meta: {
-            aiSupportEnabled: false,
-            modelUsed: null,
-            escalated: false,
-            tokens: { input: 0, output: 0, total: 0 },
-            errorCategory: 'DIAGNOSTICS_DISABLED',
-          },
-        })
-        return
-      }
       if (!Array.isArray(items) || !items.length || !matrixDefinition) {
         sendJson(res, 200, {
           ok: true,

@@ -3,6 +3,7 @@ import { reportCopy, type ReportLang } from './reportI18n'
 import { downloadReportCsv, type ReportSnapshot } from './exportCsv'
 import { groupItemsByCell } from './cellMapping'
 import { UsageBadge } from '../components/UsageBadge'
+import { buildSessionGoalText, extractProductNameFromSessionName } from './sessionGoal'
 
 type ReportPageProps = {
   snapshot: ReportSnapshot
@@ -76,6 +77,22 @@ export const ReportPage = ({
     change: t.aiEmptyA2,
     product: t.aiEmptyA3,
   }
+  const productNameCandidate = useMemo(
+    () =>
+      extractProductNameFromSessionName(
+        snapshot.sessionName || '',
+        language === 'pl' ? 'pl' : 'en'
+      ),
+    [snapshot.sessionName, language]
+  )
+  const sessionGoalText = useMemo(
+    () =>
+      buildSessionGoalText({
+        lang: language === 'pl' ? 'pl' : 'en',
+        productName: productNameCandidate,
+      }),
+    [language, productNameCandidate]
+  )
 
   const ensureAssignedCell = (item: (typeof snapshot.ideas)[number]) => {
     if (item.matrixRow && item.matrixCol) return item
@@ -366,7 +383,7 @@ export const ReportPage = ({
 
         <section id="goal" className="report-section">
           <h2>{t.sessionGoal}</h2>
-          <p>{t.placeholder}</p>
+          <p>{sessionGoalText}</p>
         </section>
 
         <section id="summary" className="report-section">

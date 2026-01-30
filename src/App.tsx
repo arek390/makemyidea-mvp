@@ -2305,6 +2305,9 @@ function App() {
     group_code?: string
     mode_code?: number
   } | null>(null)
+  const [naFillStatus, setNaFillStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [lastNaFillSessionId, setLastNaFillSessionId] = useState<string | null>(null)
+  const [lastNaFillCount, setLastNaFillCount] = useState(0)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [feedbackMessage, setFeedbackMessage] = useState('')
   const [feedbackHoneypot, setFeedbackHoneypot] = useState('')
@@ -3877,6 +3880,7 @@ const isAuthFlowInProgress = () => {
     })
   }, [showLanding, isEnginePreview, normalizedPath, activeStep, isAuthed, isGuest, aiSupportEnabled])
 
+
   const copy = useMemo(() => getTranslations(uiLanguage), [uiLanguage])
   const stepTitle = (stepId: StepId) => copy.steps[stepId]
   const stepHeading = (stepId: StepId) =>
@@ -5320,6 +5324,25 @@ const isAuthFlowInProgress = () => {
     [enginePreviewItems]
   )
 
+  useEffect(() => {
+    if (!isReport) return
+    if (!enginePreviewSessionId) return
+    if (engineAssignLoading || naFillStatus === 'running') return
+    if (engineUnassignedItems.length === 0) return
+    const sameSession = lastNaFillSessionId === enginePreviewSessionId
+    const sameCount = lastNaFillCount === engineUnassignedItems.length
+    if (sameSession && sameCount && (naFillStatus === 'done' || naFillStatus === 'error')) return
+    void fillNaAssignments('auto')
+  }, [
+    isReport,
+    enginePreviewSessionId,
+    engineUnassignedItems.length,
+    engineAssignLoading,
+    naFillStatus,
+    lastNaFillSessionId,
+    lastNaFillCount,
+  ])
+
   const buildSessionDetailForSave = async (): Promise<EngineSessionDetail | null> => {
     if (!enginePreviewSessionId) return null
     const now = Date.now()
@@ -5347,21 +5370,24 @@ const isAuthFlowInProgress = () => {
     }
   }
 
-  const assignNaItems = async () => {
-    if (engineAssignLoading) return
+  const fillNaAssignments = async (source: 'manual' | 'auto') => {
+    if (engineAssignLoading || naFillStatus === 'running') return
     if (!enginePreviewSessionId) {
-      showEngineNotice('Brak aktywnej sesji.', 'error')
-      return
-    }
-    if (!aiSupportEnabled) {
-      showEngineNotice('AI jest wyłączony.', 'error')
+      if (source === 'manual') showEngineNotice('Brak aktywnej sesji.', 'error')
       return
     }
     if (engineUnassignedItems.length === 0) {
-      showEngineNotice('Brak wpisów N/A.', 'success')
+      if (source === 'manual') showEngineNotice('Brak wpisów N/A.', 'success')
+      return
+    }
+    if (source === 'manual' && !aiSupportEnabled) {
+      showEngineNotice('AI jest wyłączony.', 'error')
       return
     }
     setEngineAssignLoading(true)
+    setNaFillStatus('running')
+    setLastNaFillSessionId(enginePreviewSessionId)
+    setLastNaFillCount(engineUnassignedItems.length)
     try {
       const items = engineUnassignedItems.map((item) => ({
         id: item.id,
@@ -5379,9 +5405,16 @@ const isAuthFlowInProgress = () => {
           3: 'should_be (pożądany stan / pomysł)',
         },
       }
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+        'x-ai-support': source === 'auto' ? 'on' : aiSupportEnabled ? 'on' : 'off',
+      }
+      if (diagnosticsEnabledForUser) {
+        headers['x-diagnostics'] = '1'
+      }
       const response = await fetch('/api/coach/suggest', {
         method: 'POST',
-        headers: llmHeaders,
+        headers,
         body: JSON.stringify({
           action: 'assign_na',
           locale: uiLanguage === 'Polish' ? 'pl' : 'en',
@@ -5406,12 +5439,20 @@ const isAuthFlowInProgress = () => {
         data = null
       }
       if (!response.ok || !data || data.ok === false) {
-        showEngineNotice('Nie udało się przypisać wpisów.', 'error')
+        if (source === 'manual') {
+          showEngineNotice('Nie udało się przypisać wpisów.', 'error')
+        } else {
+          showEngineNotice('Nie udało się uzupełnić przyporządkowań. Spróbuj ponownie.', 'error')
+        }
+        setNaFillStatus('error')
         return
       }
       const assignments = Array.isArray(data.assignments) ? data.assignments : []
       if (!assignments.length) {
-        showEngineNotice('Brak przypisań z AI.', 'success')
+        if (source === 'manual') {
+          showEngineNotice('Brak przypisań z AI.', 'success')
+        }
+        setNaFillStatus('done')
         return
       }
       const byId = new Map(assignments.map((entry) => [entry.id, entry.cellCode]))
@@ -5460,12 +5501,25 @@ const isAuthFlowInProgress = () => {
         applyUsageModel(meta)
         void applyUsageToSession(meta, enginePreviewSessionId)
       }
-      showEngineNotice('Uzupełniono wpisy N/A.', 'success')
+      setLastNaFillCount(0)
+      setNaFillStatus('done')
+      if (source === 'manual') {
+        showEngineNotice('Uzupełniono wpisy N/A.', 'success')
+      }
     } catch {
-      showEngineNotice('Nie udało się przypisać wpisów.', 'error')
+      setNaFillStatus('error')
+      if (source === 'manual') {
+        showEngineNotice('Nie udało się przypisać wpisów.', 'error')
+      } else {
+        showEngineNotice('Nie udało się uzupełnić przyporządkowań. Spróbuj ponownie.', 'error')
+      }
     } finally {
       setEngineAssignLoading(false)
     }
+  }
+
+  const assignNaItems = async () => {
+    await fillNaAssignments('manual')
   }
 
   const saveCurrentSessionToCloud = async (silentSuccess = false) => {
