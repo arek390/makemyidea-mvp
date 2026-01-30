@@ -1107,6 +1107,16 @@
   will-change: transform;
 }
 
+.auth-option--align-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.auth-option--align-actions .actions {
+  margin-top: auto;
+}
+
 .auth-option:hover {
   transform: scale(1.02);
   border-color: rgba(17, 42, 75, 0.2);

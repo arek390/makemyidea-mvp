@@ -2312,7 +2312,7 @@ function App() {
     parseError: string | null
   } | null>(null)
   const [engineAskedQuestionIds, setEngineAskedQuestionIds] = useState<string[]>([])
-  const [engineAskedQuestionMeta, setEngineAskedQuestionMeta] = useState<
+  const [, setEngineAskedQuestionMeta] = useState<
     Record<string, { group_code?: string; mode_code?: number }>
   >({})
   const [engineAskedQuestionTexts, setEngineAskedQuestionTexts] = useState<string[]>([])
@@ -3675,13 +3675,10 @@ const isAuthFlowInProgress = () => {
         counts[`${row.key}${col.key}`] = 0
       })
     })
-    Object.values(engineAskedQuestionMeta).forEach((meta) => {
-      const group = meta?.group_code ? String(meta.group_code).toUpperCase() : ''
-      const mode = Number(meta?.mode_code)
-      if (!['A', 'B', 'C'].includes(group)) return
-      if (![1, 2, 3].includes(mode)) return
-      const key = `${group}${mode}`
-      counts[key] = (counts[key] || 0) + 1
+    enginePreviewItems.forEach((item) => {
+      const cellId = getEntryCellId(item)
+      if (!cellId) return
+      counts[cellId] = (counts[cellId] || 0) + 1
     })
     const currentGroup = engineLastQuestionMeta?.group_code
       ? String(engineLastQuestionMeta.group_code).toUpperCase()
@@ -3692,7 +3689,7 @@ const isAuthFlowInProgress = () => {
         ? `${currentGroup}${currentMode}`
         : null
     return { rows, cols, counts, currentKey }
-  }, [engineAskedQuestionMeta, engineLastQuestionMeta])
+  }, [enginePreviewItems, engineLastQuestionMeta])
 
   const getReportSessionSnapshot = (): ReportSnapshot => {
     const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
@@ -4054,16 +4051,41 @@ const limitWords = (value: string, maxWords: number) => {
     return words.slice(0, maxWords).join(' ')
   }
 
-  const applyTextEditClassification = (item: EngineBoardItem, nextText: string) => {
-    const last = item.lastClassifiedText ?? null
-    const dirty = !last || last !== nextText
-    return { ...item, text: nextText, classificationDirty: dirty }
-  }
+const applyTextEditClassification = (item: EngineBoardItem, nextText: string) => {
+  const last = item.lastClassifiedText ?? null
+  const dirty = !last || last !== nextText
+  return { ...item, text: nextText, classificationDirty: dirty }
+}
 
-  const isMissingLabel = (item: EngineBoardItem) => {
-    const label = String(item.label ?? '').trim()
-    return !label || label.toLowerCase() === 'n/a'
+const normalizeBoardItem = (item: EngineBoardItem) => {
+  const legacyRow = (item as { matrixRow?: string | null }).matrixRow ?? null
+  const legacyCol = (item as { matrixCol?: string | null }).matrixCol ?? null
+  const legacyCell = (item as { matrixCell?: string | null; cellCode?: string | null }).matrixCell ??
+    (item as { cellCode?: string | null }).cellCode ??
+    null
+  let matrixRow = item.matrix_row ?? legacyRow ?? null
+  let matrixCol = item.matrix_col ?? legacyCol ?? null
+  if ((!matrixRow || !matrixCol) && legacyCell) {
+    const mapped = cellCodeToMatrix(String(legacyCell))
+    if (mapped?.matrix_row && mapped?.matrix_col) {
+      matrixRow = mapped.matrix_row
+      matrixCol = mapped.matrix_col
+    }
   }
+  return {
+    ...item,
+    label: item.label ?? null,
+    matrix_row: matrixRow ?? null,
+    matrix_col: matrixCol ?? null,
+  }
+}
+
+const normalizeBoardItems = (items: EngineBoardItem[]) => items.map(normalizeBoardItem)
+
+const isMissingLabel = (item: EngineBoardItem) => {
+  const label = String(item.label ?? '').trim()
+  return !label || label.toLowerCase() === 'n/a'
+}
 
   const countWords = (value: string) => {
     const trimmed = value.trim()
@@ -5802,7 +5824,12 @@ const limitWords = (value: string, maxWords: number) => {
         })
         setCloudSessionPayloads(payloadMap)
         await Promise.all(
-          cloudRecords.map((record: CloudSessionRecord) => updateSession(record.detail))
+          cloudRecords.map((record: CloudSessionRecord) =>
+            updateSession({
+              ...record.detail,
+              boardItems: normalizeBoardItems(record.detail.boardItems || []),
+            })
+          )
         )
         const cloudSessions = cloudRecords.map((record: CloudSessionRecord) => record.summary)
         setEngineSessions(mergeSessionLists(localSessions, cloudSessions))
@@ -5908,7 +5935,8 @@ const limitWords = (value: string, maxWords: number) => {
     try {
       const data = await getSession(sessionId)
       if (!data) throw new Error('Missing session')
-      setEngineSessionDetail(data)
+      const normalizedItems = normalizeBoardItems(data.boardItems ?? [])
+      setEngineSessionDetail({ ...data, boardItems: normalizedItems })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się pobrać szczegółów sesji. ${message}`)
@@ -5928,10 +5956,7 @@ const limitWords = (value: string, maxWords: number) => {
       if (cloudPayload?.uiLanguage) {
         applySessionLanguage(cloudPayload.uiLanguage)
       }
-      const normalizedItems = (data.boardItems ?? []).map((item) => ({
-        ...item,
-        label: item.label ?? null,
-      }))
+      const normalizedItems = normalizeBoardItems(data.boardItems ?? [])
       setEngineSessionDetail({ ...data, boardItems: normalizedItems })
       setEnginePreviewSessionId(data.session?.id ?? null)
       setEnginePreviewSessionName(data.session?.name ?? '')
@@ -5945,6 +5970,9 @@ const limitWords = (value: string, maxWords: number) => {
       setEngineUiState('FREE_FLOW')
       setEngineActivePrompt(null)
       setEngineOfferReason(null)
+      if (data.session) {
+        void updateSession({ ...data, boardItems: normalizedItems })
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się pobrać szczegółów sesji. ${message}`)
@@ -6383,7 +6411,7 @@ const limitWords = (value: string, maxWords: number) => {
           )}
           <p className="muted">{copy.loginSubtitle}</p>
           <div className="auth-options auth-options--actions">
-            <div className="auth-option">
+            <div className="auth-option auth-option--align-actions">
               <p className="auth-option-title">{copy.loginGoogleLabel}</p>
               <div className="actions">
                 <button
@@ -6396,7 +6424,7 @@ const limitWords = (value: string, maxWords: number) => {
                 </button>
               </div>
             </div>
-            <div className="auth-option">
+            <div className="auth-option auth-option--align-actions">
               <label className="auth-option-title" htmlFor="login-email">
                 {copy.loginEmailLabel}
               </label>

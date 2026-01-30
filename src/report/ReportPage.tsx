@@ -34,7 +34,7 @@ type SummaryUsage = {
 }
 
 type SummaryCachePayload =
-  | { summary: AiSummary; hash?: string }
+  | { summary: AiSummary; lastSummaryTextHash?: string }
   | AiSummary
 
 export const ReportPage = ({
@@ -50,7 +50,7 @@ export const ReportPage = ({
   const [aiSummary, setAiSummary] = useState<AiSummary | null>(null)
   const [aiNotice, setAiNotice] = useState<string | null>(null)
   const [summaryStatus, setSummaryStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
-  const [lastSummaryHash, setLastSummaryHash] = useState<string | null>(null)
+  const [lastSummaryTextHash, setLastSummaryTextHash] = useState<string | null>(null)
   const [summaryItems, setSummaryItems] = useState(snapshot.ideas)
   const [summaryUsage, setSummaryUsage] = useState<SummaryUsage | null>(null)
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
@@ -112,16 +112,14 @@ export const ReportPage = ({
     if (!cacheBase) return null
     return `report_reclass::${cacheBase}::${language}`
   }, [cacheBase, language])
-  const computeBoardFingerprint = useMemo(() => {
+  const computeSummaryTextFingerprint = useMemo(() => {
     const items = summaryItems
       .map((item) => ({
         id: String(item.id || '').trim(),
         text: String(item.text || '').trim(),
-        label: item.label ?? null,
-        matrix: `${item.matrixRow ?? ''}|${item.matrixCol ?? ''}`,
       }))
       .sort((a, b) => a.id.localeCompare(b.id))
-    const payload = JSON.stringify(items)
+    const payload = items.map((item) => `${item.id}::${item.text}`).join('||')
     let hash = 0
     for (let i = 0; i < payload.length; i += 1) {
       hash = (hash << 5) - hash + payload.charCodeAt(i)
@@ -194,10 +192,11 @@ export const ReportPage = ({
         const parsed = JSON.parse(cached) as SummaryCachePayload
         if (parsed && typeof parsed === 'object' && 'summary' in parsed) {
           const summary = (parsed as { summary?: AiSummary }).summary
-          const hash = (parsed as { hash?: string }).hash || null
+          const hash =
+            (parsed as { lastSummaryTextHash?: string }).lastSummaryTextHash || null
           if (summary && typeof summary === 'object') {
             setAiSummary(summary)
-            setLastSummaryHash(hash)
+            setLastSummaryTextHash(hash)
             setSummaryStatus('done')
           }
         } else if (parsed && typeof parsed === 'object') {
@@ -300,9 +299,12 @@ export const ReportPage = ({
       if (summaryCacheKey && typeof window !== 'undefined') {
         window.sessionStorage.setItem(
           summaryCacheKey,
-          JSON.stringify({ summary: emptySummary, hash: computeBoardFingerprint })
+          JSON.stringify({
+            summary: emptySummary,
+            lastSummaryTextHash: computeSummaryTextFingerprint,
+          })
         )
-        setLastSummaryHash(computeBoardFingerprint)
+        setLastSummaryTextHash(computeSummaryTextFingerprint)
       }
       setSummaryStatus('done')
       return
@@ -369,9 +371,9 @@ export const ReportPage = ({
       if (summaryCacheKey && typeof window !== 'undefined') {
         window.sessionStorage.setItem(
           summaryCacheKey,
-          JSON.stringify({ summary, hash: computeBoardFingerprint })
+          JSON.stringify({ summary, lastSummaryTextHash: computeSummaryTextFingerprint })
         )
-        setLastSummaryHash(computeBoardFingerprint)
+        setLastSummaryTextHash(computeSummaryTextFingerprint)
       }
       if (onAiUsage && data.meta) {
         onAiUsage(data.meta)
@@ -387,8 +389,8 @@ export const ReportPage = ({
   const generateSummaryIfNeeded = async () => {
     if (summaryStatus === 'running') return
     if (summaryAutoAttempted.current) return
-    const stored = lastSummaryHash
-    const current = computeBoardFingerprint
+    const stored = lastSummaryTextHash
+    const current = computeSummaryTextFingerprint
     const hasSummary = Boolean(
       aiSummary && (aiSummary.today || aiSummary.change || aiSummary.product)
     )
@@ -397,10 +399,10 @@ export const ReportPage = ({
       if (summaryCacheKey && typeof window !== 'undefined') {
         window.sessionStorage.setItem(
           summaryCacheKey,
-          JSON.stringify({ summary: aiSummary, hash: current })
+          JSON.stringify({ summary: aiSummary, lastSummaryTextHash: current })
         )
       }
-      setLastSummaryHash(current)
+      setLastSummaryTextHash(current)
       return
     }
     summaryAutoAttempted.current = true
@@ -409,7 +411,7 @@ export const ReportPage = ({
 
   useEffect(() => {
     void generateSummaryIfNeeded()
-  }, [computeBoardFingerprint, lastSummaryHash, aiSummary])
+  }, [computeSummaryTextFingerprint, lastSummaryTextHash, aiSummary])
 
   const cleanedSummary = useMemo(() => {
     const lang = language === 'pl' ? 'pl' : 'en'
