@@ -882,10 +882,6 @@ export default async function handler(req, res) {
       const locale = normalizeLang(body.locale || body.language || 'pl')
       const cells = body.cells || {}
       const entries = Array.isArray(body.entries) ? body.entries : []
-      if (!diagnosticsEnabled) {
-        sendJson(res, 200, buildSummaryFallback(locale, 'DIAGNOSTICS_DISABLED'))
-        return
-      }
       const allSections = [
         pickCellTexts(cells, ['A1', 'B1', 'C1']),
         pickCellTexts(cells, ['A2', 'B2', 'C2']),

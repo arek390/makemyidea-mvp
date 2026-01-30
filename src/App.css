@@ -3014,6 +3014,26 @@ button.ghost.danger:hover {
   box-shadow: none;
 }
 
+.engine-entry.missing-label {
+  filter: drop-shadow(0 0 0.5rem rgba(240, 162, 58, 0.35));
+}
+
+.engine-entry-missing-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #8a5200;
+  background: rgba(240, 162, 58, 0.15);
+}
+
+.engine-missing-label-hint {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-left: 0.6rem;
+}
 
 
 .engine-entry-main {

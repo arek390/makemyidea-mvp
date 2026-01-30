@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { reportCopy, type ReportLang } from './reportI18n'
 import { downloadReportCsv, type ReportSnapshot } from './exportCsv'
 import { groupItemsByCell } from './cellMapping'
@@ -11,6 +11,7 @@ type ReportPageProps = {
   onBack: () => void
   aiSupportEnabled: boolean
   diagnosticsEnabled: boolean
+  naFillStatus?: 'idle' | 'running' | 'done' | 'error'
   onAiUsage?: (meta: unknown) => void
 }
 
@@ -32,23 +33,29 @@ type SummaryUsage = {
   costPln: number
 }
 
+type SummaryCachePayload =
+  | { summary: AiSummary; hash?: string }
+  | AiSummary
+
 export const ReportPage = ({
   snapshot,
   language,
   onBack,
   aiSupportEnabled,
   diagnosticsEnabled,
+  naFillStatus,
   onAiUsage,
 }: ReportPageProps) => {
   const t = reportCopy[language]
   const [aiSummary, setAiSummary] = useState<AiSummary | null>(null)
-  const [aiLoading, setAiLoading] = useState(false)
   const [aiNotice, setAiNotice] = useState<string | null>(null)
-  const [aiPartialNote, setAiPartialNote] = useState<string | null>(null)
+  const [summaryStatus, setSummaryStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [lastSummaryHash, setLastSummaryHash] = useState<string | null>(null)
   const [summaryItems, setSummaryItems] = useState(snapshot.ideas)
   const [summaryUsage, setSummaryUsage] = useState<SummaryUsage | null>(null)
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
   const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
+  const summaryAutoAttempted = useRef(false)
   const questionLookup = useMemo(() => {
     const map = new Map<string, string>()
     const questions = Array.isArray(snapshot.questions) ? snapshot.questions : []
@@ -72,11 +79,24 @@ export const ReportPage = ({
     if (!cacheBase) return null
     return `report_reclass::${cacheBase}::${language}`
   }, [cacheBase, language])
-  const emptyMessages = {
-    today: t.aiEmptyA1,
-    change: t.aiEmptyA2,
-    product: t.aiEmptyA3,
-  }
+  const computeBoardHash = useMemo(() => {
+    const items = summaryItems
+      .map((item) => ({
+        id: item.id,
+        text: String(item.text || '').trim(),
+        row: item.matrixRow || '',
+        col: item.matrixCol || '',
+        label: item.label || '',
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+    const payload = items.map((item) => `${item.id}|${item.row}|${item.col}|${item.label}|${item.text}`).join('||')
+    let hash = 0
+    for (let i = 0; i < payload.length; i += 1) {
+      hash = (hash << 5) - hash + payload.charCodeAt(i)
+      hash |= 0
+    }
+    return String(hash)
+  }, [summaryItems])
   const productNameCandidate = useMemo(
     () =>
       extractProductNameFromSessionName(
@@ -139,9 +159,21 @@ export const ReportPage = ({
     const cached = window.sessionStorage.getItem(summaryCacheKey)
     if (cached) {
       try {
-        const parsed = JSON.parse(cached) as AiSummary
-        if (parsed?.today && parsed?.change && parsed?.product) {
-          setAiSummary(parsed)
+        const parsed = JSON.parse(cached) as SummaryCachePayload
+        if (parsed && typeof parsed === 'object' && 'summary' in parsed) {
+          const summary = (parsed as { summary?: AiSummary }).summary
+          const hash = (parsed as { hash?: string }).hash || null
+          if (summary && typeof summary === 'object') {
+            setAiSummary(summary)
+            setLastSummaryHash(hash)
+            setSummaryStatus('done')
+          }
+        } else if (parsed && typeof parsed === 'object') {
+          const summary = parsed as AiSummary
+          if (summary && typeof summary === 'object') {
+            setAiSummary(summary)
+            setSummaryStatus('done')
+          }
         }
       } catch {
         // ignore
@@ -159,6 +191,11 @@ export const ReportPage = ({
       // ignore
     }
   }, [summaryCacheKey, reclassCacheKey])
+
+  useEffect(() => {
+    summaryAutoAttempted.current = false
+    setSummaryStatus('idle')
+  }, [language])
 
   useEffect(() => {
     if (!updateNotice) return
@@ -196,13 +233,10 @@ export const ReportPage = ({
 
   const runSummary = async () => {
     setAiNotice(null)
-    setAiPartialNote(null)
     setSummaryUsage(null)
-    if (!diagnosticsEnabled) {
-      return
-    }
     if (!aiSupportEnabled) {
       setAiNotice(t.aiDisabled)
+      setSummaryStatus('done')
       return
     }
     const ensuredItems = summaryItems.map(ensureAssignedCell)
@@ -229,17 +263,19 @@ export const ReportPage = ({
 
     setSummaryItems(ensuredItems)
     if (ensuredEmptyToday && ensuredEmptyChange && ensuredEmptyProduct) {
-      setAiSummary({
-        today: emptyMessages.today,
-        change: emptyMessages.change,
-        product: emptyMessages.product,
-      })
+      const emptySummary = { today: '', change: '', product: '' }
+      setAiSummary(emptySummary)
+      if (summaryCacheKey && typeof window !== 'undefined') {
+        window.sessionStorage.setItem(
+          summaryCacheKey,
+          JSON.stringify({ summary: emptySummary, hash: computeBoardHash })
+        )
+        setLastSummaryHash(computeBoardHash)
+      }
+      setSummaryStatus('done')
       return
     }
-    if (ensuredEmptyToday || ensuredEmptyChange || ensuredEmptyProduct) {
-      setAiPartialNote(t.aiPartialNote)
-    }
-    setAiLoading(true)
+    setSummaryStatus('running')
     try {
       const entriesPayload = ensuredItems.map((item) => ({
         id: item.id,
@@ -251,7 +287,6 @@ export const ReportPage = ({
         headers: {
           'Content-Type': 'application/json',
           'x-ai-support': aiSupportEnabled ? 'on' : 'off',
-          ...(diagnosticsEnabled ? { 'x-diagnostics': '1' } : {}),
         },
         body: JSON.stringify({
           action: 'report_summary',
@@ -277,17 +312,13 @@ export const ReportPage = ({
       }
       if (!response.ok || !data || data.ok === false || !data.summary) {
         setAiNotice(t.aiUnavailable)
-        setAiSummary({
-          today: emptyMessages.today,
-          change: emptyMessages.change,
-          product: emptyMessages.product,
-        })
+        setSummaryStatus('error')
         return
       }
       const summary = {
-        today: ensuredEmptyToday ? emptyMessages.today : data.summary.today,
-        change: ensuredEmptyChange ? emptyMessages.change : data.summary.change,
-        product: ensuredEmptyProduct ? emptyMessages.product : data.summary.product,
+        today: ensuredEmptyToday ? '' : data.summary.today,
+        change: ensuredEmptyChange ? '' : data.summary.change,
+        product: ensuredEmptyProduct ? '' : data.summary.product,
       }
       setAiSummary(summary)
       if (data.classifications && data.classifications.length) {
@@ -304,17 +335,34 @@ export const ReportPage = ({
         setAiNotice(t.aiUnavailable)
       }
       if (summaryCacheKey && typeof window !== 'undefined') {
-        window.sessionStorage.setItem(summaryCacheKey, JSON.stringify(summary))
+        window.sessionStorage.setItem(
+          summaryCacheKey,
+          JSON.stringify({ summary, hash: computeBoardHash })
+        )
+        setLastSummaryHash(computeBoardHash)
       }
       if (onAiUsage && data.meta) {
         onAiUsage(data.meta)
       }
     } catch {
       setAiNotice(t.aiUnavailable)
+      setSummaryStatus('error')
     } finally {
-      setAiLoading(false)
+      setSummaryStatus((prev) => (prev === 'error' ? 'error' : 'done'))
     }
   }
+
+  const generateSummaryIfNeeded = async () => {
+    if (summaryStatus === 'running') return
+    if (computeBoardHash && lastSummaryHash && computeBoardHash === lastSummaryHash) return
+    if (summaryAutoAttempted.current) return
+    summaryAutoAttempted.current = true
+    await runSummary()
+  }
+
+  useEffect(() => {
+    void generateSummaryIfNeeded()
+  }, [computeBoardHash, lastSummaryHash])
   return (
     <div className="report-page">
       <header className="report-header">
@@ -337,6 +385,8 @@ export const ReportPage = ({
           <button type="button" className="primary" onClick={() => downloadReportCsv(snapshot)}>
             {t.exportCsv}
           </button>
+          {naFillStatus === 'running' && <span className="muted">{t.naAssigning}</span>}
+          {naFillStatus === 'error' && <span className="muted">{t.naAssigningError}</span>}
         </div>
       </header>
 
@@ -389,16 +439,6 @@ export const ReportPage = ({
         <section id="summary" className="report-section">
           <h2>{t.executiveSummary}</h2>
           <div className="report-summary-actions">
-            {diagnosticsEnabled && (
-              <button
-                type="button"
-                className="ghost"
-                onClick={runSummary}
-                disabled={aiLoading || !aiSupportEnabled}
-              >
-                {aiLoading ? t.aiGenerating : aiSummary ? t.aiRegenerate : t.aiGenerate}
-              </button>
-            )}
             {diagnosticsEnabled && summaryUsage && (
               <UsageBadge
                 totalTokens={summaryUsage.totalTokens}
@@ -407,23 +447,38 @@ export const ReportPage = ({
                 locale={language === 'pl' ? 'pl-PL' : 'en-US'}
               />
             )}
+            {summaryStatus === 'running' && <span className="muted">{t.summaryGenerating}</span>}
             {diagnosticsEnabled && aiNotice && <span className="muted">{aiNotice}</span>}
-            {diagnosticsEnabled && aiPartialNote && <span className="muted">{aiPartialNote}</span>}
             {diagnosticsEnabled && !aiSupportEnabled && <span className="muted">{t.aiDisabled}</span>}
             {updateNotice && <span className="muted">{updateNotice}</span>}
           </div>
-          <div className="report-summary-block">
-            <h3>{t.summaryToday}</h3>
-            <p>{aiSummary?.today || t.placeholder}</p>
-          </div>
-          <div className="report-summary-block">
-            <h3>{t.summaryChange}</h3>
-            <p>{aiSummary?.change || t.placeholder}</p>
-          </div>
-          <div className="report-summary-block">
-            <h3>{t.summaryProduct}</h3>
-            <p>{aiSummary?.product || t.placeholder}</p>
-          </div>
+          {Boolean(aiSummary?.today?.trim()) && (
+            <div className="report-summary-block">
+              <h3>{t.summaryToday}</h3>
+              <p>{aiSummary?.today}</p>
+            </div>
+          )}
+          {Boolean(aiSummary?.change?.trim()) && (
+            <div className="report-summary-block">
+              <h3>{t.summaryChange}</h3>
+              <p>{aiSummary?.change}</p>
+            </div>
+          )}
+          {Boolean(aiSummary?.product?.trim()) && (
+            <div className="report-summary-block">
+              <h3>{t.summaryProduct}</h3>
+              <p>{aiSummary?.product}</p>
+            </div>
+          )}
+          {summaryStatus === 'done' &&
+            !aiSummary?.today?.trim() &&
+            !aiSummary?.change?.trim() &&
+            !aiSummary?.product?.trim() && (
+              <div className="report-summary-block">
+                <h3>{t.summaryEmptyTitle}</h3>
+                <p>{t.summaryEmptyBody}</p>
+              </div>
+            )}
         </section>
 
         <section id="map" className="report-section">

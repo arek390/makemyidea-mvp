@@ -96,10 +96,13 @@ export const buildSessionGoalText = ({
 
   const injected =
     lang === 'pl'
-      ? base.replace('surowego pomysłu', `surowego pomysłu na ${productName}`)
-      : base.replace('a raw idea', `the raw idea for ${productName}`)
+      ? base.replace(
+          'surowego pomysłu',
+          `surowego pomysłu dotyczącego produktu „${productName}”`
+        )
+      : base.replace('a raw idea', `the raw idea for “${productName}”`)
 
-  if (injected.length > (lang === 'pl' ? 260 : 240)) return base
+  if (injected.length > (lang === 'pl' ? 280 : 260)) return base
 
   return injected
 }

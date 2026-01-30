@@ -199,6 +199,7 @@ const WORD_LIMIT = 40
 const SHORT_ENTRY_WORDS = 12
 const DEFAULT_IDLE_THRESHOLD_MS = 15000
 const ERASE_EMPTY_SECONDS_STRONG = 10
+const MAX_AUTO_CLASSIFY = 25
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
 const LLM_TOKENS_TOTAL_KEY = 'llm_tokens_total'
 const ENGINE_USAGE_KEY = 'engine_usage_v1'
@@ -492,6 +493,13 @@ type Translations = {
   feedbackReminderText: string
   feedbackReminderSend: string
   feedbackReminderDismiss: string
+  missingLabelModalTitle: string
+  missingLabelModalBody: (count: number) => string
+  missingLabelPrimary: string
+  missingLabelSecondary: string
+  missingLabelHint: string
+  missingLabelBadge: string
+  missingLabelComplete: string
   engineHelpButtonLabel: string
   enginePreviewBoardItemPlaceholder: string
   enginePreviewAddItem: string
@@ -863,6 +871,14 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       'If you have a moment, please send feedback from this session — it really helps us improve.',
     feedbackReminderSend: 'Send feedback via email',
     feedbackReminderDismiss: 'Dismiss',
+    missingLabelModalTitle: 'Some notes are missing labels',
+    missingLabelModalBody: (count) =>
+      `You have ${count} note(s) without a label (idea/risk/question, etc.). Add labels now? It will make your report clearer.`,
+    missingLabelPrimary: "Yes, I’ll label them now",
+    missingLabelSecondary: 'No, go to report',
+    missingLabelHint: 'Click the label dropdown and choose a category.',
+    missingLabelBadge: 'Missing label',
+    missingLabelComplete: 'All set — you can go to the report.',
     engineHelpButtonLabel: 'Show helper actions',
     enginePreviewBoardItemPlaceholder: 'Describe a board item...',
     enginePreviewAddItem: 'Add item',
@@ -1365,6 +1381,14 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       'Jeśli masz chwilę, wyślij nam feedback z tej sesji — bardzo pomoże w dalszym rozwoju.',
     feedbackReminderSend: 'Wyślij feedback e-mailem',
     feedbackReminderDismiss: 'Pomiń',
+    missingLabelModalTitle: 'Brakuje etykiet dla części wpisów',
+    missingLabelModalBody: (count) =>
+      `Na tablicy masz ${count} wpis(ów) bez etykiety (np. pomysł/ryzyko/pytanie). Chcesz uzupełnić etykiety teraz? Dzięki temu raport będzie bardziej czytelny.`,
+    missingLabelPrimary: 'Tak, uzupełnię teraz',
+    missingLabelSecondary: 'Nie, przejdź do raportu',
+    missingLabelHint: 'Kliknij dropdown etykiety i wybierz kategorię.',
+    missingLabelBadge: 'Brak etykiety',
+    missingLabelComplete: 'Gotowe — możesz przejść do raportu.',
     engineHelpButtonLabel: 'Pokaż działania pomocnicze',
     enginePreviewBoardItemPlaceholder: 'Opisz element tablicy...',
     enginePreviewAddItem: 'Dodaj',
@@ -2305,9 +2329,9 @@ function App() {
     group_code?: string
     mode_code?: number
   } | null>(null)
+  const [missingLabelModalOpen, setMissingLabelModalOpen] = useState(false)
+  const [highlightMissingLabels, setHighlightMissingLabels] = useState(false)
   const [naFillStatus, setNaFillStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
-  const [lastNaFillSessionId, setLastNaFillSessionId] = useState<string | null>(null)
-  const [lastNaFillCount, setLastNaFillCount] = useState(0)
   const [feedbackOpen, setFeedbackOpen] = useState(false)
   const [feedbackMessage, setFeedbackMessage] = useState('')
   const [feedbackHoneypot, setFeedbackHoneypot] = useState('')
@@ -2334,6 +2358,8 @@ function App() {
   const engineImportInputRef = useRef<HTMLInputElement | null>(null)
   const engineFacilitationLoadingTimerRef = useRef<number | null>(null)
   const suggestLoadingTimerRef = useRef<number | null>(null)
+  const reportOpenHandledRef = useRef(false)
+  const reportOpenPrevRef = useRef(false)
   const [feedbackReminder, setFeedbackReminder] = useState<{
     sessionId: string | null
     visible: boolean
@@ -2629,6 +2655,15 @@ const isAuthFlowInProgress = () => {
       setShowLanding(false)
     }
   }, [isReport, showLanding])
+
+  useEffect(() => {
+    const wasOpen = reportOpenPrevRef.current
+    if (isReport && !wasOpen) {
+      reportOpenHandledRef.current = false
+      setNaFillStatus('idle')
+    }
+    reportOpenPrevRef.current = isReport
+  }, [isReport])
 
   useEffect(() => {
     if (!isEnginePreview) return
@@ -3999,6 +4034,7 @@ const isAuthFlowInProgress = () => {
     </button>
   )
 
+
   const spaceSectionsStep2 = ['supersystem', 'system', 'subsystem'] as const
   const spaceSectionsStep3 = ['supersystem', 'system', 'subsystem'] as const
 
@@ -4008,12 +4044,23 @@ const isAuthFlowInProgress = () => {
     element.style.height = `${element.scrollHeight}px`
   }
 
-  const limitWords = (value: string, maxWords: number) => {
+const limitWords = (value: string, maxWords: number) => {
     const trimmed = value.trim()
     if (!trimmed) return value
     const words = trimmed.split(/\s+/)
     if (words.length <= maxWords) return value
     return words.slice(0, maxWords).join(' ')
+  }
+
+  const applyTextEditClassification = (item: EngineBoardItem, nextText: string) => {
+    const last = item.lastClassifiedText ?? null
+    const dirty = !last || last !== nextText
+    return { ...item, text: nextText, classificationDirty: dirty }
+  }
+
+  const isMissingLabel = (item: EngineBoardItem) => {
+    const label = String(item.label ?? '').trim()
+    return !label || label.toLowerCase() === 'n/a'
   }
 
   const countWords = (value: string) => {
@@ -5150,6 +5197,8 @@ const isAuthFlowInProgress = () => {
         prompt_type: engineActivePrompt?.type || null,
         matrix_row: mappedRow,
         matrix_col: mappedCol,
+        lastClassifiedText: mappedRow && mappedCol ? text : null,
+        classificationDirty: mappedRow && mappedCol ? false : true,
       }
       setEnginePreviewItems((prev) => [newItem, ...prev])
       setEnginePreviewInput('')
@@ -5324,23 +5373,130 @@ const isAuthFlowInProgress = () => {
     [enginePreviewItems]
   )
 
+  const engineDirtyItems = useMemo(
+    () =>
+      enginePreviewItems.filter((item) => {
+        if (!item.matrix_row || !item.matrix_col) return false
+        if (item.classificationDirty) return true
+        if (typeof item.lastClassifiedText === 'string') {
+          return item.lastClassifiedText !== item.text
+        }
+        return false
+      }),
+    [enginePreviewItems]
+  )
+
+  const missingLabelEntries = useMemo(
+    () => enginePreviewItems.filter((item) => isMissingLabel(item)),
+    [enginePreviewItems]
+  )
+  const missingLabelCount = missingLabelEntries.length
+
+  const missingLabelModal = missingLabelModalOpen ? (
+    <div className="modal" role="dialog" aria-modal="true">
+      <div className="modal-content">
+        <div className="modal-header">
+          <h2>{copy.missingLabelModalTitle}</h2>
+          <button type="button" className="ghost" onClick={() => setMissingLabelModalOpen(false)}>
+            {copy.close}
+          </button>
+        </div>
+        <div className="modal-body">
+          <p>{copy.missingLabelModalBody(missingLabelCount)}</p>
+          <div className="actions">
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                setMissingLabelModalOpen(false)
+                setHighlightMissingLabels(true)
+                const first = missingLabelEntries[0]
+                if (first && typeof window !== 'undefined') {
+                  window.setTimeout(() => {
+                    const element = document.querySelector(
+                      `[data-testid=\"entry-row-${first.id}\"]`
+                    )
+                    if (element && 'scrollIntoView' in element) {
+                      element.scrollIntoView({ behavior: 'smooth', block: 'center' })
+                    }
+                  }, 50)
+                }
+              }}
+            >
+              {copy.missingLabelPrimary}
+            </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                setMissingLabelModalOpen(false)
+                openReportView()
+              }}
+            >
+              {copy.missingLabelSecondary}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null
+
+  useEffect(() => {
+    if (!highlightMissingLabels) return
+    if (missingLabelCount > 0) return
+    showEngineNotice(copy.missingLabelComplete, 'success')
+    setHighlightMissingLabels(false)
+  }, [highlightMissingLabels, missingLabelCount])
+
+  const openReportView = () => {
+    if (typeof window === 'undefined') return
+    const returnPath = window.location.pathname + window.location.search
+    const sessionId = enginePreviewSessionId || ''
+    window.sessionStorage.setItem('reportReturnPath', returnPath)
+    window.sessionStorage.setItem('reportReturnSessionId', sessionId)
+    const existed =
+      sessionId &&
+      window.sessionStorage.getItem(`report_exists::${sessionId}`) === 'true'
+    if (sessionId) {
+      window.sessionStorage.setItem(`report_exists::${sessionId}`, 'true')
+      const sourceUpdatedAt =
+        enginePreviewItems.reduce(
+          (max, item) => Math.max(max, Number(item.created_at || 0)),
+          0
+        ) || 0
+      window.sessionStorage.setItem(
+        `report_source_updated_at::${sessionId}`,
+        String(sourceUpdatedAt)
+      )
+    }
+    window.history.pushState({ newlyCreated: !existed }, '', '/report')
+    setReportViewOpen(true)
+  }
+
+  const handleReportNavigation = () => {
+    if (missingLabelCount > 0) {
+      setMissingLabelModalOpen(true)
+      return
+    }
+    openReportView()
+  }
+
   useEffect(() => {
     if (!isReport) return
     if (!enginePreviewSessionId) return
+    if (reportOpenHandledRef.current) return
     if (engineAssignLoading || naFillStatus === 'running') return
-    if (engineUnassignedItems.length === 0) return
-    const sameSession = lastNaFillSessionId === enginePreviewSessionId
-    const sameCount = lastNaFillCount === engineUnassignedItems.length
-    if (sameSession && sameCount && (naFillStatus === 'done' || naFillStatus === 'error')) return
+    reportOpenHandledRef.current = true
+    const pendingCount = engineUnassignedItems.length + engineDirtyItems.length
+    if (pendingCount === 0) return
     void fillNaAssignments('auto')
   }, [
     isReport,
     enginePreviewSessionId,
     engineUnassignedItems.length,
+    engineDirtyItems.length,
     engineAssignLoading,
     naFillStatus,
-    lastNaFillSessionId,
-    lastNaFillCount,
   ])
 
   const buildSessionDetailForSave = async (): Promise<EngineSessionDetail | null> => {
@@ -5376,7 +5532,11 @@ const isAuthFlowInProgress = () => {
       if (source === 'manual') showEngineNotice('Brak aktywnej sesji.', 'error')
       return
     }
-    if (engineUnassignedItems.length === 0) {
+    const candidates =
+      source === 'auto'
+        ? [...engineUnassignedItems, ...engineDirtyItems]
+        : engineUnassignedItems
+    if (candidates.length === 0) {
       if (source === 'manual') showEngineNotice('Brak wpisów N/A.', 'success')
       return
     }
@@ -5386,10 +5546,10 @@ const isAuthFlowInProgress = () => {
     }
     setEngineAssignLoading(true)
     setNaFillStatus('running')
-    setLastNaFillSessionId(enginePreviewSessionId)
-    setLastNaFillCount(engineUnassignedItems.length)
+    const itemsToClassify =
+      source === 'auto' ? candidates.slice(0, MAX_AUTO_CLASSIFY) : candidates
     try {
-      const items = engineUnassignedItems.map((item) => ({
+      const items = itemsToClassify.map((item) => ({
         id: item.id,
         text: item.text,
       }))
@@ -5457,12 +5617,17 @@ const isAuthFlowInProgress = () => {
       }
       const byId = new Map(assignments.map((entry) => [entry.id, entry.cellCode]))
       const updatedItems = enginePreviewItems.map((item) => {
-        if (item.matrix_row && item.matrix_col) return item
         const cellCode = byId.get(item.id)
         if (!cellCode) return item
         const mapped = cellCodeToMatrix(cellCode)
         if (!mapped?.matrix_row || !mapped?.matrix_col) return item
-        return { ...item, matrix_row: mapped.matrix_row, matrix_col: mapped.matrix_col }
+        return {
+          ...item,
+          matrix_row: mapped.matrix_row,
+          matrix_col: mapped.matrix_col,
+          lastClassifiedText: item.text,
+          classificationDirty: false,
+        }
       })
       setEnginePreviewItems(updatedItems)
       if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
@@ -5475,12 +5640,17 @@ const isAuthFlowInProgress = () => {
         const updatedDetail: EngineSessionDetail = {
           ...detail,
           boardItems: detail.boardItems.map((item) => {
-            if (item.matrix_row && item.matrix_col) return item
             const cellCode = byId.get(item.id)
             if (!cellCode) return item
             const mapped = cellCodeToMatrix(cellCode)
             if (!mapped?.matrix_row || !mapped?.matrix_col) return item
-            return { ...item, matrix_row: mapped.matrix_row, matrix_col: mapped.matrix_col }
+            return {
+              ...item,
+              matrix_row: mapped.matrix_row,
+              matrix_col: mapped.matrix_col,
+              lastClassifiedText: item.text,
+              classificationDirty: false,
+            }
           }),
         }
         await updateSession(updatedDetail)
@@ -5501,7 +5671,6 @@ const isAuthFlowInProgress = () => {
         applyUsageModel(meta)
         void applyUsageToSession(meta, enginePreviewSessionId)
       }
-      setLastNaFillCount(0)
       setNaFillStatus('done')
       if (source === 'manual') {
         showEngineNotice('Uzupełniono wpisy N/A.', 'success')
@@ -5792,7 +5961,7 @@ const isAuthFlowInProgress = () => {
       const updatedDetail: EngineSessionDetail = {
         ...detail,
         boardItems: detail.boardItems.map((item) =>
-          item.id === targetId ? { ...item, text: nextText } : item
+          item.id === targetId ? applyTextEditClassification(item, nextText) : item
         ),
         session: { ...detail.session, updated_at: Date.now() },
       }
@@ -5802,7 +5971,7 @@ const isAuthFlowInProgress = () => {
         return {
           ...prev,
           boardItems: prev.boardItems.map((item) =>
-            item.id === targetId ? { ...item, text: nextText } : item
+            item.id === targetId ? applyTextEditClassification(item, nextText) : item
           ),
         }
       })
@@ -5834,7 +6003,9 @@ const isAuthFlowInProgress = () => {
     if (!nextText) return
     const limited = limitWords(nextText, WORD_LIMIT)
     setEnginePreviewItems((prev) =>
-      prev.map((item) => (item.id === enginePreviewEditId ? { ...item, text: limited } : item))
+      prev.map((item) =>
+        item.id === enginePreviewEditId ? applyTextEditClassification(item, limited) : item
+      )
     )
     if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
       setEngineSessionDetail((prev) =>
@@ -5842,7 +6013,9 @@ const isAuthFlowInProgress = () => {
           ? {
               ...prev,
               boardItems: prev.boardItems.map((item) =>
-                item.id === enginePreviewEditId ? { ...item, text: limited } : item
+                item.id === enginePreviewEditId
+                  ? applyTextEditClassification(item, limited)
+                  : item
               ),
             }
           : prev
@@ -5854,7 +6027,9 @@ const isAuthFlowInProgress = () => {
       const updatedDetail: EngineSessionDetail = {
         ...detail,
         boardItems: detail.boardItems.map((item) =>
-          item.id === enginePreviewEditId ? { ...item, text: limited } : item
+          item.id === enginePreviewEditId
+            ? applyTextEditClassification(item, limited)
+            : item
         ),
         session: { ...detail.session, updated_at: Date.now() },
       }
@@ -6141,6 +6316,7 @@ const isAuthFlowInProgress = () => {
         onBack={handleReportBack}
         aiSupportEnabled={aiSupportEnabled}
         diagnosticsEnabled={showDiagnostics}
+        naFillStatus={naFillStatus}
         onAiUsage={(meta) => {
           applyUsageModel(meta as LlmUsageMeta)
           void applyUsageToSession(meta as LlmUsageMeta, enginePreviewSessionId)
@@ -6586,35 +6762,7 @@ const isAuthFlowInProgress = () => {
                       onClick={() => {
                         markUserInitiatedInteraction('pointer')
                         setEngineLastInputActivityAt(Date.now())
-                        if (typeof window !== 'undefined') {
-                          const returnPath =
-                            window.location.pathname + window.location.search
-                          const sessionId = enginePreviewSessionId || ''
-                          window.sessionStorage.setItem('reportReturnPath', returnPath)
-                          window.sessionStorage.setItem('reportReturnSessionId', sessionId)
-                          const existed =
-                            sessionId &&
-                            window.sessionStorage.getItem(`report_exists::${sessionId}`) ===
-                              'true'
-                          if (sessionId) {
-                            window.sessionStorage.setItem(`report_exists::${sessionId}`, 'true')
-                            const sourceUpdatedAt =
-                              enginePreviewItems.reduce(
-                                (max, item) => Math.max(max, Number(item.created_at || 0)),
-                                0
-                              ) || 0
-                            window.sessionStorage.setItem(
-                              `report_source_updated_at::${sessionId}`,
-                              String(sourceUpdatedAt)
-                            )
-                          }
-                          window.history.pushState(
-                            { newlyCreated: !existed },
-                            '',
-                            '/report'
-                          )
-                          setReportViewOpen(true)
-                        }
+                        handleReportNavigation()
                       }}
                     >
                       {enginePreviewSessionId &&
@@ -7018,6 +7166,9 @@ const isAuthFlowInProgress = () => {
                     {engineAssignLoading ? 'Uzupełniam…' : 'Uzupełnij N/A (AI)'}
                   </button>
                 )}
+                {highlightMissingLabels && missingLabelCount > 0 && (
+                  <span className="engine-missing-label-hint">{copy.missingLabelHint}</span>
+                )}
                 <button
                   type="button"
                   className={`ghost engine-help-trigger engine-facilitation-actions--fade ${
@@ -7246,7 +7397,9 @@ const isAuthFlowInProgress = () => {
                 {orderedEnginePreviewItems.map((item) => (
                   <li
                     key={item.id}
-                    className="engine-entry"
+                    className={`engine-entry ${
+                      highlightMissingLabels && isMissingLabel(item) ? 'missing-label' : ''
+                    }`}
                     data-testid={`entry-row-${item.id}`}
                     onClick={() =>
                       setEngineLabelEditorId((prev) => (prev === item.id ? null : item.id))
@@ -7309,6 +7462,11 @@ const isAuthFlowInProgress = () => {
                         <div className="engine-entry-text">{item.text}</div>
                       )}
                       <div className="engine-entry-label-group">
+                        {highlightMissingLabels && isMissingLabel(item) && (
+                          <span className="engine-entry-missing-badge">
+                            {copy.missingLabelBadge}
+                          </span>
+                        )}
                         <button
                           type="button"
                           className="engine-entry-delete-button engine-entry-action"
@@ -7427,11 +7585,12 @@ const isAuthFlowInProgress = () => {
             </section>
           )}
         </main>
-        {feedbackPanel}
-        {feedbackFab}
-      </div>
-    )
-  }
+          {feedbackPanel}
+          {feedbackFab}
+          {missingLabelModal}
+        </div>
+      )
+    }
 
   if (isWorkInProgress) {
     return withDevOverlay(
@@ -9041,6 +9200,7 @@ const isAuthFlowInProgress = () => {
 
       {feedbackPanel}
       {feedbackFab}
+      {missingLabelModal}
     </div>
   )
 }
