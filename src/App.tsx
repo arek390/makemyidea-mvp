@@ -346,7 +346,8 @@ type Translations = {
   llmSettings: string
   languageLabel: string
   engine: {
-    saveSession: string
+  saveSession: string
+  newSession: string
     saveSuccess: string
     saveRequiresAuth: string
     saveMissingSession: string
@@ -710,7 +711,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     llmSettings: 'LLM settings',
     languageLabel: 'Language',
     engine: {
-      saveSession: 'Save session',
+    saveSession: 'Save session',
+    newSession: 'New session',
       saveSuccess: 'Saved',
       saveRequiresAuth: 'Log in to save sessions.',
       saveMissingSession: 'Start a session before saving.',
@@ -1154,7 +1156,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     llmSettings: 'Ustawienia LLM',
     languageLabel: 'Język',
     engine: {
-      saveSession: 'Zapisz sesję',
+    saveSession: 'Zapisz sesję',
+    newSession: 'Nowa sesja',
       saveSuccess: 'Zapisano',
       saveRequiresAuth: 'Zaloguj się, aby zapisać sesje.',
       saveMissingSession: 'Rozpocznij sesję przed zapisem.',
@@ -5332,20 +5335,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineInputFocused(false)
   }
 
-  const closeEnginePreviewSession = async () => {
-    await flushEngineEntryLabels()
-    const closingSessionId = enginePreviewSessionId
-    logFacilitationEvent('session_closed', {
-      sessionId: enginePreviewSessionId || 'unknown',
-      sessionName: enginePreviewSessionName || null,
-      items: enginePreviewItems.length,
-    })
-    resetEnginePreview()
-    if (closingSessionId) {
-      setFeedbackReminder({ sessionId: closingSessionId, visible: true })
-    }
-  }
-
   const mergeSessionLists = (
     localSessions: EngineSessionSummary[],
     cloudSessions: EngineSessionSummary[]
@@ -5780,6 +5769,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
       showEngineNotice(copy.engine.saveFailed, 'error')
       return false
     }
+  }
+
+  const startNewSession = async () => {
+    if (enginePreviewSessionId) {
+      const saved = await saveCurrentSessionToCloud(true)
+      if (!saved) return
+    }
+    resetEnginePreview()
+    setEngineNameDraft('')
+    setEngineNamePromptOpen(true)
   }
 
   const handleLogout = async () => {
@@ -6433,6 +6432,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 </button>
               </div>
             </div>
+            <div className="auth-option">
+              <p className="auth-option-title">{copy.loginGuestLabel}</p>
+              <div className="actions">
+                <button type="button" className="primary" onClick={handleGuestMode}>
+                  {copy.loginGuestCta}
+                </button>
+              </div>
+              {isGuestActive && !authSession && (
+                <p className="muted auth-guest-note">{copy.loginGuestActive}</p>
+              )}
+            </div>
             <div className="auth-option auth-option--align-actions">
               <label className="auth-option-title" htmlFor="login-email">
                 {copy.loginEmailLabel}
@@ -6517,17 +6527,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   Supabase default SMTP ma bardzo niski limit wysyłek. Jeśli widzisz 429,
                   użyj login hasłem lub Google.
                 </p>
-              )}
-            </div>
-            <div className="auth-option">
-              <p className="auth-option-title">{copy.loginGuestLabel}</p>
-              <div className="actions">
-                <button type="button" className="primary" onClick={handleGuestMode}>
-                  {copy.loginGuestCta}
-                </button>
-              </div>
-              {isGuestActive && !authSession && (
-                <p className="muted auth-guest-note">{copy.loginGuestActive}</p>
               )}
             </div>
           </div>
@@ -6686,6 +6685,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
             >
               {copy.engine.saveSession}
             </button>
+            {enginePreviewSessionId && !engineNamePromptOpen && (
+              <button
+                className="secondary"
+                type="button"
+                onClick={() => {
+                  void startNewSession()
+                }}
+              >
+                {copy.engine.newSession}
+              </button>
+            )}
             <button className="ghost" type="button" onClick={handleLogout}>
               {copy.auth.logout}
             </button>
@@ -6781,7 +6791,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             <div className="engine-panel-header">
               <h1>{copy.enginePreviewSessionTitle}</h1>
               <div className="engine-actions engine-actions-session">
-                {!enginePreviewSessionId && !engineSessionsOpen && (
+                {!enginePreviewSessionId && !engineSessionsOpen && !engineNamePromptOpen && (
                   <button
                     type="button"
                     className="primary"
@@ -6799,18 +6809,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 )}
                 {enginePreviewSessionId && (
                   <div className="engine-actions-group">
-                    <button
-                      type="button"
-                      className="ghost"
-                      data-testid="session-close"
-                      onClick={() => {
-                        markUserInitiatedInteraction('pointer')
-                        setEngineLastInputActivityAt(Date.now())
-                        closeEnginePreviewSession()
-                      }}
-                    >
-                      {copy.enginePreviewReset}
-                    </button>
                     <button
                       type="button"
                       className="ghost"
