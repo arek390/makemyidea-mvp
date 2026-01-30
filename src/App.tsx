@@ -5562,7 +5562,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         ...session,
         updated_at: now,
       },
-      boardItems: localDetail?.boardItems ?? enginePreviewItems,
+      boardItems: normalizeBoardItems(enginePreviewItems),
       askedQuestionIds: localDetail?.askedQuestionIds ?? engineAskedQuestionIds,
     }
   }
