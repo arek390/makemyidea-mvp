@@ -2364,6 +2364,7 @@ function App() {
   const [engineLabelEditorId, setEngineLabelEditorId] = useState<string | null>(null)
   const engineLabelEditorRef = useRef<HTMLDivElement | null>(null)
   const engineLabelCache = useRef<Record<string, string | null>>({})
+  const openSessionDebugOnceRef = useRef(false)
   const engineInputRef = useRef<HTMLTextAreaElement | null>(null)
   const enginePendingFocusRef = useRef(false)
   const enginePendingArmingRef = useRef(false)
@@ -4085,6 +4086,8 @@ const normalizeBoardItem = (item: EngineBoardItem) => {
 
 const normalizeBoardItems = (items: EngineBoardItem[]) => items.map(normalizeBoardItem)
 
+const safeLower = (value: unknown) => String(value ?? '').toLowerCase()
+
 const toTimestamp = (value: unknown, fallback: number) => {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
@@ -4096,7 +4099,7 @@ const toTimestamp = (value: unknown, fallback: number) => {
 
 const isMissingLabel = (item: EngineBoardItem) => {
   const label = String(item.label ?? '').trim()
-  return !label || label.toLowerCase() === 'n/a'
+  return !label || safeLower(label) === 'n/a'
 }
 
   const countWords = (value: string) => {
@@ -4106,7 +4109,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   const containsVaguePhrase = (value: string) => {
-    const lowered = value.toLowerCase()
+    const lowered = safeLower(value)
     return [
       'nie wiem',
       'trudno powiedzieć',
@@ -6407,6 +6410,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
         }
         const now = Date.now()
         const sessionRow = sRes.data as SessionRow
+        const fullItems = await fetchBoardItems(sessionId, userId)
+        if (!openSessionDebugOnceRef.current) {
+          console.log('[openSession] sample item', normalizeBoardItem(fullItems?.[0]))
+          openSessionDebugOnceRef.current = true
+        }
         const sessionSummary: EngineSessionSummary = {
           id: String(sessionRow?.id || sessionId),
           name: sessionRow?.name ?? null,
@@ -6420,9 +6428,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           tokensOutTotal: sessionRow?.tokens_out_total ?? 0,
           cloud_board_items_migrated: true,
         }
-        const normalizedItems = normalizeBoardItems(
-          ((biRes.data || []) as unknown) as EngineBoardItem[]
-        )
+        const normalizedItems = normalizeBoardItems(fullItems)
         const reportSummary: ReportSummary | null = null
         setEngineSessionDetail({
           session: sessionSummary,
