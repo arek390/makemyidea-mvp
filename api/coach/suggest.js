@@ -1,7 +1,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { runLlmTask, createRateLimiter } from '../../llm/llmRouter.mjs'
-import { createClient } from '@supabase/supabase-js'
+import { getSupabaseAdmin } from '../_lib/supabaseAdmin.js'
 import { getSessionState, getSessionStoreType, updateSessionStateRow } from '../../engine/storage/sessionStore.mjs'
 import {
   buildMeta,
@@ -16,20 +16,6 @@ import { buildContextPrompt } from '../../src/lib/llm/contextInterpreter.mjs'
 
 let cachedDataset = null
 const limiter = createRateLimiter({ windowMs: 60_000, max: 20 })
-let cachedSupabaseAdmin = null
-
-const getSupabaseAdmin = () => {
-  if (cachedSupabaseAdmin) return cachedSupabaseAdmin
-  const url = process.env.SUPABASE_URL
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !serviceRoleKey) {
-    throw new Error('SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing.')
-  }
-  cachedSupabaseAdmin = createClient(url, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-  return cachedSupabaseAdmin
-}
 
 const parseCsvRow = (line, delimiter) => {
   const result = []
