@@ -1,13 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { runLlmTask, createRateLimiter } from '../../llm/llmRouter.mjs'
-import {
-  fetchBoardItemsBySessionId,
-  getSessionById,
-  getSessionState,
-  getSessionStoreType,
-  updateSessionStateRow,
-} from '../../engine/storage/sessionStore.mjs'
+import { createClient } from '@supabase/supabase-js'
+import { getSessionState, getSessionStoreType, updateSessionStateRow } from '../../engine/storage/sessionStore.mjs'
 import {
   buildMeta,
   readJsonBody,
@@ -21,6 +16,20 @@ import { buildContextPrompt } from '../../src/lib/llm/contextInterpreter.mjs'
 
 let cachedDataset = null
 const limiter = createRateLimiter({ windowMs: 60_000, max: 20 })
+let cachedSupabaseAdmin = null
+
+const getSupabaseAdmin = () => {
+  if (cachedSupabaseAdmin) return cachedSupabaseAdmin
+  const url = process.env.SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (!url || !serviceRoleKey) {
+    throw new Error('SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY missing.')
+  }
+  cachedSupabaseAdmin = createClient(url, serviceRoleKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  })
+  return cachedSupabaseAdmin
+}
 
 const parseCsvRow = (line, delimiter) => {
   const result = []
@@ -538,6 +547,7 @@ export default async function handler(req, res) {
       return
     }
     const sessionId = String(body.sessionId || '').trim()
+    const currentUserId = String(body.currentUserId || body.userId || '').trim() || null
     if (SUGGEST_DIAG) {
       console.log('[coach/suggest] sessionId received', { requestId, sessionId: sessionId || null })
     }
@@ -545,10 +555,22 @@ export default async function handler(req, res) {
       sendErrorWithId(400, 'SESSION_ID_REQUIRED', 'Session id is required.', 'SESSION_ID_REQUIRED')
       return
     }
-    let sessionExists = false
+    if (!currentUserId) {
+      sendErrorWithId(401, 'AUTH_REQUIRED', 'User authentication required.', 'AUTH_REQUIRED')
+      return
+    }
+    let sessionRow = null
     try {
-      const session = await getSessionById(sessionId)
-      sessionExists = Boolean(session)
+      const supabaseAdmin = getSupabaseAdmin()
+      const { data, error } = await supabaseAdmin
+        .from('sessions')
+        .select('id,user_id')
+        .eq('id', sessionId)
+        .maybeSingle()
+      if (error) {
+        throw error
+      }
+      sessionRow = data || null
     } catch (error) {
       console.error('[coach/suggest][session_lookup_failed]', {
         requestId,
@@ -556,9 +578,13 @@ export default async function handler(req, res) {
       })
     }
     if (SUGGEST_DIAG) {
-      console.log('[coach/suggest] sessionExists', { requestId, sessionId, sessionExists })
+      console.log('[coach/suggest] sessionLookup', {
+        requestId,
+        admin: true,
+        found: Boolean(sessionRow),
+      })
     }
-    if (!sessionExists) {
+    if (!sessionRow) {
       sendErrorWithId(
         404,
         'SESSION_NOT_FOUND',
@@ -567,10 +593,20 @@ export default async function handler(req, res) {
       )
       return
     }
+    if (String(sessionRow.user_id) !== currentUserId) {
+      sendErrorWithId(403, 'FORBIDDEN', 'Access denied.', 'FORBIDDEN')
+      return
+    }
     let boardItemsCount = 0
     try {
-      const boardItems = await fetchBoardItemsBySessionId(sessionId)
-      boardItemsCount = boardItems.length
+      const supabaseAdmin = getSupabaseAdmin()
+      const { data, error, count } = await supabaseAdmin
+        .from('board_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', sessionId)
+      if (error) throw error
+      boardItemsCount =
+        typeof count === 'number' ? count : Array.isArray(data) ? data.length : 0
     } catch (error) {
       console.error('[coach/suggest][board_items_fetch_failed]', {
         requestId,

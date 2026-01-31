@@ -4682,6 +4682,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         method: 'POST',
         headers: llmHeaders,
         body: JSON.stringify({
+          currentUserId: authSession?.user?.id ?? null,
           sessionId: enginePreviewSessionId,
           sessionName,
           boardEntries,
@@ -4914,6 +4915,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         method: 'POST',
         headers: llmHeaders,
         body: JSON.stringify({
+          currentUserId: authSession?.user?.id ?? null,
           sessionId: context.sessionId,
           sessionName,
           language,
@@ -5888,6 +5890,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         method: 'POST',
         headers,
         body: JSON.stringify({
+          currentUserId: authSession?.user?.id ?? null,
           sessionId: enginePreviewSessionId,
           action: 'assign_na',
           locale: uiLanguage === 'Polish' ? 'pl' : 'en',

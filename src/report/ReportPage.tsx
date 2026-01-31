@@ -422,6 +422,7 @@ export const ReportPage = ({
           'x-ai-support': aiSupportEnabled ? 'on' : 'off',
         },
         body: JSON.stringify({
+          currentUserId: userId ?? null,
           sessionId: reportSessionId,
           action: 'report_summary',
           locale: language,
