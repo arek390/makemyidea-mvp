@@ -5197,6 +5197,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
     setEnginePreviewError(null)
     try {
+      if (!authSession?.user?.id) {
+        showEngineNotice('Musisz być zalogowany, aby dodać wpis.', 'error')
+        return
+      }
       const itemId =
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
@@ -5232,13 +5236,36 @@ const isMissingLabel = (item: EngineBoardItem) => {
         lastClassifiedText: mappedRow && mappedCol ? text : null,
         classificationDirty: mappedRow && mappedCol ? false : true,
       }
-      const persistedItem =
-        authSession?.user?.id && client
-          ? await insertBoardItem({
-              ...newItem,
-              session_id: sessionId,
-            })
-          : newItem
+      let persistedItem = newItem
+      if (client) {
+        const userId = authSession.user.id
+        try {
+          persistedItem = await insertBoardItem({
+            ...newItem,
+            user_id: userId,
+            session_id: sessionId,
+          })
+          console.log('[board_items] insert ok', { id: persistedItem.id, sessionId })
+        } catch (error) {
+          const status = (error as { status?: number | null })?.status ?? null
+          console.error('[board_items] insert failed', {
+            status,
+            code: (error as { code?: string | null })?.code,
+            message: (error as { message?: string | null })?.message,
+            details: (error as { details?: string | null })?.details,
+            hint: (error as { hint?: string | null })?.hint,
+            sessionId,
+          })
+          if (status === 403) {
+            showEngineNotice('Brak uprawnień do zapisu (sesja użytkownika).', 'error')
+          } else if (status === 401) {
+            showEngineNotice('Sesja wygasła. Zaloguj się ponownie.', 'error')
+          } else {
+            showEngineNotice('Nie udało się zapisać wpisu.', 'error')
+          }
+          throw error
+        }
+      }
       setEnginePreviewItems((prev) => [persistedItem, ...prev])
       setEnginePreviewInput('')
       setEngineLastInputActivityAt(now)
@@ -6159,17 +6186,21 @@ const isMissingLabel = (item: EngineBoardItem) => {
           data.boardItems.length > 0 &&
           !data.session?.cloud_board_items_migrated
         ) {
-          const migrationPayload = data.boardItems.map((item) => ({
-            ...item,
-            session_id: sessionId,
-            question_text_pl: null,
-            question_text_en: null,
-          }))
-          for (const item of migrationPayload) {
-            try {
-              await insertBoardItem(item)
-            } catch {
-              // ignore per-item errors to avoid blocking
+          const userId = authSession?.user?.id
+          if (userId) {
+            const migrationPayload = data.boardItems.map((item) => ({
+              ...item,
+              user_id: userId,
+              session_id: sessionId,
+              question_text_pl: null,
+              question_text_en: null,
+            }))
+            for (const item of migrationPayload) {
+              try {
+                await insertBoardItem(item)
+              } catch {
+                // ignore per-item errors to avoid blocking
+              }
             }
           }
           if (data.session) {

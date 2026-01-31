@@ -57,6 +57,7 @@ export const fetchBoardItems = async (
 
 export const insertBoardItem = async (
   item: EngineBoardItem & {
+    user_id: string
     session_id: string
     question_text_pl?: string | null
     question_text_en?: string | null
@@ -69,6 +70,7 @@ export const insertBoardItem = async (
     .from('board_items')
     .insert({
       id: item.id,
+      user_id: item.user_id,
       session_id: item.session_id,
       type: item.type,
       text: item.text,
@@ -85,7 +87,7 @@ export const insertBoardItem = async (
       classification_dirty: item.classificationDirty ?? null,
     })
     .select(
-      'id,session_id,type,text,label,question_id,question_text_pl,question_text_en,created_at,entry_type,prompt_type,matrix_row,matrix_col,last_classified_text,classification_dirty'
+      'id,user_id,session_id,type,text,label,question_id,question_text_pl,question_text_en,created_at,entry_type,prompt_type,matrix_row,matrix_col,last_classified_text,classification_dirty'
     )
     .single()
   if (error) throw error

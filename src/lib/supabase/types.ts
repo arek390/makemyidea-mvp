@@ -4,6 +4,7 @@ export type Database = {
       board_items: {
         Row: {
           id: string
+          user_id: string
           session_id: string
           type: string
           text: string
@@ -21,6 +22,7 @@ export type Database = {
         }
         Insert: {
           id?: string
+          user_id: string
           session_id: string
           type: string
           text: string
@@ -38,6 +40,7 @@ export type Database = {
         }
         Update: {
           id?: string
+          user_id?: string
           session_id?: string
           type?: string
           text?: string
