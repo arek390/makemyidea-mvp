@@ -560,6 +560,7 @@ export default async function handler(req, res) {
       return
     }
     let sessionRow = null
+    let sessionLookupError = null
     try {
       const supabaseAdmin = getSupabaseAdmin()
       const { data, error } = await supabaseAdmin
@@ -568,14 +569,12 @@ export default async function handler(req, res) {
         .eq('id', sessionId)
         .maybeSingle()
       if (error) {
-        throw error
+        sessionLookupError = error
+      } else {
+        sessionRow = data || null
       }
-      sessionRow = data || null
     } catch (error) {
-      console.error('[coach/suggest][session_lookup_failed]', {
-        requestId,
-        message: error?.message,
-      })
+      sessionLookupError = error
     }
     if (SUGGEST_DIAG) {
       console.log('[coach/suggest] sessionLookup', {
@@ -584,12 +583,55 @@ export default async function handler(req, res) {
         found: Boolean(sessionRow),
       })
     }
+    if (sessionLookupError) {
+      console.error('[coach/suggest][session_lookup_failed]', {
+        requestId,
+        message: sessionLookupError?.message,
+        code: sessionLookupError?.code,
+        details: sessionLookupError?.details,
+      })
+      sendErrorWithId(500, 'SESSION_LOOKUP_FAILED', 'Session lookup failed.', 'SERVER_ERROR', {
+        sessionId,
+        usedAdmin: true,
+        envHost: process.env.SUPABASE_URL
+          ? (() => {
+              try {
+                return new URL(process.env.SUPABASE_URL).host
+              } catch {
+                return null
+              }
+            })()
+          : null,
+        hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+        supabaseError: {
+          code: sessionLookupError?.code ?? null,
+          message: sessionLookupError?.message ?? null,
+          details: sessionLookupError?.details ?? null,
+        },
+      })
+      return
+    }
     if (!sessionRow) {
       sendErrorWithId(
         404,
         'SESSION_NOT_FOUND',
         'Session not found. Create a session first.',
-        'SESSION_NOT_FOUND'
+        'SESSION_NOT_FOUND',
+        {
+          sessionId,
+          usedAdmin: true,
+          envHost: process.env.SUPABASE_URL
+            ? (() => {
+                try {
+                  return new URL(process.env.SUPABASE_URL).host
+                } catch {
+                  return null
+                }
+              })()
+            : null,
+          hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+          sessionLookupError: null,
+        }
       )
       return
     }
