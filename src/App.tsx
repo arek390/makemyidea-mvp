@@ -2245,6 +2245,8 @@ function App() {
   const [enginePreviewSessionName, setEnginePreviewSessionName] = useState('')
   const [engineNamePromptOpen, setEngineNamePromptOpen] = useState(false)
   const [engineNameDraft, setEngineNameDraft] = useState('')
+  const [engineNameError, setEngineNameError] = useState<string | null>(null)
+  const [engineNameSaving, setEngineNameSaving] = useState(false)
   const [enginePreviewItems, setEnginePreviewItems] = useState<EngineBoardItem[]>([])
   const [enginePreviewInput, setEnginePreviewInput] = useState('')
   const [engineUiState, setEngineUiState] = useState<
@@ -5128,7 +5130,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   }
 
-  const ensureEnginePreviewSession = async (nameOverride?: string) => {
+  const ensureEnginePreviewSession = async (
+    nameOverride?: string,
+    options?: { onNameCollision?: () => void }
+  ) => {
     if (enginePreviewSessionId) return enginePreviewSessionId
     const name = (nameOverride ?? enginePreviewSessionName)?.trim()
     if (!name) {
@@ -5164,7 +5169,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         )
         console.log('[createSession] nameCollision', hasCollision)
         if (hasCollision) {
-          showEngineNotice('Masz już sesję o tej nazwie. Podaj inną nazwę.', 'error')
+          options?.onNameCollision?.()
           return null
         }
         if (typeof crypto === 'undefined' || !('randomUUID' in crypto)) {
@@ -5179,7 +5184,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         if (se) {
           const code = (se as { code?: string | null })?.code ?? null
           if (code === '23505') {
-            showEngineNotice('Masz już sesję o tej nazwie. Podaj inną nazwę.', 'error')
+            options?.onNameCollision?.()
           } else {
             const message = (se as { message?: string | null })?.message ?? 'Request failed'
             showEngineNotice(`Nie udało się utworzyć sesji. ${message}`, 'error')
@@ -7899,29 +7904,83 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   <input
                     data-testid="session-name-input"
                     value={engineNameDraft}
-                    onChange={(event) => setEngineNameDraft(event.target.value.slice(0, 40))}
+                    onChange={(event) => {
+                      setEngineNameDraft(event.target.value.slice(0, 40))
+                      if (engineNameError) setEngineNameError(null)
+                    }}
                     placeholder={copy.engineNamePlaceholder}
                   />
                 </label>
                 <div className="engine-facilitation-actions">
+                  {engineNameError && (
+                    <span className="text-sm text-red-600">{engineNameError}</span>
+                  )}
                   <button
                     type="button"
                     className="primary"
                     data-testid="session-name-save"
+                    disabled={engineNameSaving}
                     onClick={async () => {
                       markUserInitiatedInteraction('pointer')
                       setEngineLastInputActivityAt(Date.now())
+                      if (engineNameSaving) return
                       const name = engineNameDraft.trim().replace(/\s+/g, ' ')
-                      if (!name) return
+                      if (!name) {
+                        setEngineNameError('Podaj nazwę sesji.')
+                        return
+                      }
+                      setEngineNameSaving(true)
+                      setEngineNameError(null)
+                      if (authSession?.user?.id && client) {
+                        const { data: u } = await client.auth.getUser()
+                        const userId = u?.user?.id ?? null
+                        if (!userId) {
+                          showEngineNotice(
+                            'Sesja logowania wygasła. Zaloguj się ponownie.',
+                            'error'
+                          )
+                          setEngineNameSaving(false)
+                          return
+                        }
+                        const { data: existingByName } = await client
+                          .from('sessions')
+                          .select('id,name')
+                          .eq('user_id', userId)
+                        const normalizedName = name.trim().toLowerCase()
+                        const hasCollision = Boolean(
+                          (existingByName || []).some((row) => {
+                            const dbName = String(
+                              (row as { name?: string | null }).name ?? ''
+                            )
+                              .trim()
+                              .toLowerCase()
+                            return dbName === normalizedName
+                          })
+                        )
+                        console.log('[createSession] nameCollision', hasCollision)
+                        if (hasCollision) {
+                          setEngineNameError('Taka nazwa już istnieje — zmień nazwę.')
+                          setEngineNameSaving(false)
+                          return
+                        }
+                      }
                       armIdleWatch('save_and_continue')
                       engineInteractionBySession.current['new'] = true
                       setEngineInputFocused(true)
                       setEngineUiState('FREE_FLOW')
                       enginePendingArmingRef.current = true
                       enginePendingFocusRef.current = true
+                      const sessionId = await ensureEnginePreviewSession(name, {
+                        onNameCollision: () =>
+                          setEngineNameError('Taka nazwa już istnieje — zmień nazwę.'),
+                      })
+                      if (!sessionId) {
+                        setEngineNameSaving(false)
+                        return
+                      }
                       setEnginePreviewSessionName(name)
                       setEngineNamePromptOpen(false)
-                      const sessionId = await ensureEnginePreviewSession(name)
+                      setEngineNameSaving(false)
                       if (sessionId) {
                         engineInteractionBySession.current[sessionId] = true
                         setEngineLastInputActivityAt(Date.now())
