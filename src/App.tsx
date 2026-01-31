@@ -2247,6 +2247,7 @@ function App() {
   const [engineNameDraft, setEngineNameDraft] = useState('')
   const [engineNameError, setEngineNameError] = useState<string | null>(null)
   const [engineNameSaving, setEngineNameSaving] = useState(false)
+  const [resumeNamePromptAfterList, setResumeNamePromptAfterList] = useState(false)
   const [enginePreviewItems, setEnginePreviewItems] = useState<EngineBoardItem[]>([])
   const [enginePreviewInput, setEnginePreviewInput] = useState('')
   const [engineUiState, setEngineUiState] = useState<
@@ -7638,6 +7639,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       const openList = async () => {
                         if (next) await flushEngineEntryLabels()
                         setEngineSessionsOpen(next)
+                        if (next) {
+                          if (engineNamePromptOpen) {
+                            setResumeNamePromptAfterList(true)
+                            setEngineNamePromptOpen(false)
+                          }
+                          if (engineNameError) setEngineNameError(null)
+                        } else if (!enginePreviewSessionId && resumeNamePromptAfterList) {
+                          setEngineNamePromptOpen(true)
+                          setResumeNamePromptAfterList(false)
+                        }
                         if (next) fetchEngineSessions()
                       }
                       void openList()

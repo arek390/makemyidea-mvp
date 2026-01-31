@@ -66,6 +66,19 @@ const ensureSessionStateColumns = () => {
 const createSqliteStore = () => {
   const store = {
     type: 'sqlite',
+    getSessionById: (sessionId) => {
+      if (!sessionId) return null
+      const db = getEngineDb()
+      ensureSessionsColumns()
+      return db
+        .prepare(
+          `SELECT id, name, created_at, updated_at, last_group_code, last_mode_code, last_category_code, stuck_counter,
+                  tokens_in_total, tokens_out_total
+           FROM sessions WHERE id = @id`
+        )
+        .get({ id: sessionId })
+    },
+    fetchBoardItemsBySessionId: () => [],
     ensureSessionExists: (sessionId) => {
       if (!sessionId) return null
       const db = getEngineDb()
@@ -173,6 +186,29 @@ const createSqliteStore = () => {
 const createSupabaseStore = () => {
   const store = {
     type: 'supabase',
+    getSessionById: async (sessionId) => {
+      if (!sessionId) return null
+      const client = getSupabaseClient()
+      const { data, error } = await client
+        .from('sessions')
+        .select(
+          'id, name, created_at, updated_at, last_group_code, last_mode_code, last_category_code, stuck_counter, tokens_in_total, tokens_out_total'
+        )
+        .eq('id', sessionId)
+        .maybeSingle()
+      if (error) throw error
+      return data || null
+    },
+    fetchBoardItemsBySessionId: async (sessionId) => {
+      if (!sessionId) return []
+      const client = getSupabaseClient()
+      const { data, error } = await client
+        .from('board_items')
+        .select('id, session_id, user_id')
+        .eq('session_id', sessionId)
+      if (error) throw error
+      return data || []
+    },
     ensureSessionExists: async (sessionId) => {
       if (!sessionId) return null
       const client = getSupabaseClient()
@@ -279,6 +315,16 @@ export const getSessionStore = () => {
 export const ensureSessionState = async (sessionId) => {
   const store = getSessionStore()
   return store.ensureSessionState(sessionId)
+}
+
+export const getSessionById = async (sessionId) => {
+  const store = getSessionStore()
+  return store.getSessionById(sessionId)
+}
+
+export const fetchBoardItemsBySessionId = async (sessionId) => {
+  const store = getSessionStore()
+  return store.fetchBoardItemsBySessionId(sessionId)
 }
 
 export const getSessionState = async (sessionId) => {

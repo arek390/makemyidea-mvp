@@ -2,7 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { runLlmTask, createRateLimiter } from '../../llm/llmRouter.mjs'
 import {
-  ensureSessionState,
+  fetchBoardItemsBySessionId,
+  getSessionById,
   getSessionState,
   getSessionStoreType,
   updateSessionStateRow,
@@ -535,6 +536,43 @@ export default async function handler(req, res) {
       sendErrorWithId(400, 'BAD_REQUEST', 'Invalid JSON body', !body ? 'INVALID_JSON' : 'EMPTY_BODY')
       return
     }
+    const sessionId = String(body.sessionId || '').trim()
+    console.log('[coach/suggest] sessionId', { requestId, sessionId: sessionId || null })
+    if (!sessionId) {
+      sendErrorWithId(400, 'SESSION_ID_REQUIRED', 'Session id is required.', 'SESSION_ID_REQUIRED')
+      return
+    }
+    let sessionExists = false
+    try {
+      const session = await getSessionById(sessionId)
+      sessionExists = Boolean(session)
+    } catch (error) {
+      console.error('[coach/suggest][session_lookup_failed]', {
+        requestId,
+        message: error?.message,
+      })
+    }
+    console.log('[coach/suggest] sessionExists', { requestId, sessionId, sessionExists })
+    if (!sessionExists) {
+      sendErrorWithId(
+        404,
+        'SESSION_NOT_FOUND',
+        'Session not found. Create a session first.',
+        'SESSION_NOT_FOUND'
+      )
+      return
+    }
+    let boardItemsCount = 0
+    try {
+      const boardItems = await fetchBoardItemsBySessionId(sessionId)
+      boardItemsCount = boardItems.length
+    } catch (error) {
+      console.error('[coach/suggest][board_items_fetch_failed]', {
+        requestId,
+        message: error?.message,
+      })
+    }
+    console.log('[coach/suggest] boardItemsCount', { requestId, sessionId, boardItemsCount })
     logStage('route')
     const aiSupportEnabled = resolveAiSupportEnabled(req, body)
     const diagnosticsEnabled = await resolveDiagnosticsEnabled(req, res)
@@ -992,7 +1030,6 @@ export default async function handler(req, res) {
       cellPointers: {},
     }
     if (body.sessionId) {
-      await ensureSessionState(body.sessionId)
       const sessionState = await getSessionState(body.sessionId)
       if (sessionState) {
         const storedCell =
