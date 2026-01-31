@@ -6265,6 +6265,71 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineEditText('')
     try {
       if (authSession?.user?.id && client) {
+        // IMPORTANT: boardItems in user_sessions.payload are legacy only.
+        // After migration, board state MUST come from Supabase board_items.
+        const maybeMigrateLegacyBoardItems = async (
+          targetSessionId: string,
+          userId: string,
+          supabaseClient: NonNullable<typeof client>
+        ) => {
+          const { data: us, error } = await supabaseClient
+            .from('user_sessions')
+            .select('payload')
+            .eq('user_id', userId)
+            .eq('session_id', targetSessionId)
+            .single()
+          if (error || !us) return
+          const payload = us.payload as { boardItems?: unknown[]; boardItemsMigrated?: boolean } | null
+          if (!payload || payload.boardItemsMigrated) return
+          const legacyItems = Array.isArray(payload.boardItems) ? payload.boardItems : []
+          if (!legacyItems.length) return
+          const rows = legacyItems
+            .map((item) => {
+              const entry = item as {
+                text?: string | null
+                label?: string | null
+                matrixRow?: string | null
+                matrixCol?: string | null
+                questionId?: string | null
+                questionTextPl?: string | null
+                questionTextEn?: string | null
+              }
+              return {
+                user_id: userId,
+                session_id: targetSessionId,
+                text: String(entry.text ?? '').trim(),
+                label: entry.label ?? null,
+                matrix_row: entry.matrixRow ?? null,
+                matrix_col: entry.matrixCol ?? null,
+                question_id: entry.questionId ?? null,
+                question_text_pl: entry.questionTextPl ?? null,
+                question_text_en: entry.questionTextEn ?? null,
+              }
+            })
+            .filter((row) => row.text.length > 0)
+          if (!rows.length) return
+          for (let i = 0; i < rows.length; i += 50) {
+            const batch = rows.slice(i, i + 50)
+            const { error: insertError } = await supabaseClient
+              .from('board_items')
+              .insert(batch)
+            if (insertError) {
+              console.error('[migrateBoardItems] insert failed', insertError)
+              return
+            }
+          }
+          await supabaseClient
+            .from('user_sessions')
+            .update({
+              payload: {
+                ...(payload || {}),
+                boardItemsMigrated: true,
+              },
+            })
+            .eq('user_id', userId)
+            .eq('session_id', targetSessionId)
+          console.log('[migrateBoardItems] migrated', rows.length)
+        }
         console.log('[openSession] click', { sessionId })
         const { data: u, error: ue } = await client.auth.getUser()
         const userId = u?.user?.id ?? null
@@ -6397,6 +6462,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
           return
         }
         console.log('[openSession] board_items sample keys', biRes.data?.[0] ? Object.keys(biRes.data[0]) : [])
+        if ((biRes.data?.length ?? 0) === 0) {
+          await maybeMigrateLegacyBoardItems(sessionId, userId, client)
+        }
         const rRes = await client
           .from('reports')
           .select('id,session_id,created_at,updated_at')
