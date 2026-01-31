@@ -483,6 +483,7 @@ export default async function handler(req, res) {
       meta: { ...(meta || {}), errorCategory },
     })
   }
+  const SUGGEST_DIAG = process.env.SUGGEST_DIAG === '1'
   console.log('[coach/suggest][boot]', {
     requestId,
     time: new Date().toISOString(),
@@ -537,7 +538,9 @@ export default async function handler(req, res) {
       return
     }
     const sessionId = String(body.sessionId || '').trim()
-    console.log('[coach/suggest] sessionId received', { requestId, sessionId: sessionId || null })
+    if (SUGGEST_DIAG) {
+      console.log('[coach/suggest] sessionId received', { requestId, sessionId: sessionId || null })
+    }
     if (!sessionId) {
       sendErrorWithId(400, 'SESSION_ID_REQUIRED', 'Session id is required.', 'SESSION_ID_REQUIRED')
       return
@@ -552,7 +555,9 @@ export default async function handler(req, res) {
         message: error?.message,
       })
     }
-    console.log('[coach/suggest] sessionExists', { requestId, sessionId, sessionExists })
+    if (SUGGEST_DIAG) {
+      console.log('[coach/suggest] sessionExists', { requestId, sessionId, sessionExists })
+    }
     if (!sessionExists) {
       sendErrorWithId(
         404,
@@ -572,7 +577,9 @@ export default async function handler(req, res) {
         message: error?.message,
       })
     }
-    console.log('[coach/suggest] boardItemsCount', { requestId, sessionId, boardItemsCount })
+    if (SUGGEST_DIAG) {
+      console.log('[coach/suggest] boardItemsCount', { requestId, sessionId, boardItemsCount })
+    }
     logStage('route')
     const aiSupportEnabled = resolveAiSupportEnabled(req, body)
     const diagnosticsEnabled = await resolveDiagnosticsEnabled(req, res)

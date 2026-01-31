@@ -2097,6 +2097,8 @@ function App() {
   } | null>(null)
   const isAdmin = useMemo(() => isAdminUser(authSession), [authSession])
   const diagnosticsEnabledForUser = isAdmin && diagnosticsEnabled
+  const suggestDiagEnabled =
+    import.meta.env.VITE_SUGGEST_DIAG === '1' || diagnosticsEnabledForUser
   const showDiagnostics = diagnosticsEnabledForUser
   const llmHeaders = useMemo(
     () => {
@@ -4631,6 +4633,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
       showEngineNotice('Najpierw utwórz sesję.', 'error')
       return
     }
+    if (suggestDiagEnabled) {
+      console.log('[suggest][client] preflight', {
+        source: 'impulse',
+        sessionId: enginePreviewSessionId,
+        sessionPersisted: engineSessionPersisted,
+      })
+    }
     setIsSuggestLoading(true)
     setShowSuggestLoadingUI(false)
     setImpulseQuestion(null)
@@ -4849,6 +4858,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (!engineSessionPersisted || !enginePreviewSessionId) {
       setEngineFacilitationInlineError('Najpierw utwórz sesję.')
       return
+    }
+    if (suggestDiagEnabled) {
+      console.log('[suggest][client] preflight', {
+        source: 'facilitation',
+        sessionId: enginePreviewSessionId,
+        sessionPersisted: engineSessionPersisted,
+      })
     }
     if (!enginePreviewSessionId) return
     if (engineFacilitationLoading) return
@@ -5819,6 +5835,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
         showEngineNotice('Najpierw utwórz sesję.', 'error')
       }
       return
+    }
+    if (suggestDiagEnabled) {
+      console.log('[suggest][client] preflight', {
+        source: 'assign_na',
+        sessionId: enginePreviewSessionId,
+        sessionPersisted: engineSessionPersisted,
+      })
     }
     const candidates =
       source === 'auto'

@@ -405,7 +405,16 @@ export const ReportPage = ({
         text: item.text,
         currentCellId: cellIdFor(item),
       }))
-      console.log('[suggest] sessionId', { sessionId: reportSessionId })
+      if (!reportSessionId) {
+        setAiNotice(t.aiUnavailable)
+        setSummaryStatus('error')
+        return
+      }
+      console.log('[suggest][client] preflight', {
+        source: 'report_summary',
+        sessionId: reportSessionId,
+        sessionPersisted: true,
+      })
       const response = await fetch('/api/coach/suggest', {
         method: 'POST',
         headers: {
