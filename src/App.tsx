@@ -5473,6 +5473,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (typeof window === 'undefined') return
     const returnPath = window.location.pathname + window.location.search
     const sessionId = enginePreviewSessionId || ''
+    if (!sessionId) return
     window.sessionStorage.setItem('reportReturnPath', returnPath)
     window.sessionStorage.setItem('reportReturnSessionId', sessionId)
     const hasDbReport = Boolean(reportRecords[sessionId]?.id)
@@ -5483,29 +5484,42 @@ const isMissingLabel = (item: EngineBoardItem) => {
           sessionId &&
           window.sessionStorage.getItem(`report_exists::${sessionId}`) === 'true')
     if (sessionId) {
-      const sourceUpdatedAt =
-        enginePreviewItems.reduce(
-          (max, item) => Math.max(max, Number(item.created_at || 0)),
-          0
-        ) || 0
       if (authSession?.user?.id) {
         try {
+          const sourceUpdatedAt =
+            enginePreviewItems.reduce(
+              (max, item) => Math.max(max, Number(item.created_at || 0)),
+              0
+            ) || 0
           const ensured = await ensureReportExists(sessionId, sourceUpdatedAt)
           setReportRecords((prev) => ({ ...prev, [sessionId]: ensured }))
+          const existedAfterEnsure = Boolean(hasDbReport || ensured?.id)
+          window.history.pushState({ newlyCreated: !existedAfterEnsure }, '', '/report')
+          setReportViewOpen(true)
+          return
         } catch (error) {
-          if (import.meta.env.DEV) {
-            console.error('[report] failed to ensure report', error)
-          }
+          const message = error instanceof Error ? error.message : 'unknown'
+          console.error('[report] ensure failed', { sessionId, message })
+          showEngineNotice(
+            'Nie udało się utworzyć/otworzyć raportu. Sprawdź połączenie lub uprawnienia.',
+            'error'
+          )
+          return
         }
       } else if (isGuestMode()) {
         window.sessionStorage.setItem(`report_exists::${sessionId}`, 'true')
+        const sourceUpdatedAt =
+          enginePreviewItems.reduce(
+            (max, item) => Math.max(max, Number(item.created_at || 0)),
+            0
+          ) || 0
         window.sessionStorage.setItem(
           `report_source_updated_at::${sessionId}`,
           String(sourceUpdatedAt)
         )
-      }
-      if (!existed) {
-        void markReportCreated(sessionId)
+        if (!existed) {
+          void markReportCreated(sessionId)
+        }
       }
     }
     window.history.pushState({ newlyCreated: !existed }, '', '/report')
@@ -5875,6 +5889,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
       return
     }
     if (!client) return
+    if (Object.prototype.hasOwnProperty.call(reportRecords, enginePreviewSessionId)) {
+      return
+    }
     let cancelled = false
     ;(async () => {
       try {
@@ -5886,15 +5903,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
         if (!cancelled) {
           setReportRecords((prev) => ({ ...prev, [enginePreviewSessionId]: null }))
         }
-        if (import.meta.env.DEV) {
-          console.error('[report] failed to fetch report', error)
-        }
+        const message = error instanceof Error ? error.message : 'unknown'
+        console.error('[report] failed to fetch report', {
+          sessionId: enginePreviewSessionId,
+          message,
+        })
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [enginePreviewSessionId, authSession?.user?.id])
+  }, [enginePreviewSessionId, authSession?.user?.id, reportRecords])
 
   const getReportMetaForSession = (sessionId: string | null) => {
     if (!sessionId) return null
@@ -5942,9 +5961,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
         const ensured = await ensureReportExists(sessionId, sourceUpdatedAt)
         setReportRecords((prev) => ({ ...prev, [sessionId]: ensured }))
       } catch (error) {
-        if (import.meta.env.DEV) {
-          console.error('[report] failed to ensure report', error)
-        }
+        const message = error instanceof Error ? error.message : 'unknown'
+        console.error('[report] ensure failed', { sessionId, message })
       }
     }
     const existing = detail.report || null
