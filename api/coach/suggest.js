@@ -561,6 +561,28 @@ export default async function handler(req, res) {
     }
     let sessionRow = null
     let sessionLookupError = null
+    let rawCount = null
+    let rawListError = null
+    const envHost = process.env.SUPABASE_URL
+      ? (() => {
+          try {
+            return new URL(process.env.SUPABASE_URL).host
+          } catch {
+            return null
+          }
+        })()
+      : null
+    const diag = {
+      envHost,
+      hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+      receivedSessionId: sessionId,
+      sessionFound: false,
+      sessionEcho: null,
+      sessionLookupError: null,
+      rawCount: null,
+      rawListError: null,
+      usedAdmin: true,
+    }
     try {
       const supabaseAdmin = getSupabaseAdmin()
       const { data, error } = await supabaseAdmin
@@ -572,6 +594,20 @@ export default async function handler(req, res) {
         sessionLookupError = error
       } else {
         sessionRow = data || null
+        if (sessionRow) {
+          diag.sessionFound = true
+          diag.sessionEcho = { id: sessionRow.id ?? null, user_id: sessionRow.user_id ?? null }
+        }
+      }
+      const rawRes = await supabaseAdmin
+        .from('sessions')
+        .select('id', { count: 'exact' })
+        .eq('id', sessionId)
+      if (rawRes.error) {
+        rawListError = rawRes.error
+      } else {
+        rawCount = typeof rawRes.count === 'number' ? rawRes.count : (rawRes.data || []).length
+        diag.rawCount = rawCount
       }
     } catch (error) {
       sessionLookupError = error
@@ -583,56 +619,32 @@ export default async function handler(req, res) {
         found: Boolean(sessionRow),
       })
     }
-    if (sessionLookupError) {
+    if (sessionLookupError || rawListError) {
+      diag.sessionLookupError = sessionLookupError
+        ? {
+            code: sessionLookupError?.code ?? null,
+            message: sessionLookupError?.message ?? null,
+            details: sessionLookupError?.details ?? null,
+          }
+        : null
+      diag.rawListError = rawListError
+        ? {
+            code: rawListError?.code ?? null,
+            message: rawListError?.message ?? null,
+            details: rawListError?.details ?? null,
+          }
+        : null
       console.error('[coach/suggest][session_lookup_failed]', {
         requestId,
         message: sessionLookupError?.message,
         code: sessionLookupError?.code,
         details: sessionLookupError?.details,
       })
-      sendErrorWithId(500, 'SESSION_LOOKUP_FAILED', 'Session lookup failed.', 'SERVER_ERROR', {
-        sessionId,
-        usedAdmin: true,
-        envHost: process.env.SUPABASE_URL
-          ? (() => {
-              try {
-                return new URL(process.env.SUPABASE_URL).host
-              } catch {
-                return null
-              }
-            })()
-          : null,
-        hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-        supabaseError: {
-          code: sessionLookupError?.code ?? null,
-          message: sessionLookupError?.message ?? null,
-          details: sessionLookupError?.details ?? null,
-        },
-      })
+      sendErrorWithId(500, 'DB_LOOKUP_FAILED', 'Session lookup failed.', 'SERVER_ERROR', diag)
       return
     }
     if (!sessionRow) {
-      sendErrorWithId(
-        404,
-        'SESSION_NOT_FOUND',
-        'Session not found. Create a session first.',
-        'SESSION_NOT_FOUND',
-        {
-          sessionId,
-          usedAdmin: true,
-          envHost: process.env.SUPABASE_URL
-            ? (() => {
-                try {
-                  return new URL(process.env.SUPABASE_URL).host
-                } catch {
-                  return null
-                }
-              })()
-            : null,
-          hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
-          sessionLookupError: null,
-        }
-      )
+      sendErrorWithId(404, 'SESSION_NOT_FOUND', 'Session not found. Create a session first.', 'SESSION_NOT_FOUND', diag)
       return
     }
     if (String(sessionRow.user_id) !== currentUserId) {
