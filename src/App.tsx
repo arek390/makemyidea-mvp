@@ -6366,7 +6366,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         }
         const biRes = await client
           .from('board_items')
-          .select('id,session_id,user_id,created_at')
+          .select('id,session_id,user_id,text,label,matrix_row,matrix_col,question_id,question_text_pl,question_text_en,created_at')
           .eq('user_id', userId)
           .eq('session_id', sessionId)
           .order('created_at', { ascending: true })
@@ -6381,12 +6381,22 @@ const isMissingLabel = (item: EngineBoardItem) => {
             : null,
         })
         if (biRes.error) {
+          console.error('[board_items] query failed', {
+            status: (biRes.error as { status?: number | null })?.status,
+            code: (biRes.error as { code?: string | null })?.code,
+            message: (biRes.error as { message?: string | null })?.message,
+            details: (biRes.error as { details?: string | null })?.details,
+            hint: (biRes.error as { hint?: string | null })?.hint,
+          })
+        }
+        if (biRes.error) {
           showEngineNotice(
             `Open session failed: ${(biRes.error as { status?: number | null })?.status ?? 'n/a'}/${(biRes.error as { code?: string | null })?.code ?? 'n/a'}.`,
             'error'
           )
           return
         }
+        console.log('[openSession] board_items sample keys', biRes.data?.[0] ? Object.keys(biRes.data[0]) : [])
         const rRes = await client
           .from('reports')
           .select('id,session_id,created_at,updated_at')

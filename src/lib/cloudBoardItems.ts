@@ -46,11 +46,20 @@ export const fetchBoardItems = async (
   const { data, error } = await typedSupabase
     .from('board_items')
     .select(
-      'id,session_id,type,text,label,question_id,question_text_pl,question_text_en,created_at,entry_type,prompt_type,matrix_row,matrix_col,last_classified_text,classification_dirty'
+      'id,session_id,user_id,text,label,matrix_row,matrix_col,question_id,question_text_pl,question_text_en,created_at'
     )
     .eq('session_id', sessionId)
     .order('created_at', { ascending: false })
-  if (error) throw error
+  if (error) {
+    console.error('[board_items] query failed', {
+      status: (error as { status?: number | null })?.status,
+      code: (error as { code?: string | null })?.code,
+      message: (error as { message?: string | null })?.message,
+      details: (error as { details?: string | null })?.details,
+      hint: (error as { hint?: string | null })?.hint,
+    })
+    throw error
+  }
   if (!data) return []
   const items = (data as BoardItemRow[]).map(normalizeRow)
   console.log('[board_items] fetched', {
@@ -112,5 +121,14 @@ export const updateBoardItemLabel = async (
     .update({ label })
     .eq('session_id', sessionId)
     .eq('id', itemId)
-  if (error) throw error
+  if (error) {
+    console.error('[board_items] query failed', {
+      status: (error as { status?: number | null })?.status,
+      code: (error as { code?: string | null })?.code,
+      message: (error as { message?: string | null })?.message,
+      details: (error as { details?: string | null })?.details,
+      hint: (error as { hint?: string | null })?.hint,
+    })
+    throw error
+  }
 }
