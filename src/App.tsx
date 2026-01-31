@@ -6262,44 +6262,41 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineEditText('')
     try {
       if (authSession?.user?.id && client) {
-        const email = authSession.user.email ?? ''
-        const canLog = Boolean(email) && isAdminUser(email as never)
-        console.log('[engine][open-session] clicked', { sessionId })
+        console.log('[openSession] click', { sessionId })
         const { data: u, error: ue } = await client.auth.getUser()
         const userId = u?.user?.id ?? null
-        if (canLog) {
-          console.log('[engine][open-session] authed user', {
-            authedUserId: userId,
-            hasAuthSession: Boolean(authSession?.user),
-          })
-        }
+        console.log('[openSession] auth', {
+          hasUser: Boolean(userId),
+          userIdPrefix: userId ? userId.slice(0, 8) : null,
+          err: ue?.message ?? null,
+        })
         if (ue || !userId) {
           showEngineNotice('Sesja logowania wygasła. Zaloguj się ponownie.', 'error')
           return
         }
-        const { data: us, error: use } = await client
+        const usRes = await client
           .from('user_sessions')
           .select('session_id')
           .eq('user_id', userId)
           .eq('session_id', sessionId)
           .maybeSingle()
-        if (use) {
-          if (canLog) {
-            console.error('[engine][open-session] user_sessions lookup failed', {
-              status: (use as { status?: number | null })?.status,
-              code: (use as { code?: string | null })?.code,
-              message: (use as { message?: string | null })?.message,
-              details: (use as { details?: string | null })?.details,
-              hint: (use as { hint?: string | null })?.hint,
-            })
-          }
+        console.log('[openSession] user_sessions', {
+          found: Boolean(usRes.data),
+          err: usRes.error
+            ? {
+                status: (usRes.error as { status?: number | null })?.status,
+                code: (usRes.error as { code?: string | null })?.code,
+                message: (usRes.error as { message?: string | null })?.message,
+              }
+            : null,
+        })
+        if (usRes.error) {
+          showEngineNotice(
+            `Open session failed: ${(usRes.error as { status?: number | null })?.status ?? 'n/a'}/${(usRes.error as { code?: string | null })?.code ?? 'n/a'}.`,
+            'error'
+          )
         }
-        if (canLog) {
-          console.log('[engine][open-session] user_sessions row found', {
-            found: Boolean(us?.session_id),
-          })
-        }
-        if (!us?.session_id) {
+        if (!usRes.data) {
           const localDetail = await getSession(sessionId)
           if (localDetail?.session) {
             try {
@@ -6310,11 +6307,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 .eq('user_id', userId)
                 .eq('session_id', sessionId)
                 .maybeSingle()
-              if (canLog) {
-                console.log('[engine][open-session] user_sessions row found (retry)', {
-                  found: Boolean(usRetry?.session_id),
-                })
-              }
+              console.log('[openSession] user_sessions retry', {
+                found: Boolean(usRetry?.session_id),
+              })
               if (!usRetry?.session_id) {
                 showEngineNotice('Nie masz dostępu do tej sesji (brak powiązania).', 'error')
                 return
@@ -6341,75 +6336,77 @@ const isMissingLabel = (item: EngineBoardItem) => {
           tokens_in_total?: number | null
           tokens_out_total?: number | null
         }
-        const { data: s, error: se } = (await client
+        const sRes = (await client
           .from('sessions')
           .select('*')
           .eq('id', sessionId)
-          .single()) as { data: SessionRow | null; error: unknown }
-        if (se) {
-          if (canLog) {
-            console.error('[engine][open-session] sessions fetch failed', {
-              status: (se as { status?: number | null })?.status,
-              code: (se as { code?: string | null })?.code,
-              message: (se as { message?: string | null })?.message,
-              details: (se as { details?: string | null })?.details,
-              hint: (se as { hint?: string | null })?.hint,
-            })
-          }
-          showEngineNotice('Nie udało się pobrać sesji.', 'error')
+          .maybeSingle()) as { data: SessionRow | null; error: unknown }
+        console.log('[openSession] sessions', {
+          found: Boolean(sRes.data),
+          err: sRes.error
+            ? {
+                status: (sRes.error as { status?: number | null })?.status,
+                code: (sRes.error as { code?: string | null })?.code,
+                message: (sRes.error as { message?: string | null })?.message,
+              }
+            : null,
+        })
+        if (sRes.error) {
+          showEngineNotice(
+            `Open session failed: ${(sRes.error as { status?: number | null })?.status ?? 'n/a'}/${(sRes.error as { code?: string | null })?.code ?? 'n/a'}.`,
+            'error'
+          )
+        }
+        if (!sRes.data) {
+          showEngineNotice('Nie mogę znaleźć danych sesji w bazie.', 'error')
           return
         }
-        if (canLog) {
-          console.log('[engine][open-session] sessions row found', { found: Boolean(s?.id) })
-        }
-        const { data: items, error: ie } = await client
+        const biRes = await client
           .from('board_items')
-          .select('*')
+          .select('id,session_id,user_id,created_at')
           .eq('user_id', userId)
           .eq('session_id', sessionId)
           .order('created_at', { ascending: true })
-        if (ie) {
-          if (canLog) {
-            console.error('[engine][open-session] board_items fetch failed', {
-              status: (ie as { status?: number | null })?.status,
-              code: (ie as { code?: string | null })?.code,
-              message: (ie as { message?: string | null })?.message,
-              details: (ie as { details?: string | null })?.details,
-              hint: (ie as { hint?: string | null })?.hint,
-            })
-          }
-          showEngineNotice('Nie udało się pobrać wpisów.', 'error')
+        console.log('[openSession] board_items', {
+          count: biRes.data?.length ?? 0,
+          err: biRes.error
+            ? {
+                status: (biRes.error as { status?: number | null })?.status,
+                code: (biRes.error as { code?: string | null })?.code,
+                message: (biRes.error as { message?: string | null })?.message,
+              }
+            : null,
+        })
+        if (biRes.error) {
+          showEngineNotice(
+            `Open session failed: ${(biRes.error as { status?: number | null })?.status ?? 'n/a'}/${(biRes.error as { code?: string | null })?.code ?? 'n/a'}.`,
+            'error'
+          )
           return
         }
-        if (canLog) {
-          console.log('[engine][open-session] board_items fetched', {
-            sessionId,
-            count: Array.isArray(items) ? items.length : 0,
-          })
-        }
-        const { data: reportMeta, error: re } = await client
+        const rRes = await client
           .from('reports')
-          .select('id,created_at,updated_at,summary_json,last_summary_text_hash,source_updated_at')
+          .select('id,session_id,created_at,updated_at')
           .eq('session_id', sessionId)
           .maybeSingle()
-        if (re) {
-          if (canLog) {
-            console.error('[engine][open-session] reports fetch failed', {
-              status: (re as { status?: number | null })?.status,
-              code: (re as { code?: string | null })?.code,
-              message: (re as { message?: string | null })?.message,
-              details: (re as { details?: string | null })?.details,
-              hint: (re as { hint?: string | null })?.hint,
-            })
-          }
-        }
-        if (canLog) {
-          console.log('[engine][open-session] reports meta found', {
-            found: Boolean(reportMeta?.id),
-          })
+        console.log('[openSession] reports', {
+          found: Boolean(rRes.data),
+          err: rRes.error
+            ? {
+                status: (rRes.error as { status?: number | null })?.status,
+                code: (rRes.error as { code?: string | null })?.code,
+                message: (rRes.error as { message?: string | null })?.message,
+              }
+            : null,
+        })
+        if (rRes.error) {
+          showEngineNotice(
+            `Open session failed: ${(rRes.error as { status?: number | null })?.status ?? 'n/a'}/${(rRes.error as { code?: string | null })?.code ?? 'n/a'}.`,
+            'error'
+          )
         }
         const now = Date.now()
-        const sessionRow = s as SessionRow
+        const sessionRow = sRes.data as SessionRow
         const sessionSummary: EngineSessionSummary = {
           id: String(sessionRow?.id || sessionId),
           name: sessionRow?.name ?? null,
@@ -6423,21 +6420,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
           tokensOutTotal: sessionRow?.tokens_out_total ?? 0,
           cloud_board_items_migrated: true,
         }
-      const normalizedItems = normalizeBoardItems((items || []) as EngineBoardItem[])
-        const reportSummary =
-          reportMeta && typeof reportMeta.summary_json === 'object'
-            ? (reportMeta.summary_json as ReportSummary)
-            : null
+        const normalizedItems = normalizeBoardItems(
+          ((biRes.data || []) as unknown) as EngineBoardItem[]
+        )
+        const reportSummary: ReportSummary | null = null
         setEngineSessionDetail({
           session: sessionSummary,
           boardItems: normalizedItems,
           askedQuestionIds: [],
-          report: reportMeta
+          report: rRes.data
             ? {
-                id: reportMeta.id ?? null,
-                created_at: toTimestamp(reportMeta.created_at, now),
-                updated_at: toTimestamp(reportMeta.updated_at, now),
-                lastSummaryTextHash: reportMeta.last_summary_text_hash ?? null,
+                id: rRes.data.id ?? null,
+                created_at: toTimestamp(rRes.data.created_at, now),
+                updated_at: toTimestamp(rRes.data.updated_at, now),
+                lastSummaryTextHash: null,
                 summary: reportSummary,
               }
             : null,
@@ -6459,12 +6455,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
             session: sessionSummary,
             boardItems: normalizedItems,
             askedQuestionIds: [],
-            report: reportMeta
+            report: rRes.data
               ? {
-                  id: reportMeta.id ?? null,
-                  created_at: toTimestamp(reportMeta.created_at, now),
-                  updated_at: toTimestamp(reportMeta.updated_at, now),
-                  lastSummaryTextHash: reportMeta.last_summary_text_hash ?? null,
+                  id: rRes.data.id ?? null,
+                  created_at: toTimestamp(rRes.data.created_at, now),
+                  updated_at: toTimestamp(rRes.data.updated_at, now),
+                  lastSummaryTextHash: null,
                   summary: reportSummary,
                 }
               : null,
