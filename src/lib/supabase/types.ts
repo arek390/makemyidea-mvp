@@ -24,7 +24,7 @@ export type Database = {
           id?: string
           user_id: string
           session_id: string
-          type: string
+          type?: string
           text: string
           label?: string | null
           question_id?: string | null

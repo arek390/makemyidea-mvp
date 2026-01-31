@@ -5248,10 +5248,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
         classificationDirty: mappedRow && mappedCol ? false : true,
       }
       let persistedItem = newItem
-      const payload: Database['public']['Tables']['board_items']['Insert'] = {
+      const payload: Pick<
+        Database['public']['Tables']['board_items']['Insert'],
+        | 'user_id'
+        | 'session_id'
+        | 'text'
+        | 'label'
+        | 'matrix_row'
+        | 'matrix_col'
+        | 'question_id'
+        | 'question_text_pl'
+        | 'question_text_en'
+      > = {
         user_id: authedUserId,
         session_id: sessionId,
-        type: newItem.type,
         text: text.trim(),
         label: null,
         matrix_row: mappedRow ?? null,
@@ -5259,12 +5269,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
         question_id: newItem.question_id ?? null,
         question_text_pl: isPolish ? questionText : null,
         question_text_en: !isPolish ? questionText : null,
-        created_at: now,
-        entry_type: newItem.entry_type ?? null,
-        prompt_type: newItem.prompt_type ?? null,
-        last_classified_text: newItem.lastClassifiedText ?? null,
-        classification_dirty: newItem.classificationDirty ?? null,
       }
+      console.log('[board_items] insert payload keys', Object.keys(payload))
       const { data: inserted, error } = await client
         .from('board_items')
         .insert(payload)
@@ -6241,9 +6247,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
           const userId = authSession?.user?.id
           if (userId) {
             const migrationPayload = data.boardItems.map((item) => ({
-              ...item,
               user_id: userId,
               session_id: sessionId,
+              text: item.text,
+              label: item.label ?? null,
+              matrix_row: item.matrix_row ?? null,
+              matrix_col: item.matrix_col ?? null,
+              question_id: item.question_id ?? null,
               question_text_pl: null,
               question_text_en: null,
             }))

@@ -55,37 +55,35 @@ export const fetchBoardItems = async (
   return (data as BoardItemRow[]).map(normalizeRow)
 }
 
-export const insertBoardItem = async (
-  item: EngineBoardItem & {
-    user_id: string
-    session_id: string
-    question_text_pl?: string | null
-    question_text_en?: string | null
-  }
-): Promise<EngineBoardItem> => {
+export const insertBoardItem = async (input: {
+  user_id: string
+  session_id: string
+  text: string
+  label?: string | null
+  matrix_row?: string | null
+  matrix_col?: string | null
+  question_id?: string | null
+  question_text_pl?: string | null
+  question_text_en?: string | null
+}): Promise<EngineBoardItem> => {
   if (!supabase) {
     throw new Error('Missing Supabase client.')
   }
+  const payload = {
+    user_id: input.user_id,
+    session_id: input.session_id,
+    text: input.text,
+    label: input.label ?? null,
+    matrix_row: input.matrix_row ?? null,
+    matrix_col: input.matrix_col ?? null,
+    question_id: input.question_id ?? null,
+    question_text_pl: input.question_text_pl ?? null,
+    question_text_en: input.question_text_en ?? null,
+  }
+  console.log('[board_items] insert payload keys', Object.keys(payload))
   const { data, error } = await typedSupabase
     .from('board_items')
-    .insert({
-      id: item.id,
-      user_id: item.user_id,
-      session_id: item.session_id,
-      type: item.type,
-      text: item.text,
-      label: item.label ?? null,
-      question_id: item.question_id ?? null,
-      question_text_pl: item.question_text_pl ?? null,
-      question_text_en: item.question_text_en ?? null,
-      created_at: item.created_at ?? Date.now(),
-      entry_type: item.entry_type ?? null,
-      prompt_type: item.prompt_type ?? null,
-      matrix_row: item.matrix_row ?? null,
-      matrix_col: item.matrix_col ?? null,
-      last_classified_text: item.lastClassifiedText ?? null,
-      classification_dirty: item.classificationDirty ?? null,
-    })
+    .insert(payload)
     .select(
       'id,user_id,session_id,type,text,label,question_id,question_text_pl,question_text_en,created_at,entry_type,prompt_type,matrix_row,matrix_col,last_classified_text,classification_dirty'
     )
