@@ -26,6 +26,7 @@ type ReportPageProps = {
     summary?: AiSummary | null
     lastSummaryTextHash?: string | null
     createdAt?: number | null
+    ideas?: ReportSnapshot['ideas'] | null
   }) => void
 }
 
@@ -72,7 +73,12 @@ export const ReportPage = ({
   const [lastSummaryTextHash, setLastSummaryTextHash] = useState<string | null>(
     snapshot.reportMeta?.lastSummaryTextHash ?? null
   )
-  const [summaryItems, setSummaryItems] = useState(snapshot.ideas)
+  const [summaryItems, setSummaryItems] = useState(
+    snapshot.reportMeta?.ideas ?? snapshot.ideas
+  )
+  const [reportIdeasFromMeta, setReportIdeasFromMeta] = useState(
+    snapshot.reportMeta?.ideas ?? null
+  )
   const [summaryUsage, setSummaryUsage] = useState<SummaryUsage | null>(null)
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
   const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
@@ -147,14 +153,50 @@ export const ReportPage = ({
 
   const persistReportSummary = async (
     summary: AiSummary | null,
-    textHash: string
+    textHash: string,
+    items: (typeof summaryItems)[number][]
   ) => {
     if (!client) return
     if (!reportSessionId) return
     try {
+      const ideas = items.map((item) => ({
+        id: item.id,
+        text: item.text,
+        label: item.label ?? null,
+        questionId:
+          (Object.prototype.hasOwnProperty.call(item, 'questionId')
+            ? (item as { questionId?: string | null }).questionId
+            : null) ??
+          (item as { question_id?: string | null }).question_id ??
+          null,
+        questionTextPl:
+          (Object.prototype.hasOwnProperty.call(item, 'questionTextPl')
+            ? (item as { questionTextPl?: string | null }).questionTextPl
+            : null) ??
+          (item as { question_text_pl?: string | null }).question_text_pl ??
+          null,
+        questionTextEn:
+          (Object.prototype.hasOwnProperty.call(item, 'questionTextEn')
+            ? (item as { questionTextEn?: string | null }).questionTextEn
+            : null) ??
+          (item as { question_text_en?: string | null }).question_text_en ??
+          null,
+        matrixRow:
+          (Object.prototype.hasOwnProperty.call(item, 'matrixRow')
+            ? (item as { matrixRow?: string | null }).matrixRow
+            : null) ??
+          (item as { matrix_row?: string | null }).matrix_row ??
+          null,
+        matrixCol:
+          (Object.prototype.hasOwnProperty.call(item, 'matrixCol')
+            ? (item as { matrixCol?: string | null }).matrixCol
+            : null) ??
+          (item as { matrix_col?: string | null }).matrix_col ??
+          null,
+      }))
       await ensureReportExists(reportSessionId, reportSourceUpdatedAt)
       await updateReportBySessionId(reportSessionId, {
-        summary_json: summary,
+        summary_json: { summary, ideas },
         last_summary_text_hash: textHash,
         source_updated_at: reportSourceUpdatedAt,
         updated_at: new Date().toISOString(),
@@ -261,6 +303,7 @@ export const ReportPage = ({
 
   useEffect(() => {
     if (!reportSessionId) return
+    if (reportIdeasFromMeta && reportIdeasFromMeta.length > 0) return
     if (userId && client) {
       let cancelled = false
       ;(async () => {
@@ -276,7 +319,7 @@ export const ReportPage = ({
       }
     }
     setSummaryItems(snapshot.ideas)
-  }, [reportSessionId, userId, snapshot.ideas])
+  }, [reportSessionId, userId, snapshot.ideas, reportIdeasFromMeta])
 
   useEffect(() => {
     if (!client || !reportSessionId) {
@@ -289,6 +332,10 @@ export const ReportPage = ({
       try {
         const record = await fetchReportBySessionId(reportSessionId)
         if (cancelled || !record) return
+        if (record.ideas && record.ideas.length) {
+          setReportIdeasFromMeta(record.ideas)
+          setSummaryItems(record.ideas)
+        }
         if (!aiSummary && record.summary) {
           setAiSummary(record.summary)
         }
@@ -329,6 +376,21 @@ export const ReportPage = ({
     if (!sessionId) {
       setUpdateNotice(t.reportUpdated)
       return
+    }
+    setReportIdeasFromMeta(null)
+    if (userId && reportSessionId) {
+      void (async () => {
+        try {
+          const items = await fetchBoardItems(reportSessionId, userId)
+          setSummaryItems(items)
+          setAiSummary(null)
+          setLastSummaryTextHash(null)
+          summaryAutoAttempted.current = false
+          setSummaryStatus('idle')
+        } catch {
+          // ignore
+        }
+      })()
     }
     const storedRaw = window.sessionStorage.getItem(
       `report_source_updated_at::${sessionId}`
@@ -393,8 +455,9 @@ export const ReportPage = ({
         summary: emptySummary,
         lastSummaryTextHash: computeSummaryTextFingerprint,
         createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
+        ideas: ensuredItems,
       })
-      void persistReportSummary(emptySummary, computeSummaryTextFingerprint)
+      void persistReportSummary(emptySummary, computeSummaryTextFingerprint, ensuredItems)
       setSummaryStatus('done')
       return
     }
@@ -480,8 +543,9 @@ export const ReportPage = ({
         summary,
         lastSummaryTextHash: computeSummaryTextFingerprint,
         createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
+        ideas: ensuredItems,
       })
-      void persistReportSummary(summary, computeSummaryTextFingerprint)
+      void persistReportSummary(summary, computeSummaryTextFingerprint, ensuredItems)
       if (onAiUsage && data.meta) {
         onAiUsage(data.meta)
       }
@@ -510,9 +574,15 @@ export const ReportPage = ({
         )
       }
       if (aiSummary) {
-        void persistReportSummary(aiSummary, current)
+        void persistReportSummary(aiSummary, current, summaryItems)
       }
       setLastSummaryTextHash(current)
+      onReportMetaChange?.({
+        summary: aiSummary,
+        lastSummaryTextHash: current,
+        createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
+        ideas: summaryItems,
+      })
       return
     }
     summaryAutoAttempted.current = true
@@ -534,10 +604,22 @@ export const ReportPage = ({
   }, [aiSummary, language])
   const resolveQuestionText = (idea: (typeof summaryItems)[number]) => {
     const primary =
-      language === 'pl' ? idea.questionTextPl ?? null : idea.questionTextEn ?? null
+      language === 'pl'
+        ? (idea as { questionTextPl?: string | null }).questionTextPl ??
+          (idea as { question_text_pl?: string | null }).question_text_pl ??
+          null
+        : (idea as { questionTextEn?: string | null }).questionTextEn ??
+          (idea as { question_text_en?: string | null }).question_text_en ??
+          null
     const secondary =
-      language === 'pl' ? idea.questionTextEn ?? null : idea.questionTextPl ?? null
-    return primary || secondary || '—'
+      language === 'pl'
+        ? (idea as { questionTextEn?: string | null }).questionTextEn ??
+          (idea as { question_text_en?: string | null }).question_text_en ??
+          null
+        : (idea as { questionTextPl?: string | null }).questionTextPl ??
+          (idea as { question_text_pl?: string | null }).question_text_pl ??
+          null
+    return primary || secondary || ''
   }
   return (
     <div className="report-page">

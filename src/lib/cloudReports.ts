@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from './supabase/types'
 import { supabase } from './supabase/client'
-import type { ReportSummary } from '../storage/sessionStore'
+import type { ReportIdea, ReportSummary } from '../storage/sessionStore'
 
 export type ReportRow = Database['public']['Tables']['reports']['Row']
 
@@ -11,6 +11,7 @@ export type ReportRecord = {
   createdAt: number
   updatedAt: number
   summary: ReportSummary | null
+  ideas: ReportIdea[] | null
   lastSummaryTextHash: string | null
   sourceUpdatedAt: number
 }
@@ -28,14 +29,40 @@ const toNumber = (value: unknown, fallback = 0) => {
   return fallback
 }
 
+const parseSummaryJson = (
+  value: unknown
+): { summary: ReportSummary | null; ideas: ReportIdea[] | null } => {
+  if (!value || typeof value !== 'object') {
+    return { summary: null, ideas: null }
+  }
+  const maybeSummary = value as { summary?: ReportSummary; ideas?: unknown }
+  if (maybeSummary.summary || maybeSummary.ideas) {
+    return {
+      summary: (maybeSummary.summary as ReportSummary | null) ?? null,
+      ideas: Array.isArray(maybeSummary.ideas) ? (maybeSummary.ideas as ReportIdea[]) : null,
+    }
+  }
+  const legacy = value as Partial<ReportSummary>
+  if (
+    typeof legacy.today === 'string' ||
+    typeof legacy.change === 'string' ||
+    typeof legacy.product === 'string'
+  ) {
+    return { summary: legacy as ReportSummary, ideas: null }
+  }
+  return { summary: null, ideas: null }
+}
+
 const normalizeReportRow = (row: ReportRow): ReportRecord => {
   const now = Date.now()
+  const parsed = parseSummaryJson(row.summary_json)
   return {
     id: String(row.id || ''),
     sessionId: String(row.session_id || ''),
     createdAt: toNumber(row.created_at, now),
     updatedAt: toNumber(row.updated_at, now),
-    summary: (row.summary_json as ReportSummary | null) ?? null,
+    summary: parsed.summary,
+    ideas: parsed.ideas,
     lastSummaryTextHash: row.last_summary_text_hash ?? null,
     sourceUpdatedAt: toNumber(row.source_updated_at, 0),
   }

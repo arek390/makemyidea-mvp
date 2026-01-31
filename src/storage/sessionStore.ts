@@ -49,12 +49,24 @@ export type ReportSummary = {
   product: string
 }
 
+export type ReportIdea = {
+  id: string
+  text: string
+  label?: string | null
+  questionId?: string | null
+  questionTextPl?: string | null
+  questionTextEn?: string | null
+  matrixRow?: string | null
+  matrixCol?: string | null
+}
+
 export type ReportMeta = {
   id?: string | null
   created_at?: number | null
   updated_at?: number | null
   lastSummaryTextHash?: string | null
   summary?: ReportSummary | null
+  ideas?: ReportIdea[] | null
 }
 
 export const STORAGE_KEY = 'engine-sessions-v1'

@@ -21,6 +21,7 @@ export type ReportSnapshot = {
     createdAt?: number | null
     lastSummaryTextHash?: string | null
     summary?: { today: string; change: string; product: string } | null
+    ideas?: ReportIdea[] | null
   } | null
 }
 
