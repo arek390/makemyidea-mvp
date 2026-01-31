@@ -10,12 +10,14 @@ import {
   updateReportBySessionId,
 } from '../lib/cloudReports'
 import { supabase as client } from '../lib/supabase/client'
+import { fetchBoardItems } from '../lib/cloudBoardItems'
 
 type ReportPageProps = {
   snapshot: ReportSnapshot
   language: ReportLang
   onBack: () => void
   onLogout: () => void
+  userId?: string | null
   aiSupportEnabled: boolean
   diagnosticsEnabled: boolean
   naFillStatus?: 'idle' | 'running' | 'done' | 'error'
@@ -54,6 +56,7 @@ export const ReportPage = ({
   language,
   onBack,
   onLogout,
+  userId,
   aiSupportEnabled,
   diagnosticsEnabled,
   naFillStatus,
@@ -255,6 +258,25 @@ export const ReportPage = ({
       // ignore
     }
   }, [summaryCacheKey, reclassCacheKey])
+
+  useEffect(() => {
+    if (!reportSessionId) return
+    if (userId && client) {
+      let cancelled = false
+      ;(async () => {
+        try {
+          const items = await fetchBoardItems(reportSessionId, userId)
+          if (!cancelled) setSummaryItems(items)
+        } catch {
+          // ignore
+        }
+      })()
+      return () => {
+        cancelled = true
+      }
+    }
+    setSummaryItems(snapshot.ideas)
+  }, [reportSessionId, userId, snapshot.ideas])
 
   useEffect(() => {
     if (!client || !reportSessionId) {

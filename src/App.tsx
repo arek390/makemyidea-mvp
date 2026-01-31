@@ -5270,7 +5270,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
         question_text_pl: isPolish ? questionText : null,
         question_text_en: !isPolish ? questionText : null,
       }
-      console.log('[board_items] insert payload keys', Object.keys(payload))
       const { data: inserted, error } = await client
         .from('board_items')
         .insert(payload)
@@ -5300,7 +5299,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
         return
       }
       const insertedRow = inserted as Database['public']['Tables']['board_items']['Row']
-      console.log('[board_items] insert ok', { id: insertedRow.id, sessionId })
+      console.log('[board_items] inserted', {
+        id: insertedRow.id,
+        sessionId,
+        hasQuestion: Boolean(insertedRow.question_text_pl || insertedRow.question_text_en),
+        questionId: insertedRow.question_id ?? null,
+      })
       const insertedCreatedAt =
         typeof insertedRow.created_at === 'number'
           ? insertedRow.created_at
@@ -6706,6 +6710,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       <ReportPage
         snapshot={snapshot}
         language={reportLanguage}
+        userId={authSession?.user?.id ?? null}
         onBack={handleReportBack}
         onLogout={handleReportLogout}
         aiSupportEnabled={aiSupportEnabled}

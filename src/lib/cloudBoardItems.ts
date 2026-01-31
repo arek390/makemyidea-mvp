@@ -52,7 +52,15 @@ export const fetchBoardItems = async (
     .order('created_at', { ascending: false })
   if (error) throw error
   if (!data) return []
-  return (data as BoardItemRow[]).map(normalizeRow)
+  const items = (data as BoardItemRow[]).map(normalizeRow)
+  console.log('[board_items] fetched', {
+    sessionId,
+    count: items.length,
+    withQuestionCount: items.filter(
+      (item) => Boolean(item.question_text_pl || item.question_text_en)
+    ).length,
+  })
+  return items
 }
 
 export const insertBoardItem = async (input: {
@@ -80,7 +88,6 @@ export const insertBoardItem = async (input: {
     question_text_pl: input.question_text_pl ?? null,
     question_text_en: input.question_text_en ?? null,
   }
-  console.log('[board_items] insert payload keys', Object.keys(payload))
   const { data, error } = await typedSupabase
     .from('board_items')
     .insert(payload)
