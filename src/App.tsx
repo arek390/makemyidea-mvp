@@ -5184,7 +5184,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
   const ensureEnginePreviewSession = async (
     nameOverride?: string,
-    options?: { onNameCollision?: () => void }
+    options?: { onNameCollision?: () => void; onInsertError?: () => void }
   ) => {
     if (enginePreviewSessionId) return enginePreviewSessionId
     const name = (nameOverride ?? enginePreviewSessionName)?.trim()
@@ -5230,17 +5230,35 @@ const isMissingLabel = (item: EngineBoardItem) => {
         }
         const sessionId = crypto.randomUUID()
         console.log('[createSession]', { sessionId, userId, nameToSave: name })
-        const { error: se } = await client
+        const { error: insertSessionError } = await client
+          .schema('public')
           .from('sessions')
           .insert({ id: sessionId, user_id: userId, name })
-        if (se) {
-          const code = (se as { code?: string | null })?.code ?? null
+        if (insertSessionError) {
+          console.error('[createSession] insert sessions failed', insertSessionError)
+          const code = (insertSessionError as { code?: string | null })?.code ?? null
           if (code === '23505') {
             options?.onNameCollision?.()
           } else {
-            const message = (se as { message?: string | null })?.message ?? 'Request failed'
+            const message =
+              (insertSessionError as { message?: string | null })?.message ?? 'Request failed'
             showEngineNotice(`Nie udało się utworzyć sesji. ${message}`, 'error')
           }
+          options?.onInsertError?.()
+          return null
+        }
+        const { error: insertAclError } = await client
+          .schema('public')
+          .from('user_sessions')
+          .insert({
+            user_id: userId,
+            session_id: sessionId,
+            payload: {},
+            updated_at: new Date().toISOString(),
+          })
+        if (insertAclError) {
+          console.error('[createSession] insert user_sessions failed', insertAclError)
+          options?.onInsertError?.()
           return null
         }
         const sessionDetail = await createSession({
@@ -5255,22 +5273,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
           setEngineSessionDetail(sessionDetail)
           setEngineSessions(await listSessions())
           setFeedbackReminder(null)
-          try {
-            await client
-              .from('user_sessions')
-              .upsert({
-                user_id: userId,
-                session_id: sessionDetail.session.id,
-                payload: {
-                  createdAt: sessionDetail.session.created_at,
-                  name: sessionDetail.session.name ?? null,
-                },
-                updated_at: new Date().toISOString(),
-              })
-          } catch (error) {
-            const message = error instanceof Error ? error.message : 'Request failed'
-            showEngineNotice(`Nie udało się zapisać sesji w chmurze. ${message}`, 'error')
-          }
           return sessionDetail.session.id
         }
         return null
@@ -8058,6 +8060,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       const sessionId = await ensureEnginePreviewSession(name, {
                         onNameCollision: () =>
                           setEngineNameError('Taka nazwa już istnieje — zmień nazwę.'),
+                        onInsertError: () =>
+                          setEngineNameError('Nie udało się utworzyć sesji. Spróbuj ponownie.'),
                       })
                       if (!sessionId) {
                         setEngineNameSaving(false)
