@@ -40,6 +40,7 @@ import {
   fetchReportBySessionId,
   type ReportRecord,
 } from './lib/cloudReports'
+import type { Database } from './lib/supabase/types'
 import { getSupabaseInitError, supabase as client, supabaseEnvDiag } from './lib/supabase/client'
 import { saveSessionToCloud } from './lib/cloudSessions'
 import {
@@ -5197,8 +5198,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
     setEnginePreviewError(null)
     try {
-      if (!authSession?.user?.id) {
-        showEngineNotice('Musisz być zalogowany, aby dodać wpis.', 'error')
+      if (!client) {
+        showEngineNotice('Sesja logowania wygasła. Zaloguj się ponownie.', 'error')
+        return
+      }
+      const { data: userData, error: userErr } = await client.auth.getUser()
+      const authedUserId = userData?.user?.id ?? null
+      console.log('[board_items] authed user', {
+        authedUserId,
+        hasAuthSession: Boolean(authSession?.user),
+      })
+      if (userErr || !authedUserId) {
+        showEngineNotice('Sesja logowania wygasła. Zaloguj się ponownie.', 'error')
         return
       }
       const itemId =
@@ -5237,35 +5248,76 @@ const isMissingLabel = (item: EngineBoardItem) => {
         classificationDirty: mappedRow && mappedCol ? false : true,
       }
       let persistedItem = newItem
-      if (client) {
-        const userId = authSession.user.id
-        try {
-          persistedItem = await insertBoardItem({
-            ...newItem,
-            user_id: userId,
-            session_id: sessionId,
-          })
-          console.log('[board_items] insert ok', { id: persistedItem.id, sessionId })
-        } catch (error) {
-          const status = (error as { status?: number | null })?.status ?? null
-          console.error('[board_items] insert failed', {
-            status,
-            code: (error as { code?: string | null })?.code,
-            message: (error as { message?: string | null })?.message,
-            details: (error as { details?: string | null })?.details,
-            hint: (error as { hint?: string | null })?.hint,
-            sessionId,
-          })
-          if (status === 403) {
-            showEngineNotice('Brak uprawnień do zapisu (sesja użytkownika).', 'error')
-          } else if (status === 401) {
-            showEngineNotice('Sesja wygasła. Zaloguj się ponownie.', 'error')
-          } else {
-            showEngineNotice('Nie udało się zapisać wpisu.', 'error')
-          }
-          throw error
-        }
+      const payload: Database['public']['Tables']['board_items']['Insert'] = {
+        user_id: authedUserId,
+        session_id: sessionId,
+        type: newItem.type,
+        text: text.trim(),
+        label: null,
+        matrix_row: mappedRow ?? null,
+        matrix_col: mappedCol ?? null,
+        question_id: newItem.question_id ?? null,
+        question_text_pl: isPolish ? questionText : null,
+        question_text_en: !isPolish ? questionText : null,
+        created_at: now,
+        entry_type: newItem.entry_type ?? null,
+        prompt_type: newItem.prompt_type ?? null,
+        last_classified_text: newItem.lastClassifiedText ?? null,
+        classification_dirty: newItem.classificationDirty ?? null,
       }
+      const { data: inserted, error } = await client
+        .from('board_items')
+        .insert(payload)
+        .select('*')
+        .single()
+      if (error) {
+        console.error('[board_items] insert failed', {
+          status: (error as { status?: number | null })?.status,
+          code: (error as { code?: string | null })?.code,
+          message: (error as { message?: string | null })?.message,
+          details: (error as { details?: string | null })?.details,
+          hint: (error as { hint?: string | null })?.hint,
+          sessionId,
+          payloadKeys: Object.keys(payload),
+        })
+        const statusLabel = (error as { status?: number | null })?.status ?? 'n/a'
+        const codeLabel = (error as { code?: string | null })?.code ?? 'n/a'
+        const message = ((error as { message?: string | null })?.message || '').slice(0, 120)
+        showEngineNotice(
+          `Nie udało się dodać wpisu. (status: ${statusLabel}, code: ${codeLabel})${message ? ` ${message}` : ''}`,
+          'error'
+        )
+        return
+      }
+      if (!inserted) {
+        showEngineNotice('Nie udało się dodać wpisu.', 'error')
+        return
+      }
+      const insertedRow = inserted as Database['public']['Tables']['board_items']['Row']
+      console.log('[board_items] insert ok', { id: insertedRow.id, sessionId })
+      const insertedCreatedAt =
+        typeof insertedRow.created_at === 'number'
+          ? insertedRow.created_at
+          : Number.isNaN(Date.parse(String(insertedRow.created_at)))
+            ? (newItem.created_at ?? now)
+            : Date.parse(String(insertedRow.created_at))
+      persistedItem = normalizeBoardItem({
+        ...newItem,
+        id: insertedRow.id,
+        text: insertedRow.text ?? newItem.text,
+        label: insertedRow.label ?? null,
+        question_id: insertedRow.question_id ?? null,
+        question_text_pl: insertedRow.question_text_pl ?? null,
+        question_text_en: insertedRow.question_text_en ?? null,
+        created_at: insertedCreatedAt,
+        entry_type: (insertedRow.entry_type as EngineBoardItem['entry_type']) ?? newItem.entry_type ?? undefined,
+        prompt_type: (insertedRow.prompt_type as EngineBoardItem['prompt_type']) ?? newItem.prompt_type ?? null,
+        matrix_row: insertedRow.matrix_row ?? newItem.matrix_row ?? null,
+        matrix_col: insertedRow.matrix_col ?? newItem.matrix_col ?? null,
+        lastClassifiedText: insertedRow.last_classified_text ?? newItem.lastClassifiedText ?? null,
+        classificationDirty:
+          insertedRow.classification_dirty ?? newItem.classificationDirty ?? null,
+      })
       setEnginePreviewItems((prev) => [persistedItem, ...prev])
       setEnginePreviewInput('')
       setEngineLastInputActivityAt(now)
@@ -5336,7 +5388,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       setEngineLastEntryShort(isShort)
       engineInputRef.current?.focus()
     } catch {
-      setEnginePreviewError('Unable to add board item.')
+      setEnginePreviewError('Nie udało się dodać wpisu.')
       logSessionStore('engine_preview_add_failed', { sessionId })
     }
   }
