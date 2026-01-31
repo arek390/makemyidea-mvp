@@ -74,6 +74,7 @@ export const ReportPage = ({
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
   const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
   const summaryAutoAttempted = useRef(false)
+  const reportTableDebugOnceRef = useRef(false)
   const reportSessionId = snapshot.sessionId || null
   const reportSourceUpdatedAt = Number(snapshot.sourceUpdatedAt || 0)
   const [reportMetaLoaded, setReportMetaLoaded] = useState(!client || !reportSessionId)
@@ -508,6 +509,25 @@ export const ReportPage = ({
       product: isEmptySummaryText(aiSummary?.product, lang) ? null : aiSummary?.product || null,
     }
   }, [aiSummary, language])
+
+  if (!reportTableDebugOnceRef.current && summaryItems.length > 0) {
+    const first = summaryItems[0]
+    const questionText = first.questionId
+      ? questionLookup.get(first.questionId) || '—'
+      : '—'
+    // TODO: remove debug logs after fix.
+    console.log('[debug][report-table] row keys', Object.keys(first || {}))
+    console.log('[debug][report-table] question/value', {
+      question: questionText,
+      text: first.text ?? null,
+      label: first.label ?? null,
+      matrix: {
+        row: (first as { matrix_row?: string | null; matrixRow?: string | null }).matrix_row ?? first.matrixRow,
+        col: (first as { matrix_col?: string | null; matrixCol?: string | null }).matrix_col ?? first.matrixCol,
+      },
+    })
+    reportTableDebugOnceRef.current = true
+  }
   return (
     <div className="report-page">
       <header className="report-header">
