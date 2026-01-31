@@ -547,6 +547,8 @@ export default async function handler(req, res) {
     }
     let sessionRow = null
     let sessionLookupError = null
+    let publicSessionsHeadCount = null
+    let publicSessionsHeadCountError = null
     let rawCount = null
     let rawListError = null
     const envHost = process.env.SUPABASE_URL
@@ -565,6 +567,8 @@ export default async function handler(req, res) {
       sessionFound: false,
       sessionEcho: null,
       sessionLookupError: null,
+      publicSessionsHeadCount: null,
+      publicSessionsHeadCountError: null,
       rawCount: null,
       rawListError: null,
       usedAdmin: true,
@@ -579,12 +583,37 @@ export default async function handler(req, res) {
         .maybeSingle()
       if (error) {
         sessionLookupError = error
+        diag.sessionLookupError = {
+          code: error?.code ?? null,
+          message: error?.message ?? null,
+          details: error?.details ?? null,
+          hint: error?.hint ?? null,
+          status: error?.status ?? null,
+        }
       } else {
         sessionRow = data || null
         if (sessionRow) {
           diag.sessionFound = true
           diag.sessionEcho = { id: sessionRow.id ?? null, user_id: sessionRow.user_id ?? null }
         }
+      }
+      const headRes = await supabaseAdmin
+        .schema('public')
+        .from('sessions')
+        .select('id', { count: 'exact', head: true })
+      if (headRes.error) {
+        publicSessionsHeadCountError = headRes.error
+        diag.publicSessionsHeadCountError = {
+          code: headRes.error?.code ?? null,
+          message: headRes.error?.message ?? null,
+          details: headRes.error?.details ?? null,
+          hint: headRes.error?.hint ?? null,
+          status: headRes.error?.status ?? null,
+        }
+      } else {
+        publicSessionsHeadCount =
+          typeof headRes.count === 'number' ? headRes.count : null
+        diag.publicSessionsHeadCount = publicSessionsHeadCount
       }
       const rawRes = await supabaseAdmin
         .schema('public')
@@ -613,6 +642,8 @@ export default async function handler(req, res) {
             code: sessionLookupError?.code ?? null,
             message: sessionLookupError?.message ?? null,
             details: sessionLookupError?.details ?? null,
+            hint: sessionLookupError?.hint ?? null,
+            status: sessionLookupError?.status ?? null,
           }
         : null
       diag.rawListError = rawListError
@@ -620,6 +651,8 @@ export default async function handler(req, res) {
             code: rawListError?.code ?? null,
             message: rawListError?.message ?? null,
             details: rawListError?.details ?? null,
+            hint: rawListError?.hint ?? null,
+            status: rawListError?.status ?? null,
           }
         : null
       console.error('[coach/suggest][session_lookup_failed]', {
