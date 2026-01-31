@@ -5,7 +5,7 @@
 
 create table if not exists reports (
   id uuid primary key default gen_random_uuid(),
-  session_id uuid not null references sessions(id) on delete cascade,
+  session_id text not null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   summary_json jsonb,

@@ -81,6 +81,14 @@ export const ensureReportExists = async (
     )
     .single()
   if (error) {
+    console.error('[report] ensure failed', {
+      sessionId,
+      status: (error as { status?: number | null })?.status,
+      code: (error as { code?: string | null })?.code,
+      message: error.message,
+      details: (error as { details?: string | null })?.details,
+      hint: (error as { hint?: string | null })?.hint,
+    })
     const retry = await fetchReportBySessionId(sessionId)
     if (retry) return retry
     throw error
