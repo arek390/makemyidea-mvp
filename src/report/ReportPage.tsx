@@ -110,16 +110,6 @@ export const ReportPage = ({
     }
     return false
   }
-  const questionLookup = useMemo(() => {
-    const map = new Map<string, string>()
-    const questions = Array.isArray(snapshot.questions) ? snapshot.questions : []
-    questions.forEach((question) => {
-      const id = String(question?.id || '').trim()
-      const text = String(question?.text || '').trim()
-      if (id && text) map.set(id, text)
-    })
-    return map
-  }, [snapshot.questions])
   const cacheBase = useMemo(() => {
     if (typeof window === 'undefined') return null
     const sessionId = window.sessionStorage.getItem('reportReturnSessionId') || ''
@@ -508,49 +498,12 @@ export const ReportPage = ({
       product: isEmptySummaryText(aiSummary?.product, lang) ? null : aiSummary?.product || null,
     }
   }, [aiSummary, language])
-  const matrixRowLabels = useMemo(
-    () => ({
-      pl: {
-        world: 'Świat',
-        product: 'Produkt',
-        elements: 'Elementy',
-      },
-      en: {
-        world: 'World',
-        product: 'Product',
-        elements: 'Elements',
-      },
-    }),
-    []
-  )
-  const matrixColLabels = useMemo(
-    () => ({
-      pl: {
-        as_is: 'Jak jest',
-        not_working: 'Co nie działa',
-        should_be: 'Jak powinno być',
-      },
-      en: {
-        as_is: 'As is',
-        not_working: 'Not working',
-        should_be: 'Should be',
-      },
-    }),
-    []
-  )
   const resolveQuestionText = (idea: (typeof summaryItems)[number]) => {
-    const id = String(idea.questionId || '').trim()
-    if (id) {
-      const fromLookup = questionLookup.get(id)
-      if (fromLookup) return fromLookup
-    }
-    const rowKey = String(idea.matrixRow || '').toLowerCase() as keyof typeof matrixRowLabels.en
-    const colKey = String(idea.matrixCol || '').toLowerCase() as keyof typeof matrixColLabels.en
-    const langKey = language === 'pl' ? 'pl' : 'en'
-    const rowLabel = matrixRowLabels[langKey][rowKey]
-    const colLabel = matrixColLabels[langKey][colKey]
-    if (rowLabel && colLabel) return `${rowLabel} / ${colLabel}`
-    return '—'
+    const primary =
+      language === 'pl' ? idea.questionTextPl ?? null : idea.questionTextEn ?? null
+    const secondary =
+      language === 'pl' ? idea.questionTextEn ?? null : idea.questionTextPl ?? null
+    return primary || secondary || '—'
   }
   return (
     <div className="report-page">

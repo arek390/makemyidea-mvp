@@ -1,6 +1,60 @@
 export type Database = {
   public: {
     Tables: {
+      board_items: {
+        Row: {
+          id: string
+          session_id: string
+          type: string
+          text: string
+          label: string | null
+          question_id: string | null
+          question_text_pl: string | null
+          question_text_en: string | null
+          created_at: number | string
+          entry_type: string | null
+          prompt_type: string | null
+          matrix_row: string | null
+          matrix_col: string | null
+          last_classified_text: string | null
+          classification_dirty: boolean | null
+        }
+        Insert: {
+          id?: string
+          session_id: string
+          type: string
+          text: string
+          label?: string | null
+          question_id?: string | null
+          question_text_pl?: string | null
+          question_text_en?: string | null
+          created_at?: number | string
+          entry_type?: string | null
+          prompt_type?: string | null
+          matrix_row?: string | null
+          matrix_col?: string | null
+          last_classified_text?: string | null
+          classification_dirty?: boolean | null
+        }
+        Update: {
+          id?: string
+          session_id?: string
+          type?: string
+          text?: string
+          label?: string | null
+          question_id?: string | null
+          question_text_pl?: string | null
+          question_text_en?: string | null
+          created_at?: number | string
+          entry_type?: string | null
+          prompt_type?: string | null
+          matrix_row?: string | null
+          matrix_col?: string | null
+          last_classified_text?: string | null
+          classification_dirty?: boolean | null
+        }
+        Relationships: []
+      }
       reports: {
         Row: {
           id: string

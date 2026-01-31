@@ -31,6 +31,11 @@ import {
   type CloudSessionRecord,
 } from './lib/cloudSessions'
 import {
+  fetchBoardItems,
+  insertBoardItem,
+  updateBoardItemLabel,
+} from './lib/cloudBoardItems'
+import {
   ensureReportExists,
   fetchReportBySessionId,
   type ReportRecord,
@@ -3719,6 +3724,8 @@ const isAuthFlowInProgress = () => {
       text: item.text,
       label: item.label ?? null,
       questionId: item.question_id ?? null,
+      questionTextPl: item.question_text_pl ?? null,
+      questionTextEn: item.question_text_en ?? null,
       matrixRow: item.matrix_row ?? null,
       matrixCol: item.matrix_col ?? null,
     }))
@@ -5204,12 +5211,19 @@ const isMissingLabel = (item: EngineBoardItem) => {
         entryType === 'facilitated_input'
           ? toMatrixColKey(engineLastQuestionMeta?.mode_code ?? null)
           : null
+      const questionText =
+        entryType === 'facilitated_input'
+          ? engineLastQuestionText || engineActivePrompt?.text || null
+          : null
+      const isPolish = uiLanguage === 'Polish'
       const newItem: EngineBoardItem = {
         id: itemId,
         type: 'idea',
         text,
         label: null,
         question_id: entryType === 'facilitated_input' ? engineLastQuestionMeta?.id ?? null : null,
+        question_text_pl: questionText && isPolish ? questionText : null,
+        question_text_en: questionText && !isPolish ? questionText : null,
         created_at: now,
         entry_type: entryType,
         prompt_type: engineActivePrompt?.type || null,
@@ -5218,7 +5232,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
         lastClassifiedText: mappedRow && mappedCol ? text : null,
         classificationDirty: mappedRow && mappedCol ? false : true,
       }
-      setEnginePreviewItems((prev) => [newItem, ...prev])
+      const persistedItem =
+        authSession?.user?.id && client
+          ? await insertBoardItem({
+              ...newItem,
+              session_id: sessionId,
+            })
+          : newItem
+      setEnginePreviewItems((prev) => [persistedItem, ...prev])
       setEnginePreviewInput('')
       setEngineLastInputActivityAt(now)
       setEngineInputFocused(true)
@@ -5260,7 +5281,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
               updated_at: now,
             }
           : null,
-        boardItems: [newItem, ...(sessionDetail.boardItems || [])],
+        boardItems: [persistedItem, ...(sessionDetail.boardItems || [])],
       }
       await updateSession(updatedDetail)
       if (engineSessionDetail?.session?.id === sessionId) {
@@ -6060,6 +6081,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
     try {
       const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id
       if (!sessionId) return
+      if (authSession?.user?.id && client) {
+        await updateBoardItemLabel(sessionId, entryId, label ?? null)
+      }
       const detail = await getSession(sessionId)
       if (!detail?.session) return
       const updated: EngineSessionDetail = {
@@ -6096,10 +6120,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const data = await getSession(sessionId)
       if (!data) throw new Error('Missing session')
       const cloudPayload = cloudSessionPayloads[sessionId]
-      const sourceItems =
-        cloudPayload?.boardItems && cloudPayload.boardItems.length
-          ? cloudPayload.boardItems
-          : data.boardItems ?? []
+      let sourceItems = data.boardItems ?? []
+      if (authSession?.user?.id && client) {
+        sourceItems = await fetchBoardItems(sessionId, authSession.user.id)
+      } else if (cloudPayload?.boardItems && cloudPayload.boardItems.length) {
+        sourceItems = cloudPayload.boardItems
+      }
       const normalizedItems = normalizeBoardItems(sourceItems)
       setEngineSessionDetail({ ...data, boardItems: normalizedItems })
     } catch (error) {
@@ -6124,10 +6150,44 @@ const isMissingLabel = (item: EngineBoardItem) => {
       if (cloudPayload?.uiLanguage) {
         applySessionLanguage(cloudPayload.uiLanguage)
       }
-      const sourceItems =
-        cloudPayload?.boardItems && cloudPayload.boardItems.length
-          ? cloudPayload.boardItems
-          : data.boardItems ?? []
+      let sourceItems = data.boardItems ?? []
+      if (authSession?.user?.id && client) {
+        sourceItems = await fetchBoardItems(sessionId, authSession.user.id)
+        if (
+          sourceItems.length === 0 &&
+          data.boardItems &&
+          data.boardItems.length > 0 &&
+          !data.session?.cloud_board_items_migrated
+        ) {
+          const migrationPayload = data.boardItems.map((item) => ({
+            ...item,
+            session_id: sessionId,
+            question_text_pl: null,
+            question_text_en: null,
+          }))
+          for (const item of migrationPayload) {
+            try {
+              await insertBoardItem(item)
+            } catch {
+              // ignore per-item errors to avoid blocking
+            }
+          }
+          if (data.session) {
+            const updatedDetail: EngineSessionDetail = {
+              ...data,
+              session: {
+                ...data.session,
+                cloud_board_items_migrated: true,
+                updated_at: Date.now(),
+              },
+            }
+            await updateSession(updatedDetail)
+          }
+          sourceItems = await fetchBoardItems(sessionId, authSession.user.id)
+        }
+      } else if (cloudPayload?.boardItems && cloudPayload.boardItems.length) {
+        sourceItems = cloudPayload.boardItems
+      }
       const normalizedItems = normalizeBoardItems(sourceItems)
       setEngineSessionDetail({ ...data, boardItems: normalizedItems })
       setEnginePreviewSessionId(data.session?.id ?? null)

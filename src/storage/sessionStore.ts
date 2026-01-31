@@ -4,6 +4,8 @@ export type EngineBoardItem = {
   text: string
   label?: string | null
   question_id?: string | null
+  question_text_pl?: string | null
+  question_text_en?: string | null
   created_at?: number
   entry_type?: 'free_input' | 'facilitated_input'
   prompt_type?: 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET' | null
@@ -24,6 +26,7 @@ export type EngineSessionSummary = {
   stuck_counter: number
   tokensInTotal?: number
   tokensOutTotal?: number
+  cloud_board_items_migrated?: boolean
 }
 
 export type EngineSessionDetail = {
@@ -119,6 +122,7 @@ const normalizeSession = (session: EngineSessionSummary): EngineSessionSummary =
   stuck_counter: session.stuck_counter ?? 0,
   tokensInTotal: session.tokensInTotal ?? 0,
   tokensOutTotal: session.tokensOutTotal ?? 0,
+  cloud_board_items_migrated: session.cloud_board_items_migrated ?? false,
 })
 
 export const listSessions = async (): Promise<EngineSessionSummary[]> => {

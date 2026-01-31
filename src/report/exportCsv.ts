@@ -3,6 +3,8 @@ export type ReportIdea = {
   text: string
   label?: string | null
   questionId?: string | null
+  questionTextPl?: string | null
+  questionTextEn?: string | null
   matrixRow?: string | null
   matrixCol?: string | null
 }
