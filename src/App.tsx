@@ -26,11 +26,7 @@ import {
   type EngineSessionSummary,
 } from './storage/sessionStore'
 import type { ReportSummary } from './storage/sessionStore'
-import {
-  listCloudSessions,
-  type CloudSessionPayload,
-  type CloudSessionRecord,
-} from './lib/cloudSessions'
+import { type CloudSessionPayload } from './lib/cloudSessions'
 import {
   fetchBoardItems,
   insertBoardItem,
@@ -5471,22 +5467,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineInputFocused(false)
   }
 
-  const mergeSessionLists = (
-    localSessions: EngineSessionSummary[],
-    cloudSessions: EngineSessionSummary[]
-  ) => {
-    const merged = new Map<string, EngineSessionSummary>()
-    cloudSessions.forEach((session) => {
-      merged.set(session.id, session)
-    })
-    localSessions.forEach((session) => {
-      if (!merged.has(session.id)) {
-        merged.set(session.id, session)
-      }
-    })
-    return Array.from(merged.values()).sort((a, b) => b.updated_at - a.updated_at)
-  }
-
   const currentEngineSession = useMemo(() => {
     if (!enginePreviewSessionId) return null
     if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
@@ -5981,26 +5961,61 @@ const isMissingLabel = (item: EngineBoardItem) => {
     try {
       const localSessions = await listSessions()
       if (authSession?.user?.id) {
-        const cloudRecords: CloudSessionRecord[] = await listCloudSessions(
-          authSession.user.id
-        )
-        const payloadMap: Record<string, CloudSessionPayload> = {}
-        cloudRecords.forEach((record: CloudSessionRecord) => {
-          if (record.sessionId) {
-            payloadMap[record.sessionId] = record.payload
+        if (!client) {
+          setEngineSessionsError('Brak połączenia z Supabase.')
+          return
+        }
+        const { data: u } = await client.auth.getUser()
+        const userId = u?.user?.id ?? null
+        if (!userId) {
+          setEngineSessionsError('Sesja logowania wygasła. Zaloguj się ponownie.')
+          return
+        }
+        const { data: us, error: use } = await client
+          .from('user_sessions')
+          .select('session_id')
+          .eq('user_id', userId)
+        if (use) {
+          const message = (use as { message?: string | null })?.message ?? 'Request failed'
+          setEngineSessionsError(`Nie udało się pobrać listy sesji. ${message}`)
+          return
+        }
+        const sessionIds = (us || [])
+          .map((row) => String((row as { session_id?: string | null }).session_id || '').trim())
+          .filter(Boolean)
+        const uniqueIds = Array.from(new Set(sessionIds))
+        let sessionsFound: EngineSessionSummary[] = []
+        if (uniqueIds.length) {
+          const { data: sessionsData, error: se } = await client
+            .from('sessions')
+            .select('*')
+            .in('id', uniqueIds)
+          if (se) {
+            const message = (se as { message?: string | null })?.message ?? 'Request failed'
+            setEngineSessionsError(`Nie udało się pobrać metadanych sesji. ${message}`)
+            return
           }
-        })
-        setCloudSessionPayloads(payloadMap)
-        await Promise.all(
-          cloudRecords.map((record: CloudSessionRecord) =>
-            updateSession({
-              ...record.detail,
-              boardItems: normalizeBoardItems(record.detail.boardItems || []),
-            })
-          )
-        )
-        const cloudSessions = cloudRecords.map((record: CloudSessionRecord) => record.summary)
-        setEngineSessions(mergeSessionLists(localSessions, cloudSessions))
+          const now = Date.now()
+          sessionsFound = (sessionsData || []).map((row) => ({
+            id: String((row as { id?: string | null }).id || ''),
+            name: (row as { name?: string | null }).name ?? null,
+            created_at: toTimestamp((row as { created_at?: string | number | null }).created_at, now),
+            updated_at: toTimestamp((row as { updated_at?: string | number | null }).updated_at, now),
+            last_group_code: (row as { last_group_code?: string | null }).last_group_code ?? null,
+            last_mode_code: (row as { last_mode_code?: number | null }).last_mode_code ?? null,
+            last_category_code:
+              (row as { last_category_code?: string | null }).last_category_code ?? null,
+            stuck_counter: (row as { stuck_counter?: number | null }).stuck_counter ?? 0,
+            tokensInTotal: (row as { tokens_in_total?: number | null }).tokens_in_total ?? 0,
+            tokensOutTotal: (row as { tokens_out_total?: number | null }).tokens_out_total ?? 0,
+          }))
+        }
+        const missingSessionsCount = Math.max(uniqueIds.length - sessionsFound.length, 0)
+        console.log('[sessionsList] userSessionsCount', uniqueIds.length)
+        console.log('[sessionsList] sessionsFoundCount', sessionsFound.length)
+        console.log('[sessionsList] missingSessionsCount', missingSessionsCount)
+        setCloudSessionPayloads({})
+        setEngineSessions(sessionsFound)
       } else {
         setCloudSessionPayloads({})
         setEngineSessions(localSessions)
@@ -6426,7 +6441,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
           )
         }
         if (!sRes.data) {
-          showEngineNotice('Nie mogę znaleźć danych sesji w bazie.', 'error')
+          showEngineNotice(
+            'Ta sesja jest w trybie legacy i wymaga naprawy (brak metadanych w chmurze).',
+            'error'
+          )
           return
         }
         const biRes = await client
@@ -6508,6 +6526,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
         }
         const normalizedItems = normalizeBoardItems(fullItems)
         const reportSummary: ReportSummary | null = null
+        const displayName =
+          sessionSummary.name && sessionSummary.name.trim()
+            ? sessionSummary.name.trim()
+            : `Session ${sessionSummary.id.slice(0, 8)}`
+        console.log('[openSession] sessionName', sessionSummary.name ?? null)
+        console.log('[openSession] displayName', displayName)
         setEngineSessionDetail({
           session: sessionSummary,
           boardItems: normalizedItems,
@@ -7334,11 +7358,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
     const formatSessionLabel = (name: string | null | undefined, id: string) => {
       if (name && name.trim()) {
-        return (
-          <>
-            <span className="engine-session-name">{name}</span> · {id}
-          </>
-        )
+        return <span className="engine-session-name">{name}</span>
       }
       const shortId = id.slice(0, 8)
       return `Session ${shortId}`
