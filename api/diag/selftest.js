@@ -20,14 +20,33 @@ export default async function handler(req, res) {
   }
 
   const steps = {
+    adminCheck: { ok: false, error: null },
     insert: { ok: false, error: null },
     select: { ok: false, found: false, row: null, error: null },
     delete: { ok: false, error: null },
   }
   const envHost = getEnvHost()
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+  const hasServiceRoleKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY)
+  const env = {
+    hasUrl: Boolean(process.env.SUPABASE_URL),
+    hasServiceRoleKey,
+    serviceRoleKeyLen: hasServiceRoleKey ? key.length : null,
+    serviceRoleKeyPrefix: hasServiceRoleKey ? key.slice(0, 6) : null,
+  }
   let sessionId = ''
   try {
     const supabaseAdmin = getSupabaseAdmin()
+    try {
+      await supabaseAdmin.auth.admin.listUsers({ page: 1, perPage: 1 })
+      steps.adminCheck.ok = true
+    } catch (error) {
+      steps.adminCheck.error = {
+        message: error?.message ?? null,
+        status: error?.status ?? null,
+        name: error?.name ?? null,
+      }
+    }
     sessionId = crypto.randomUUID()
     const name = `selftest-${sessionId.slice(0, 8)}`
     const userId = '00000000-0000-0000-0000-000000000000'
@@ -99,6 +118,7 @@ export default async function handler(req, res) {
   res.status(200).json({
     ok: steps.insert.ok && steps.select.ok && steps.delete.ok,
     envHost,
+    env,
     steps,
   })
 }
