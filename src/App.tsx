@@ -5132,9 +5132,62 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (enginePreviewSessionId) return enginePreviewSessionId
     const name = (nameOverride ?? enginePreviewSessionName)?.trim()
     if (!name) {
+      showEngineNotice('Podaj nazwę sesji.', 'error')
       return null
     }
     try {
+      if (authSession?.user?.id && client) {
+        const { data: u } = await client.auth.getUser()
+        const userId = u?.user?.id ?? null
+        if (!userId) {
+          showEngineNotice('Sesja logowania wygasła. Zaloguj się ponownie.', 'error')
+          return null
+        }
+        if (typeof crypto === 'undefined' || !('randomUUID' in crypto)) {
+          showEngineNotice('Nie udało się wygenerować ID sesji.', 'error')
+          return null
+        }
+        const sessionId = crypto.randomUUID()
+        console.log('[createSession]', { sessionId, userId, nameToSave: name })
+        const { error: se } = await client
+          .from('sessions')
+          .insert({ id: sessionId, user_id: userId, name })
+        if (se) {
+          const message = (se as { message?: string | null })?.message ?? 'Request failed'
+          showEngineNotice(`Nie udało się utworzyć sesji. ${message}`, 'error')
+          return null
+        }
+        const sessionDetail = await createSession({
+          id: sessionId,
+          name,
+        })
+        if (sessionDetail.session?.id) {
+          setEnginePreviewSessionId(sessionDetail.session.id)
+          setEnginePreviewSessionName(sessionDetail.session.name ?? '')
+          setEnginePreviewItems([])
+          setEngineSessionDetail(sessionDetail)
+          setEngineSessions(await listSessions())
+          setFeedbackReminder(null)
+          try {
+            await client
+              .from('user_sessions')
+              .upsert({
+                user_id: userId,
+                session_id: sessionDetail.session.id,
+                payload: {
+                  createdAt: sessionDetail.session.created_at,
+                  name: sessionDetail.session.name ?? null,
+                },
+                updated_at: new Date().toISOString(),
+              })
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Request failed'
+            showEngineNotice(`Nie udało się zapisać sesji w chmurze. ${message}`, 'error')
+          }
+          return sessionDetail.session.id
+        }
+        return null
+      }
       const sessionDetail = await createSession({
         name,
       })
@@ -5145,28 +5198,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
         setEngineSessionDetail(sessionDetail)
         setEngineSessions(await listSessions())
         setFeedbackReminder(null)
-        if (client && authSession?.user?.id) {
-          try {
-            const { data: u } = await client.auth.getUser()
-            const userId = u?.user?.id ?? null
-            if (userId) {
-              await client
-                .from('user_sessions')
-                .upsert({
-                  user_id: userId,
-                  session_id: sessionDetail.session.id,
-                  payload: {
-                    createdAt: sessionDetail.session.created_at,
-                    name: sessionDetail.session.name ?? null,
-                  },
-                  updated_at: new Date().toISOString(),
-                })
-            }
-          } catch (error) {
-            const message = error instanceof Error ? error.message : 'Request failed'
-            showEngineNotice(`Nie udało się zapisać sesji w chmurze. ${message}`, 'error')
-          }
-        }
         return sessionDetail.session.id
       }
     } catch {
@@ -6014,6 +6045,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         console.log('[sessionsList] userSessionsCount', uniqueIds.length)
         console.log('[sessionsList] sessionsFoundCount', sessionsFound.length)
         console.log('[sessionsList] missingSessionsCount', missingSessionsCount)
+        console.log('[sessionsList] sessionsCount', sessionsFound.length)
         setCloudSessionPayloads({})
         setEngineSessions(sessionsFound)
       } else {

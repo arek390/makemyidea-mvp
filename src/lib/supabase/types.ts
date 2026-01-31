@@ -1,6 +1,48 @@
 export type Database = {
   public: {
     Tables: {
+      sessions: {
+        Row: {
+          id: string
+          user_id: string
+          name: string
+          created_at: string | number
+          updated_at: string | number
+          last_group_code: string | null
+          last_mode_code: number | null
+          last_category_code: string | null
+          stuck_counter: number | null
+          tokens_in_total: number | null
+          tokens_out_total: number | null
+        }
+        Insert: {
+          id: string
+          user_id: string
+          name: string
+          created_at?: string | number
+          updated_at?: string | number
+          last_group_code?: string | null
+          last_mode_code?: number | null
+          last_category_code?: string | null
+          stuck_counter?: number | null
+          tokens_in_total?: number | null
+          tokens_out_total?: number | null
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          name?: string
+          created_at?: string | number
+          updated_at?: string | number
+          last_group_code?: string | null
+          last_mode_code?: number | null
+          last_category_code?: string | null
+          stuck_counter?: number | null
+          tokens_in_total?: number | null
+          tokens_out_total?: number | null
+        }
+        Relationships: []
+      }
       board_items: {
         Row: {
           id: string

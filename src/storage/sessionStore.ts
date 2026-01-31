@@ -144,9 +144,10 @@ export const getSession = async (id: string): Promise<EngineSessionDetail | null
 
 export const createSession = async (input?: {
   name?: string | null
+  id?: string | null
 }): Promise<EngineSessionDetail> => {
   const now = Date.now()
-  const id = generateId()
+  const id = String(input?.id || '').trim() || generateId()
   const session: EngineSessionSummary = {
     id,
     name: input?.name ?? null,
