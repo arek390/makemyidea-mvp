@@ -572,6 +572,7 @@ export default async function handler(req, res) {
     try {
       const supabaseAdmin = getSupabaseAdmin()
       const { data, error } = await supabaseAdmin
+        .schema('public')
         .from('sessions')
         .select('id,user_id')
         .eq('id', sessionId)
@@ -586,6 +587,7 @@ export default async function handler(req, res) {
         }
       }
       const rawRes = await supabaseAdmin
+        .schema('public')
         .from('sessions')
         .select('id', { count: 'exact' })
         .eq('id', sessionId)
@@ -641,6 +643,7 @@ export default async function handler(req, res) {
     try {
       const supabaseAdmin = getSupabaseAdmin()
       const { data, error, count } = await supabaseAdmin
+        .schema('public')
         .from('board_items')
         .select('id', { count: 'exact', head: true })
         .eq('session_id', sessionId)

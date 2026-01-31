@@ -28,10 +28,21 @@ export default async function handler(req, res) {
   try {
     const supabaseAdmin = getSupabaseAdmin()
     const resSelect = await supabaseAdmin
+      .schema('public')
       .from('sessions')
       .select('id,user_id,name')
       .eq('id', sessionId)
       .maybeSingle()
+    const publicRawRes = await supabaseAdmin
+      .schema('public')
+      .from('sessions')
+      .select('id')
+      .eq('id', sessionId)
+    const authRawRes = await supabaseAdmin
+      .schema('auth')
+      .from('sessions')
+      .select('id')
+      .eq('id', sessionId)
     data = resSelect.data || null
     error = resSelect.error || null
   } catch (err) {
@@ -52,5 +63,7 @@ export default async function handler(req, res) {
       : null,
     envHost: getEnvHost(),
     hasServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    publicRawCount: Array.isArray(publicRawRes?.data) ? publicRawRes.data.length : 0,
+    authRawCount: Array.isArray(authRawRes?.data) ? authRawRes.data.length : 0,
   })
 }
