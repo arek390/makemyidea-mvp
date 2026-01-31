@@ -25,6 +25,7 @@ import {
   type EngineSessionDetail,
   type EngineSessionSummary,
 } from './storage/sessionStore'
+import type { ReportSummary } from './storage/sessionStore'
 import {
   listCloudSessions,
   type CloudSessionPayload,
@@ -4084,6 +4085,15 @@ const normalizeBoardItem = (item: EngineBoardItem) => {
 
 const normalizeBoardItems = (items: EngineBoardItem[]) => items.map(normalizeBoardItem)
 
+const toTimestamp = (value: unknown, fallback: number) => {
+  if (typeof value === 'number' && Number.isFinite(value)) return value
+  if (typeof value === 'string') {
+    const parsed = Date.parse(value)
+    if (!Number.isNaN(parsed)) return parsed
+  }
+  return fallback
+}
+
 const isMissingLabel = (item: EngineBoardItem) => {
   const label = String(item.label ?? '').trim()
   return !label || label.toLowerCase() === 'n/a'
@@ -5136,6 +5146,28 @@ const isMissingLabel = (item: EngineBoardItem) => {
         setEngineSessionDetail(sessionDetail)
         setEngineSessions(await listSessions())
         setFeedbackReminder(null)
+        if (client && authSession?.user?.id) {
+          try {
+            const { data: u } = await client.auth.getUser()
+            const userId = u?.user?.id ?? null
+            if (userId) {
+              await client
+                .from('user_sessions')
+                .upsert({
+                  user_id: userId,
+                  session_id: sessionDetail.session.id,
+                  payload: {
+                    createdAt: sessionDetail.session.created_at,
+                    name: sessionDetail.session.name ?? null,
+                  },
+                  updated_at: new Date().toISOString(),
+                })
+            }
+          } catch (error) {
+            const message = error instanceof Error ? error.message : 'Request failed'
+            showEngineNotice(`Nie udało się zapisać sesji w chmurze. ${message}`, 'error')
+          }
+        }
         return sessionDetail.session.id
       }
     } catch {
@@ -6229,6 +6261,217 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineEditItemId(null)
     setEngineEditText('')
     try {
+      if (authSession?.user?.id && client) {
+        const email = authSession.user.email ?? ''
+        const canLog = Boolean(email) && isAdminUser(email as never)
+        console.log('[engine][open-session] clicked', { sessionId })
+        const { data: u, error: ue } = await client.auth.getUser()
+        const userId = u?.user?.id ?? null
+        if (canLog) {
+          console.log('[engine][open-session] authed user', {
+            authedUserId: userId,
+            hasAuthSession: Boolean(authSession?.user),
+          })
+        }
+        if (ue || !userId) {
+          showEngineNotice('Sesja logowania wygasła. Zaloguj się ponownie.', 'error')
+          return
+        }
+        const { data: us, error: use } = await client
+          .from('user_sessions')
+          .select('session_id')
+          .eq('user_id', userId)
+          .eq('session_id', sessionId)
+          .maybeSingle()
+        if (use) {
+          if (canLog) {
+            console.error('[engine][open-session] user_sessions lookup failed', {
+              status: (use as { status?: number | null })?.status,
+              code: (use as { code?: string | null })?.code,
+              message: (use as { message?: string | null })?.message,
+              details: (use as { details?: string | null })?.details,
+              hint: (use as { hint?: string | null })?.hint,
+            })
+          }
+        }
+        if (canLog) {
+          console.log('[engine][open-session] user_sessions row found', {
+            found: Boolean(us?.session_id),
+          })
+        }
+        if (!us?.session_id) {
+          const localDetail = await getSession(sessionId)
+          if (localDetail?.session) {
+            try {
+              await saveSessionToCloud(userId, localDetail, uiLanguage)
+              const { data: usRetry } = await client
+                .from('user_sessions')
+                .select('session_id')
+                .eq('user_id', userId)
+                .eq('session_id', sessionId)
+                .maybeSingle()
+              if (canLog) {
+                console.log('[engine][open-session] user_sessions row found (retry)', {
+                  found: Boolean(usRetry?.session_id),
+                })
+              }
+              if (!usRetry?.session_id) {
+                showEngineNotice('Nie masz dostępu do tej sesji (brak powiązania).', 'error')
+                return
+              }
+            } catch (error) {
+              const message = error instanceof Error ? error.message : 'Request failed'
+              showEngineNotice(`Nie udało się potwierdzić dostępu. ${message}`, 'error')
+              return
+            }
+          } else {
+            showEngineNotice('Nie masz dostępu do tej sesji (brak powiązania).', 'error')
+            return
+          }
+        }
+        type SessionRow = {
+          id: string
+          name?: string | null
+          created_at?: string | number | null
+          updated_at?: string | number | null
+          last_group_code?: string | null
+          last_mode_code?: number | null
+          last_category_code?: string | null
+          stuck_counter?: number | null
+          tokens_in_total?: number | null
+          tokens_out_total?: number | null
+        }
+        const { data: s, error: se } = (await client
+          .from('sessions')
+          .select('*')
+          .eq('id', sessionId)
+          .single()) as { data: SessionRow | null; error: unknown }
+        if (se) {
+          if (canLog) {
+            console.error('[engine][open-session] sessions fetch failed', {
+              status: (se as { status?: number | null })?.status,
+              code: (se as { code?: string | null })?.code,
+              message: (se as { message?: string | null })?.message,
+              details: (se as { details?: string | null })?.details,
+              hint: (se as { hint?: string | null })?.hint,
+            })
+          }
+          showEngineNotice('Nie udało się pobrać sesji.', 'error')
+          return
+        }
+        if (canLog) {
+          console.log('[engine][open-session] sessions row found', { found: Boolean(s?.id) })
+        }
+        const { data: items, error: ie } = await client
+          .from('board_items')
+          .select('*')
+          .eq('user_id', userId)
+          .eq('session_id', sessionId)
+          .order('created_at', { ascending: true })
+        if (ie) {
+          if (canLog) {
+            console.error('[engine][open-session] board_items fetch failed', {
+              status: (ie as { status?: number | null })?.status,
+              code: (ie as { code?: string | null })?.code,
+              message: (ie as { message?: string | null })?.message,
+              details: (ie as { details?: string | null })?.details,
+              hint: (ie as { hint?: string | null })?.hint,
+            })
+          }
+          showEngineNotice('Nie udało się pobrać wpisów.', 'error')
+          return
+        }
+        if (canLog) {
+          console.log('[engine][open-session] board_items fetched', {
+            sessionId,
+            count: Array.isArray(items) ? items.length : 0,
+          })
+        }
+        const { data: reportMeta, error: re } = await client
+          .from('reports')
+          .select('id,created_at,updated_at,summary_json,last_summary_text_hash,source_updated_at')
+          .eq('session_id', sessionId)
+          .maybeSingle()
+        if (re) {
+          if (canLog) {
+            console.error('[engine][open-session] reports fetch failed', {
+              status: (re as { status?: number | null })?.status,
+              code: (re as { code?: string | null })?.code,
+              message: (re as { message?: string | null })?.message,
+              details: (re as { details?: string | null })?.details,
+              hint: (re as { hint?: string | null })?.hint,
+            })
+          }
+        }
+        if (canLog) {
+          console.log('[engine][open-session] reports meta found', {
+            found: Boolean(reportMeta?.id),
+          })
+        }
+        const now = Date.now()
+        const sessionRow = s as SessionRow
+        const sessionSummary: EngineSessionSummary = {
+          id: String(sessionRow?.id || sessionId),
+          name: sessionRow?.name ?? null,
+          created_at: toTimestamp(sessionRow?.created_at, now),
+          updated_at: toTimestamp(sessionRow?.updated_at, now),
+          last_group_code: sessionRow?.last_group_code ?? null,
+          last_mode_code: sessionRow?.last_mode_code ?? null,
+          last_category_code: sessionRow?.last_category_code ?? null,
+          stuck_counter: sessionRow?.stuck_counter ?? 0,
+          tokensInTotal: sessionRow?.tokens_in_total ?? 0,
+          tokensOutTotal: sessionRow?.tokens_out_total ?? 0,
+          cloud_board_items_migrated: true,
+        }
+      const normalizedItems = normalizeBoardItems((items || []) as EngineBoardItem[])
+        const reportSummary =
+          reportMeta && typeof reportMeta.summary_json === 'object'
+            ? (reportMeta.summary_json as ReportSummary)
+            : null
+        setEngineSessionDetail({
+          session: sessionSummary,
+          boardItems: normalizedItems,
+          askedQuestionIds: [],
+          report: reportMeta
+            ? {
+                id: reportMeta.id ?? null,
+                created_at: toTimestamp(reportMeta.created_at, now),
+                updated_at: toTimestamp(reportMeta.updated_at, now),
+                lastSummaryTextHash: reportMeta.last_summary_text_hash ?? null,
+                summary: reportSummary,
+              }
+            : null,
+        })
+        setEnginePreviewSessionId(sessionSummary.id)
+        setEnginePreviewSessionName(sessionSummary.name ?? '')
+        setEnginePreviewItems(normalizedItems)
+        syncEngineLabelCache(normalizedItems)
+        setEnginePreviewInput('')
+        setEnginePreviewError(null)
+        setEngineNamePromptOpen(false)
+        setEngineNameDraft('')
+        setFeedbackReminder(null)
+        setEngineUiState('FREE_FLOW')
+        setEngineActivePrompt(null)
+        setEngineOfferReason(null)
+        if (sessionSummary) {
+          void updateSession({
+            session: sessionSummary,
+            boardItems: normalizedItems,
+            askedQuestionIds: [],
+            report: reportMeta
+              ? {
+                  id: reportMeta.id ?? null,
+                  created_at: toTimestamp(reportMeta.created_at, now),
+                  updated_at: toTimestamp(reportMeta.updated_at, now),
+                  lastSummaryTextHash: reportMeta.last_summary_text_hash ?? null,
+                  summary: reportSummary,
+                }
+              : null,
+          })
+        }
+        return
+      }
       if (authSession?.user?.id && !cloudSessionPayloads[sessionId]) {
         await fetchEngineSessions()
       }
