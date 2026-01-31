@@ -5468,7 +5468,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
     window.sessionStorage.setItem('reportReturnSessionId', sessionId)
     const existed =
       Boolean(getReportMetaForSession(sessionId)?.created_at) ||
-      (isGuestMode() &&
+      (!authSession?.user?.id &&
+        isGuestMode() &&
         sessionId &&
         window.sessionStorage.getItem(`report_exists::${sessionId}`) === 'true')
     if (sessionId) {
@@ -6020,6 +6021,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineEditItemId(null)
     setEngineEditText('')
     try {
+      if (authSession?.user?.id && !cloudSessionPayloads[sessionId]) {
+        await fetchEngineSessions()
+      }
       const data = await getSession(sessionId)
       if (!data) throw new Error('Missing session')
       engineResetOnSessionChange.current = true
@@ -6437,6 +6441,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
     const handleReportBack = () => {
       if (typeof window === 'undefined') return
+      if (snapshot.sessionId) {
+        void markReportCreated(snapshot.sessionId)
+      }
       const storedPath = window.sessionStorage.getItem('reportReturnPath')
       if (storedPath) {
         window.history.pushState({}, '', storedPath)
@@ -6934,11 +6941,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       }}
                     >
                       {enginePreviewSessionId &&
-                      typeof window !== 'undefined' &&
-                      (window.sessionStorage.getItem(
-                        `report_exists::${enginePreviewSessionId}`
-                      ) === 'true' ||
-                        Boolean(getReportMetaForSession(enginePreviewSessionId)?.created_at))
+                      (authSession?.user?.id
+                        ? Boolean(getReportMetaForSession(enginePreviewSessionId)?.created_at)
+                        : typeof window !== 'undefined' &&
+                          window.sessionStorage.getItem(
+                            `report_exists::${enginePreviewSessionId}`
+                          ) === 'true')
                         ? copy.enginePreviewOpenReport
                         : copy.enginePreviewCreateReport}
                     </button>
