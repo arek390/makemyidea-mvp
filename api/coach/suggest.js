@@ -537,7 +537,7 @@ export default async function handler(req, res) {
       return
     }
     const sessionId = String(body.sessionId || '').trim()
-    console.log('[coach/suggest] sessionId', { requestId, sessionId: sessionId || null })
+    console.log('[coach/suggest] sessionId received', { requestId, sessionId: sessionId || null })
     if (!sessionId) {
       sendErrorWithId(400, 'SESSION_ID_REQUIRED', 'Session id is required.', 'SESSION_ID_REQUIRED')
       return

@@ -405,6 +405,7 @@ export const ReportPage = ({
         text: item.text,
         currentCellId: cellIdFor(item),
       }))
+      console.log('[suggest] sessionId', { sessionId: reportSessionId })
       const response = await fetch('/api/coach/suggest', {
         method: 'POST',
         headers: {
@@ -412,6 +413,7 @@ export const ReportPage = ({
           'x-ai-support': aiSupportEnabled ? 'on' : 'off',
         },
         body: JSON.stringify({
+          sessionId: reportSessionId,
           action: 'report_summary',
           locale: language,
           sessionName: snapshot.sessionName || '',

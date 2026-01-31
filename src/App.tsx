@@ -2243,6 +2243,7 @@ function App() {
   const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
   const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
   const [enginePreviewSessionName, setEnginePreviewSessionName] = useState('')
+  const [engineSessionPersisted, setEngineSessionPersisted] = useState(false)
   const [engineNamePromptOpen, setEngineNamePromptOpen] = useState(false)
   const [engineNameDraft, setEngineNameDraft] = useState('')
   const [engineNameError, setEngineNameError] = useState<string | null>(null)
@@ -2326,6 +2327,9 @@ function App() {
     json: unknown
     parseError: string | null
   } | null>(null)
+  const [engineFacilitationInlineError, setEngineFacilitationInlineError] = useState<string | null>(
+    null
+  )
   const [engineAskedQuestionIds, setEngineAskedQuestionIds] = useState<string[]>([])
   const [, setEngineAskedQuestionMeta] = useState<
     Record<string, { group_code?: string; mode_code?: number }>
@@ -3149,6 +3153,7 @@ const isAuthFlowInProgress = () => {
 
   const handleGuestMode = () => {
     enableGuestMode()
+    setEngineSessionPersisted(false)
     if (import.meta.env.DEV) {
       console.log('[route-force] redirect to /engine')
       console.trace()
@@ -3228,6 +3233,24 @@ const isAuthFlowInProgress = () => {
   useEffect(() => {
     engineLatestInput.current = enginePreviewInput
   }, [enginePreviewInput])
+
+  useEffect(() => {
+    if (!authSession?.user?.id) {
+      setEngineSessionPersisted(false)
+    }
+  }, [authSession?.user?.id])
+
+  useEffect(() => {
+    if (!enginePreviewSessionId) {
+      setEngineSessionPersisted(false)
+    }
+  }, [enginePreviewSessionId])
+
+  useEffect(() => {
+    if (engineSessionPersisted) {
+      setEngineFacilitationInlineError(null)
+    }
+  }, [engineSessionPersisted, enginePreviewSessionId])
 
 
   useEffect(() => {
@@ -4603,7 +4626,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   const requestImpulse = async () => {
-    if (!engineSessionId || isSuggestLoading) return
+    if (isSuggestLoading) return
+    if (!engineSessionPersisted || !enginePreviewSessionId) {
+      showEngineNotice('Najpierw utwórz sesję.', 'error')
+      return
+    }
     setIsSuggestLoading(true)
     setShowSuggestLoadingUI(false)
     setImpulseQuestion(null)
@@ -4625,6 +4652,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       id: `idea-${index}`,
       text: item.text,
     }))
+    console.log('[suggest] sessionId', { sessionId: enginePreviewSessionId })
     if (import.meta.env.DEV) {
       console.log('[ai] suggest request', {
         aiSupportEnabled,
@@ -4634,7 +4662,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         lang: language,
       })
       console.log('[ai] suggest payload', {
-        sessionId: engineSessionId,
+        sessionId: enginePreviewSessionId,
         sessionName,
         entries: boardEntries.length,
         sample: boardEntries.slice(0, 3),
@@ -4645,7 +4673,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         method: 'POST',
         headers: llmHeaders,
         body: JSON.stringify({
-          sessionId: engineSessionId,
+          sessionId: enginePreviewSessionId,
           sessionName,
           boardEntries,
           language,
@@ -4818,6 +4846,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   const activateFacilitationPrompt = async (type: FacilitationType, retryCount = 0) => {
+    if (!engineSessionPersisted || !enginePreviewSessionId) {
+      setEngineFacilitationInlineError('Najpierw utwórz sesję.')
+      return
+    }
     if (!enginePreviewSessionId) return
     if (engineFacilitationLoading) return
     setEngineFacilitationLoading(true)
@@ -4835,6 +4867,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineFacilitationDiagnostics(null)
     const endpoint = '/api/coach/suggest'
     const context = getSessionContext(enginePreviewSessionId)
+    console.log('[suggest] sessionId', { sessionId: context.sessionId })
     const boardEntries = context.boardEntries
     const sessionName = context.sessionName
     const language = context.language
@@ -5199,6 +5232,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         if (sessionDetail.session?.id) {
           setEnginePreviewSessionId(sessionDetail.session.id)
           setEnginePreviewSessionName(sessionDetail.session.name ?? '')
+          setEngineSessionPersisted(true)
           setEnginePreviewItems([])
           setEngineSessionDetail(sessionDetail)
           setEngineSessions(await listSessions())
@@ -5229,6 +5263,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       if (sessionDetail.session?.id) {
         setEnginePreviewSessionId(sessionDetail.session.id)
         setEnginePreviewSessionName(sessionDetail.session.name ?? '')
+        setEngineSessionPersisted(false)
         setEnginePreviewItems([])
         setEngineSessionDetail(sessionDetail)
         setEngineSessions(await listSessions())
@@ -5506,6 +5541,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     engineInteractionBySession.current = {}
     engineIdleArmedRef.current = false
     setEnginePreviewSessionId(null)
+    setEngineSessionPersisted(false)
     setEnginePreviewItems([])
     setEnginePreviewError(null)
     setEngineSessionDetail(null)
@@ -5517,6 +5553,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineActivePrompt(null)
     setEnginePromptSource(null)
     setEngineOfferReason(null)
+    setEngineFacilitationInlineError(null)
     setEngineAskedQuestionIds([])
     setEngineAskedQuestionMeta({})
     setEngineLastQuestionMeta(null)
@@ -5777,6 +5814,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
       if (source === 'manual') showEngineNotice('Brak aktywnej sesji.', 'error')
       return
     }
+    if (!engineSessionPersisted) {
+      if (source === 'manual') {
+        showEngineNotice('Najpierw utwórz sesję.', 'error')
+      }
+      return
+    }
     const candidates =
       source === 'auto'
         ? [...engineUnassignedItems, ...engineDirtyItems]
@@ -5817,10 +5860,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
       if (diagnosticsEnabledForUser) {
         headers['x-diagnostics'] = '1'
       }
+      console.log('[suggest] sessionId', { sessionId: enginePreviewSessionId })
       const response = await fetch('/api/coach/suggest', {
         method: 'POST',
         headers,
         body: JSON.stringify({
+          sessionId: enginePreviewSessionId,
           action: 'assign_na',
           locale: uiLanguage === 'Polish' ? 'pl' : 'en',
           items,
@@ -6615,6 +6660,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         })
         setEnginePreviewSessionId(sessionSummary.id)
         setEnginePreviewSessionName(sessionSummary.name ?? '')
+        setEngineSessionPersisted(true)
         setEnginePreviewItems(normalizedItems)
         syncEngineLabelCache(normalizedItems)
         setEnginePreviewInput('')
@@ -6703,6 +6749,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       setEngineSessionDetail({ ...data, boardItems: normalizedItems })
       setEnginePreviewSessionId(data.session?.id ?? null)
       setEnginePreviewSessionName(data.session?.name ?? '')
+      setEngineSessionPersisted(false)
       setEnginePreviewItems(normalizedItems)
       syncEngineLabelCache(normalizedItems)
       setEnginePreviewInput('')
@@ -7440,6 +7487,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     engineOfferReason === 'idle' ||
     engineOfferReason === 'manual'
   const showHelpButton = !showFacilitationOffer
+  const facilitationDisabled = !engineSessionPersisted || !enginePreviewSessionId
   const llmUsageClass = llmUsageModel
     ? `llm-model-${llmUsageModel.replace(/\./g, '-')}`
     : 'llm-model-none'
@@ -8069,12 +8117,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     disabled={
                       engineAssignLoading ||
                       engineUnassignedItems.length === 0 ||
-                      !aiSupportEnabled
+                      !aiSupportEnabled ||
+                      !engineSessionPersisted
                     }
                     title={
                       !aiSupportEnabled
                         ? 'AI jest wyłączony'
-                        : engineUnassignedItems.length === 0
+                        : !engineSessionPersisted
+                          ? 'Najpierw utwórz sesję'
+                          : engineUnassignedItems.length === 0
                           ? 'Brak wpisów N/A'
                           : 'Uzupełnij N/A (AI)'
                     }
@@ -8122,16 +8173,25 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 data-testid="facilitation-buttons"
                 aria-hidden={!showFacilitationOffer}
               >
+                {engineFacilitationInlineError && (
+                  <span className="text-sm text-red-600">{engineFacilitationInlineError}</span>
+                )}
                 <button
                   type="button"
                   className="ghost"
                   data-testid="facilitation-deepen"
                   onClick={() => {
+                    if (facilitationDisabled) {
+                      setEngineFacilitationInlineError('Najpierw utwórz sesję.')
+                      return
+                    }
                     setFacilitationCooldown('DEEPEN')
                     armIdleWatch('facilitation_deepen')
                     void activateFacilitationPrompt('DEEPEN')
                   }}
-                  disabled={!showFacilitationOffer || engineFacilitationLoading}
+                  disabled={
+                    !showFacilitationOffer || engineFacilitationLoading || facilitationDisabled
+                  }
                 >
                   {showEngineFacilitationLoadingUI &&
                   engineFacilitationLoadingType === 'DEEPEN' ? (
@@ -8148,11 +8208,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   className="ghost"
                   data-testid="facilitation-perspective"
                   onClick={() => {
+                    if (facilitationDisabled) {
+                      setEngineFacilitationInlineError('Najpierw utwórz sesję.')
+                      return
+                    }
                     setFacilitationCooldown('PERSPECTIVE')
                     armIdleWatch('facilitation_perspective')
                     void activateFacilitationPrompt('PERSPECTIVE')
                   }}
-                  disabled={!showFacilitationOffer || engineFacilitationLoading}
+                  disabled={
+                    !showFacilitationOffer || engineFacilitationLoading || facilitationDisabled
+                  }
                 >
                   {showEngineFacilitationLoadingUI &&
                   engineFacilitationLoadingType === 'PERSPECTIVE' ? (
