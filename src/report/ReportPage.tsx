@@ -4,6 +4,12 @@ import { downloadReportCsv, type ReportSnapshot } from './exportCsv'
 import { groupItemsByCell } from './cellMapping'
 import { UsageBadge } from '../components/UsageBadge'
 import { buildSessionGoalText, extractProductNameFromSessionName } from './sessionGoal'
+import {
+  ensureReportExists,
+  fetchReportBySessionId,
+  updateReportBySessionId,
+} from '../lib/cloudReports'
+import { supabase as client } from '../lib/supabase/client'
 
 type ReportPageProps = {
   snapshot: ReportSnapshot
@@ -68,6 +74,9 @@ export const ReportPage = ({
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
   const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
   const summaryAutoAttempted = useRef(false)
+  const reportSessionId = snapshot.sessionId || null
+  const reportSourceUpdatedAt = Number(snapshot.sourceUpdatedAt || 0)
+  const [reportMetaLoaded, setReportMetaLoaded] = useState(!client || !reportSessionId)
 
   const isEmptySummaryText = (text: string | null | undefined, lang: 'pl' | 'en') => {
     const value = String(text || '').trim()
@@ -142,6 +151,25 @@ export const ReportPage = ({
     }
     return String(hash)
   }, [summaryItems])
+
+  const persistReportSummary = async (
+    summary: AiSummary | null,
+    textHash: string
+  ) => {
+    if (!client) return
+    if (!reportSessionId) return
+    try {
+      await ensureReportExists(reportSessionId, reportSourceUpdatedAt)
+      await updateReportBySessionId(reportSessionId, {
+        summary_json: summary,
+        last_summary_text_hash: textHash,
+        source_updated_at: reportSourceUpdatedAt,
+        updated_at: new Date().toISOString(),
+      })
+    } catch {
+      // ignore persistence errors to avoid blocking UI
+    }
+  }
   const productNameCandidate = useMemo(
     () =>
       extractProductNameFromSessionName(
@@ -239,6 +267,34 @@ export const ReportPage = ({
   }, [summaryCacheKey, reclassCacheKey])
 
   useEffect(() => {
+    if (!client || !reportSessionId) {
+      setReportMetaLoaded(true)
+      return
+    }
+    setReportMetaLoaded(false)
+    let cancelled = false
+    ;(async () => {
+      try {
+        const record = await fetchReportBySessionId(reportSessionId)
+        if (cancelled || !record) return
+        if (!aiSummary && record.summary) {
+          setAiSummary(record.summary)
+        }
+        if (!lastSummaryTextHash && record.lastSummaryTextHash) {
+          setLastSummaryTextHash(record.lastSummaryTextHash)
+        }
+      } catch {
+        // ignore
+      } finally {
+        if (!cancelled) setReportMetaLoaded(true)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [reportSessionId])
+
+  useEffect(() => {
     summaryAutoAttempted.current = false
     setSummaryStatus('idle')
   }, [language])
@@ -326,6 +382,7 @@ export const ReportPage = ({
         lastSummaryTextHash: computeSummaryTextFingerprint,
         createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
       })
+      void persistReportSummary(emptySummary, computeSummaryTextFingerprint)
       setSummaryStatus('done')
       return
     }
@@ -400,6 +457,7 @@ export const ReportPage = ({
         lastSummaryTextHash: computeSummaryTextFingerprint,
         createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
       })
+      void persistReportSummary(summary, computeSummaryTextFingerprint)
       if (onAiUsage && data.meta) {
         onAiUsage(data.meta)
       }
@@ -427,6 +485,9 @@ export const ReportPage = ({
           JSON.stringify({ summary: aiSummary, lastSummaryTextHash: current })
         )
       }
+      if (aiSummary) {
+        void persistReportSummary(aiSummary, current)
+      }
       setLastSummaryTextHash(current)
       return
     }
@@ -435,8 +496,9 @@ export const ReportPage = ({
   }
 
   useEffect(() => {
+    if (!reportMetaLoaded) return
     void generateSummaryIfNeeded()
-  }, [computeSummaryTextFingerprint, lastSummaryTextHash, aiSummary])
+  }, [computeSummaryTextFingerprint, lastSummaryTextHash, aiSummary, reportMetaLoaded])
 
   const cleanedSummary = useMemo(() => {
     const lang = language === 'pl' ? 'pl' : 'en'

@@ -30,6 +30,11 @@ import {
   type CloudSessionPayload,
   type CloudSessionRecord,
 } from './lib/cloudSessions'
+import {
+  ensureReportExists,
+  fetchReportBySessionId,
+  type ReportRecord,
+} from './lib/cloudReports'
 import { getSupabaseInitError, supabase as client, supabaseEnvDiag } from './lib/supabase/client'
 import { saveSessionToCloud } from './lib/cloudSessions'
 import {
@@ -2287,6 +2292,7 @@ function App() {
   const [cloudSessionPayloads, setCloudSessionPayloads] = useState<
     Record<string, CloudSessionPayload>
   >({})
+  const [reportRecords, setReportRecords] = useState<Record<string, ReportRecord | null>>({})
   const [engineNotice, setEngineNotice] = useState<{
     message: string
     variant: 'success' | 'error'
@@ -3725,11 +3731,14 @@ const isAuthFlowInProgress = () => {
       0
     )
     const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id || null
-    const reportMeta =
-      engineSessionDetail?.session?.id && engineSessionDetail.session.id === sessionId
-        ? engineSessionDetail.report
-        : null
-    const cloudReportMeta = sessionId ? cloudSessionPayloads[sessionId]?.report || null : null
+    const reportMeta = getReportMetaForSession(sessionId)
+    const reportSnapshotMeta = reportMeta
+      ? {
+          createdAt: reportMeta.created_at ?? null,
+          lastSummaryTextHash: reportMeta.lastSummaryTextHash ?? null,
+          summary: reportMeta.summary ?? null,
+        }
+      : null
     return {
       sessionId,
       sessionName,
@@ -3738,7 +3747,7 @@ const isAuthFlowInProgress = () => {
       ideas,
       questions,
       sourceUpdatedAt,
-      reportMeta: reportMeta || cloudReportMeta || null,
+      reportMeta: reportSnapshotMeta,
     }
   }
 
@@ -5460,29 +5469,41 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return () => window.clearInterval(intervalId)
   }, [engineFacilitationLoading, showEngineFacilitationLoadingUI])
 
-  const openReportView = () => {
+  const openReportView = async () => {
     if (typeof window === 'undefined') return
     const returnPath = window.location.pathname + window.location.search
     const sessionId = enginePreviewSessionId || ''
     window.sessionStorage.setItem('reportReturnPath', returnPath)
     window.sessionStorage.setItem('reportReturnSessionId', sessionId)
-    const existed =
-      Boolean(getReportMetaForSession(sessionId)?.created_at) ||
-      (!authSession?.user?.id &&
-        isGuestMode() &&
-        sessionId &&
-        window.sessionStorage.getItem(`report_exists::${sessionId}`) === 'true')
+    const hasDbReport = Boolean(reportRecords[sessionId]?.id)
+    const existed = authSession?.user?.id
+      ? hasDbReport
+      : (!authSession?.user?.id &&
+          isGuestMode() &&
+          sessionId &&
+          window.sessionStorage.getItem(`report_exists::${sessionId}`) === 'true')
     if (sessionId) {
-      window.sessionStorage.setItem(`report_exists::${sessionId}`, 'true')
       const sourceUpdatedAt =
         enginePreviewItems.reduce(
           (max, item) => Math.max(max, Number(item.created_at || 0)),
           0
         ) || 0
-      window.sessionStorage.setItem(
-        `report_source_updated_at::${sessionId}`,
-        String(sourceUpdatedAt)
-      )
+      if (authSession?.user?.id) {
+        try {
+          const ensured = await ensureReportExists(sessionId, sourceUpdatedAt)
+          setReportRecords((prev) => ({ ...prev, [sessionId]: ensured }))
+        } catch (error) {
+          if (import.meta.env.DEV) {
+            console.error('[report] failed to ensure report', error)
+          }
+        }
+      } else if (isGuestMode()) {
+        window.sessionStorage.setItem(`report_exists::${sessionId}`, 'true')
+        window.sessionStorage.setItem(
+          `report_source_updated_at::${sessionId}`,
+          String(sourceUpdatedAt)
+        )
+      }
       if (!existed) {
         void markReportCreated(sessionId)
       }
@@ -5491,12 +5512,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setReportViewOpen(true)
   }
 
-  const handleReportNavigation = () => {
+  const handleReportNavigation = async () => {
     if (missingLabelCount > 0) {
       setMissingLabelModalOpen(true)
       return
     }
-    openReportView()
+    await openReportView()
   }
 
   useEffect(() => {
@@ -5847,8 +5868,47 @@ const isMissingLabel = (item: EngineBoardItem) => {
     void fetchEngineSessions()
   }, [isEnginePreview, isReport, authSession?.user?.id])
 
+  useEffect(() => {
+    if (!enginePreviewSessionId) return
+    if (!authSession?.user?.id) {
+      setReportRecords((prev) => ({ ...prev, [enginePreviewSessionId]: null }))
+      return
+    }
+    if (!client) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const record = await fetchReportBySessionId(enginePreviewSessionId)
+        if (!cancelled) {
+          setReportRecords((prev) => ({ ...prev, [enginePreviewSessionId]: record }))
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setReportRecords((prev) => ({ ...prev, [enginePreviewSessionId]: null }))
+        }
+        if (import.meta.env.DEV) {
+          console.error('[report] failed to fetch report', error)
+        }
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [enginePreviewSessionId, authSession?.user?.id])
+
   const getReportMetaForSession = (sessionId: string | null) => {
     if (!sessionId) return null
+    if (authSession?.user?.id) {
+      const dbReport = reportRecords[sessionId]
+      if (!dbReport) return null
+      return {
+        id: dbReport.id,
+        created_at: dbReport.createdAt,
+        updated_at: dbReport.updatedAt,
+        lastSummaryTextHash: dbReport.lastSummaryTextHash ?? null,
+        summary: dbReport.summary ?? null,
+      }
+    }
     if (engineSessionDetail?.session?.id === sessionId && engineSessionDetail?.report) {
       return engineSessionDetail.report
     }
@@ -5872,6 +5932,21 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const now = Date.now()
     const detail = await getSession(sessionId)
     if (!detail?.session) return
+    if (authSession?.user?.id && client) {
+      const sourceUpdatedAt =
+        (detail.boardItems || []).reduce(
+          (max, item) => Math.max(max, Number(item.created_at || 0)),
+          0
+        ) || 0
+      try {
+        const ensured = await ensureReportExists(sessionId, sourceUpdatedAt)
+        setReportRecords((prev) => ({ ...prev, [sessionId]: ensured }))
+      } catch (error) {
+        if (import.meta.env.DEV) {
+          console.error('[report] failed to ensure report', error)
+        }
+      }
+    }
     const existing = detail.report || null
     if (existing?.created_at) return
     const updatedDetail: EngineSessionDetail = {
@@ -6491,6 +6566,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
           }
           if (authSession?.user?.id) {
             await saveSessionToCloud(authSession.user.id, updatedDetail, uiLanguage)
+            setReportRecords((prev) => {
+              const existingRecord = prev[sessionId]
+              if (!existingRecord) return prev
+              return {
+                ...prev,
+                [sessionId]: {
+                  ...existingRecord,
+                  summary: meta.summary ?? existingRecord.summary,
+                  lastSummaryTextHash:
+                    meta.lastSummaryTextHash ?? existingRecord.lastSummaryTextHash,
+                  updatedAt: Date.now(),
+                },
+              }
+            })
           }
         }}
         onAiUsage={(meta) => {
@@ -6937,12 +7026,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       onClick={() => {
                         markUserInitiatedInteraction('pointer')
                         setEngineLastInputActivityAt(Date.now())
-                        handleReportNavigation()
+                        void handleReportNavigation()
                       }}
                     >
                       {enginePreviewSessionId &&
                       (authSession?.user?.id
-                        ? Boolean(getReportMetaForSession(enginePreviewSessionId)?.created_at)
+                        ? Boolean(reportRecords[enginePreviewSessionId]?.id)
                         : typeof window !== 'undefined' &&
                           window.sessionStorage.getItem(
                             `report_exists::${enginePreviewSessionId}`
