@@ -74,7 +74,6 @@ export const ReportPage = ({
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
   const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
   const summaryAutoAttempted = useRef(false)
-  const reportTableDebugOnceRef = useRef(false)
   const reportSessionId = snapshot.sessionId || null
   const reportSourceUpdatedAt = Number(snapshot.sourceUpdatedAt || 0)
   const [reportMetaLoaded, setReportMetaLoaded] = useState(!client || !reportSessionId)
@@ -509,24 +508,49 @@ export const ReportPage = ({
       product: isEmptySummaryText(aiSummary?.product, lang) ? null : aiSummary?.product || null,
     }
   }, [aiSummary, language])
-
-  if (!reportTableDebugOnceRef.current && summaryItems.length > 0) {
-    const first = summaryItems[0]
-    const questionText = first.questionId
-      ? questionLookup.get(first.questionId) || '—'
-      : '—'
-    // TODO: remove debug logs after fix.
-    console.log('[debug][report-table] row keys', Object.keys(first || {}))
-    console.log('[debug][report-table] question/value', {
-      question: questionText,
-      text: first.text ?? null,
-      label: first.label ?? null,
-      matrix: {
-        row: (first as { matrix_row?: string | null; matrixRow?: string | null }).matrix_row ?? first.matrixRow,
-        col: (first as { matrix_col?: string | null; matrixCol?: string | null }).matrix_col ?? first.matrixCol,
+  const matrixRowLabels = useMemo(
+    () => ({
+      pl: {
+        world: 'Świat',
+        product: 'Produkt',
+        elements: 'Elementy',
       },
-    })
-    reportTableDebugOnceRef.current = true
+      en: {
+        world: 'World',
+        product: 'Product',
+        elements: 'Elements',
+      },
+    }),
+    []
+  )
+  const matrixColLabels = useMemo(
+    () => ({
+      pl: {
+        as_is: 'Jak jest',
+        not_working: 'Co nie działa',
+        should_be: 'Jak powinno być',
+      },
+      en: {
+        as_is: 'As is',
+        not_working: 'Not working',
+        should_be: 'Should be',
+      },
+    }),
+    []
+  )
+  const resolveQuestionText = (idea: (typeof summaryItems)[number]) => {
+    const id = String(idea.questionId || '').trim()
+    if (id) {
+      const fromLookup = questionLookup.get(id)
+      if (fromLookup) return fromLookup
+    }
+    const rowKey = String(idea.matrixRow || '').toLowerCase() as keyof typeof matrixRowLabels.en
+    const colKey = String(idea.matrixCol || '').toLowerCase() as keyof typeof matrixColLabels.en
+    const langKey = language === 'pl' ? 'pl' : 'en'
+    const rowLabel = matrixRowLabels[langKey][rowKey]
+    const colLabel = matrixColLabels[langKey][colKey]
+    if (rowLabel && colLabel) return `${rowLabel} / ${colLabel}`
+    return '—'
   }
   return (
     <div className="report-page">
@@ -673,9 +697,7 @@ export const ReportPage = ({
                 ) : (
                   summaryItems.map((idea) => {
                     const label = idea.label?.trim() ? idea.label.trim() : t.labelMissing
-                    const questionText = idea.questionId
-                      ? questionLookup.get(idea.questionId) || '—'
-                      : '—'
+                    const questionText = resolveQuestionText(idea)
                     return (
                       <tr key={idea.id}>
                         <td>{questionText}</td>
