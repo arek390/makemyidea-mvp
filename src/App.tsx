@@ -5143,6 +5143,30 @@ const isMissingLabel = (item: EngineBoardItem) => {
           showEngineNotice('Sesja logowania wygasła. Zaloguj się ponownie.', 'error')
           return null
         }
+        const normalizedName = name.trim().toLowerCase()
+        const { data: existingByName, error: nameCheckError } = await client
+          .from('sessions')
+          .select('id,name')
+          .eq('user_id', userId)
+        if (nameCheckError) {
+          const message =
+            (nameCheckError as { message?: string | null })?.message ?? 'Request failed'
+          showEngineNotice(`Nie udało się sprawdzić nazwy sesji. ${message}`, 'error')
+          return null
+        }
+        const hasCollision = Boolean(
+          (existingByName || []).some((row) => {
+            const dbName = String((row as { name?: string | null }).name ?? '')
+              .trim()
+              .toLowerCase()
+            return dbName === normalizedName
+          })
+        )
+        console.log('[createSession] nameCollision', hasCollision)
+        if (hasCollision) {
+          showEngineNotice('Masz już sesję o tej nazwie. Podaj inną nazwę.', 'error')
+          return null
+        }
         if (typeof crypto === 'undefined' || !('randomUUID' in crypto)) {
           showEngineNotice('Nie udało się wygenerować ID sesji.', 'error')
           return null
@@ -5153,8 +5177,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
           .from('sessions')
           .insert({ id: sessionId, user_id: userId, name })
         if (se) {
-          const message = (se as { message?: string | null })?.message ?? 'Request failed'
-          showEngineNotice(`Nie udało się utworzyć sesji. ${message}`, 'error')
+          const code = (se as { code?: string | null })?.code ?? null
+          if (code === '23505') {
+            showEngineNotice('Masz już sesję o tej nazwie. Podaj inną nazwę.', 'error')
+          } else {
+            const message = (se as { message?: string | null })?.message ?? 'Request failed'
+            showEngineNotice(`Nie udało się utworzyć sesji. ${message}`, 'error')
+          }
           return null
         }
         const sessionDetail = await createSession({
