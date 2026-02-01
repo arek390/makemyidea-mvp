@@ -136,11 +136,12 @@ const logRecommendationCounts = (label, recommendations) => {
     console.log(`[report:update][step3] ${label} recommendations missing`)
     return
   }
-  console.log(`[report:update][step3] ${label} recommendations counts`, {
-    based_on_user_ideas: recommendations.based_on_user_ideas?.length || 0,
-    morphological: recommendations.morphological?.length || 0,
-    market_trends: recommendations.market_trends?.length || 0,
-  })
+  const ideasCount = recommendations.based_on_user_ideas?.length || 0
+  const morphCount = recommendations.morphological?.length || 0
+  const trendsCount = recommendations.market_trends?.length || 0
+  console.log(
+    `[report:update][step3] ${label} rec counts: ideas=${ideasCount} morph=${morphCount} trends=${trendsCount}`
+  )
 }
 
 const validateSummary = (summary, itemsCount) => {
@@ -231,7 +232,9 @@ export default async function handler(req, res) {
     const boardRes = await supabaseAdmin
       .schema('public')
       .from('board_items')
-      .select('id,created_at,updated_at,text,label,question_text_pl,question_text_en')
+      .select(
+        'id,created_at,updated_at,text,label,question_text_pl,question_text_en,matrix_row,matrix_col,question_id'
+      )
       .eq('session_id', sessionId)
     if (boardRes.error) {
       res.status(500).json({ ok: false, error: boardRes.error })
@@ -268,7 +271,19 @@ export default async function handler(req, res) {
       },
     }
     const phaseASanitized = sanitizeReportPayload(phaseAReport)
-    console.log('[report:update] items_from_db', itemsFromDb.length, 'items_in_report', phaseASanitized.items?.length || 0)
+    const reportItemsCount = Array.isArray(phaseASanitized.items) ? phaseASanitized.items.length : 0
+    console.log(
+      '[report:update] db_items',
+      items.length,
+      'report_items',
+      reportItemsCount
+    )
+    if (reportItemsCount !== items.length) {
+      console.log('[report:update] items_count_mismatch', {
+        db: items.length,
+        report: reportItemsCount,
+      })
+    }
     const phaseAUpdateRes = await supabaseAdmin
       .schema('public')
       .from('reports')
@@ -483,7 +498,11 @@ export default async function handler(req, res) {
         change:
           typeof summaryCandidate?.change === 'string' ? summaryCandidate.change.length : 0,
       }
-      console.log('[report:update] summary lengths', summaryLength)
+    console.log(
+      '[report:update] summary',
+      `today_len=${summaryLength.today}`,
+      `change_len=${summaryLength.change}`
+    )
 
       const finalSummary = summaryValidation.ok ? summaryCandidate : phaseASanitized.summary
       if (!summaryValidation.ok) {
