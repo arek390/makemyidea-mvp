@@ -181,7 +181,6 @@ export const ReportPage = ({
   snapshot,
   language,
   onBack,
-  onLogout,
   aiSupportEnabled,
   diagnosticsEnabled,
   naFillStatus,
