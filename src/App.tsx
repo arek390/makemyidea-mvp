@@ -5777,10 +5777,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   const handleReportNavigation = async () => {
-    if (missingLabelCount > 0) {
-      setMissingLabelModalOpen(true)
-      return
-    }
     await openReportView()
   }
 
