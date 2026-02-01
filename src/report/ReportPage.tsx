@@ -516,9 +516,6 @@ export const ReportPage = ({
               <a href="#responses">{t.collectedIdeas}</a>
             </li>
             <li>
-              <a href="#insights">{t.insights}</a>
-            </li>
-            <li>
               <a href="#next">{t.nextSteps}</a>
             </li>
             <li>
@@ -613,11 +610,6 @@ export const ReportPage = ({
               </tbody>
             </table>
           </div>
-        </section>
-
-        <section id="insights" className="report-section">
-          <h2>{t.insights}</h2>
-          <p>{t.placeholder}</p>
         </section>
 
         <section id="next" className="report-section">

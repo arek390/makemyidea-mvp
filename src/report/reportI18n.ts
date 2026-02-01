@@ -20,7 +20,6 @@ export const reportCopy: Record<
     summaryProduct: string
     perspectiveMap: string
     collectedIdeas: string
-    insights: string
     nextSteps: string
     appendices: string
     aiGenerate: string
@@ -67,9 +66,8 @@ export const reportCopy: Record<
     summaryProduct: 'My product concept',
     perspectiveMap: 'Perspective / questions map',
     collectedIdeas: 'Collected ideas and observations',
-    insights: 'Insights & patterns',
     nextSteps: 'Recommendations / next steps',
-    appendices: 'Appendices (raw data + metadata)',
+    appendices: 'Appendices',
     aiGenerate: 'Generate AI summary',
     aiRegenerate: 'Regenerate',
     aiGenerating: 'Generating…',
@@ -102,7 +100,7 @@ export const reportCopy: Record<
     print: 'Drukuj',
     downloadPdf: 'Pobierz PDF',
     exportCsv: 'Eksport CSV',
-    cover: 'Okładka',
+    cover: 'Informacje ogólne',
     toc: 'Spis treści',
     sessionName: 'Sesja',
     date: 'Data',
@@ -114,9 +112,8 @@ export const reportCopy: Record<
     summaryProduct: 'To mój pomysł na produkt',
     perspectiveMap: 'Mapa perspektyw / pytań',
     collectedIdeas: 'Zebrane pomysły i obserwacje',
-    insights: 'Wnioski i wzorce',
     nextSteps: 'Rekomendacje / następne kroki',
-    appendices: 'Załączniki (surowe dane + metadane)',
+    appendices: 'Załączniki',
     aiGenerate: 'Generuj podsumowanie AI',
     aiRegenerate: 'Generuj ponownie',
     aiGenerating: 'Generuję…',

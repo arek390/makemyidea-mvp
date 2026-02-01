@@ -96,6 +96,7 @@ type LabelItem = {
 
 const ENGINE_ENTRY_LABELS = [
   'pomysł',
+  'obserwacja',
   'problem do rozwiązania',
   'ryzyko / blokada',
   'pytanie do klienta',
@@ -107,6 +108,7 @@ const ENGINE_ENTRY_LABELS = [
 
 const ENGINE_ENTRY_LABEL_TRANSLATIONS: Record<string, string> = {
   'pomysł': 'idea',
+  'obserwacja': 'observation',
   'problem do rozwiązania': 'problem to solve',
   'ryzyko / blokada': 'risk / blocker',
   'pytanie do klienta': 'question to customer',
@@ -118,6 +120,7 @@ const ENGINE_ENTRY_LABEL_TRANSLATIONS: Record<string, string> = {
 
 const ENGINE_ENTRY_LABEL_COLORS: Record<string, string> = {
   'pomysł': '#FFD9B3',
+  'obserwacja': '#CFEBDD',
   'problem do rozwiązania': '#FFBDBD',
   'ryzyko / blokada': '#FFC9E3',
   'pytanie do klienta': '#CFE8FF',
