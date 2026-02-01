@@ -152,7 +152,8 @@ const validateSummary = (summary, itemsCount) => {
   const today = typeof summary.today === 'string' ? summary.today.trim() : ''
   const change = typeof summary.change === 'string' ? summary.change.trim() : ''
   if (itemsCount >= 3) {
-    if (!today || !change) errors.push('summary_empty')
+    if (today.length < 30) errors.push('summary_today_too_short')
+    if (change.length < 30) errors.push('summary_change_too_short')
     const insufficientPatterns = [
       /brak wystarczających danych/i,
       /brak informacji/i,
@@ -162,6 +163,8 @@ const validateSummary = (summary, itemsCount) => {
     if (insufficientPatterns.some((pattern) => pattern.test(today) || pattern.test(change))) {
       errors.push('summary_insufficient')
     }
+  } else if (!today || !change) {
+    errors.push('summary_empty')
   }
   return { ok: errors.length === 0, errors }
 }
@@ -397,6 +400,7 @@ export default async function handler(req, res) {
           notes: [
             'You MUST return a single valid JSON object with ONLY: summary, recommendations.',
             'No markdown. No commentary. Do not include items or source_snapshot.',
+            'Zawsze wypełnij summary.today i summary.change. Jeśli liczba wpisów >= 3, nie wolno zwrócić pustych pól ani tekstu "Brak wystarczających danych...".',
             'The JSON MUST include "recommendations" as an OBJECT (never null, never string).',
             'It MUST contain exactly these keys: based_on_user_ideas, morphological, market_trends.',
             'Each array MUST contain at least 1 item.',
@@ -442,6 +446,7 @@ export default async function handler(req, res) {
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
         })
 
+      console.log('[report:update] itemsCount', itemsFromDb.length)
       let validationErrors = []
       let summaryCandidate = phaseASanitized.summary
       let recommendationsCandidate = normalizeRecommendations(phaseASanitized.recommendations)
@@ -498,13 +503,34 @@ export default async function handler(req, res) {
         change:
           typeof summaryCandidate?.change === 'string' ? summaryCandidate.change.length : 0,
       }
-    console.log(
-      '[report:update] summary',
-      `today_len=${summaryLength.today}`,
-      `change_len=${summaryLength.change}`
-    )
+      console.log(
+        '[report:update] summary',
+        `today_len=${summaryLength.today}`,
+        `change_len=${summaryLength.change}`
+      )
 
-      const finalSummary = summaryValidation.ok ? summaryCandidate : phaseASanitized.summary
+      const fallbackSummary = (() => {
+        const topic = typeof analysisJson?.topic === 'string' ? analysisJson.topic.trim() : ''
+        const topicSuffix = topic ? ` dotyczących: ${topic}.` : '.'
+        return {
+          today: `Zebrano ${itemsFromDb.length} wpisów${topicSuffix}`,
+          change:
+            'Dodaj więcej szczegółów lub doprecyzuj kryteria, aby uzyskać pełniejsze podsumowanie.',
+          product: '',
+        }
+      })()
+      const hasUsableExistingSummary =
+        typeof phaseASanitized.summary?.today === 'string' &&
+        phaseASanitized.summary.today.trim().length >= 30 &&
+        typeof phaseASanitized.summary?.change === 'string' &&
+        phaseASanitized.summary.change.trim().length >= 30 &&
+        !/brak wystarczających danych/i.test(phaseASanitized.summary.today) &&
+        !/brak wystarczających danych/i.test(phaseASanitized.summary.change)
+      const finalSummary = summaryValidation.ok
+        ? summaryCandidate
+        : hasUsableExistingSummary
+          ? phaseASanitized.summary
+          : fallbackSummary
       if (!summaryValidation.ok) {
         console.log('[report:update][step3] summary fallback', summaryValidation.errors)
       }
