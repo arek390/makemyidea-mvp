@@ -500,22 +500,30 @@ export const ReportPage = ({
     <div className="report-page">
       <header className="report-header">
         <div>
-          <h1>{t.title}</h1>
+          <div className="report-title-row">
+            <h1>{t.title}</h1>
+            <span className="report-updating-slot" aria-hidden={naFillStatus !== 'running'}>
+              {naFillStatus === 'running' && (
+                <span
+                  className="report-updating-indicator"
+                  role="status"
+                  aria-label={language === 'pl' ? 'Aktualizowanie…' : 'Updating…'}
+                  title={language === 'pl' ? 'Aktualizowanie…' : 'Updating…'}
+                />
+              )}
+            </span>
+          </div>
           <div className="engine-kicker">MAKEMYIDEA.WORK</div>
         </div>
         <div className="report-actions">
-          <button type="button" className="ghost" onClick={onBack}>
+          <button type="button" className="primary" onClick={onBack}>
             {t.back}
           </button>
-          <button type="button" className="ghost" onClick={onLogout}>
-            {t.logout}
-          </button>
           {showUpdate && (
-            <button type="button" className="ghost" onClick={handleUpdateReport}>
+            <button type="button" className="primary" onClick={handleUpdateReport}>
               {t.reportUpdate}
             </button>
           )}
-          {naFillStatus === 'running' && <span className="muted">{t.naAssigning}</span>}
           {naFillStatus === 'error' && <span className="muted">{t.naAssigningError}</span>}
         </div>
       </header>

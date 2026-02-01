@@ -1697,6 +1697,42 @@
   margin: 0;
 }
 
+.report-title-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.report-updating-slot {
+  width: 16px;
+  height: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.report-updating-indicator {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #d9d2c6;
+  border-top-color: #7d6c55;
+  display: inline-block;
+  animation: report-spin 0.9s linear infinite;
+}
+
+@keyframes report-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .report-updating-indicator {
+    animation: none;
+  }
+}
+
 .report-actions {
   display: flex;
   flex-wrap: wrap;
