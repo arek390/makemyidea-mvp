@@ -401,6 +401,7 @@ export default async function handler(req, res) {
             'You MUST return a single valid JSON object with ONLY: summary, recommendations.',
             'No markdown. No commentary. Do not include items or source_snapshot.',
             'Zawsze wypełnij summary.today i summary.change. Jeśli liczba wpisów >= 3, nie wolno zwrócić pustych pól ani tekstu "Brak wystarczających danych...".',
+            'W sekcji "Podsumowanie" pisz zawsze w 2. osobie liczby pojedynczej, jak facylitator zwracający się do użytkownika. Używaj form: "Planujesz…", "Chcesz…", "Masz…", "Zależy Ci…". Nie używaj 3. osoby ("Użytkownik", "Autor", "Osoba").',
             'The JSON MUST include "recommendations" as an OBJECT (never null, never string).',
             'It MUST contain exactly these keys: based_on_user_ideas, morphological, market_trends.',
             'Each array MUST contain at least 1 item.',
@@ -513,7 +514,7 @@ export default async function handler(req, res) {
         const topic = typeof analysisJson?.topic === 'string' ? analysisJson.topic.trim() : ''
         const topicSuffix = topic ? ` dotyczących: ${topic}.` : '.'
         return {
-          today: `Zebrano ${itemsFromDb.length} wpisów${topicSuffix}`,
+          today: `Masz ${itemsFromDb.length} wpisów${topicSuffix}`,
           change:
             'Dodaj więcej szczegółów lub doprecyzuj kryteria, aby uzyskać pełniejsze podsumowanie.',
           product: '',
