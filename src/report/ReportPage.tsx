@@ -64,6 +64,26 @@ const sanitizeReportPayload = <T,>(payload: T): T => {
   return payload
 }
 
+const sanitizeFilenamePart = (value: string) => {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[\/\\:\*\?"<>|]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+  return normalized || 'report'
+}
+
+const formatDate = (value?: number | null) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const date = new Date(value)
+    if (!Number.isNaN(date.getTime())) {
+      return date.toISOString().slice(0, 10)
+    }
+  }
+  return new Date().toISOString().slice(0, 10)
+}
+
 const validateAndNormalizeReport = (payload: unknown) => {
   const empty = {
     summary: { today: '', change: '', product: '' },
@@ -391,6 +411,19 @@ export const ReportPage = ({
       String(sourceUpdatedAt)
     )
     setUpdateNotice(t.reportUpdated)
+  }
+
+  const handlePrintReport = () => {
+    if (typeof document === 'undefined') return
+    const originalTitle = document.title
+    const fileName = `${sanitizeFilenamePart(snapshot.sessionName)}_${formatDate(
+      snapshot.reportMeta?.createdAt ?? null
+    )}.pdf`
+    document.title = fileName
+    window.print()
+    window.setTimeout(() => {
+      document.title = originalTitle
+    }, 0)
   }
 
   const handleLabelChange = async (idea: ReportSnapshot['ideas'][number], nextValue: string) => {
@@ -839,7 +872,7 @@ export const ReportPage = ({
         <section id="appendix" className="report-section">
           <h2>{t.appendices}</h2>
           <div className="report-actions">
-            <button type="button" className="primary" onClick={() => window.print()}>
+            <button type="button" className="primary" onClick={handlePrintReport}>
               {t.pdfPrint}
             </button>
             <button
