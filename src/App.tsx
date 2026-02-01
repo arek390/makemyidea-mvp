@@ -7870,85 +7870,60 @@ const isMissingLabel = (item: EngineBoardItem) => {
           <section className="engine-panel engine-sessions">
             <div className="engine-panel-header">
               <h2>{copy.engineSessionsTitle}</h2>
-                <div className="engine-actions">
+              <div className="engine-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={fetchEngineSessions}
+                  disabled={engineSessionsLoading}
+                >
+                  {engineSessionsLoading ? '...' : copy.engineSessionsRefresh}
+                </button>
+              </div>
+            </div>
+            {engineSessionsError && (
+              <div className="engine-error">{engineSessionsError}</div>
+            )}
+            {!engineSessionsError && engineSessions.length === 0 && (
+              <div className="engine-empty">{copy.engineSessionsEmpty}</div>
+            )}
+            <ul className="engine-list">
+              {engineSessions.map((session) => (
+                <li
+                  key={session.id}
+                  className="engine-session-row"
+                  data-testid={`session-item-${session.id}`}
+                >
+                  <span className="engine-session-id">{formatSessionLabel(session.name, session.id)}</span>
+                  <span className="engine-session-meta">
+                    {new Date(session.updated_at).toLocaleString()}
+                  </span>
                   <button
                     type="button"
                     className="ghost"
-                    onClick={fetchEngineSessions}
-                    disabled={engineSessionsLoading}
-                  >
-                    {engineSessionsLoading ? '...' : copy.engineSessionsRefresh}
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
+                    data-testid={`session-open-${session.id}`}
                     onClick={() => {
-                      markUserInitiatedInteraction('pointer')
-                      setEngineLastInputActivityAt(Date.now())
-                      handleExportSessions()
+                      armIdleWatch('open_session')
+                      openEngineSession(session.id)
+                      setEngineSessionsOpen(false)
                     }}
                   >
-                    {copy.engineSessionsExport}
+                    {copy.engineSessionsOpen}
                   </button>
                   <button
                     type="button"
-                    className="ghost"
-                    onClick={() => engineImportInputRef.current?.click()}
+                    className="ghost danger"
+                    onClick={() => deleteEngineSession(session.id)}
+                    disabled={engineDeleteLoadingId === session.id}
                   >
-                    {copy.engineSessionsImport}
+                    {engineDeleteLoadingId === session.id
+                      ? copy.engineSessionsDeleting
+                      : copy.engineSessionsDelete}
                   </button>
-                  <input
-                    ref={engineImportInputRef}
-                    type="file"
-                    accept="application/json"
-                    className="sr-only"
-                    onChange={handleImportSessions}
-                  />
-                </div>
-              </div>
-              {engineSessionsError && (
-                <div className="engine-error">{engineSessionsError}</div>
-              )}
-              {!engineSessionsError && engineSessions.length === 0 && (
-                <div className="engine-empty">{copy.engineSessionsEmpty}</div>
-              )}
-              <ul className="engine-list">
-                {engineSessions.map((session) => (
-                  <li
-                    key={session.id}
-                    className="engine-session-row"
-                    data-testid={`session-item-${session.id}`}
-                  >
-                    <span className="engine-session-id">{formatSessionLabel(session.name, session.id)}</span>
-                    <span className="engine-session-meta">
-                      {new Date(session.updated_at).toLocaleString()}
-                    </span>
-                    <button
-                      type="button"
-                      className="ghost"
-                      data-testid={`session-open-${session.id}`}
-                      onClick={() => {
-                        armIdleWatch('open_session')
-                        openEngineSession(session.id)
-                        setEngineSessionsOpen(false)
-                      }}
-                    >
-                      {copy.engineSessionsOpen}
-                    </button>
-                    <button
-                      type="button"
-                      className="ghost danger"
-                      onClick={() => deleteEngineSession(session.id)}
-                      disabled={engineDeleteLoadingId === session.id}
-                    >
-                      {engineDeleteLoadingId === session.id
-                        ? copy.engineSessionsDeleting
-                        : copy.engineSessionsDelete}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-              {engineSessionDetail?.session && (
+                </li>
+              ))}
+            </ul>
+            {engineSessionDetail?.session && (
                 <div className="engine-session-detail">
                   <h3>{copy.engineSessionDetailsTitle}</h3>
                   <div className="engine-meta">
@@ -8031,9 +8006,48 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     )}
                   </div>
                 </div>
-              )}
-            </section>
-          )}
+            )}
+          </section>
+        )}
+
+        {engineSessionsOpen && showDiagnostics && (
+          <section className="engine-panel">
+            <div className="engine-panel-header">
+              <h2>
+                {uiLanguage === 'Polish'
+                  ? 'Narzędzia diagnostyczne administracyjne'
+                  : 'Administrative diagnostics tools'}
+              </h2>
+              <div className="engine-actions">
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => {
+                    markUserInitiatedInteraction('pointer')
+                    setEngineLastInputActivityAt(Date.now())
+                    handleExportSessions()
+                  }}
+                >
+                  {copy.engineSessionsExport}
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => engineImportInputRef.current?.click()}
+                >
+                  {copy.engineSessionsImport}
+                </button>
+                <input
+                  ref={engineImportInputRef}
+                  type="file"
+                  accept="application/json"
+                  className="sr-only"
+                  onChange={handleImportSessions}
+                />
+              </div>
+            </div>
+          </section>
+        )}
 
           {debugMatrixData && engineMatrixVisible && (
             <section className="engine-panel">
