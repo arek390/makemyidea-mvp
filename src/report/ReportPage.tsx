@@ -495,6 +495,43 @@ export const ReportPage = ({
     recommendations.based_on_user_ideas.length ||
     recommendations.morphological.length ||
     recommendations.market_trends.length
+  const perspectiveLabels =
+    language === 'pl'
+      ? {
+          asIs: 'Jak jest?',
+          notWorking: 'Co nie działa?',
+          toBe: 'Jak powinno być?',
+          empty: 'Brak danych do analizy perspektyw',
+        }
+      : {
+          asIs: 'As is',
+          notWorking: 'What doesn’t work',
+          toBe: 'How it should be',
+          empty: 'No data to analyze perspectives',
+        }
+  const perspectiveData = useMemo(() => {
+    const rows = ['world', 'product', 'elements']
+    const counts = { asIs: 0, notWorking: 0, toBe: 0 }
+    summaryItems.forEach((item) => {
+      if (!rows.includes(String(item.matrixRow || '').toLowerCase())) return
+      const col = String(item.matrixCol || '').toLowerCase()
+      if (col === 'as_is') counts.asIs += 1
+      else if (col === 'not_working') counts.notWorking += 1
+      else if (col === 'should_be') counts.toBe += 1
+    })
+    const total = counts.asIs + counts.notWorking + counts.toBe
+    const pct = (value: number) =>
+      total ? Math.round((value / total) * 100) : 0
+    return {
+      total,
+      counts,
+      percents: {
+        asIs: pct(counts.asIs),
+        notWorking: pct(counts.notWorking),
+        toBe: pct(counts.toBe),
+      },
+    }
+  }, [summaryItems])
   return (
     <div className="report-page">
       <header className="report-header">
@@ -616,7 +653,55 @@ export const ReportPage = ({
 
         <section id="map" className="report-section">
           <h2>{t.perspectiveMap}</h2>
-          <p>{t.placeholder}</p>
+          {perspectiveData.total === 0 ? (
+            <p className="muted">{perspectiveLabels.empty}</p>
+          ) : (
+            <>
+              <div
+                className="perspective-bar"
+                aria-label={`Mapa perspektyw: ${perspectiveLabels.asIs} ${
+                  perspectiveData.percents.asIs
+                }%, ${perspectiveLabels.notWorking} ${
+                  perspectiveData.percents.notWorking
+                }%, ${perspectiveLabels.toBe} ${perspectiveData.percents.toBe}%`}
+              >
+                <div
+                  className="perspective-segment as-is"
+                  style={{ width: `${perspectiveData.percents.asIs}%` }}
+                  title={`${perspectiveLabels.asIs}: ${perspectiveData.counts.asIs} (${perspectiveData.percents.asIs}%)`}
+                >
+                  {perspectiveData.percents.asIs >= 10
+                    ? `${perspectiveData.percents.asIs}%`
+                    : ''}
+                </div>
+                <div
+                  className="perspective-segment not-working"
+                  style={{ width: `${perspectiveData.percents.notWorking}%` }}
+                  title={`${perspectiveLabels.notWorking}: ${perspectiveData.counts.notWorking} (${perspectiveData.percents.notWorking}%)`}
+                >
+                  {perspectiveData.percents.notWorking >= 10
+                    ? `${perspectiveData.percents.notWorking}%`
+                    : ''}
+                </div>
+                <div
+                  className="perspective-segment to-be"
+                  style={{ width: `${perspectiveData.percents.toBe}%` }}
+                  title={`${perspectiveLabels.toBe}: ${perspectiveData.counts.toBe} (${perspectiveData.percents.toBe}%)`}
+                >
+                  {perspectiveData.percents.toBe >= 10
+                    ? `${perspectiveData.percents.toBe}%`
+                    : ''}
+                </div>
+              </div>
+              <div className="perspective-legend">
+                <span className="legend-item as-is">{perspectiveLabels.asIs}</span>
+                <span className="legend-item not-working">
+                  {perspectiveLabels.notWorking}
+                </span>
+                <span className="legend-item to-be">{perspectiveLabels.toBe}</span>
+              </div>
+            </>
+          )}
         </section>
 
         <section id="responses" className="report-section">

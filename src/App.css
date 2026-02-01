@@ -1739,6 +1739,66 @@
   gap: 0.75rem;
 }
 
+.perspective-bar {
+  display: flex;
+  width: 100%;
+  height: 28px;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid #e0e0e0;
+  background: #ffffff;
+}
+
+.perspective-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #1b1b1b;
+  transition: filter 0.2s ease, outline-color 0.2s ease;
+  outline: 1px solid rgba(255, 255, 255, 0.6);
+  outline-offset: -1px;
+}
+
+.perspective-segment.as-is {
+  background: #c7d7e5;
+}
+
+.perspective-segment.not-working {
+  background: #f4c7c3;
+}
+
+.perspective-segment.to-be {
+  background: #cde8d5;
+}
+
+.perspective-segment:hover,
+.perspective-segment:focus-visible {
+  filter: saturate(1.08);
+}
+
+.perspective-legend {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.perspective-legend .legend-item.as-is {
+  color: #6a8098;
+}
+
+.perspective-legend .legend-item.not-working {
+  color: #b76a65;
+}
+
+.perspective-legend .legend-item.to-be {
+  color: #5f8d74;
+}
+
 .report-body {
   width: min(900px, 100%);
 }
