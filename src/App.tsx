@@ -1987,8 +1987,6 @@ function App() {
   const [authCallbackError, setAuthCallbackError] = useState<string | null>(null)
   const [authCallbackLoading, setAuthCallbackLoading] = useState(false)
   const [authCallbackHint, setAuthCallbackHint] = useState<string | null>(null)
-  const [devLastError, setDevLastError] = useState<string | null>(null)
-  const [lastAuthEvent, setLastAuthEvent] = useState<string | null>(null)
   const [authResolved, setAuthResolved] = useState(false)
   const [loginEmail, setLoginEmail] = useState('')
   const [loginSending, setLoginSending] = useState(false)
@@ -2065,12 +2063,7 @@ function App() {
     if (Date.now() - cached.updatedAt > FX_CACHE_TTL_MS) return null
     return cached.rate
   })
-  const [lastLlmCallAt, setLastLlmCallAt] = useState<string | null>(null)
-  const [lastLlmModel, setLastLlmModel] = useState<string | null>(null)
-  const [lastLlmTokensDelta, setLastLlmTokensDelta] = useState<number | null>(null)
   const [lastLlmSource, setLastLlmSource] = useState<'llm' | 'fallback' | null>(null)
-  const [lastLlmGroundedCount, setLastLlmGroundedCount] = useState<number | null>(null)
-  const [lastLlmGroundedIn, setLastLlmGroundedIn] = useState<string[] | null>(null)
   const [lastLlmWhy, setLastLlmWhy] = useState<string | null>(null)
   const [llmPingResult, setLlmPingResult] = useState<{
     model?: string | null
@@ -2151,9 +2144,6 @@ function App() {
       }
       return next
     })
-    setLastLlmCallAt(new Date().toISOString())
-    setLastLlmTokensDelta(delta)
-    setLastLlmModel(meta?.modelUsed ?? null)
     setLastLlmSource('llm')
   }
   const applyUsageToSession = async (
@@ -2742,7 +2732,6 @@ const isAuthFlowInProgress = () => {
     init()
     const { data } = auth.onAuthStateChange(
       (event: AuthChangeEvent, session: Session | null) => {
-        setLastAuthEvent(event)
         setAuthSession(session ?? null)
         if (!authResolved) setAuthResolved(true)
         if (typeof window !== 'undefined') {
@@ -4722,14 +4711,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
       applyUsageModel(data.meta)
       void applyUsageToSession(data.meta, enginePreviewSessionId)
       setImpulseSource(normalized.labelType === 'fallback' ? 'fallback' : 'llm')
-      if (typeof data?.groundedCount === 'number') {
-        setLastLlmGroundedCount(data.groundedCount)
-      }
       if (normalized.questions.length) {
-        setLastLlmGroundedIn(normalized.questions[0]?.grounded_in ?? null)
         setLastLlmWhy(normalized.questions[0]?.why_this_question ?? null)
       } else if (normalized.questionObj) {
-        setLastLlmGroundedIn(normalized.questionObj.grounded_in ?? null)
         setLastLlmWhy(normalized.questionObj.why_this_question ?? null)
       }
       if (normalized.questionText) {
@@ -4975,14 +4959,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
         return
       }
       setEnginePromptSource('llm')
-      if (typeof data?.groundedCount === 'number') {
-        setLastLlmGroundedCount(data.groundedCount)
-      }
       if (normalized.questions.length) {
-        setLastLlmGroundedIn(normalized.questions[0]?.grounded_in ?? null)
         setLastLlmWhy(normalized.questions[0]?.why_this_question ?? null)
       } else if (normalized.questionObj) {
-        setLastLlmGroundedIn(normalized.questionObj.grounded_in ?? null)
         setLastLlmWhy(normalized.questionObj.why_this_question ?? null)
       }
       if (!normalized.questionText) {
@@ -7147,16 +7126,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (!isDevUi) return
     if (typeof window === 'undefined') return
     const handleError = (event: ErrorEvent) => {
-      const message =
-        event.message || (event.error instanceof Error ? event.error.message : 'Unknown error')
-      setDevLastError(message)
       console.error('[dev error]', event)
     }
     const handleRejection = (event: PromiseRejectionEvent) => {
       const reason = event.reason
-      const message =
-        reason instanceof Error ? reason.message : reason ? String(reason) : 'Unknown rejection'
-      setDevLastError(`Unhandled rejection: ${message}`)
       console.error('[dev unhandledrejection]', reason)
     }
     window.addEventListener('error', handleError)
