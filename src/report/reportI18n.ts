@@ -7,6 +7,7 @@ export const reportCopy: Record<
     back: string
     print: string
     downloadPdf: string
+    pdfPrint: string
     exportCsv: string
     cover: string
     toc: string
@@ -53,7 +54,8 @@ export const reportCopy: Record<
     back: 'Back',
     print: 'Print',
     downloadPdf: 'Download PDF',
-    exportCsv: 'Export CSV',
+    pdfPrint: 'PDF / Print',
+    exportCsv: 'Export "Collected ideas & observations" to CSV',
     cover: 'Cover',
     toc: 'Table of contents',
     sessionName: 'Session',
@@ -99,7 +101,8 @@ export const reportCopy: Record<
     back: 'Wstecz',
     print: 'Drukuj',
     downloadPdf: 'Pobierz PDF',
-    exportCsv: 'Eksport CSV',
+    pdfPrint: 'PDF / Drukuj',
+    exportCsv: 'Export "Zebrane pomysły i obserwacje" do CSV',
     cover: 'Informacje ogólne',
     toc: 'Spis treści',
     sessionName: 'Sesja',

@@ -473,10 +473,7 @@ export const ReportPage = ({
             </button>
           )}
           <button type="button" className="ghost" onClick={() => window.print()}>
-            {t.print}
-          </button>
-          <button type="button" className="ghost" onClick={() => window.print()}>
-            {t.downloadPdf}
+            {t.pdfPrint}
           </button>
           <button
             type="button"
