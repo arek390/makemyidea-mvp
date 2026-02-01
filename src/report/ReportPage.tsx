@@ -771,7 +771,7 @@ export const ReportPage = ({
                 <>
                   <h3>
                     {language === 'pl'
-                      ? 'Na podstawie pomysłów użytkownika'
+                      ? 'Na podstawie twoich pomysłów'
                       : 'Based on user ideas'}
                   </h3>
                   <ul>
