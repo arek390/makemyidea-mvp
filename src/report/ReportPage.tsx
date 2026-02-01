@@ -472,16 +472,6 @@ export const ReportPage = ({
               {t.reportUpdate}
             </button>
           )}
-          <button type="button" className="ghost" onClick={() => window.print()}>
-            {t.pdfPrint}
-          </button>
-          <button
-            type="button"
-            className="primary"
-            onClick={() => downloadReportCsv(snapshot, summaryItems, language)}
-          >
-            {t.exportCsv}
-          </button>
           {naFillStatus === 'running' && <span className="muted">{t.naAssigning}</span>}
           {naFillStatus === 'error' && <span className="muted">{t.naAssigningError}</span>}
         </div>
@@ -690,7 +680,18 @@ export const ReportPage = ({
 
         <section id="appendix" className="report-section">
           <h2>{t.appendices}</h2>
-          <p>{t.placeholder}</p>
+          <div className="report-actions">
+            <button type="button" className="primary" onClick={() => window.print()}>
+              {t.pdfPrint}
+            </button>
+            <button
+              type="button"
+              className="primary"
+              onClick={() => downloadReportCsv(snapshot, summaryItems, language)}
+            >
+              {t.exportCsv}
+            </button>
+          </div>
         </section>
       </main>
     </div>
