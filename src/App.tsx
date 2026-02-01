@@ -530,7 +530,8 @@ type Translations = {
   engineFacilitationLoadingLabel: string
   engineFacilitationRetryMessage: string
   engineFacilitationRetryCta: string
-  engineFacilitationLoadingPlaceholder: string
+  engineFacilitationLoadingPerspective: string
+  engineFacilitationLoadingDeepen: string
   engineNamePrompt: string
   engineNameLabel: string
   engineNamePlaceholder: string
@@ -912,7 +913,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineFacilitationLoadingLabel: 'Generating question…',
     engineFacilitationRetryMessage: 'Couldn’t generate the question. Please retry.',
     engineFacilitationRetryCta: 'Retry',
-    engineFacilitationLoadingPlaceholder: 'Picking the best perspective for your board',
+    engineFacilitationLoadingPerspective: 'Choosing a perspective for your board',
+    engineFacilitationLoadingDeepen: 'Choosing a question for your board',
     engineNamePrompt: 'Give this session a name so it’s easier to return to.',
     engineNameLabel: 'Session name',
     engineNamePlaceholder: 'Session name',
@@ -1425,7 +1427,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineFacilitationLoadingLabel: 'Generuję pytanie…',
     engineFacilitationRetryMessage: 'Nie udało się wygenerować pytania. Spróbuj ponownie.',
     engineFacilitationRetryCta: 'Spróbuj ponownie',
-    engineFacilitationLoadingPlaceholder: 'Dobieram perspektywę do Twojej tablicy',
+    engineFacilitationLoadingPerspective: 'Dobieram perspektywę do Twojej tablicy',
+    engineFacilitationLoadingDeepen: 'Dobieram pytanie do Twojej tablicy',
     engineNamePrompt: 'Nadaj nazwę tej sesji, żeby łatwiej do niej wrócić.',
     engineNameLabel: 'Nazwa sesji',
     engineNamePlaceholder: 'Nazwa sesji',
@@ -2246,7 +2249,6 @@ function App() {
     useState<FacilitationType | null>(null)
   const [showEngineFacilitationLoadingUI, setShowEngineFacilitationLoadingUI] =
     useState(false)
-  const [engineFacilitationLoadingDots, setEngineFacilitationLoadingDots] = useState(0)
   const [engineWeakSignals, setEngineWeakSignals] = useState(0)
   const [engineMediumSignals, setEngineMediumSignals] = useState(0)
   const [engineStrongSignals, setEngineStrongSignals] = useState(0)
@@ -5757,19 +5759,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setHighlightMissingLabels(false)
   }, [highlightMissingLabels, missingLabelCount])
 
-  useEffect(() => {
-    if (!engineFacilitationLoading || !showEngineFacilitationLoadingUI) {
-      setEngineFacilitationLoadingDots(0)
-      return
-    }
-
-    const intervalId = window.setInterval(() => {
-      setEngineFacilitationLoadingDots((prev) => (prev + 1) % 4)
-    }, 420)
-
-    return () => window.clearInterval(intervalId)
-  }, [engineFacilitationLoading, showEngineFacilitationLoadingUI])
-
   const openReportView = async () => {
     if (typeof window === 'undefined') return
     const returnPath = window.location.pathname + window.location.search
@@ -8424,14 +8413,26 @@ const isMissingLabel = (item: EngineBoardItem) => {
               )}
               <div className="engine-board-input">
                 {(engineFacilitationLoading && showEngineFacilitationLoadingUI
-                  ? copy.engineFacilitationLoadingPlaceholder
+                  ? copy.engineFacilitationLoadingPerspective
                   : engineActivePrompt?.text) && (
                   <div className="engine-helper engine-facilitation-prompt">
                     <div className="engine-facilitation-question">
                       {engineFacilitationLoading && showEngineFacilitationLoadingUI ? (
-                        `${copy.engineFacilitationLoadingPlaceholder}${'.'.repeat(
-                          engineFacilitationLoadingDots
-                        )}`
+                        <span className="engine-facilitation-loading-row">
+                          <span className="engine-facilitation-loading-text">
+                            {engineFacilitationLoadingType === 'DEEPEN'
+                              ? copy.engineFacilitationLoadingDeepen
+                              : copy.engineFacilitationLoadingPerspective}
+                          </span>
+                          <span className="report-updating-slot" aria-hidden="true">
+                            <span
+                              className="report-updating-indicator"
+                              role="status"
+                              aria-label={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
+                              title={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
+                            />
+                          </span>
+                        </span>
                       ) : (
                         <>
                           {engineAskedQuestionTexts.length === 1 && facilitationIntroRef.current ? (

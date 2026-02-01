@@ -2900,6 +2900,17 @@ button.ghost.danger:hover {
   color: var(--navy);
 }
 
+.engine-facilitation-loading-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.engine-facilitation-loading-text {
+  display: inline-flex;
+  align-items: center;
+}
+
 .engine-facilitation-actions {
   display: flex;
   flex-wrap: wrap;
