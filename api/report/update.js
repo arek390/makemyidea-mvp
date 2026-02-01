@@ -50,6 +50,7 @@ const validateAndNormalizeReport = (payload) => {
   const empty = {
     summary: { today: '', change: '', product: '' },
     ideas: [],
+    items: [],
     recommendations: {
       based_on_user_ideas: [],
       morphological: [],
@@ -59,13 +60,20 @@ const validateAndNormalizeReport = (payload) => {
   }
   if (!payload || typeof payload !== 'object') return { ...empty }
   const value = payload
-  let summary = empty.summary
+  let summary =
+    value.summary && typeof value.summary === 'object'
+      ? value.summary
+      : typeof value.today === 'string' ||
+          typeof value.change === 'string' ||
+          typeof value.product === 'string'
+        ? { today: value.today, change: value.change, product: value.product }
+        : empty.summary
   if (value.summary && typeof value.summary === 'object') {
     const s = value.summary
     summary = {
-      today: typeof s.today === 'string' ? s.today : '',
-      change: typeof s.change === 'string' ? s.change : '',
-      product: typeof s.product === 'string' ? s.product : '',
+      today: typeof s.today === 'string' ? s.today : String(s.today ?? ''),
+      change: typeof s.change === 'string' ? s.change : String(s.change ?? ''),
+      product: typeof s.product === 'string' ? s.product : String(s.product ?? ''),
     }
   } else if (
     typeof value.today === 'string' ||
@@ -79,10 +87,12 @@ const validateAndNormalizeReport = (payload) => {
     }
   }
   const ideas = Array.isArray(value.ideas) ? value.ideas : []
+  const items = Array.isArray(value.items) ? value.items : []
   const recommendations = normalizeRecommendations(value.recommendations)
   return {
     summary,
     ideas,
+    items,
     recommendations,
     source_snapshot: value.source_snapshot ?? null,
   }
@@ -131,6 +141,28 @@ const logRecommendationCounts = (label, recommendations) => {
     morphological: recommendations.morphological?.length || 0,
     market_trends: recommendations.market_trends?.length || 0,
   })
+}
+
+const validateSummary = (summary, itemsCount) => {
+  const errors = []
+  if (!summary || typeof summary !== 'object') {
+    return { ok: false, errors: ['summary_missing'] }
+  }
+  const today = typeof summary.today === 'string' ? summary.today.trim() : ''
+  const change = typeof summary.change === 'string' ? summary.change.trim() : ''
+  if (itemsCount >= 3) {
+    if (!today || !change) errors.push('summary_empty')
+    const insufficientPatterns = [
+      /brak wystarczających danych/i,
+      /brak informacji/i,
+      /brak wpisów/i,
+      /zbyt mało informacji/i,
+    ]
+    if (insufficientPatterns.some((pattern) => pattern.test(today) || pattern.test(change))) {
+      errors.push('summary_insufficient')
+    }
+  }
+  return { ok: errors.length === 0, errors }
 }
 
 const toTimeValue = (value) => {
@@ -213,209 +245,284 @@ export default async function handler(req, res) {
     )
     const contentHash = buildContentHash(items)
     const existingNormalized = validateAndNormalizeReport(reportRes.data?.summary_json ?? null)
-    const existingSanitized = sanitizeReportPayload(existingNormalized)
 
-    const representativeItems = items
-      .slice(0, 25)
-      .map((item) => ({
-        text: String(item.text ?? '').trim(),
-        label: item.label ?? '',
-        question:
-          String(item.question_text_pl || item.question_text_en || '').trim() || '',
-      }))
-      .filter((item) => item.text)
-      .slice(0, 25)
-
-    const preprocessInput = JSON.stringify({
-      lang: 'pl',
-      session_id: sessionId,
-      items: representativeItems,
-    })
-
-    let analysisJson = null
-    try {
-      const preprocessResult = await runLlmTask({
-        apiKey: process.env.OPENAI_API_KEY,
-        aiSupportEnabled: true,
-        task: 'report-preprocess',
-        input: preprocessInput,
-        language: 'Polish',
-        taskInstructions:
-          'Return ONLY valid JSON. No markdown. Schema: { "lang":"pl|en","topic":"1-2 sentences","key_themes":["3-6 short phrases"],"tensions_or_opportunities":["3-6 short bullets"],"representative_items":[{"quote":"...","label":"","question":""}],"user_intent":"optional 1 sentence" }. Do NOT include matrix codes A1..C3.',
-        parseResponse: (value) => {
-          try {
-            const parsed = JSON.parse(value)
-            if (!parsed || typeof parsed !== 'object') return null
-            if (!Array.isArray(parsed.key_themes)) return null
-            if (!Array.isArray(parsed.tensions_or_opportunities)) return null
-            if (!Array.isArray(parsed.representative_items)) return null
-            return parsed
-          } catch {
-            return null
-          }
-        },
-        fallbackData: null,
-        models: {
-          default: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
-          preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
-          escalation: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
-        },
-        maxOutputTokens: 300,
-        rateLimiter: limiter,
-        rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
-      })
-      if (preprocessResult.ok && preprocessResult.data) {
-        analysisJson = preprocessResult.data
-      }
-    } catch {
-      analysisJson = null
-    }
-    const themeCount = Array.isArray(analysisJson?.key_themes) ? analysisJson.key_themes.length : 0
-    console.log('[report:update][step3] preprocess themes', themeCount)
-
-    const defaultPrompt = JSON.stringify({
-      existing_summary_json: existingSanitized,
-      analysis_json: analysisJson,
-      requirements: {
-        recommendations_groups: ['based_on_user_ideas', 'morphological', 'market_trends'],
-        item_schema: {
-          title: 'string',
-          rationale: 'string',
-          how_to_test: 'string',
-          methods: ['string'],
-          confidence: 'low|med|high',
-        },
-        notes: [
-          'You MUST return a single valid JSON object. No markdown. No commentary.',
-          'The JSON MUST include "recommendations" as an OBJECT (never null, never string).',
-          'It MUST contain exactly these keys: based_on_user_ideas, morphological, market_trends.',
-          'Each array MUST contain at least 1 item.',
-          'Each item MUST have non-empty fields: title, rationale, how_to_test.',
-          'If session data is sparse, create minimal but still concrete items (not generic).',
-          'Do not output matrix codes A1..C3 anywhere.',
-          'Preserve all existing keys/sections; update recommendations in-place.',
-          '1–3 items per group max.',
-          'Rationale should reference analysis_json themes/representative_items briefly (no long quotes).',
-        ],
-      },
-      session_items: representativeItems,
-    })
-
-    const runDefault = async (modelOverride, validationErrors) =>
-      runLlmTask({
-        apiKey: process.env.OPENAI_API_KEY,
-        aiSupportEnabled: true,
-        task: 'report-full',
-        input: JSON.stringify({
-          prompt: defaultPrompt,
-          validation_errors: validationErrors || null,
-        }),
-        language: 'Polish',
-        taskInstructions:
-          'Return ONLY valid JSON. No markdown. Update existing report JSON; update existing recommendations section in-place. recommendations must be an object with 3 arrays; each array min 1 item; items must include title, rationale, how_to_test; never output A1..C3.',
-        parseResponse: (value) => {
-          try {
-            const parsed = JSON.parse(value)
-            if (!parsed || typeof parsed !== 'object') return null
-            return parsed
-          } catch {
-            return null
-          }
-        },
-        fallbackData: null,
-        models: {
-          default: modelOverride || process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
-          preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
-          escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
-        },
-        maxOutputTokens: 1200,
-        rateLimiter: limiter,
-        rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
-      })
-
-    let updatedReport = null
-    let validationErrors = []
-    let defaultResult = await runDefault()
-    if (defaultResult.ok && defaultResult.data) {
-      const validated = validateAndNormalizeReport(defaultResult.data)
-      const recValidation = validateRecommendations(validated.recommendations)
-      console.log(
-        '[report:update][step3] default recommendations null?',
-        !validated.recommendations || typeof validated.recommendations !== 'object'
-      )
-      logRecommendationCounts('default', validated.recommendations)
-      console.log('[report:update][step3] validation errors', recValidation.errors)
-      if (recValidation.ok) {
-        updatedReport = validated
-      } else {
-        validationErrors = recValidation.errors
-        console.log('[report:update][step3] retry default')
-        defaultResult = await runDefault(undefined, validationErrors)
-        if (defaultResult.ok && defaultResult.data) {
-          const validatedRetry = validateAndNormalizeReport(defaultResult.data)
-          const recValidationRetry = validateRecommendations(validatedRetry.recommendations)
-          logRecommendationCounts('retry', validatedRetry.recommendations)
-          console.log('[report:update][step3] retry validation errors', recValidationRetry.errors)
-          if (recValidationRetry.ok) {
-            updatedReport = validatedRetry
-          }
-        }
-      }
-    }
-    if (!updatedReport) {
-      console.log('[report:update][step3] escalation')
-      const escalationResult = await runDefault(
-        process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
-        validationErrors
-      )
-      if (escalationResult.ok && escalationResult.data) {
-        const validatedEscalation = validateAndNormalizeReport(escalationResult.data)
-        const recValidationEscalation = validateRecommendations(
-          validatedEscalation.recommendations
-        )
-        logRecommendationCounts('escalation', validatedEscalation.recommendations)
-        console.log(
-          '[report:update][step3] escalation validation errors',
-          recValidationEscalation.errors
-        )
-        if (recValidationEscalation.ok) {
-          updatedReport = validatedEscalation
-        }
-      }
-    }
-
-    let nextPayload = updatedReport || existingSanitized
-    if (!updatedReport) {
-      nextPayload = {
-        ...existingSanitized,
-        recommendations: normalizeRecommendations(existingSanitized.recommendations),
-      }
-    }
-    nextPayload = {
-      ...nextPayload,
+    const itemsFromDb = items.map((item) => ({
+      id: item.id,
+      text: item.text,
+      label: item.label ?? '',
+      matrixRow: item.matrix_row ?? null,
+      matrixCol: item.matrix_col ?? null,
+      questionId: item.question_id ?? null,
+      questionTextPl: item.question_text_pl ?? null,
+      questionTextEn: item.question_text_en ?? null,
+    }))
+    const phaseAReport = {
+      ...existingNormalized,
+      items: itemsFromDb,
+      recommendations: normalizeRecommendations(existingNormalized.recommendations),
       source_snapshot: {
-        ...(nextPayload.source_snapshot || {}),
+        ...(existingNormalized.source_snapshot || {}),
         board_items_count: items.length,
         latest_board_item_at: latestBoardItemAt,
         content_hash: contentHash,
       },
     }
-    const sanitized = sanitizeReportPayload(nextPayload)
-    const updateRes = await supabaseAdmin
+    const phaseASanitized = sanitizeReportPayload(phaseAReport)
+    console.log('[report:update] items_from_db', itemsFromDb.length, 'items_in_report', phaseASanitized.items?.length || 0)
+    const phaseAUpdateRes = await supabaseAdmin
       .schema('public')
       .from('reports')
       .update({
-        summary_json: sanitized,
+        summary_json: phaseASanitized,
         last_summary_text_hash: contentHash,
         source_updated_at: latestBoardItemAt || Date.now(),
         updated_at: new Date().toISOString(),
       })
       .eq('session_id', sessionId)
-    if (updateRes.error) {
-      res.status(500).json({ ok: false, error: updateRes.error })
+    if (phaseAUpdateRes.error) {
+      res.status(500).json({ ok: false, error: phaseAUpdateRes.error })
       return
     }
-    res.status(200).json({ ok: true })
+
+    try {
+      const representativeItems = items
+        .slice(0, 25)
+        .map((item) => ({
+          text: String(item.text ?? '').trim(),
+          label: item.label ?? '',
+          question:
+            String(item.question_text_pl || item.question_text_en || '').trim() || '',
+        }))
+        .filter((item) => item.text)
+        .slice(0, 25)
+
+      const preprocessInput = JSON.stringify({
+        lang: 'pl',
+        session_id: sessionId,
+        items: representativeItems,
+      })
+
+      let analysisJson = null
+      try {
+        const preprocessResult = await runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'report-preprocess',
+          input: preprocessInput,
+          language: 'Polish',
+          taskInstructions:
+            'Return ONLY valid JSON. No markdown. Schema: { "lang":"pl|en","topic":"1-2 sentences","key_themes":["3-6 short phrases"],"tensions_or_opportunities":["3-6 short bullets"],"representative_items":[{"quote":"...","label":"","question":""}],"user_intent":"optional 1 sentence" }. Do NOT include matrix codes A1..C3.',
+          parseResponse: (value) => {
+            try {
+              const parsed = JSON.parse(value)
+              if (!parsed || typeof parsed !== 'object') return null
+              if (!Array.isArray(parsed.key_themes)) return null
+              if (!Array.isArray(parsed.tensions_or_opportunities)) return null
+              if (!Array.isArray(parsed.representative_items)) return null
+              return parsed
+            } catch {
+              return null
+            }
+          },
+          fallbackData: null,
+          models: {
+            default: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            escalation: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+          },
+          maxOutputTokens: 300,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+        if (preprocessResult.ok && preprocessResult.data) {
+          analysisJson = preprocessResult.data
+        }
+      } catch {
+        analysisJson = null
+      }
+      const themeCount = Array.isArray(analysisJson?.key_themes) ? analysisJson.key_themes.length : 0
+      console.log('[report:update][step3] preprocess themes', themeCount)
+
+      const defaultPrompt = JSON.stringify({
+        existing_summary: phaseASanitized.summary ?? null,
+        analysis_json: analysisJson,
+        requirements: {
+          output_schema: {
+            summary: { today: 'string', change: 'string', product: 'string' },
+            recommendations: {
+              based_on_user_ideas: [
+                {
+                  title: 'string',
+                  rationale: 'string',
+                  how_to_test: 'string',
+                  methods: ['string'],
+                  confidence: 'low|med|high',
+                },
+              ],
+              morphological: [
+                {
+                  title: 'string',
+                  rationale: 'string',
+                  how_to_test: 'string',
+                  methods: ['string'],
+                  confidence: 'low|med|high',
+                },
+              ],
+              market_trends: [
+                {
+                  title: 'string',
+                  rationale: 'string',
+                  how_to_test: 'string',
+                  methods: ['string'],
+                  confidence: 'low|med|high',
+                },
+              ],
+            },
+          },
+          notes: [
+            'You MUST return a single valid JSON object with ONLY: summary, recommendations.',
+            'No markdown. No commentary. Do not include items or source_snapshot.',
+            'The JSON MUST include "recommendations" as an OBJECT (never null, never string).',
+            'It MUST contain exactly these keys: based_on_user_ideas, morphological, market_trends.',
+            'Each array MUST contain at least 1 item.',
+            'Each item MUST have non-empty fields: title, rationale, how_to_test.',
+            'If session data is sparse, create minimal but still concrete items (not generic).',
+            'Do not output matrix codes A1..C3 anywhere.',
+            '1–3 items per group max.',
+            'Rationale should reference analysis_json themes/representative_items briefly (no long quotes).',
+          ],
+        },
+        session_items: representativeItems,
+      })
+
+      const runDefault = async (modelOverride, validationErrors) =>
+        runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'report-summary-recs',
+          input: JSON.stringify({
+            prompt: defaultPrompt,
+            validation_errors: validationErrors || null,
+          }),
+          language: 'Polish',
+          taskInstructions:
+            'Return ONLY valid JSON with keys summary and recommendations. Do not include items. recommendations must be an object with 3 arrays; each array min 1 item; items must include title, rationale, how_to_test; never output A1..C3.',
+          parseResponse: (value) => {
+            try {
+              const parsed = JSON.parse(value)
+              if (!parsed || typeof parsed !== 'object') return null
+              return parsed
+            } catch {
+              return null
+            }
+          },
+          fallbackData: null,
+          models: {
+            default: modelOverride || process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
+            preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+          },
+          maxOutputTokens: 1200,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+
+      let validationErrors = []
+      let summaryCandidate = phaseASanitized.summary
+      let recommendationsCandidate = normalizeRecommendations(phaseASanitized.recommendations)
+      let summaryValidation = validateSummary(summaryCandidate, itemsFromDb.length)
+      let recValidation = validateRecommendations(recommendationsCandidate)
+
+      const applyGenerated = (generated) => {
+        if (!generated || typeof generated !== 'object') return
+        if (generated.summary && typeof generated.summary === 'object') {
+          summaryCandidate = generated.summary
+          summaryValidation = validateSummary(summaryCandidate, itemsFromDb.length)
+        }
+        if (generated.recommendations && typeof generated.recommendations === 'object') {
+          recommendationsCandidate = normalizeRecommendations(generated.recommendations)
+          recValidation = validateRecommendations(recommendationsCandidate)
+        }
+      }
+
+      let defaultResult = await runDefault()
+      if (defaultResult.ok && defaultResult.data) {
+        applyGenerated(defaultResult.data)
+        logRecommendationCounts('default', recommendationsCandidate)
+        console.log('[report:update][step3] summary validation', summaryValidation.errors)
+        console.log('[report:update][step3] validation errors', recValidation.errors)
+        if (!recValidation.ok || !summaryValidation.ok) {
+          validationErrors = recValidation.errors.concat(summaryValidation.errors || [])
+          console.log('[report:update][step3] retry default')
+          defaultResult = await runDefault(undefined, validationErrors)
+          if (defaultResult.ok && defaultResult.data) {
+            applyGenerated(defaultResult.data)
+            logRecommendationCounts('retry', recommendationsCandidate)
+            console.log('[report:update][step3] retry validation errors', recValidation.errors)
+            console.log('[report:update][step3] retry summary validation', summaryValidation.errors)
+          }
+        }
+      }
+      if (!recValidation.ok || !summaryValidation.ok) {
+        console.log('[report:update][step3] escalation')
+        const escalationResult = await runDefault(
+          process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+          validationErrors
+        )
+        if (escalationResult.ok && escalationResult.data) {
+          applyGenerated(escalationResult.data)
+          logRecommendationCounts('escalation', recommendationsCandidate)
+          console.log('[report:update][step3] escalation validation errors', recValidation.errors)
+          console.log('[report:update][step3] escalation summary validation', summaryValidation.errors)
+        }
+      }
+
+      const summaryLength = {
+        today:
+          typeof summaryCandidate?.today === 'string' ? summaryCandidate.today.length : 0,
+        change:
+          typeof summaryCandidate?.change === 'string' ? summaryCandidate.change.length : 0,
+      }
+      console.log('[report:update] summary lengths', summaryLength)
+
+      const finalSummary = summaryValidation.ok ? summaryCandidate : phaseASanitized.summary
+      if (!summaryValidation.ok) {
+        console.log('[report:update][step3] summary fallback', summaryValidation.errors)
+      }
+      const finalRecommendations = recValidation.ok
+        ? recommendationsCandidate
+        : normalizeRecommendations(phaseASanitized.recommendations)
+      if (!recValidation.ok) {
+        console.log('[report:update][step3] recommendations fallback', recValidation.errors)
+      }
+
+      const nextPayload = {
+        ...phaseASanitized,
+        summary: finalSummary,
+        recommendations: finalRecommendations,
+      }
+      const sanitized = sanitizeReportPayload(nextPayload)
+      const updateRes = await supabaseAdmin
+        .schema('public')
+        .from('reports')
+        .update({
+          summary_json: sanitized,
+          last_summary_text_hash: contentHash,
+          source_updated_at: latestBoardItemAt || Date.now(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('session_id', sessionId)
+      if (updateRes.error) {
+        res.status(500).json({ ok: false, error: updateRes.error })
+        return
+      }
+      res.status(200).json({ ok: true })
+      return
+    } catch (error) {
+      console.log('[report:update][step3] phaseB failed', error?.message ?? 'unknown error')
+      res.status(200).json({ ok: true })
+      return
+    }
   } catch (error) {
     res.status(500).json({
       ok: false,
