@@ -502,12 +502,16 @@ export const ReportPage = ({
           notWorking: 'Co nie działa?',
           toBe: 'Jak powinno być?',
           empty: 'Brak danych do analizy perspektyw',
+          description:
+            'Mapa perspektyw pokazuje, na czym skupiłeś się podczas pracy nad pomysłem. Każdy kolor to inna perspektywa – stan obecny, to co nie działa oraz to, jak powinno być. Dzięki temu szybko zobaczysz, które obszary są już dobrze opisane, a które warto jeszcze uzupełnić, żeby obraz pomysłu był pełniejszy. Jeśli któraś perspektywa ma mniej wpisów, możesz do niej wrócić i dopisać kilka myśli, żeby lepiej zbalansować całość.',
         }
       : {
           asIs: 'As is',
           notWorking: 'What doesn’t work',
           toBe: 'How it should be',
           empty: 'No data to analyze perspectives',
+          description:
+            'The perspective map shows where your attention went while working on the idea. Each color represents a different viewpoint — the current state, what isn’t working, and how it should be. This helps you quickly spot which areas are well covered and which ones may need more input to get a more complete picture. If one perspective has fewer entries, you can return to it and add a few thoughts to balance things out.',
         }
   const perspectiveData = useMemo(() => {
     const rows = ['world', 'product', 'elements']
@@ -657,6 +661,7 @@ export const ReportPage = ({
             <p className="muted">{perspectiveLabels.empty}</p>
           ) : (
             <>
+              <p>{perspectiveLabels.description}</p>
               <div
                 className="perspective-bar"
                 aria-label={`Mapa perspektyw: ${perspectiveLabels.asIs} ${
@@ -670,27 +675,18 @@ export const ReportPage = ({
                   style={{ width: `${perspectiveData.percents.asIs}%` }}
                   title={`${perspectiveLabels.asIs}: ${perspectiveData.counts.asIs} (${perspectiveData.percents.asIs}%)`}
                 >
-                  {perspectiveData.percents.asIs >= 10
-                    ? `${perspectiveData.percents.asIs}%`
-                    : ''}
                 </div>
                 <div
                   className="perspective-segment not-working"
                   style={{ width: `${perspectiveData.percents.notWorking}%` }}
                   title={`${perspectiveLabels.notWorking}: ${perspectiveData.counts.notWorking} (${perspectiveData.percents.notWorking}%)`}
                 >
-                  {perspectiveData.percents.notWorking >= 10
-                    ? `${perspectiveData.percents.notWorking}%`
-                    : ''}
                 </div>
                 <div
                   className="perspective-segment to-be"
                   style={{ width: `${perspectiveData.percents.toBe}%` }}
                   title={`${perspectiveLabels.toBe}: ${perspectiveData.counts.toBe} (${perspectiveData.percents.toBe}%)`}
                 >
-                  {perspectiveData.percents.toBe >= 10
-                    ? `${perspectiveData.percents.toBe}%`
-                    : ''}
                 </div>
               </div>
               <div className="perspective-legend">
