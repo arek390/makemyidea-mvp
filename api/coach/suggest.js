@@ -1035,6 +1035,185 @@ export default async function handler(req, res) {
       }
     }
 
+    if (actionNormalized === 'REPORT_FULL') {
+      const locale = normalizeLang(body.locale || body.language || 'pl')
+      const cells = body.cells || {}
+      const entries = Array.isArray(body.entries) ? body.entries : []
+      const allSections = [
+        pickCellTexts(cells, ['A1', 'B1', 'C1']),
+        pickCellTexts(cells, ['A2', 'B2', 'C2']),
+        pickCellTexts(cells, ['A3', 'B3', 'C3']),
+      ]
+      const hasAnyContent = allSections.some((section) => section.length > 0)
+      if (!hasAnyContent && entries.length === 0) {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          summary: buildSummaryFallback(locale, 'EMPTY_INPUT').summary,
+          recommendations: {
+            based_on_user_ideas: [],
+            morphological: [],
+            market_trends: [],
+          },
+          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'EMPTY_INPUT' },
+        })
+        return
+      }
+      if (!aiSupportEnabled || killSwitch || !hasOpenAiKey) {
+        const reasonCategory = killSwitch
+          ? 'AI_DISABLED'
+          : !hasOpenAiKey
+            ? 'MISSING_OPENAI_KEY'
+            : 'AI_DISABLED'
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          summary: buildSummaryFallback(locale, reasonCategory).summary,
+          recommendations: {
+            based_on_user_ideas: [],
+            morphological: [],
+            market_trends: [],
+          },
+          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: reasonCategory },
+        })
+        return
+      }
+
+      const preprocessInput = [
+        `Session: ${sessionName || '—'}`,
+        `Entries:`,
+        ...entries.map((entry) => `- ${String(entry?.text || '').trim()}`),
+      ].join('\n')
+      let analysisJson = null
+      try {
+        const preprocessResult = await runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'report-preprocess',
+          input: preprocessInput,
+          language: locale === 'pl' ? 'Polish' : 'English',
+          taskInstructions:
+            'Return JSON with keys: key_themes (array), tensions (array), representative_items (array of strings, max 10), user_intent (string).',
+          parseResponse: (value) => {
+            try {
+              const parsed = JSON.parse(value)
+              if (!parsed || typeof parsed !== 'object') return null
+              if (!Array.isArray(parsed.key_themes)) return null
+              if (!Array.isArray(parsed.tensions)) return null
+              if (!Array.isArray(parsed.representative_items)) return null
+              if (typeof parsed.user_intent !== 'string') return null
+              return parsed
+            } catch {
+              return null
+            }
+          },
+          fallbackData: null,
+          models: {
+            default: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            escalation: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+          },
+          maxOutputTokens: 300,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+        if (preprocessResult.ok && preprocessResult.data) {
+          analysisJson = preprocessResult.data
+        }
+      } catch {
+        analysisJson = null
+      }
+
+      const fullPrompt = [
+        `Session: ${sessionName || '—'}`,
+        `Analysis JSON: ${analysisJson ? JSON.stringify(analysisJson) : 'null'}`,
+        `Entries:`,
+        ...entries.map((entry) => `- ${String(entry?.text || '').trim()}`),
+      ].join('\n')
+
+      const parseFullReport = (value) => {
+        try {
+          const parsed = JSON.parse(value)
+          if (!parsed || typeof parsed !== 'object') return null
+          if (!parsed.summary || typeof parsed.summary !== 'object') return null
+          if (
+            typeof parsed.summary.today !== 'string' ||
+            typeof parsed.summary.change !== 'string' ||
+            typeof parsed.summary.product !== 'string'
+          ) {
+            return null
+          }
+          const recs = parsed.recommendations
+          if (!recs || typeof recs !== 'object') return null
+          const groups = ['based_on_user_ideas', 'morphological', 'market_trends']
+          if (!groups.every((key) => Array.isArray(recs[key]))) return null
+          const isValidItem = (item) =>
+            item &&
+            typeof item.title === 'string' &&
+            typeof item.rationale === 'string' &&
+            typeof item.how_to_test === 'string' &&
+            (!item.methods || Array.isArray(item.methods)) &&
+            (!item.confidence || ['low', 'med', 'high'].includes(item.confidence))
+          if (!recs.based_on_user_ideas.every(isValidItem)) return null
+          if (!recs.morphological.every(isValidItem)) return null
+          if (!recs.market_trends.every(isValidItem)) return null
+          return parsed
+        } catch {
+          return null
+        }
+      }
+
+      const runReportModel = async (modelOverride) =>
+        runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'report-full',
+          input: fullPrompt,
+          language: locale === 'pl' ? 'Polish' : 'English',
+          taskInstructions:
+            'Return JSON with keys: summary {today, change, product} and recommendations {based_on_user_ideas[], morphological[], market_trends[]}. Each recommendation item must include title, rationale, how_to_test, methods (array), confidence (low|med|high). Keep recommendations tied to entries.',
+          parseResponse: parseFullReport,
+          fallbackData: null,
+          models: {
+            default: modelOverride || (process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini'),
+            preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+          },
+          maxOutputTokens: 900,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+
+      let result = await runReportModel()
+      if (!result.ok || !result.data) {
+        result = await runReportModel(process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini')
+      }
+      if (result.ok && result.data) {
+        const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+        sendJson(res, 200, {
+          ok: true,
+          source: 'llm',
+          summary: result.data.summary,
+          recommendations: result.data.recommendations,
+          usage: buildUsagePayload(meta),
+          meta,
+        })
+        return
+      }
+      sendJson(res, 200, {
+        ok: true,
+        source: 'fallback',
+        summary: buildSummaryFallback(locale, 'LLM_FAILED').summary,
+        recommendations: {
+          based_on_user_ideas: [],
+          morphological: [],
+          market_trends: [],
+        },
+        meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
+      })
+      return
+    }
+
     if (actionNormalized === 'REPORT_SUMMARY') {
       const locale = normalizeLang(body.locale || body.language || 'pl')
       const cells = body.cells || {}

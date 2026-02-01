@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { reportCopy, type ReportLang } from './reportI18n'
 import { downloadReportCsv, type ReportSnapshot } from './exportCsv'
+import type { ReportRecommendations } from '../storage/sessionStore'
 import { groupItemsByCell } from './cellMapping'
 import { UsageBadge } from '../components/UsageBadge'
 import { buildSessionGoalText, extractProductNameFromSessionName } from './sessionGoal'
@@ -27,6 +28,7 @@ type ReportPageProps = {
     lastSummaryTextHash?: string | null
     createdAt?: number | null
     ideas?: ReportSnapshot['ideas'] | null
+    recommendations?: ReportRecommendations | null
   }) => void
 }
 
@@ -37,6 +39,82 @@ type AiClassification = {
   confidence: number
   shouldMove: boolean
   reason?: string
+}
+
+const sanitizeReportText = (input: string) => {
+  let value = String(input ?? '')
+  value = value.replace(/\(\s*(?:[ABC][123]\s*(?:,\s*[ABC][123]\s*)*)\)/g, '')
+  value = value.replace(
+    /(^|[\s\u00A0])([ABC][123])(?=([\s\u00A0]*[.,;:!?)]|[\s\u00A0]*$))/g,
+    '$1'
+  )
+  value = value.replace(/\(\s*\)/g, '')
+  value = value.replace(/\s+/g, ' ').replace(/\s+([.,;:!?\)])/g, '$1').trim()
+  return value
+}
+
+const sanitizeReportPayload = <T,>(payload: T): T => {
+  if (payload == null) return payload
+  if (typeof payload === 'string') return sanitizeReportText(payload) as T
+  if (Array.isArray(payload)) {
+    return payload.map((item) => sanitizeReportPayload(item)) as T
+  }
+  if (typeof payload === 'object') {
+    const next: Record<string, unknown> = {}
+    Object.entries(payload as Record<string, unknown>).forEach(([key, value]) => {
+      next[key] = sanitizeReportPayload(value)
+    })
+    return next as T
+  }
+  return payload
+}
+
+const isRecommendationItem = (value: unknown) => {
+  if (!value || typeof value !== 'object') return false
+  const item = value as {
+    title?: unknown
+    rationale?: unknown
+    how_to_test?: unknown
+    methods?: unknown
+    confidence?: unknown
+  }
+  if (typeof item.title !== 'string') return false
+  if (typeof item.rationale !== 'string') return false
+  if (typeof item.how_to_test !== 'string') return false
+  if (item.methods && !Array.isArray(item.methods)) return false
+  if (
+    item.confidence &&
+    item.confidence !== 'low' &&
+    item.confidence !== 'med' &&
+    item.confidence !== 'high'
+  ) {
+    return false
+  }
+  return true
+}
+
+const normalizeRecommendations = (value: unknown): ReportRecommendations | null => {
+  if (!value || typeof value !== 'object') return null
+  const rec = value as {
+    based_on_user_ideas?: unknown
+    morphological?: unknown
+    market_trends?: unknown
+  }
+  const based = Array.isArray(rec.based_on_user_ideas)
+    ? rec.based_on_user_ideas.filter(isRecommendationItem)
+    : []
+  const morph = Array.isArray(rec.morphological)
+    ? rec.morphological.filter(isRecommendationItem)
+    : []
+  const trends = Array.isArray(rec.market_trends)
+    ? rec.market_trends.filter(isRecommendationItem)
+    : []
+  if (!based.length && !morph.length && !trends.length) return null
+  return {
+    based_on_user_ideas: based,
+    morphological: morph,
+    market_trends: trends,
+  }
 }
 type SummaryUsage = {
   model: string | null
@@ -66,7 +144,7 @@ export const ReportPage = ({
 }: ReportPageProps) => {
   const t = reportCopy[language]
   const [aiSummary, setAiSummary] = useState<AiSummary | null>(
-    snapshot.reportMeta?.summary ?? null
+    sanitizeReportPayload(snapshot.reportMeta?.summary ?? null)
   )
   const [aiNotice, setAiNotice] = useState<string | null>(null)
   const [summaryStatus, setSummaryStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
@@ -74,14 +152,14 @@ export const ReportPage = ({
     snapshot.reportMeta?.lastSummaryTextHash ?? null
   )
   const [summaryItems, setSummaryItems] = useState(
-    snapshot.reportMeta?.ideas ?? snapshot.ideas
+    sanitizeReportPayload(snapshot.reportMeta?.ideas ?? [])
   )
-  const [reportIdeasFromMeta, setReportIdeasFromMeta] = useState(
-    snapshot.reportMeta?.ideas ?? null
+  const [reportRecommendations, setReportRecommendations] = useState<ReportRecommendations | null>(
+    normalizeRecommendations(sanitizeReportPayload(snapshot.reportMeta?.recommendations ?? null))
   )
+  const [reportRefreshRequested, setReportRefreshRequested] = useState(false)
   const [summaryUsage, setSummaryUsage] = useState<SummaryUsage | null>(null)
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
-  const debug = import.meta.env.DEV ? groupItemsByCell(snapshot.ideas) : null
   const summaryAutoAttempted = useRef(false)
   const reportSessionId = snapshot.sessionId || null
   const reportSourceUpdatedAt = Number(snapshot.sourceUpdatedAt || 0)
@@ -154,7 +232,8 @@ export const ReportPage = ({
   const persistReportSummary = async (
     summary: AiSummary | null,
     textHash: string,
-    items: (typeof summaryItems)[number][]
+    items: (typeof summaryItems)[number][],
+    recommendations: unknown
   ) => {
     if (!client) return
     if (!reportSessionId) return
@@ -194,9 +273,10 @@ export const ReportPage = ({
           (item as { matrix_col?: string | null }).matrix_col ??
           null,
       }))
+      const sanitized = sanitizeReportPayload({ summary, ideas, recommendations })
       await ensureReportExists(reportSessionId, reportSourceUpdatedAt)
       await updateReportBySessionId(reportSessionId, {
-        summary_json: { summary, ideas },
+        summary_json: sanitized,
         last_summary_text_hash: textHash,
         source_updated_at: reportSourceUpdatedAt,
         updated_at: new Date().toISOString(),
@@ -303,7 +383,7 @@ export const ReportPage = ({
 
   useEffect(() => {
     if (!reportSessionId) return
-    if (reportIdeasFromMeta && reportIdeasFromMeta.length > 0) return
+    if (!reportRefreshRequested) return
     if (userId && client) {
       let cancelled = false
       ;(async () => {
@@ -318,8 +398,8 @@ export const ReportPage = ({
         cancelled = true
       }
     }
-    setSummaryItems(snapshot.ideas)
-  }, [reportSessionId, userId, snapshot.ideas, reportIdeasFromMeta])
+    setSummaryItems([])
+  }, [reportSessionId, userId, reportRefreshRequested])
 
   useEffect(() => {
     if (!client || !reportSessionId) {
@@ -333,11 +413,14 @@ export const ReportPage = ({
         const record = await fetchReportBySessionId(reportSessionId)
         if (cancelled || !record) return
         if (record.ideas && record.ideas.length) {
-          setReportIdeasFromMeta(record.ideas)
-          setSummaryItems(record.ideas)
+          const sanitizedIdeas = sanitizeReportPayload(record.ideas)
+          setSummaryItems(sanitizedIdeas)
+        }
+        if (record.recommendations) {
+          setReportRecommendations(sanitizeReportPayload(record.recommendations))
         }
         if (!aiSummary && record.summary) {
-          setAiSummary(record.summary)
+          setAiSummary(sanitizeReportPayload(record.summary))
         }
         if (!lastSummaryTextHash && record.lastSummaryTextHash) {
           setLastSummaryTextHash(record.lastSummaryTextHash)
@@ -369,7 +452,26 @@ export const ReportPage = ({
     return !(window.history.state && window.history.state.newlyCreated === true)
   })()
 
-  const handleUpdateReport = () => {
+  if (import.meta.env.DEV) {
+    console.assert(
+      sanitizeReportText('Rynek ... (A1).') === 'Rynek ...',
+      'sanitizeReportText should remove (A1)'
+    )
+    console.assert(
+      sanitizeReportText('..., (B1, C1) oraz ...') === '..., oraz ...',
+      'sanitizeReportText should remove (B1, C1)'
+    )
+    console.assert(
+      sanitizeReportText('Funkcje B2.') === 'Funkcje.',
+      'sanitizeReportText should remove trailing B2'
+    )
+    console.assert(
+      sanitizeReportText('Model A1 Pro') === 'Model A1 Pro',
+      'sanitizeReportText should keep A1 in names'
+    )
+  }
+
+  const handleUpdateReport = async () => {
     if (typeof window === 'undefined') return
     const sessionId = window.sessionStorage.getItem('reportReturnSessionId') || ''
     const sourceUpdatedAt = Number(snapshot.sourceUpdatedAt || 0)
@@ -377,21 +479,20 @@ export const ReportPage = ({
       setUpdateNotice(t.reportUpdated)
       return
     }
-    setReportIdeasFromMeta(null)
+    setReportRefreshRequested(true)
     if (userId && reportSessionId) {
-      void (async () => {
-        try {
-          const items = await fetchBoardItems(reportSessionId, userId)
-          setSummaryItems(items)
-          setAiSummary(null)
-          setLastSummaryTextHash(null)
-          summaryAutoAttempted.current = false
-          setSummaryStatus('idle')
-        } catch {
-          // ignore
-        }
-      })()
+      try {
+        const items = await fetchBoardItems(reportSessionId, userId)
+        setSummaryItems(items)
+      } catch {
+        // ignore
+      }
     }
+    setAiSummary(null)
+    setLastSummaryTextHash(null)
+    setReportRecommendations(null)
+    summaryAutoAttempted.current = false
+    setSummaryStatus('idle')
     const storedRaw = window.sessionStorage.getItem(
       `report_source_updated_at::${sessionId}`
     )
@@ -405,6 +506,11 @@ export const ReportPage = ({
       String(sourceUpdatedAt)
     )
     setUpdateNotice(t.reportUpdated)
+    try {
+      await runSummary()
+    } finally {
+      setReportRefreshRequested(false)
+    }
   }
 
   const runSummary = async () => {
@@ -457,7 +563,12 @@ export const ReportPage = ({
         createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
         ideas: ensuredItems,
       })
-      void persistReportSummary(emptySummary, computeSummaryTextFingerprint, ensuredItems)
+      void persistReportSummary(
+        emptySummary,
+        computeSummaryTextFingerprint,
+        ensuredItems,
+        reportRecommendations
+      )
       setSummaryStatus('done')
       return
     }
@@ -487,7 +598,7 @@ export const ReportPage = ({
         body: JSON.stringify({
           currentUserId: userId ?? null,
           sessionId: reportSessionId,
-          action: 'report_summary',
+          action: 'report_full',
           locale: language,
           sessionName: snapshot.sessionName || '',
           entries: entriesPayload,
@@ -499,6 +610,7 @@ export const ReportPage = ({
         ok?: boolean
         source?: 'llm' | 'fallback'
         summary?: AiSummary
+        recommendations?: unknown
         classifications?: AiClassification[]
         usage?: SummaryUsage
         meta?: { errorCategory?: string }
@@ -519,6 +631,11 @@ export const ReportPage = ({
         product: ensuredEmptyProduct ? '' : data.summary.product,
       }
       setAiSummary(summary)
+      const nextRecommendations =
+        normalizeRecommendations(data.recommendations) || reportRecommendations
+      if (nextRecommendations) {
+        setReportRecommendations(nextRecommendations)
+      }
       if (data.classifications && data.classifications.length) {
         const updated = applyClassification(ensuredItems, data.classifications)
         setSummaryItems(updated)
@@ -544,8 +661,9 @@ export const ReportPage = ({
         lastSummaryTextHash: computeSummaryTextFingerprint,
         createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
         ideas: ensuredItems,
+        recommendations: nextRecommendations,
       })
-      void persistReportSummary(summary, computeSummaryTextFingerprint, ensuredItems)
+      void persistReportSummary(summary, computeSummaryTextFingerprint, ensuredItems, nextRecommendations)
       if (onAiUsage && data.meta) {
         onAiUsage(data.meta)
       }
@@ -560,6 +678,7 @@ export const ReportPage = ({
   const generateSummaryIfNeeded = async () => {
     if (summaryStatus === 'running') return
     if (summaryAutoAttempted.current) return
+    if (!reportRefreshRequested) return
     const stored = lastSummaryTextHash
     const current = computeSummaryTextFingerprint
     const hasSummary = Boolean(
@@ -574,7 +693,7 @@ export const ReportPage = ({
         )
       }
       if (aiSummary) {
-        void persistReportSummary(aiSummary, current, summaryItems)
+        void persistReportSummary(aiSummary, current, summaryItems, reportRecommendations)
       }
       setLastSummaryTextHash(current)
       onReportMetaChange?.({
@@ -587,19 +706,32 @@ export const ReportPage = ({
     }
     summaryAutoAttempted.current = true
     await runSummary()
+    setReportRefreshRequested(false)
   }
 
   useEffect(() => {
     if (!reportMetaLoaded) return
     void generateSummaryIfNeeded()
-  }, [computeSummaryTextFingerprint, lastSummaryTextHash, aiSummary, reportMetaLoaded])
+  }, [
+    computeSummaryTextFingerprint,
+    lastSummaryTextHash,
+    aiSummary,
+    reportMetaLoaded,
+    reportRefreshRequested,
+  ])
 
   const cleanedSummary = useMemo(() => {
     const lang = language === 'pl' ? 'pl' : 'en'
     return {
-      today: isEmptySummaryText(aiSummary?.today, lang) ? null : aiSummary?.today || null,
-      change: isEmptySummaryText(aiSummary?.change, lang) ? null : aiSummary?.change || null,
-      product: isEmptySummaryText(aiSummary?.product, lang) ? null : aiSummary?.product || null,
+      today: isEmptySummaryText(aiSummary?.today, lang)
+        ? null
+        : sanitizeReportText(aiSummary?.today || ''),
+      change: isEmptySummaryText(aiSummary?.change, lang)
+        ? null
+        : sanitizeReportText(aiSummary?.change || ''),
+      product: isEmptySummaryText(aiSummary?.product, lang)
+        ? null
+        : sanitizeReportText(aiSummary?.product || ''),
     }
   }, [aiSummary, language])
   const resolveQuestionText = (idea: (typeof summaryItems)[number]) => {
@@ -619,8 +751,38 @@ export const ReportPage = ({
         : (idea as { questionTextPl?: string | null }).questionTextPl ??
           (idea as { question_text_pl?: string | null }).question_text_pl ??
           null
-    return primary || secondary || ''
+    return sanitizeReportText(primary || secondary || '')
   }
+  const recommendations = reportRecommendations as
+    | {
+        based_on_user_ideas: Array<{
+          title: string
+          rationale: string
+          how_to_test: string
+          methods?: string[]
+          confidence?: 'low' | 'med' | 'high'
+        }>
+        morphological: Array<{
+          title: string
+          rationale: string
+          how_to_test: string
+          methods?: string[]
+          confidence?: 'low' | 'med' | 'high'
+        }>
+        market_trends: Array<{
+          title: string
+          rationale: string
+          how_to_test: string
+          methods?: string[]
+          confidence?: 'low' | 'med' | 'high'
+        }>
+      }
+    | null
+  const hasRecommendations =
+    recommendations &&
+    (recommendations.based_on_user_ideas.length ||
+      recommendations.morphological.length ||
+      recommendations.market_trends.length)
   return (
     <div className="report-page">
       <header className="report-header">
@@ -788,41 +950,83 @@ export const ReportPage = ({
 
         <section id="next" className="report-section">
           <h2>{t.nextSteps}</h2>
-          <p>{t.placeholder}</p>
+          {!hasRecommendations ? (
+            <p>Brak rekomendacji. Kliknij “Aktualizuj raport”, aby je wygenerować.</p>
+          ) : (
+            <div className="report-recommendations">
+              {recommendations?.based_on_user_ideas.length ? (
+                <>
+                  <h3>
+                    {language === 'pl'
+                      ? 'Na podstawie pomysłów użytkownika'
+                      : 'Based on user ideas'}
+                  </h3>
+                  <ul>
+                    {recommendations.based_on_user_ideas.map((item, idx) => (
+                      <li key={`rec-ideas-${idx}`}>
+                        <strong>{sanitizeReportText(item.title)}</strong>
+                        <div>{sanitizeReportText(item.rationale)}</div>
+                        <div>{sanitizeReportText(item.how_to_test)}</div>
+                        {item.methods?.length ? (
+                          <div>
+                            {item.methods.map((m) => sanitizeReportText(m)).join(', ')}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              {recommendations?.morphological.length ? (
+                <>
+                  <h3>
+                    {language === 'pl'
+                      ? 'Alternatywy morfologiczne'
+                      : 'Morphological alternatives'}
+                  </h3>
+                  <ul>
+                    {recommendations.morphological.map((item, idx) => (
+                      <li key={`rec-morph-${idx}`}>
+                        <strong>{sanitizeReportText(item.title)}</strong>
+                        <div>{sanitizeReportText(item.rationale)}</div>
+                        <div>{sanitizeReportText(item.how_to_test)}</div>
+                        {item.methods?.length ? (
+                          <div>
+                            {item.methods.map((m) => sanitizeReportText(m)).join(', ')}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+              {recommendations?.market_trends.length ? (
+                <>
+                  <h3>{language === 'pl' ? 'Trendy rynkowe' : 'Market trends'}</h3>
+                  <ul>
+                    {recommendations.market_trends.map((item, idx) => (
+                      <li key={`rec-trends-${idx}`}>
+                        <strong>{sanitizeReportText(item.title)}</strong>
+                        <div>{sanitizeReportText(item.rationale)}</div>
+                        <div>{sanitizeReportText(item.how_to_test)}</div>
+                        {item.methods?.length ? (
+                          <div>
+                            {item.methods.map((m) => sanitizeReportText(m)).join(', ')}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              ) : null}
+            </div>
+          )}
         </section>
 
         <section id="appendix" className="report-section">
           <h2>{t.appendices}</h2>
           <p>{t.placeholder}</p>
         </section>
-        {debug && (
-          <section className="report-section">
-            <h2>DEBUG: Matrix mapping</h2>
-            <p className="muted">Counts per cell (A1..C3) + sample items.</p>
-            <div className="report-debug-grid">
-              {Object.entries(debug.cells).map(([cellId, items]) => (
-                <div key={cellId} className="report-debug-card">
-                  <strong>
-                    {cellId} · {items.length}
-                  </strong>
-                  <ul>
-                    {items.slice(0, 2).map((item) => (
-                      <li key={`${cellId}-${item.id}`}>{item.text || '—'}</li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
-              <div className="report-debug-card">
-                <strong>UNASSIGNED · {debug.unassigned.length}</strong>
-                <ul>
-                  {debug.unassigned.slice(0, 2).map((item) => (
-                    <li key={`UNASSIGNED-${item.id}`}>{item.text || '—'}</li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          </section>
-        )}
       </main>
     </div>
   )

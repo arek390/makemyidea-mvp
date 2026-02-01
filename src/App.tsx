@@ -3772,6 +3772,7 @@ const isAuthFlowInProgress = () => {
           lastSummaryTextHash: reportMeta.lastSummaryTextHash ?? null,
           summary: reportMeta.summary ?? null,
           ideas: reportMeta.ideas ?? null,
+          recommendations: reportMeta.recommendations ?? null,
         }
       : null
     return {
@@ -6228,6 +6229,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         lastSummaryTextHash: dbReport.lastSummaryTextHash ?? null,
         summary: dbReport.summary ?? null,
         ideas: dbReport.ideas ?? null,
+        recommendations: dbReport.recommendations ?? null,
       }
     }
     if (engineSessionDetail?.session?.id === sessionId && engineSessionDetail?.report) {
@@ -7222,6 +7224,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             created_at: meta.createdAt ?? existing?.created_at ?? Date.now(),
             updated_at: Date.now(),
             ideas: meta.ideas ?? existing?.ideas ?? null,
+            recommendations: meta.recommendations ?? existing?.recommendations ?? null,
           }
           const updatedDetail: EngineSessionDetail = {
             ...detail,
@@ -7243,6 +7246,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   ...existingRecord,
                   summary: meta.summary ?? existingRecord.summary,
                   ideas: meta.ideas ?? existingRecord.ideas,
+                  recommendations: meta.recommendations ?? existingRecord.recommendations,
                   lastSummaryTextHash:
                     meta.lastSummaryTextHash ?? existingRecord.lastSummaryTextHash,
                   updatedAt: Date.now(),

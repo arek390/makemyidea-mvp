@@ -1,7 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from './supabase/types'
 import { supabase } from './supabase/client'
-import type { ReportIdea, ReportSummary } from '../storage/sessionStore'
+import type { ReportIdea, ReportRecommendations, ReportSummary } from '../storage/sessionStore'
 
 export type ReportRow = Database['public']['Tables']['reports']['Row']
 
@@ -12,6 +12,7 @@ export type ReportRecord = {
   updatedAt: number
   summary: ReportSummary | null
   ideas: ReportIdea[] | null
+  recommendations: ReportRecommendations | null
   lastSummaryTextHash: string | null
   sourceUpdatedAt: number
 }
@@ -31,15 +32,27 @@ const toNumber = (value: unknown, fallback = 0) => {
 
 const parseSummaryJson = (
   value: unknown
-): { summary: ReportSummary | null; ideas: ReportIdea[] | null } => {
+): {
+  summary: ReportSummary | null
+  ideas: ReportIdea[] | null
+  recommendations: ReportRecommendations | null
+} => {
   if (!value || typeof value !== 'object') {
-    return { summary: null, ideas: null }
+    return { summary: null, ideas: null, recommendations: null }
   }
-  const maybeSummary = value as { summary?: ReportSummary; ideas?: unknown }
-  if (maybeSummary.summary || maybeSummary.ideas) {
+  const maybeSummary = value as {
+    summary?: ReportSummary
+    ideas?: unknown
+    recommendations?: unknown
+  }
+  if (maybeSummary.summary || maybeSummary.ideas || maybeSummary.recommendations) {
     return {
       summary: (maybeSummary.summary as ReportSummary | null) ?? null,
       ideas: Array.isArray(maybeSummary.ideas) ? (maybeSummary.ideas as ReportIdea[]) : null,
+      recommendations:
+        maybeSummary.recommendations && typeof maybeSummary.recommendations === 'object'
+          ? (maybeSummary.recommendations as ReportRecommendations)
+          : null,
     }
   }
   const legacy = value as Partial<ReportSummary>
@@ -48,9 +61,9 @@ const parseSummaryJson = (
     typeof legacy.change === 'string' ||
     typeof legacy.product === 'string'
   ) {
-    return { summary: legacy as ReportSummary, ideas: null }
+    return { summary: legacy as ReportSummary, ideas: null, recommendations: null }
   }
-  return { summary: null, ideas: null }
+  return { summary: null, ideas: null, recommendations: null }
 }
 
 const normalizeReportRow = (row: ReportRow): ReportRecord => {
@@ -63,6 +76,7 @@ const normalizeReportRow = (row: ReportRow): ReportRecord => {
     updatedAt: toNumber(row.updated_at, now),
     summary: parsed.summary,
     ideas: parsed.ideas,
+    recommendations: parsed.recommendations,
     lastSummaryTextHash: row.last_summary_text_hash ?? null,
     sourceUpdatedAt: toNumber(row.source_updated_at, 0),
   }

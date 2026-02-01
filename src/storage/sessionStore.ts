@@ -49,6 +49,20 @@ export type ReportSummary = {
   product: string
 }
 
+export type RecommendationItem = {
+  title: string
+  rationale: string
+  how_to_test: string
+  methods?: string[]
+  confidence?: 'low' | 'med' | 'high'
+}
+
+export type ReportRecommendations = {
+  based_on_user_ideas: RecommendationItem[]
+  morphological: RecommendationItem[]
+  market_trends: RecommendationItem[]
+}
+
 export type ReportIdea = {
   id: string
   text: string
@@ -67,6 +81,7 @@ export type ReportMeta = {
   lastSummaryTextHash?: string | null
   summary?: ReportSummary | null
   ideas?: ReportIdea[] | null
+  recommendations?: ReportRecommendations | null
 }
 
 export const STORAGE_KEY = 'engine-sessions-v1'

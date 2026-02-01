@@ -22,6 +22,7 @@ export type ReportSnapshot = {
     lastSummaryTextHash?: string | null
     summary?: { today: string; change: string; product: string } | null
     ideas?: ReportIdea[] | null
+    recommendations?: unknown
   } | null
 }
 
