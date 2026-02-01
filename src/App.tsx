@@ -3007,7 +3007,12 @@ const isAuthFlowInProgress = () => {
     }
     const { error } = await client.auth.signInWithOAuth({
       provider: 'google',
-      options: { redirectTo },
+      options: {
+        redirectTo,
+        queryParams: {
+          prompt: 'select_account',
+        },
+      },
     })
     if (import.meta.env.DEV) {
       window.setTimeout(() => {
