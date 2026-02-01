@@ -184,6 +184,7 @@ export const ReportPage = ({
   aiSupportEnabled,
   diagnosticsEnabled,
   naFillStatus,
+  onUpdateLabel,
 }: ReportPageProps) => {
   const t = reportCopy[language]
   const initialReport = validateAndNormalizeReport({
