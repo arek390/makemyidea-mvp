@@ -31,6 +31,7 @@ import {
   fetchBoardItems,
   insertBoardItem,
   updateBoardItemLabel,
+  updateBoardItemMatrix,
 } from './lib/cloudBoardItems'
 import {
   ENGINE_ENTRY_LABELS,
@@ -5996,6 +5997,47 @@ const isMissingLabel = (item: EngineBoardItem) => {
         }
       })
       setEnginePreviewItems(updatedItems)
+      const updates = enginePreviewItems
+        .map((item) => {
+          const cellCode = byId.get(item.id)
+          if (!cellCode) return null
+          const mapped = cellCodeToMatrix(cellCode)
+          if (!mapped?.matrix_row || !mapped?.matrix_col) return null
+          if (
+            item.matrix_row &&
+            item.matrix_col &&
+            item.matrix_row !== 'N/A' &&
+            item.matrix_col !== 'N/A'
+          ) {
+            return null
+          }
+          return { id: item.id, matrix_row: mapped.matrix_row, matrix_col: mapped.matrix_col }
+        })
+        .filter(
+          (entry): entry is { id: string; matrix_row: string; matrix_col: string } =>
+            Boolean(entry)
+        )
+      console.log('[matrix_assign] computed_assignments_count', updates.length)
+      if (authSession?.user?.id && client && updates.length) {
+        try {
+          await Promise.all(
+            updates.map((entry) =>
+              updateBoardItemMatrix(
+                enginePreviewSessionId,
+                entry.id,
+                entry.matrix_row,
+                entry.matrix_col
+              )
+            )
+          )
+          console.log('[matrix_assign] persisted_assignments_count', updates.length)
+        } catch (error) {
+          console.error('[matrix_assign] persist_failed', {
+            count: updates.length,
+            message: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
       if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
         setEngineSessionDetail((prev) =>
           prev ? { ...prev, boardItems: updatedItems } : prev

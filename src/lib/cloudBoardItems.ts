@@ -132,3 +132,29 @@ export const updateBoardItemLabel = async (
     throw error
   }
 }
+
+export const updateBoardItemMatrix = async (
+  sessionId: string,
+  itemId: string,
+  matrixRow: string | null,
+  matrixCol: string | null
+): Promise<void> => {
+  if (!supabase) {
+    throw new Error('Missing Supabase client.')
+  }
+  const { error } = await typedSupabase
+    .from('board_items')
+    .update({ matrix_row: matrixRow, matrix_col: matrixCol })
+    .eq('session_id', sessionId)
+    .eq('id', itemId)
+  if (error) {
+    console.error('[board_items] matrix update failed', {
+      status: (error as { status?: number | null })?.status,
+      code: (error as { code?: string | null })?.code,
+      message: (error as { message?: string | null })?.message,
+      details: (error as { details?: string | null })?.details,
+      hint: (error as { hint?: string | null })?.hint,
+    })
+    throw error
+  }
+}
