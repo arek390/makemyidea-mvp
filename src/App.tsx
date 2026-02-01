@@ -527,6 +527,8 @@ type Translations = {
   engineFacilitationDeepen: string
   engineFacilitationPerspective: string
   engineFacilitationLoadingLabel: string
+  engineFacilitationRetryMessage: string
+  engineFacilitationRetryCta: string
   engineFacilitationLoadingPlaceholder: string
   engineNamePrompt: string
   engineNameLabel: string
@@ -907,6 +909,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineFacilitationDeepen: 'Deepen',
     engineFacilitationPerspective: 'Change perspective',
     engineFacilitationLoadingLabel: 'Generating question…',
+    engineFacilitationRetryMessage: 'Couldn’t generate the question. Please retry.',
+    engineFacilitationRetryCta: 'Retry',
     engineFacilitationLoadingPlaceholder: 'Picking the best perspective for your board',
     engineNamePrompt: 'Give this session a name so it’s easier to return to.',
     engineNameLabel: 'Session name',
@@ -1418,6 +1422,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineFacilitationDeepen: 'Pogłęb',
     engineFacilitationPerspective: 'Zmień perspektywę',
     engineFacilitationLoadingLabel: 'Generuję pytanie…',
+    engineFacilitationRetryMessage: 'Nie udało się wygenerować pytania. Spróbuj ponownie.',
+    engineFacilitationRetryCta: 'Spróbuj ponownie',
     engineFacilitationLoadingPlaceholder: 'Dobieram perspektywę do Twojej tablicy',
     engineNamePrompt: 'Nadaj nazwę tej sesji, żeby łatwiej do niej wrócić.',
     engineNameLabel: 'Nazwa sesji',
@@ -2234,6 +2240,8 @@ function App() {
   const [enginePromptSource, setEnginePromptSource] = useState<'llm' | 'fallback' | null>(null)
   const [engineFacilitationLoading, setEngineFacilitationLoading] = useState(false)
   const [engineFacilitationLoadingType, setEngineFacilitationLoadingType] =
+    useState<FacilitationType | null>(null)
+  const [lastFacilitationType, setLastFacilitationType] =
     useState<FacilitationType | null>(null)
   const [showEngineFacilitationLoadingUI, setShowEngineFacilitationLoadingUI] =
     useState(false)
@@ -4848,6 +4856,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (engineFacilitationLoading) return
     setEngineFacilitationLoading(true)
     setEngineFacilitationLoadingType(type)
+    setLastFacilitationType(type)
     setShowEngineFacilitationLoadingUI(false)
     setEngineActivePrompt(null)
     setEnginePromptSource(null)
@@ -4933,7 +4942,32 @@ const isMissingLabel = (item: EngineBoardItem) => {
       }
       applyUsageModel(data.meta)
       void applyUsageToSession(data.meta, enginePreviewSessionId)
-      setEnginePromptSource(normalized.labelType === 'fallback' ? 'fallback' : 'llm')
+      const baseQuestionId = normalized.questions.length
+        ? normalized.questions[0]?.id
+        : normalized.questionObj?.id
+      console.log('[facilitation] rewrite', {
+        base_question_id: baseQuestionId ?? null,
+        llm_called: true,
+        raw_question_shown: false,
+        model_used: data.meta?.modelUsed ?? null,
+        items_count: boardEntries.length,
+      })
+      logFacilitationEvent('facilitation_rewrite', {
+        base_question_id: baseQuestionId ?? null,
+        llm_called: true,
+        raw_question_shown: false,
+        model_used: data.meta?.modelUsed ?? null,
+        items_count: boardEntries.length,
+      })
+      if (normalized.labelType !== 'ai') {
+        setEnginePromptSource(null)
+        setEngineActivePrompt(null)
+        setEngineUiState('FREE_FLOW')
+        setEngineOfferReason(null)
+        setEnginePreviewError(copy.engineFacilitationRetryMessage)
+        return
+      }
+      setEnginePromptSource('llm')
       if (typeof data?.groundedCount === 'number') {
         setLastLlmGroundedCount(data.groundedCount)
       }
@@ -4949,7 +4983,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         setEngineActivePrompt(null)
         setEngineUiState('FREE_FLOW')
         setEngineOfferReason(null)
-        setEnginePreviewError(copy.enginePreviewQuestionEmpty)
+        setEnginePreviewError(copy.engineFacilitationRetryMessage)
         return
       }
       if (engineActivePrompt?.text && normalized.questionText === engineActivePrompt.text && retryCount < 1) {
@@ -4977,7 +5011,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         setEngineActivePrompt(null)
         setEngineUiState('FREE_FLOW')
         setEngineOfferReason(null)
-        setEnginePreviewError(copy.enginePreviewQuestionEmpty)
+        setEnginePreviewError(copy.engineFacilitationRetryMessage)
         return
       }
       setEngineActivePrompt({ type, text: questionText })
@@ -5101,11 +5135,23 @@ const isMissingLabel = (item: EngineBoardItem) => {
         }
       }
       resetStuckSignals()
-    } catch {
+    } catch (error) {
+      console.log('[facilitation] rewrite failed', {
+        llm_called: true,
+        raw_question_shown: false,
+        items_count: context.boardEntries.length,
+        error: error instanceof Error ? error.message : String(error),
+      })
+      logFacilitationEvent('facilitation_rewrite_failed', {
+        llm_called: true,
+        raw_question_shown: false,
+        items_count: context.boardEntries.length,
+        error: error instanceof Error ? error.message : String(error),
+      })
       setEngineActivePrompt(null)
       setEngineUiState('FREE_FLOW')
       setEngineOfferReason(null)
-      setEnginePreviewError(copy.enginePreviewQuestionEmpty)
+      setEnginePreviewError(copy.engineFacilitationRetryMessage)
       setEnginePromptSource(null)
     } finally {
       if (engineFacilitationLoadingTimerRef.current) {
@@ -7698,15 +7744,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   <button
                     type="button"
                     className="primary"
-                  data-testid="session-create"
-                  onClick={async () => {
-                    markUserInitiatedInteraction('pointer')
-                    setEngineLastInputActivityAt(Date.now())
-                    armIdleWatch('create_session')
-                    setEngineNameDraft('')
-                    setEngineNamePromptOpen(true)
-                  }}
-                >
+                    data-testid="session-create"
+                    onClick={async () => {
+                      markUserInitiatedInteraction('pointer')
+                      setEngineLastInputActivityAt(Date.now())
+                      armIdleWatch('create_session')
+                      setEngineNameDraft('')
+                      setEngineNamePromptOpen(true)
+                    }}
+                  >
                     {copy.enginePreviewCreateSession}
                   </button>
                 )}
@@ -7734,10 +7780,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     </button>
                   </div>
                 )}
-                {!enginePreviewSessionId && (
+                {!enginePreviewSessionId &&
+                  authSession?.user?.id &&
+                  engineSessions.length > 0 && (
                   <button
                     type="button"
-                    className="ghost"
+                    className="primary"
                     data-testid="session-list-toggle"
                     onClick={() => {
                       markUserInitiatedInteraction('pointer')
@@ -8293,7 +8341,22 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 </button>
               </div>
               </div>
-              {enginePreviewError && <div className="engine-error">{enginePreviewError}</div>}
+              {enginePreviewError && (
+                <div className="engine-error">
+                  <span>{enginePreviewError}</span>
+                  {lastFacilitationType && (
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => {
+                        void activateFacilitationPrompt(lastFacilitationType)
+                      }}
+                    >
+                      {copy.engineFacilitationRetryCta}
+                    </button>
+                  )}
+                </div>
+              )}
               {enginePreviewError && engineFacilitationDiagnostics && (
                 <div className="engine-debug-panel">
                   <div>URL: {engineFacilitationDiagnostics.url}</div>
