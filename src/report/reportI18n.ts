@@ -50,7 +50,7 @@ export const reportCopy: Record<
 > = {
   en: {
     title: 'Report',
-    back: 'Back',
+    back: 'Back to session',
     print: 'Print',
     downloadPdf: 'Download PDF',
     pdfPrint: 'PDF / Print',
@@ -96,7 +96,7 @@ export const reportCopy: Record<
   },
   pl: {
     title: 'Raport',
-    back: 'Wstecz',
+    back: 'Wróć do sesji',
     print: 'Drukuj',
     downloadPdf: 'Pobierz PDF',
     pdfPrint: 'PDF / Drukuj',

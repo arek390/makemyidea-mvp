@@ -499,7 +499,10 @@ export const ReportPage = ({
   return (
     <div className="report-page">
       <header className="report-header">
-        <h1>{t.title}</h1>
+        <div>
+          <h1>{t.title}</h1>
+          <div className="engine-kicker">MAKEMYIDEA.WORK</div>
+        </div>
         <div className="report-actions">
           <button type="button" className="ghost" onClick={onBack}>
             {t.back}
