@@ -33,6 +33,13 @@ import {
   updateBoardItemLabel,
 } from './lib/cloudBoardItems'
 import {
+  ENGINE_ENTRY_LABELS,
+  ENGINE_ENTRY_LABEL_TRANSLATIONS,
+  ENGINE_ENTRY_LABEL_COLORS,
+  getEntryLabelText,
+  getNoLabelText,
+} from './engine/entryLabels'
+import {
   ensureReportExists,
   fetchReportBySessionId,
   type ReportRecord,
@@ -94,41 +101,6 @@ type LabelItem = {
   color: string
 }
 
-const ENGINE_ENTRY_LABELS = [
-  'pomysł',
-  'obserwacja',
-  'problem do rozwiązania',
-  'ryzyko / blokada',
-  'pytanie do klienta',
-  'pytanie do dostawcy / partnera',
-  'założenie do weryfikacji',
-  'decyzja',
-  'następny krok (action)',
-]
-
-const ENGINE_ENTRY_LABEL_TRANSLATIONS: Record<string, string> = {
-  'pomysł': 'idea',
-  'obserwacja': 'observation',
-  'problem do rozwiązania': 'problem to solve',
-  'ryzyko / blokada': 'risk / blocker',
-  'pytanie do klienta': 'question to customer',
-  'pytanie do dostawcy / partnera': 'question to supplier / partner',
-  'założenie do weryfikacji': 'assumption to validate',
-  'decyzja': 'decision',
-  'następny krok (action)': 'next step (action)',
-}
-
-const ENGINE_ENTRY_LABEL_COLORS: Record<string, string> = {
-  'pomysł': '#FFD9B3',
-  'obserwacja': '#CFEBDD',
-  'problem do rozwiązania': '#FFBDBD',
-  'ryzyko / blokada': '#FFC9E3',
-  'pytanie do klienta': '#CFE8FF',
-  'pytanie do dostawcy / partnera': '#D7F5E0',
-  'założenie do weryfikacji': '#E9D7FF',
-  'decyzja': '#FFF1B8',
-  'następny krok (action)': '#C7F0E0',
-}
 
 type Language = 'English' | 'Polish'
 
@@ -6373,8 +6345,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   }
 
-  const updateEngineEntryLabel = async (entryId: string, label: string | null) => {
+  const updateEngineEntryLabel = async (entryId: string, label: string | null): Promise<boolean> => {
     setEngineSessionsError(null)
+    const previousLabel =
+      enginePreviewItems.find((item) => item.id === entryId)?.label ?? null
     setEnginePreviewItems((prev) =>
       prev.map((item) => (item.id === entryId ? { ...item, label } : item))
     )
@@ -6392,12 +6366,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
     try {
       const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id
-      if (!sessionId) return
+      if (!sessionId) return false
       if (authSession?.user?.id && client) {
         await updateBoardItemLabel(sessionId, entryId, label ?? null)
       }
       const detail = await getSession(sessionId)
-      if (!detail?.session) return
+      if (!detail?.session) return false
       const updated: EngineSessionDetail = {
         ...detail,
         boardItems: detail.boardItems.map((item) =>
@@ -6407,10 +6381,30 @@ const isMissingLabel = (item: EngineBoardItem) => {
       }
       await updateSession(updated)
       engineLabelCache.current[entryId] = label ?? null
+      return true
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(`Nie udało się zapisać etykiety. ${message}`)
       logSessionStore('engine_entry_label_failed', { entryId, message })
+      setEnginePreviewItems((prev) =>
+        prev.map((item) =>
+          item.id === entryId ? { ...item, label: previousLabel } : item
+        )
+      )
+      if (engineSessionDetail?.session) {
+        setEngineSessionDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                boardItems: prev.boardItems.map((item) =>
+                  item.id === entryId ? { ...item, label: previousLabel } : item
+                ),
+              }
+            : prev
+        )
+      }
+      engineLabelCache.current[entryId] = previousLabel
+      return false
     }
   }
 
@@ -7238,6 +7232,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         aiSupportEnabled={aiSupportEnabled}
         diagnosticsEnabled={showDiagnostics}
         naFillStatus={naFillStatus}
+        onUpdateLabel={updateEngineEntryLabel}
         onReportMetaChange={async (meta) => {
           const sessionId = snapshot.sessionId || enginePreviewSessionId
           if (!sessionId) return
@@ -8569,8 +8564,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
                             }}
                           >
                             {uiLanguage === 'English'
-                              ? ENGINE_ENTRY_LABEL_TRANSLATIONS[item.label] || item.label
-                              : item.label}
+                              ? getEntryLabelText(item.label, 'English')
+                              : getEntryLabelText(item.label, 'Polish')}
                           </span>
                         )}
                       </div>
@@ -8618,12 +8613,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
                               setEngineLabelEditorId(null)
                             }}
                           >
-                          <option value="">{copy.noLabelText}</option>
+                          <option value="">{getNoLabelText(uiLanguage)}</option>
                           {ENGINE_ENTRY_LABELS.map((label) => (
                             <option key={label} value={label}>
-                              {uiLanguage === 'English'
-                                ? ENGINE_ENTRY_LABEL_TRANSLATIONS[label] || label
-                                : label}
+                              {getEntryLabelText(label, uiLanguage)}
                             </option>
                           ))}
                           </select>

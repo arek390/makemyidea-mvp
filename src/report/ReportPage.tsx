@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { reportCopy, type ReportLang } from './reportI18n'
 import { downloadReportCsv, type ReportSnapshot } from './exportCsv'
+import {
+  ENGINE_ENTRY_LABELS,
+  getEntryLabelText,
+  getNoLabelText,
+} from '../engine/entryLabels'
 import type { ReportRecommendations } from '../storage/sessionStore'
 import { UsageBadge } from '../components/UsageBadge'
 import { buildSessionGoalText, extractProductNameFromSessionName } from './sessionGoal'
@@ -25,6 +30,7 @@ type ReportPageProps = {
     ideas?: ReportSnapshot['ideas'] | null
     recommendations?: ReportRecommendations | null
   }) => void
+  onUpdateLabel?: (itemId: string, label: string | null) => Promise<boolean>
 }
 
 type AiSummary = { today: string; change: string; product: string }
@@ -199,11 +205,14 @@ export const ReportPage = ({
   const [reportRecommendations, setReportRecommendations] = useState<ReportRecommendations>(
     normalizeRecommendations(sanitizeReportPayload(initialReport.recommendations))
   )
+  const [labelUpdating, setLabelUpdating] = useState<Record<string, boolean>>({})
   const [summaryUsage] = useState<SummaryUsage | null>(null)
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
   const summaryAutoAttempted = useRef(false)
   const reportSessionId = snapshot.sessionId || null
   const [reportMetaLoaded, setReportMetaLoaded] = useState(!client || !reportSessionId)
+  const labelErrorText =
+    language === 'pl' ? 'Nie udało się zapisać etykiety.' : 'Failed to save label.'
 
   const isEmptySummaryText = (text: string | null | undefined, lang: 'pl' | 'en') => {
     const value = String(text || '').trim()
@@ -381,6 +390,35 @@ export const ReportPage = ({
       String(sourceUpdatedAt)
     )
     setUpdateNotice(t.reportUpdated)
+  }
+
+  const handleLabelChange = async (idea: ReportSnapshot['ideas'][number], nextValue: string) => {
+    if (!idea?.id) return
+    const nextLabel = nextValue || null
+    const previousLabel = idea.label ?? null
+    setSummaryItems((prev) =>
+      prev.map((item) => (item.id === idea.id ? { ...item, label: nextLabel } : item))
+    )
+    setLabelUpdating((prev) => ({ ...prev, [idea.id]: true }))
+    let ok = false
+    try {
+      if (onUpdateLabel) {
+        ok = await onUpdateLabel(idea.id, nextLabel)
+      }
+    } catch {
+      ok = false
+    }
+    if (!ok) {
+      setSummaryItems((prev) =>
+        prev.map((item) => (item.id === idea.id ? { ...item, label: previousLabel } : item))
+      )
+      setUpdateNotice(labelErrorText)
+    }
+    setLabelUpdating((prev) => {
+      const next = { ...prev }
+      delete next[idea.id]
+      return next
+    })
   }
 
   const generateSummaryIfNeeded = async () => {
@@ -587,13 +625,33 @@ export const ReportPage = ({
                   </tr>
                 ) : (
                   summaryItems.map((idea) => {
-                    const label = idea.label?.trim() ? idea.label.trim() : t.labelMissing
                     const questionText = resolveQuestionText(idea)
+                    const isUpdating = Boolean(labelUpdating[idea.id])
                     return (
                       <tr key={idea.id}>
                         <td>{questionText}</td>
                         <td>{idea.text || '—'}</td>
-                        <td>{label}</td>
+                        <td>
+                          <label className="engine-entry-label-field">
+                            <span className="sr-only">Etykieta wpisu</span>
+                            <select
+                              data-testid={`report-label-select-${idea.id}`}
+                              value={idea.label ?? ''}
+                              disabled={isUpdating}
+                              onChange={(event) => {
+                                void handleLabelChange(idea, event.target.value)
+                              }}
+                            >
+                              <option value="">{getNoLabelText(language)}</option>
+                              {ENGINE_ENTRY_LABELS.map((label) => (
+                                <option key={label} value={label}>
+                                  {getEntryLabelText(label, language)}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {isUpdating && <span className="muted">…</span>}
+                        </td>
                       </tr>
                     )
                   })

@@ -44,7 +44,6 @@ export const reportCopy: Record<
     tableEntry: string
     tableLabel: string
     tableQuestion: string
-    labelMissing: string
     noEntries: string
     placeholder: string
   }
@@ -92,7 +91,6 @@ export const reportCopy: Record<
     tableEntry: 'Entry',
     tableLabel: 'Label',
     tableQuestion: 'Question',
-    labelMissing: 'label not defined',
     noEntries: 'No entries',
     placeholder: 'Placeholder content — to be completed in later versions.',
   },
@@ -139,7 +137,6 @@ export const reportCopy: Record<
     tableEntry: 'Wpis',
     tableLabel: 'Etykieta',
     tableQuestion: 'Pytanie',
-    labelMissing: 'etykieta niezdefiniowana',
     noEntries: 'Brak wpisów',
     placeholder: 'Treść przykładowa — do uzupełnienia w kolejnych wersjach.',
   },
