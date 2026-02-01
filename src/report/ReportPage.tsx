@@ -478,7 +478,11 @@ export const ReportPage = ({
           <button type="button" className="ghost" onClick={() => window.print()}>
             {t.downloadPdf}
           </button>
-          <button type="button" className="primary" onClick={() => downloadReportCsv(snapshot)}>
+          <button
+            type="button"
+            className="primary"
+            onClick={() => downloadReportCsv(snapshot, summaryItems, language)}
+          >
             {t.exportCsv}
           </button>
           {naFillStatus === 'running' && <span className="muted">{t.naAssigning}</span>}

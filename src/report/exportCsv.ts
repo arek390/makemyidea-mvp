@@ -1,3 +1,5 @@
+import type { ReportLang } from './reportI18n'
+
 export type ReportIdea = {
   id: string
   text: string
@@ -27,37 +29,62 @@ export type ReportSnapshot = {
 }
 
 const escapeCsv = (value: string) => {
-  const normalized = value.replace(/\r?\n/g, ' ').trim()
-  if (/[",]/.test(normalized)) {
+  const normalized = String(value ?? '')
+  if (/[",\n\r]/.test(normalized)) {
     return `"${normalized.replace(/"/g, '""')}"`
   }
   return normalized
 }
 
-export const downloadReportCsv = (snapshot: ReportSnapshot) => {
+const sanitizeFilenamePart = (value: string) => {
+  const normalized = String(value || '')
+    .toLowerCase()
+    .replace(/\s+/g, '-')
+    .replace(/[\/\\:\?"<>|]/g, '')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+  return normalized || 'report'
+}
+
+const formatDate = (value?: number | null) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    const date = new Date(value)
+    if (!Number.isNaN(date.getTime())) {
+      return date.toISOString().slice(0, 10)
+    }
+  }
+  return new Date().toISOString().slice(0, 10)
+}
+
+export const downloadReportCsv = (
+  snapshot: ReportSnapshot,
+  items: ReportIdea[],
+  language: ReportLang
+) => {
   const rows: string[] = []
-  rows.push(['sessionName', 'date', 'userName'].map(escapeCsv).join(','))
-  rows.push(
-    [snapshot.sessionName || '—', snapshot.date || '—', snapshot.userName || '—']
-      .map(escapeCsv)
-      .join(',')
-  )
-  rows.push('')
-  rows.push(['ideas'].join(','))
-  rows.push(['id', 'text'].map(escapeCsv).join(','))
-  if (snapshot.ideas.length === 0) {
-    rows.push(['-', ''].map(escapeCsv).join(','))
+  rows.push(['Pytanie', 'Wpis', 'Etykieta'].map(escapeCsv).join(','))
+  if (items.length === 0) {
+    rows.push(['', '', ''].map(escapeCsv).join(','))
   } else {
-    snapshot.ideas.forEach((idea) => {
-      rows.push([idea.id, idea.text].map(escapeCsv).join(','))
+    items.forEach((idea) => {
+      const question =
+        language === 'pl'
+          ? idea.questionTextPl || ''
+          : idea.questionTextEn || ''
+      const text = idea.text || ''
+      const label = idea.label || ''
+      rows.push([question, text, label].map(escapeCsv).join(','))
     })
   }
 
+  const fileName = `${sanitizeFilenamePart(snapshot.sessionName)}_${formatDate(
+    snapshot.reportMeta?.createdAt ?? null
+  )}.csv`
   const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = 'report_v1.csv'
+  link.download = fileName
   document.body.appendChild(link)
   link.click()
   link.remove()
