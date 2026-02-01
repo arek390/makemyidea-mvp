@@ -6186,7 +6186,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
   const fetchEngineSessions = async () => {
     setEngineSessionsError(null)
-    setEngineSessionsLoading(true)
     try {
       const localSessions = await listSessions()
       if (authSession?.user?.id) {
@@ -6263,7 +6262,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
       setEngineSessionsError(`Nie udało się pobrać listy sesji. ${message}`)
       logSessionStore('engine_sessions_list_failed', { message })
     } finally {
-      setEngineSessionsLoading(false)
     }
   }
 
