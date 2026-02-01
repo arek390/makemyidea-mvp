@@ -695,7 +695,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     impulseClose: 'Close',
     report: 'Report',
     llmSettings: 'LLM settings',
-    languageLabel: 'Language',
+    languageLabel: 'JĘZYK/LANGUAGE',
     engine: {
     saveSession: 'Save session',
     newSession: 'New session',
@@ -1143,7 +1143,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     impulseClose: 'Zamknij',
     report: 'Raport',
     llmSettings: 'Ustawienia LLM',
-    languageLabel: 'Język',
+    languageLabel: 'JĘZYK/LANGUAGE',
     engine: {
     saveSession: 'Zapisz sesję',
     newSession: 'Nowa sesja',
@@ -7141,6 +7141,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
   const isDevUi =
     import.meta.env.DEV ||
     (typeof window !== 'undefined' && window.location.hostname === 'localhost')
+  const landingLogoUrl = new URL('../logo/logo_makemyideawork.png', import.meta.url).href
 
   useEffect(() => {
     if (!isDevUi) return
@@ -7166,59 +7167,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   }, [isDevUi])
 
-  const devAuthPanel = isDevUi ? (
-    <div
-      style={{
-        position: 'fixed',
-        top: 8,
-        left: 8,
-        zIndex: 9999,
-        background: 'rgba(15, 23, 42, 0.92)',
-        color: '#fff',
-        padding: '8px 10px',
-        borderRadius: 8,
-        fontSize: 12,
-        lineHeight: 1.4,
-        maxWidth: 320,
-      }}
-    >
-      <div>path: {typeof window !== 'undefined' ? window.location.pathname : ''}</div>
-      <div>hostname: {typeof window !== 'undefined' ? window.location.hostname : ''}</div>
-      <div>origin: {typeof window !== 'undefined' ? window.location.origin : ''}</div>
-      <div>href: {typeof window !== 'undefined' ? window.location.href : ''}</div>
-      <div>importMetaDev: {import.meta.env.DEV ? 'true' : 'false'}</div>
-      <div>mode: {import.meta.env.MODE}</div>
-      <div>
-        build:{' '}
-        {String(
-          import.meta.env.VITE_BUILD_TIME ??
-            import.meta.env.VITE_APP_VERSION ??
-            'unknown'
-        )}
-      </div>
-      <div>authResolved: {authResolved ? 'true' : 'false'}</div>
-      <div>hasSession: {authSession ? 'true' : 'false'}</div>
-      <div>email: {authSession?.user?.email ?? '—'}</div>
-      <div>isGuest: {isGuestMode() ? 'true' : 'false'}</div>
-      <div>
-        hasActiveGuestSession:{' '}
-        {isGuestMode() && readGuestSessions().length > 0 ? 'true' : 'false'}
-      </div>
-      <div>lastAuthEvent: {lastAuthEvent ?? '—'}</div>
-      <div>lastLLMCallAt: {lastLlmCallAt ?? '—'}</div>
-      <div>lastLLMModel: {lastLlmModel ?? '—'}</div>
-      <div>
-        lastTokensDelta: {lastLlmTokensDelta != null ? String(lastLlmTokensDelta) : '—'}
-      </div>
-      <div>lastLLMSource: {lastLlmSource ?? '—'}</div>
-      <div>
-        lastGroundedCount:{' '}
-        {lastLlmGroundedCount != null ? String(lastLlmGroundedCount) : '—'}
-      </div>
-      <div>lastGroundedIn: {lastLlmGroundedIn ? lastLlmGroundedIn.join(', ') : '—'}</div>
-      {devLastError && <div>lastError: {devLastError}</div>}
-    </div>
-  ) : null
+  const devAuthPanel = null
 
   const withDevOverlay = (node: React.ReactNode) => (
     <>
@@ -7660,9 +7609,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
       <div className="app engine-preview" data-testid="active-session">
         <header className="engine-header">
           <div>
-            <a className="engine-kicker" href="/">
-              {CANONICAL_DISPLAY_HOST}
-            </a>
+            <div className="engine-header-logo">
+              <img src={landingLogoUrl} alt="MakeMyIdea.Work" />
+            </div>
           </div>
           <div className="engine-header-actions">
             <button
@@ -8403,29 +8352,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   )}
                 </div>
               )}
-              {enginePreviewError && engineFacilitationDiagnostics && (
-                <div className="engine-debug-panel">
-                  <div>URL: {engineFacilitationDiagnostics.url}</div>
-                  <div>Status: {engineFacilitationDiagnostics.status}</div>
-                  <div>Content-Type: {engineFacilitationDiagnostics.contentType}</div>
-                  {engineFacilitationDiagnostics.json ? (
-                    <pre>{JSON.stringify(engineFacilitationDiagnostics.json, null, 2)}</pre>
-                  ) : (
-                    <pre>
-                      NON-JSON: {engineFacilitationDiagnostics.parseError || 'Unknown error'}
-                      {'\n'}
-                      {engineFacilitationDiagnostics.raw}
-                    </pre>
-                  )}
-                </div>
-              )}
-              {import.meta.env.VITE_DEBUG_ENGINE === '1' && engineApiDebug && (
-                <div className="engine-debug-panel">
-                  <div>Endpoint: {engineApiDebug.endpoint}</div>
-                  <div>Status: {engineApiDebug.status}</div>
-                  <pre>{JSON.stringify(engineApiDebug.response, null, 2)}</pre>
-                </div>
-              )}
               <div className="engine-board-input">
                 {(engineFacilitationLoading && showEngineFacilitationLoadingUI
                   ? copy.engineFacilitationLoadingPerspective
@@ -8793,7 +8719,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
   return withDevOverlay(
     <div className="app">
       <header className={`top-bar ${showLanding ? 'landing-top' : ''}`}>
-        {!showLanding && <div className="brand">{copy.appTitle}</div>}
+        {showLanding && (
+          <div className="landing-logo">
+            <img src={landingLogoUrl} alt="MakeMyIdea.Work" />
+          </div>
+        )}
+        {!showLanding && (
+          <div className="engine-brand">
+            <div className="engine-logo">
+              <img src={landingLogoUrl} alt="MakeMyIdea.Work" />
+            </div>
+          </div>
+        )}
         {!showLanding && (
           <div className="roadmap">
             {stepOrder.map((stepId) => (
@@ -8871,13 +8808,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             {copy.llmSettings}
           </button>
         )}
-        <div className="topbar-links">
-          {!showLanding && (
-            <a className="ghost topbar-link" href="/">
-              Landing page
-            </a>
-          )}
-        </div>
+        <div className="topbar-links" />
         {!showLanding && activeStep !== 1 && (
           <button className="report-button" type="button" onClick={() => setReportSnapshotOpen(true)}>
             <IconReport />

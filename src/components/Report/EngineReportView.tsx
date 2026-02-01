@@ -125,7 +125,6 @@ export const EngineReportView = ({
     <div className="report-view">
       <div className="report-header">
         <div>
-          <div className="report-brand">makemyidea.work</div>
           <h1>{copy.reportTitle}</h1>
         </div>
         <div className="report-actions">

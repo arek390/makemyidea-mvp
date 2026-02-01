@@ -207,6 +207,7 @@ export const ReportPage = ({
   onUpdateLabel,
 }: ReportPageProps) => {
   const t = reportCopy[language]
+  const reportLogoUrl = new URL('../../logo/logo_makemyideawork.png', import.meta.url).href
   const initialReport = validateAndNormalizeReport({
     summary: snapshot.reportMeta?.summary ?? null,
     ideas: snapshot.ideas ?? null,
@@ -590,7 +591,6 @@ export const ReportPage = ({
               )}
             </span>
           </div>
-          <div className="engine-kicker">MAKEMYIDEA.WORK</div>
         </div>
         <div className="report-actions">
           <button type="button" className="primary" onClick={onBack}>
@@ -608,15 +608,22 @@ export const ReportPage = ({
       <main className="report-body">
         <section id="cover" className="report-section">
           <h2>{t.cover}</h2>
-          <p>
-            <strong>{t.sessionName}:</strong> {snapshot.sessionName || '—'}
-          </p>
-          <p>
-            <strong>{t.date}:</strong> {snapshot.date || '—'}
-          </p>
-          <p>
-            <strong>{t.userName}:</strong> {snapshot.userName || '—'}
-          </p>
+          <div className="report-cover">
+            <div className="report-cover-content">
+              <p>
+                <strong>{t.sessionName}:</strong> {snapshot.sessionName || '—'}
+              </p>
+              <p>
+                <strong>{t.date}:</strong> {snapshot.date || '—'}
+              </p>
+              <p>
+                <strong>{t.userName}:</strong> {snapshot.userName || '—'}
+              </p>
+            </div>
+            <div className="report-cover-logo">
+              <img src={reportLogoUrl} alt="MakeMyIdea.Work" />
+            </div>
+          </div>
         </section>
 
         <section id="toc" className="report-section">

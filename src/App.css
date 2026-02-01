@@ -9,17 +9,51 @@
   z-index: 10;
   display: grid;
   grid-template-columns: auto 1fr auto auto;
-  align-items: flex-start;
+  align-items: center;
   gap: 1.5rem;
   padding: 1.2rem 2.5rem;
   background: rgba(255, 255, 255, 0.86);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--line);
+  position: sticky;
 }
 
 .top-bar.landing-top {
   grid-template-columns: 1fr auto;
   justify-items: end;
+  padding: 5px 20px;
+}
+
+.landing-logo {
+  justify-self: start;
+  align-self: center;
+  display: flex;
+  align-items: center;
+}
+
+.landing-logo img {
+  display: block;
+  height: 64px;
+  width: auto;
+  transform: translateY(12px);
+}
+
+.engine-logo {
+  position: absolute;
+  left: 1.5rem;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  pointer-events: none;
+  z-index: 20;
+}
+
+.engine-logo img {
+  display: block;
+  height: 64px;
+  width: auto;
+  transform: none;
 }
 
 .brand {
@@ -29,6 +63,20 @@
   letter-spacing: 0.02em;
   align-self: flex-start;
   margin-top: -0.2rem;
+}
+
+.engine-brand {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  position: relative;
+  z-index: 1;
+  padding-left: 96px;
+  min-height: 64px;
+}
+
+.engine-brand .brand {
+  margin-left: 50px;
 }
 
 .roadmap {
@@ -190,6 +238,7 @@
   text-transform: uppercase;
   letter-spacing: 0.08em;
   align-self: flex-start;
+  margin-top: 20px;
 }
 
 .topbar-language select {
@@ -1815,6 +1864,25 @@
   margin-top: 0;
 }
 
+.report-cover {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1.5rem;
+}
+
+.report-cover-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.report-cover-logo img {
+  display: block;
+  height: 72px;
+  width: auto;
+  transform: translateY(-80px);
+}
+
 .report-toc {
   margin: 0;
   padding-left: 1.25rem;
@@ -2330,10 +2398,21 @@ details.report-section > summary {
   justify-content: space-between;
   align-items: center;
   gap: 2rem;
-  padding: 1.5rem 2.5rem;
+  padding: 5px 20px;
   background: rgba(255, 255, 255, 0.9);
   border-bottom: 1px solid var(--line);
   backdrop-filter: blur(12px);
+}
+
+.engine-header-logo {
+  display: flex;
+  align-items: center;
+}
+
+.engine-header-logo img {
+  display: block;
+  height: 64px;
+  width: auto;
 }
 
 .engine-kicker {
@@ -2354,6 +2433,7 @@ details.report-section > summary {
   gap: 1rem;
   align-items: flex-end;
   flex-wrap: wrap;
+  margin-left: auto;
 }
 
 .engine-notice {
