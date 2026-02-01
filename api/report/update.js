@@ -29,11 +29,32 @@ const sanitizeReportPayload = (payload) => {
   return payload
 }
 
+const normalizeRecommendations = (value) => {
+  const defaultRecommendations = {
+    based_on_user_ideas: [],
+    morphological: [],
+    market_trends: [],
+  }
+  if (!value || typeof value !== 'object') return { ...defaultRecommendations }
+  const recs = value
+  return {
+    based_on_user_ideas: Array.isArray(recs.based_on_user_ideas)
+      ? recs.based_on_user_ideas
+      : [],
+    morphological: Array.isArray(recs.morphological) ? recs.morphological : [],
+    market_trends: Array.isArray(recs.market_trends) ? recs.market_trends : [],
+  }
+}
+
 const validateAndNormalizeReport = (payload) => {
   const empty = {
     summary: { today: '', change: '', product: '' },
     ideas: [],
-    recommendations: null,
+    recommendations: {
+      based_on_user_ideas: [],
+      morphological: [],
+      market_trends: [],
+    },
     source_snapshot: null,
   }
   if (!payload || typeof payload !== 'object') return { ...empty }
@@ -58,16 +79,17 @@ const validateAndNormalizeReport = (payload) => {
     }
   }
   const ideas = Array.isArray(value.ideas) ? value.ideas : []
+  const recommendations = normalizeRecommendations(value.recommendations)
   return {
     summary,
     ideas,
-    recommendations: value.recommendations ?? null,
+    recommendations,
     source_snapshot: value.source_snapshot ?? null,
   }
 }
 
-const validateRecommendationsSection = (payload) => {
-  const recs = payload?.recommendations
+const validateRecommendations = (recommendations) => {
+  const recs = recommendations
   if (!recs || typeof recs !== 'object') {
     return { ok: false, errors: ['recommendations_missing'] }
   }
@@ -97,6 +119,18 @@ const validateRecommendationsSection = (payload) => {
     }
   })
   return { ok: errors.length === 0, errors }
+}
+
+const logRecommendationCounts = (label, recommendations) => {
+  if (!recommendations || typeof recommendations !== 'object') {
+    console.log(`[report:update][step3] ${label} recommendations missing`)
+    return
+  }
+  console.log(`[report:update][step3] ${label} recommendations counts`, {
+    based_on_user_ideas: recommendations.based_on_user_ideas?.length || 0,
+    morphological: recommendations.morphological?.length || 0,
+    market_trends: recommendations.market_trends?.length || 0,
+  })
 }
 
 const toTimeValue = (value) => {
@@ -236,6 +270,8 @@ export default async function handler(req, res) {
     } catch {
       analysisJson = null
     }
+    const themeCount = Array.isArray(analysisJson?.key_themes) ? analysisJson.key_themes.length : 0
+    console.log('[report:update][step3] preprocess themes', themeCount)
 
     const defaultPrompt = JSON.stringify({
       existing_summary_json: existingSanitized,
@@ -250,10 +286,16 @@ export default async function handler(req, res) {
           confidence: 'low|med|high',
         },
         notes: [
-          'Return ONLY valid JSON. No markdown.',
-          'Preserve all existing keys/sections; update recommendations in-place.',
+          'You MUST return a single valid JSON object. No markdown. No commentary.',
+          'The JSON MUST include "recommendations" as an OBJECT (never null, never string).',
+          'It MUST contain exactly these keys: based_on_user_ideas, morphological, market_trends.',
+          'Each array MUST contain at least 1 item.',
+          'Each item MUST have non-empty fields: title, rationale, how_to_test.',
+          'If session data is sparse, create minimal but still concrete items (not generic).',
           'Do not output matrix codes A1..C3 anywhere.',
-          '3–5 items per group max.',
+          'Preserve all existing keys/sections; update recommendations in-place.',
+          '1–3 items per group max.',
+          'Rationale should reference analysis_json themes/representative_items briefly (no long quotes).',
         ],
       },
       session_items: representativeItems,
@@ -270,7 +312,7 @@ export default async function handler(req, res) {
         }),
         language: 'Polish',
         taskInstructions:
-          'Return ONLY valid JSON. No markdown. Update existing report JSON; update existing recommendations section in-place.',
+          'Return ONLY valid JSON. No markdown. Update existing report JSON; update existing recommendations section in-place. recommendations must be an object with 3 arrays; each array min 1 item; items must include title, rationale, how_to_test; never output A1..C3.',
         parseResponse: (value) => {
           try {
             const parsed = JSON.parse(value)
@@ -296,15 +338,24 @@ export default async function handler(req, res) {
     let defaultResult = await runDefault()
     if (defaultResult.ok && defaultResult.data) {
       const validated = validateAndNormalizeReport(defaultResult.data)
-      const recValidation = validateRecommendationsSection(validated)
+      const recValidation = validateRecommendations(validated.recommendations)
+      console.log(
+        '[report:update][step3] default recommendations null?',
+        !validated.recommendations || typeof validated.recommendations !== 'object'
+      )
+      logRecommendationCounts('default', validated.recommendations)
+      console.log('[report:update][step3] validation errors', recValidation.errors)
       if (recValidation.ok) {
         updatedReport = validated
       } else {
         validationErrors = recValidation.errors
+        console.log('[report:update][step3] retry default')
         defaultResult = await runDefault(undefined, validationErrors)
         if (defaultResult.ok && defaultResult.data) {
           const validatedRetry = validateAndNormalizeReport(defaultResult.data)
-          const recValidationRetry = validateRecommendationsSection(validatedRetry)
+          const recValidationRetry = validateRecommendations(validatedRetry.recommendations)
+          logRecommendationCounts('retry', validatedRetry.recommendations)
+          console.log('[report:update][step3] retry validation errors', recValidationRetry.errors)
           if (recValidationRetry.ok) {
             updatedReport = validatedRetry
           }
@@ -312,13 +363,21 @@ export default async function handler(req, res) {
       }
     }
     if (!updatedReport) {
+      console.log('[report:update][step3] escalation')
       const escalationResult = await runDefault(
         process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
         validationErrors
       )
       if (escalationResult.ok && escalationResult.data) {
         const validatedEscalation = validateAndNormalizeReport(escalationResult.data)
-        const recValidationEscalation = validateRecommendationsSection(validatedEscalation)
+        const recValidationEscalation = validateRecommendations(
+          validatedEscalation.recommendations
+        )
+        logRecommendationCounts('escalation', validatedEscalation.recommendations)
+        console.log(
+          '[report:update][step3] escalation validation errors',
+          recValidationEscalation.errors
+        )
         if (recValidationEscalation.ok) {
           updatedReport = validatedEscalation
         }
@@ -329,7 +388,7 @@ export default async function handler(req, res) {
     if (!updatedReport) {
       nextPayload = {
         ...existingSanitized,
-        recommendations: existingSanitized.recommendations ?? null,
+        recommendations: normalizeRecommendations(existingSanitized.recommendations),
       }
     }
     nextPayload = {

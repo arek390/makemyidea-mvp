@@ -61,7 +61,11 @@ const validateAndNormalizeReport = (payload: unknown) => {
   const empty = {
     summary: { today: '', change: '', product: '' },
     ideas: [] as ReportSnapshot['ideas'],
-    recommendations: null as ReportRecommendations | null,
+    recommendations: {
+      based_on_user_ideas: [],
+      morphological: [],
+      market_trends: [],
+    } as ReportRecommendations,
     source_snapshot: null as unknown,
   }
   if (!payload || typeof payload !== 'object') {
@@ -129,8 +133,13 @@ const isRecommendationItem = (value: unknown) => {
   return true
 }
 
-const normalizeRecommendations = (value: unknown): ReportRecommendations | null => {
-  if (!value || typeof value !== 'object') return null
+const normalizeRecommendations = (value: unknown): ReportRecommendations => {
+  const empty: ReportRecommendations = {
+    based_on_user_ideas: [],
+    morphological: [],
+    market_trends: [],
+  }
+  if (!value || typeof value !== 'object') return { ...empty }
   const rec = value as {
     based_on_user_ideas?: unknown
     morphological?: unknown
@@ -145,7 +154,6 @@ const normalizeRecommendations = (value: unknown): ReportRecommendations | null 
   const trends = Array.isArray(rec.market_trends)
     ? rec.market_trends.filter(isRecommendationItem)
     : []
-  if (!based.length && !morph.length && !trends.length) return null
   return {
     based_on_user_ideas: based,
     morphological: morph,
@@ -187,7 +195,7 @@ export const ReportPage = ({
   const [summaryItems, setSummaryItems] = useState<ReportSnapshot['ideas']>(
     sanitizeReportPayload(initialReport.ideas)
   )
-  const [reportRecommendations, setReportRecommendations] = useState<ReportRecommendations | null>(
+  const [reportRecommendations, setReportRecommendations] = useState<ReportRecommendations>(
     normalizeRecommendations(sanitizeReportPayload(initialReport.recommendations))
   )
   const [summaryUsage] = useState<SummaryUsage | null>(null)
@@ -264,9 +272,9 @@ export const ReportPage = ({
           const sanitizedIdeas = sanitizeReportPayload(record.ideas)
           setSummaryItems(sanitizedIdeas)
         }
-        if (record.recommendations) {
-          setReportRecommendations(sanitizeReportPayload(record.recommendations))
-        }
+        setReportRecommendations(
+          normalizeRecommendations(sanitizeReportPayload(record.recommendations))
+        )
         if (!aiSummary && record.summary) {
           setAiSummary(sanitizeReportPayload(record.summary))
         }
@@ -441,12 +449,10 @@ export const ReportPage = ({
           confidence?: 'low' | 'med' | 'high'
         }>
       }
-    | null
   const hasRecommendations =
-    recommendations &&
-    (recommendations.based_on_user_ideas.length ||
-      recommendations.morphological.length ||
-      recommendations.market_trends.length)
+    recommendations.based_on_user_ideas.length ||
+    recommendations.morphological.length ||
+    recommendations.market_trends.length
   return (
     <div className="report-page">
       <header className="report-header">
