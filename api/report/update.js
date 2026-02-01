@@ -144,6 +144,25 @@ const logRecommendationCounts = (label, recommendations) => {
   )
 }
 
+const logSummaryLengths = (label, summary) => {
+  const todayLen = typeof summary?.today === 'string' ? summary.today.length : 0
+  const changeLen = typeof summary?.change === 'string' ? summary.change.length : 0
+  const productLen = typeof summary?.product === 'string' ? summary.product.length : 0
+  console.log(
+    `[report:update][step3] ${label} summary lengths: today=${todayLen} change=${changeLen} product=${productLen}`
+  )
+}
+
+const logLlmMeta = (label, result) => {
+  const meta = result?.meta || null
+  if (!meta) return
+  console.log(`[report:update][step3] ${label} llm`, {
+    model: meta.modelUsed ?? null,
+    escalated: meta.escalated ?? false,
+    tokens: meta.tokens ?? null,
+  })
+}
+
 const validateSummary = (summary, itemsCount) => {
   const errors = []
   if (!summary || typeof summary !== 'object') {
@@ -151,9 +170,11 @@ const validateSummary = (summary, itemsCount) => {
   }
   const today = typeof summary.today === 'string' ? summary.today.trim() : ''
   const change = typeof summary.change === 'string' ? summary.change.trim() : ''
+  const product = typeof summary.product === 'string' ? summary.product.trim() : ''
   if (itemsCount >= 3) {
     if (today.length < 30) errors.push('summary_today_too_short')
     if (change.length < 30) errors.push('summary_change_too_short')
+    if (!product) errors.push('summary_product_empty')
     const insufficientPatterns = [
       /brak wystarczających danych/i,
       /brak informacji/i,
@@ -401,6 +422,7 @@ export default async function handler(req, res) {
             'You MUST return a single valid JSON object with ONLY: summary, recommendations.',
             'No markdown. No commentary. Do not include items or source_snapshot.',
             'Zawsze wypełnij summary.today i summary.change. Jeśli liczba wpisów >= 3, nie wolno zwrócić pustych pól ani tekstu "Brak wystarczających danych...".',
+            'Zawsze zwróć summary.product jako string; nie pomijaj pola.',
             'W sekcji "Podsumowanie" pisz zawsze w 2. osobie liczby pojedynczej, jak facylitator zwracający się do użytkownika. Używaj form: "Planujesz…", "Chcesz…", "Masz…", "Zależy Ci…". Nie używaj 3. osoby ("Użytkownik", "Autor", "Osoba").',
             'The JSON MUST include "recommendations" as an OBJECT (never null, never string).',
             'It MUST contain exactly these keys: based_on_user_ideas, morphological, market_trends.',
@@ -453,6 +475,7 @@ export default async function handler(req, res) {
       let recommendationsCandidate = normalizeRecommendations(phaseASanitized.recommendations)
       let summaryValidation = validateSummary(summaryCandidate, itemsFromDb.length)
       let recValidation = validateRecommendations(recommendationsCandidate)
+      logSummaryLengths('existing', phaseASanitized.summary)
 
       const applyGenerated = (generated) => {
         if (!generated || typeof generated !== 'object') return
@@ -468,6 +491,7 @@ export default async function handler(req, res) {
 
       let defaultResult = await runDefault()
       if (defaultResult.ok && defaultResult.data) {
+        logLlmMeta('default', defaultResult)
         applyGenerated(defaultResult.data)
         logRecommendationCounts('default', recommendationsCandidate)
         console.log('[report:update][step3] summary validation', summaryValidation.errors)
@@ -480,6 +504,7 @@ export default async function handler(req, res) {
           console.log('[report:update][step3] retry default')
           defaultResult = await runDefault(undefined, validationErrors)
           if (defaultResult.ok && defaultResult.data) {
+            logLlmMeta('retry', defaultResult)
             applyGenerated(defaultResult.data)
             logRecommendationCounts('retry', recommendationsCandidate)
             console.log('[report:update][step3] retry validation errors', recValidation.errors)
@@ -494,6 +519,7 @@ export default async function handler(req, res) {
           validationErrors
         )
         if (escalationResult.ok && escalationResult.data) {
+          logLlmMeta('escalation', escalationResult)
           applyGenerated(escalationResult.data)
           logRecommendationCounts('escalation', recommendationsCandidate)
           console.log('[report:update][step3] escalation validation errors', recValidation.errors)
@@ -501,17 +527,7 @@ export default async function handler(req, res) {
         }
       }
 
-      const summaryLength = {
-        today:
-          typeof summaryCandidate?.today === 'string' ? summaryCandidate.today.length : 0,
-        change:
-          typeof summaryCandidate?.change === 'string' ? summaryCandidate.change.length : 0,
-      }
-      console.log(
-        '[report:update] summary',
-        `today_len=${summaryLength.today}`,
-        `change_len=${summaryLength.change}`
-      )
+      logSummaryLengths('generated', summaryCandidate)
 
       const fallbackSummary = (() => {
         const topic = typeof analysisJson?.topic === 'string' ? analysisJson.topic.trim() : ''
@@ -538,6 +554,11 @@ export default async function handler(req, res) {
       if (!summaryValidation.ok) {
         console.log('[report:update][step3] summary fallback', summaryValidation.errors)
       }
+      logSummaryLengths('final', finalSummary)
+      console.log(
+        '[report:update][step3] summary overwrite',
+        summaryValidation.ok ? 'generated' : hasUsableExistingSummary ? 'existing' : 'fallback'
+      )
       const finalRecommendations = recValidation.ok
         ? recommendationsCandidate
         : { based_on_user_ideas: [], morphological: [], market_trends: [] }

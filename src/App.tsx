@@ -7876,14 +7876,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
             <div className="engine-panel-header">
               <h2>{copy.engineSessionsTitle}</h2>
               <div className="engine-actions">
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={fetchEngineSessions}
-                  disabled={engineSessionsLoading}
-                >
-                  {engineSessionsLoading ? '...' : copy.engineSessionsRefresh}
-                </button>
               </div>
             </div>
             {engineSessionsError && (
