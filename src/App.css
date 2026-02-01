@@ -1750,6 +1750,21 @@
   overflow-x: auto;
 }
 
+.report-table-scroll {
+  max-height: clamp(320px, 45vh, 520px);
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+}
+
+.report-table-scroll .report-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: #f2efe9;
+}
+
 .report-table {
   width: 100%;
   border-collapse: collapse;
@@ -1788,6 +1803,19 @@
 }
 
 @media print {
+  .report-table-scroll {
+    max-height: none !important;
+    overflow: visible !important;
+    border: none !important;
+  }
+
+  .report-table-scroll .report-table thead {
+    display: table-header-group;
+  }
+
+  .report-table-scroll .report-table thead th {
+    position: static;
+  }
   .report-header .report-actions {
     display: none;
   }

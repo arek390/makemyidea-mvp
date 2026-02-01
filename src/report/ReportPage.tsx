@@ -611,7 +611,7 @@ export const ReportPage = ({
 
         <section id="responses" className="report-section">
           <h2>{t.collectedIdeas}</h2>
-          <div className="report-table-wrapper">
+          <div className="report-table-wrapper report-table-scroll">
             <table className="report-table">
               <thead>
                 <tr>
