@@ -2,16 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { reportCopy, type ReportLang } from './reportI18n'
 import { downloadReportCsv, type ReportSnapshot } from './exportCsv'
 import type { ReportRecommendations } from '../storage/sessionStore'
-import { groupItemsByCell } from './cellMapping'
 import { UsageBadge } from '../components/UsageBadge'
 import { buildSessionGoalText, extractProductNameFromSessionName } from './sessionGoal'
-import {
-  ensureReportExists,
-  fetchReportBySessionId,
-  updateReportBySessionId,
-} from '../lib/cloudReports'
+import { fetchReportBySessionId } from '../lib/cloudReports'
 import { supabase as client } from '../lib/supabase/client'
-import { fetchBoardItems } from '../lib/cloudBoardItems'
+ 
 
 type ReportPageProps = {
   snapshot: ReportSnapshot
@@ -33,13 +28,6 @@ type ReportPageProps = {
 }
 
 type AiSummary = { today: string; change: string; product: string }
-type AiClassification = {
-  id: string
-  suggestedCellId: string
-  confidence: number
-  shouldMove: boolean
-  reason?: string
-}
 
 const sanitizeReportText = (input: string) => {
   let value = String(input ?? '')
@@ -67,6 +55,54 @@ const sanitizeReportPayload = <T,>(payload: T): T => {
     return next as T
   }
   return payload
+}
+
+const validateAndNormalizeReport = (payload: unknown) => {
+  const empty = {
+    summary: { today: '', change: '', product: '' },
+    ideas: [] as ReportSnapshot['ideas'],
+    recommendations: null as ReportRecommendations | null,
+    source_snapshot: null as unknown,
+  }
+  if (!payload || typeof payload !== 'object') {
+    return { ...empty }
+  }
+  const value = payload as {
+    summary?: unknown
+    ideas?: unknown
+    recommendations?: unknown
+    source_snapshot?: unknown
+    today?: unknown
+    change?: unknown
+    product?: unknown
+  }
+  let summary = empty.summary
+  if (value.summary && typeof value.summary === 'object') {
+    const s = value.summary as { today?: unknown; change?: unknown; product?: unknown }
+    summary = {
+      today: typeof s.today === 'string' ? s.today : '',
+      change: typeof s.change === 'string' ? s.change : '',
+      product: typeof s.product === 'string' ? s.product : '',
+    }
+  } else if (
+    typeof value.today === 'string' ||
+    typeof value.change === 'string' ||
+    typeof value.product === 'string'
+  ) {
+    summary = {
+      today: typeof value.today === 'string' ? value.today : '',
+      change: typeof value.change === 'string' ? value.change : '',
+      product: typeof value.product === 'string' ? value.product : '',
+    }
+  }
+  const ideas = Array.isArray(value.ideas) ? (value.ideas as ReportSnapshot['ideas']) : []
+  const recommendations = normalizeRecommendations(value.recommendations)
+  return {
+    summary,
+    ideas,
+    recommendations,
+    source_snapshot: value.source_snapshot ?? null,
+  }
 }
 
 const isRecommendationItem = (value: unknown) => {
@@ -126,43 +162,38 @@ type SummaryUsage = {
   costPln: number
 }
 
-type SummaryCachePayload =
-  | { summary: AiSummary; lastSummaryTextHash?: string }
-  | AiSummary
-
 export const ReportPage = ({
   snapshot,
   language,
   onBack,
   onLogout,
-  userId,
   aiSupportEnabled,
   diagnosticsEnabled,
   naFillStatus,
-  onAiUsage,
-  onReportMetaChange,
 }: ReportPageProps) => {
   const t = reportCopy[language]
+  const initialReport = validateAndNormalizeReport({
+    summary: snapshot.reportMeta?.summary ?? null,
+    ideas: snapshot.reportMeta?.ideas ?? null,
+    recommendations: snapshot.reportMeta?.recommendations ?? null,
+  })
   const [aiSummary, setAiSummary] = useState<AiSummary | null>(
-    sanitizeReportPayload(snapshot.reportMeta?.summary ?? null)
+    sanitizeReportPayload(initialReport.summary)
   )
-  const [aiNotice, setAiNotice] = useState<string | null>(null)
   const [summaryStatus, setSummaryStatus] = useState<'idle' | 'running' | 'done' | 'error'>('idle')
   const [lastSummaryTextHash, setLastSummaryTextHash] = useState<string | null>(
     snapshot.reportMeta?.lastSummaryTextHash ?? null
   )
-  const [summaryItems, setSummaryItems] = useState(
-    sanitizeReportPayload(snapshot.reportMeta?.ideas ?? [])
+  const [summaryItems, setSummaryItems] = useState<ReportSnapshot['ideas']>(
+    sanitizeReportPayload(initialReport.ideas)
   )
   const [reportRecommendations, setReportRecommendations] = useState<ReportRecommendations | null>(
-    normalizeRecommendations(sanitizeReportPayload(snapshot.reportMeta?.recommendations ?? null))
+    normalizeRecommendations(sanitizeReportPayload(initialReport.recommendations))
   )
-  const [reportRefreshRequested, setReportRefreshRequested] = useState(false)
-  const [summaryUsage, setSummaryUsage] = useState<SummaryUsage | null>(null)
+  const [summaryUsage] = useState<SummaryUsage | null>(null)
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
   const summaryAutoAttempted = useRef(false)
   const reportSessionId = snapshot.sessionId || null
-  const reportSourceUpdatedAt = Number(snapshot.sourceUpdatedAt || 0)
   const [reportMetaLoaded, setReportMetaLoaded] = useState(!client || !reportSessionId)
 
   const isEmptySummaryText = (text: string | null | undefined, lang: 'pl' | 'en') => {
@@ -197,94 +228,6 @@ export const ReportPage = ({
     }
     return false
   }
-  const cacheBase = useMemo(() => {
-    if (typeof window === 'undefined') return null
-    const sessionId = window.sessionStorage.getItem('reportReturnSessionId') || ''
-    return sessionId || snapshot.sessionName || 'unknown'
-  }, [snapshot.sessionName])
-  const summaryCacheKey = useMemo(() => {
-    if (snapshot.sessionId) {
-      return `report_ai_summary::${snapshot.sessionId}::${language}`
-    }
-    if (!cacheBase) return null
-    return `report_ai_summary::${cacheBase}::${language}`
-  }, [cacheBase, language, snapshot.sessionId])
-  const reclassCacheKey = useMemo(() => {
-    if (!cacheBase) return null
-    return `report_reclass::${cacheBase}::${language}`
-  }, [cacheBase, language])
-  const computeSummaryTextFingerprint = useMemo(() => {
-    const items = summaryItems
-      .map((item) => ({
-        id: String(item.id || '').trim(),
-        text: String(item.text || '').trim(),
-      }))
-      .sort((a, b) => a.id.localeCompare(b.id))
-    const payload = items.map((item) => `${item.id}::${item.text}`).join('||')
-    let hash = 0
-    for (let i = 0; i < payload.length; i += 1) {
-      hash = (hash << 5) - hash + payload.charCodeAt(i)
-      hash |= 0
-    }
-    return String(hash)
-  }, [summaryItems])
-
-  const persistReportSummary = async (
-    summary: AiSummary | null,
-    textHash: string,
-    items: (typeof summaryItems)[number][],
-    recommendations: unknown
-  ) => {
-    if (!client) return
-    if (!reportSessionId) return
-    try {
-      const ideas = items.map((item) => ({
-        id: item.id,
-        text: item.text,
-        label: item.label ?? null,
-        questionId:
-          (Object.prototype.hasOwnProperty.call(item, 'questionId')
-            ? (item as { questionId?: string | null }).questionId
-            : null) ??
-          (item as { question_id?: string | null }).question_id ??
-          null,
-        questionTextPl:
-          (Object.prototype.hasOwnProperty.call(item, 'questionTextPl')
-            ? (item as { questionTextPl?: string | null }).questionTextPl
-            : null) ??
-          (item as { question_text_pl?: string | null }).question_text_pl ??
-          null,
-        questionTextEn:
-          (Object.prototype.hasOwnProperty.call(item, 'questionTextEn')
-            ? (item as { questionTextEn?: string | null }).questionTextEn
-            : null) ??
-          (item as { question_text_en?: string | null }).question_text_en ??
-          null,
-        matrixRow:
-          (Object.prototype.hasOwnProperty.call(item, 'matrixRow')
-            ? (item as { matrixRow?: string | null }).matrixRow
-            : null) ??
-          (item as { matrix_row?: string | null }).matrix_row ??
-          null,
-        matrixCol:
-          (Object.prototype.hasOwnProperty.call(item, 'matrixCol')
-            ? (item as { matrixCol?: string | null }).matrixCol
-            : null) ??
-          (item as { matrix_col?: string | null }).matrix_col ??
-          null,
-      }))
-      const sanitized = sanitizeReportPayload({ summary, ideas, recommendations })
-      await ensureReportExists(reportSessionId, reportSourceUpdatedAt)
-      await updateReportBySessionId(reportSessionId, {
-        summary_json: sanitized,
-        last_summary_text_hash: textHash,
-        source_updated_at: reportSourceUpdatedAt,
-        updated_at: new Date().toISOString(),
-      })
-    } catch {
-      // ignore persistence errors to avoid blocking UI
-    }
-  }
   const productNameCandidate = useMemo(
     () =>
       extractProductNameFromSessionName(
@@ -302,104 +245,9 @@ export const ReportPage = ({
     [language, productNameCandidate]
   )
 
-  const ensureAssignedCell = (item: (typeof snapshot.ideas)[number]) => {
-    if (item.matrixRow && item.matrixCol) return item
-    return { ...item, matrixRow: 'product', matrixCol: 'not_working' }
-  }
-
-  const cellIdFor = (item: (typeof snapshot.ideas)[number]) => {
-    const row = String(item.matrixRow || '').toLowerCase()
-    const col = String(item.matrixCol || '').toLowerCase()
-    const group = row === 'world' ? 'A' : row === 'product' ? 'B' : row === 'elements' ? 'C' : null
-    const mode = col === 'as_is' ? '1' : col === 'not_working' ? '2' : col === 'should_be' ? '3' : null
-    return group && mode ? `${group}${mode}` : 'B2'
-  }
-
-  const applyClassification = (
-    items: (typeof snapshot.ideas)[number][],
-    classifications: AiClassification[]
-  ) => {
-    const byId = new Map(classifications.map((c) => [c.id, c]))
-    return items.map((item) => {
-      const entry = byId.get(item.id)
-      if (!entry) return item
-      if (!entry.shouldMove || entry.confidence < 0.75) return item
-      const cell = entry.suggestedCellId
-      if (!cell) return item
-      const group = cell[0]
-      const mode = cell[1]
-      const matrixRow =
-        group === 'A' ? 'world' : group === 'B' ? 'product' : group === 'C' ? 'elements' : item.matrixRow
-      const matrixCol =
-        mode === '1'
-          ? 'as_is'
-          : mode === '2'
-            ? 'not_working'
-            : mode === '3'
-              ? 'should_be'
-              : item.matrixCol
-      return { ...item, matrixRow, matrixCol }
-    })
-  }
-
   useEffect(() => {
-    if (!summaryCacheKey || typeof window === 'undefined') return
-    const cached = window.sessionStorage.getItem(summaryCacheKey)
-    if (cached) {
-      try {
-        const parsed = JSON.parse(cached) as SummaryCachePayload
-        if (parsed && typeof parsed === 'object' && 'summary' in parsed) {
-          const summary = (parsed as { summary?: AiSummary }).summary
-          const hash =
-            (parsed as { lastSummaryTextHash?: string }).lastSummaryTextHash || null
-          if (summary && typeof summary === 'object') {
-            setAiSummary(summary)
-            setLastSummaryTextHash(hash)
-            setSummaryStatus('done')
-          }
-        } else if (parsed && typeof parsed === 'object') {
-          const summary = parsed as AiSummary
-          if (summary && typeof summary === 'object') {
-            setAiSummary(summary)
-            setSummaryStatus('done')
-          }
-        }
-      } catch {
-        // ignore
-      }
-    }
-    if (!reclassCacheKey) return
-    const cachedReclass = window.sessionStorage.getItem(reclassCacheKey)
-    if (!cachedReclass) return
-    try {
-      const parsed = JSON.parse(cachedReclass) as AiClassification[]
-      if (Array.isArray(parsed) && parsed.length) {
-        setSummaryItems((prev) => applyClassification(prev, parsed))
-      }
-    } catch {
-      // ignore
-    }
-  }, [summaryCacheKey, reclassCacheKey])
-
-  useEffect(() => {
-    if (!reportSessionId) return
-    if (!reportRefreshRequested) return
-    if (userId && client) {
-      let cancelled = false
-      ;(async () => {
-        try {
-          const items = await fetchBoardItems(reportSessionId, userId)
-          if (!cancelled) setSummaryItems(items)
-        } catch {
-          // ignore
-        }
-      })()
-      return () => {
-        cancelled = true
-      }
-    }
-    setSummaryItems([])
-  }, [reportSessionId, userId, reportRefreshRequested])
+    return undefined
+  }, [])
 
   useEffect(() => {
     if (!client || !reportSessionId) {
@@ -479,20 +327,36 @@ export const ReportPage = ({
       setUpdateNotice(t.reportUpdated)
       return
     }
-    setReportRefreshRequested(true)
-    if (userId && reportSessionId) {
+    console.log('[report:update] no-llm step1')
+    try {
+      await fetch('/api/report/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: reportSessionId }),
+      })
+    } catch {
+      // ignore
+    }
+    if (reportSessionId) {
       try {
-        const items = await fetchBoardItems(reportSessionId, userId)
-        setSummaryItems(items)
+        const record = await fetchReportBySessionId(reportSessionId)
+        if (record) {
+          const normalized = validateAndNormalizeReport({
+            summary: record.summary,
+            ideas: record.ideas,
+            recommendations: record.recommendations,
+          })
+          const sanitized = sanitizeReportPayload(normalized)
+          setSummaryItems(sanitized.ideas)
+          setReportRecommendations(sanitized.recommendations)
+          setAiSummary(sanitized.summary)
+          setLastSummaryTextHash(record.lastSummaryTextHash ?? null)
+          setSummaryStatus('done')
+        }
       } catch {
         // ignore
       }
     }
-    setAiSummary(null)
-    setLastSummaryTextHash(null)
-    setReportRecommendations(null)
-    summaryAutoAttempted.current = false
-    setSummaryStatus('idle')
     const storedRaw = window.sessionStorage.getItem(
       `report_source_updated_at::${sessionId}`
     )
@@ -506,219 +370,19 @@ export const ReportPage = ({
       String(sourceUpdatedAt)
     )
     setUpdateNotice(t.reportUpdated)
-    try {
-      await runSummary()
-    } finally {
-      setReportRefreshRequested(false)
-    }
-  }
-
-  const runSummary = async () => {
-    setAiNotice(null)
-    setSummaryUsage(null)
-    if (!aiSupportEnabled) {
-      setAiNotice(t.aiDisabled)
-      setSummaryStatus('done')
-      return
-    }
-    const ensuredItems = summaryItems.map(ensureAssignedCell)
-    const groupedEnsured = groupItemsByCell(ensuredItems)
-    const toTexts = (items: { text?: string | null }[]) =>
-      items.map((item) => String(item.text || '').trim()).filter(Boolean)
-    const ensuredCells = {
-      A1: toTexts(groupedEnsured.cells.A1),
-      B1: toTexts(groupedEnsured.cells.B1),
-      C1: toTexts(groupedEnsured.cells.C1),
-      A2: toTexts(groupedEnsured.cells.A2),
-      B2: toTexts(groupedEnsured.cells.B2),
-      C2: toTexts(groupedEnsured.cells.C2),
-      A3: toTexts(groupedEnsured.cells.A3),
-      B3: toTexts(groupedEnsured.cells.B3),
-      C3: toTexts(groupedEnsured.cells.C3),
-    }
-    const ensuredEmptyToday =
-      !ensuredCells.A1.length && !ensuredCells.B1.length && !ensuredCells.C1.length
-    const ensuredEmptyChange =
-      !ensuredCells.A2.length && !ensuredCells.B2.length && !ensuredCells.C2.length
-    const ensuredEmptyProduct =
-      !ensuredCells.A3.length && !ensuredCells.B3.length && !ensuredCells.C3.length
-
-    setSummaryItems(ensuredItems)
-    if (ensuredEmptyToday && ensuredEmptyChange && ensuredEmptyProduct) {
-      const emptySummary = { today: '', change: '', product: '' }
-      setAiSummary(emptySummary)
-      if (summaryCacheKey && typeof window !== 'undefined') {
-        window.sessionStorage.setItem(
-          summaryCacheKey,
-          JSON.stringify({
-            summary: emptySummary,
-            lastSummaryTextHash: computeSummaryTextFingerprint,
-          })
-        )
-        setLastSummaryTextHash(computeSummaryTextFingerprint)
-      }
-      onReportMetaChange?.({
-        summary: emptySummary,
-        lastSummaryTextHash: computeSummaryTextFingerprint,
-        createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
-        ideas: ensuredItems,
-      })
-      void persistReportSummary(
-        emptySummary,
-        computeSummaryTextFingerprint,
-        ensuredItems,
-        reportRecommendations
-      )
-      setSummaryStatus('done')
-      return
-    }
-    setSummaryStatus('running')
-    try {
-      const entriesPayload = ensuredItems.map((item) => ({
-        id: item.id,
-        text: item.text,
-        currentCellId: cellIdFor(item),
-      }))
-      if (!reportSessionId) {
-        setAiNotice(t.aiUnavailable)
-        setSummaryStatus('error')
-        return
-      }
-      console.log('[suggest][client] preflight', {
-        source: 'report_summary',
-        sessionId: reportSessionId,
-        sessionPersisted: true,
-      })
-      const response = await fetch('/api/coach/suggest', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-ai-support': aiSupportEnabled ? 'on' : 'off',
-        },
-        body: JSON.stringify({
-          currentUserId: userId ?? null,
-          sessionId: reportSessionId,
-          action: 'report_full',
-          locale: language,
-          sessionName: snapshot.sessionName || '',
-          entries: entriesPayload,
-          cells: ensuredCells,
-        }),
-      })
-      const raw = await response.text()
-      let data: {
-        ok?: boolean
-        source?: 'llm' | 'fallback'
-        summary?: AiSummary
-        recommendations?: unknown
-        classifications?: AiClassification[]
-        usage?: SummaryUsage
-        meta?: { errorCategory?: string }
-      } | null = null
-      try {
-        data = JSON.parse(raw)
-      } catch {
-        data = null
-      }
-      if (!response.ok || !data || data.ok === false || !data.summary) {
-        setAiNotice(t.aiUnavailable)
-        setSummaryStatus('error')
-        return
-      }
-      const summary = {
-        today: ensuredEmptyToday ? '' : data.summary.today,
-        change: ensuredEmptyChange ? '' : data.summary.change,
-        product: ensuredEmptyProduct ? '' : data.summary.product,
-      }
-      setAiSummary(summary)
-      const nextRecommendations =
-        normalizeRecommendations(data.recommendations) || reportRecommendations
-      if (nextRecommendations) {
-        setReportRecommendations(nextRecommendations)
-      }
-      if (data.classifications && data.classifications.length) {
-        const updated = applyClassification(ensuredItems, data.classifications)
-        setSummaryItems(updated)
-        if (reclassCacheKey && typeof window !== 'undefined') {
-          window.sessionStorage.setItem(reclassCacheKey, JSON.stringify(data.classifications))
-        }
-      }
-      if (data.usage) {
-        setSummaryUsage(data.usage)
-      }
-      if (data.source === 'fallback' || data.meta?.errorCategory) {
-        setAiNotice(t.aiUnavailable)
-      }
-      if (summaryCacheKey && typeof window !== 'undefined') {
-        window.sessionStorage.setItem(
-          summaryCacheKey,
-          JSON.stringify({ summary, lastSummaryTextHash: computeSummaryTextFingerprint })
-        )
-        setLastSummaryTextHash(computeSummaryTextFingerprint)
-      }
-      onReportMetaChange?.({
-        summary,
-        lastSummaryTextHash: computeSummaryTextFingerprint,
-        createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
-        ideas: ensuredItems,
-        recommendations: nextRecommendations,
-      })
-      void persistReportSummary(summary, computeSummaryTextFingerprint, ensuredItems, nextRecommendations)
-      if (onAiUsage && data.meta) {
-        onAiUsage(data.meta)
-      }
-    } catch {
-      setAiNotice(t.aiUnavailable)
-      setSummaryStatus('error')
-    } finally {
-      setSummaryStatus((prev) => (prev === 'error' ? 'error' : 'done'))
-    }
   }
 
   const generateSummaryIfNeeded = async () => {
     if (summaryStatus === 'running') return
     if (summaryAutoAttempted.current) return
-    if (!reportRefreshRequested) return
-    const stored = lastSummaryTextHash
-    const current = computeSummaryTextFingerprint
-    const hasSummary = Boolean(
-      aiSummary && (aiSummary.today || aiSummary.change || aiSummary.product)
-    )
-    if (stored && current === stored) return
-    if (!stored && hasSummary) {
-      if (summaryCacheKey && typeof window !== 'undefined') {
-        window.sessionStorage.setItem(
-          summaryCacheKey,
-          JSON.stringify({ summary: aiSummary, lastSummaryTextHash: current })
-        )
-      }
-      if (aiSummary) {
-        void persistReportSummary(aiSummary, current, summaryItems, reportRecommendations)
-      }
-      setLastSummaryTextHash(current)
-      onReportMetaChange?.({
-        summary: aiSummary,
-        lastSummaryTextHash: current,
-        createdAt: snapshot.reportMeta?.createdAt ?? Date.now(),
-        ideas: summaryItems,
-      })
-      return
-    }
     summaryAutoAttempted.current = true
-    await runSummary()
-    setReportRefreshRequested(false)
+    setSummaryStatus('done')
   }
 
   useEffect(() => {
     if (!reportMetaLoaded) return
     void generateSummaryIfNeeded()
-  }, [
-    computeSummaryTextFingerprint,
-    lastSummaryTextHash,
-    aiSummary,
-    reportMetaLoaded,
-    reportRefreshRequested,
-  ])
+  }, [reportMetaLoaded, aiSummary, lastSummaryTextHash])
 
   const cleanedSummary = useMemo(() => {
     const lang = language === 'pl' ? 'pl' : 'en'
@@ -871,7 +535,6 @@ export const ReportPage = ({
               />
             )}
           {summaryStatus === 'running' && <span className="muted">{t.summaryGenerating}</span>}
-          {diagnosticsEnabled && aiNotice && <span className="muted">{aiNotice}</span>}
           {diagnosticsEnabled && !aiSupportEnabled && <span className="muted">{t.aiDisabled}</span>}
           {updateNotice && <span className="muted">{updateNotice}</span>}
         </div>
