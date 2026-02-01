@@ -120,8 +120,8 @@ const validateRecommendations = (recommendations) => {
       errors.push(`group_not_array:${key}`)
       return
     }
-    if (!recs[key].length) {
-      errors.push(`group_empty:${key}`)
+    if (recs[key].length !== 2) {
+      errors.push(`group_count_invalid:${key}:${recs[key].length}`)
       return
     }
     if (!recs[key].every(isValidItem)) {
@@ -404,11 +404,11 @@ export default async function handler(req, res) {
             'W sekcji "Podsumowanie" pisz zawsze w 2. osobie liczby pojedynczej, jak facylitator zwracający się do użytkownika. Używaj form: "Planujesz…", "Chcesz…", "Masz…", "Zależy Ci…". Nie używaj 3. osoby ("Użytkownik", "Autor", "Osoba").',
             'The JSON MUST include "recommendations" as an OBJECT (never null, never string).',
             'It MUST contain exactly these keys: based_on_user_ideas, morphological, market_trends.',
-            'Each array MUST contain at least 1 item.',
+          'Each array MUST contain exactly 2 items.',
             'Each item MUST have non-empty fields: title, rationale, how_to_test.',
             'If session data is sparse, create minimal but still concrete items (not generic).',
             'Do not output matrix codes A1..C3 anywhere.',
-            '1–3 items per group max.',
+          'Exactly 2 items per group.',
             'Rationale should reference analysis_json themes/representative_items briefly (no long quotes).',
           ],
         },
@@ -537,7 +537,7 @@ export default async function handler(req, res) {
       }
       const finalRecommendations = recValidation.ok
         ? recommendationsCandidate
-        : normalizeRecommendations(phaseASanitized.recommendations)
+        : { based_on_user_ideas: [], morphological: [], market_trends: [] }
       if (!recValidation.ok) {
         console.log('[report:update][step3] recommendations fallback', recValidation.errors)
       }
