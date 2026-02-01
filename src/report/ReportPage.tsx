@@ -3,6 +3,7 @@ import { reportCopy, type ReportLang } from './reportI18n'
 import { downloadReportCsv, type ReportSnapshot } from './exportCsv'
 import {
   ENGINE_ENTRY_LABELS,
+  ENGINE_ENTRY_LABEL_COLORS,
   getEntryLabelText,
   getNoLabelText,
 } from '../engine/entryLabels'
@@ -628,6 +629,9 @@ export const ReportPage = ({
                   summaryItems.map((idea) => {
                     const questionText = resolveQuestionText(idea)
                     const isUpdating = Boolean(labelUpdating[idea.id])
+                    const labelValue = idea.label ?? ''
+                    const hasLabel = Boolean(labelValue)
+                    const labelBg = hasLabel ? ENGINE_ENTRY_LABEL_COLORS[labelValue] : '#ffffff'
                     return (
                       <tr key={idea.id}>
                         <td>{questionText}</td>
@@ -637,8 +641,12 @@ export const ReportPage = ({
                             <span className="sr-only">Etykieta wpisu</span>
                             <select
                               data-testid={`report-label-select-${idea.id}`}
-                              value={idea.label ?? ''}
+                              value={labelValue}
                               disabled={isUpdating}
+                              style={{
+                                backgroundColor: labelBg,
+                                color: '#000000',
+                              }}
                               onChange={(event) => {
                                 void handleLabelChange(idea, event.target.value)
                               }}
