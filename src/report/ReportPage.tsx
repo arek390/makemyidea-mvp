@@ -182,7 +182,7 @@ export const ReportPage = ({
   const t = reportCopy[language]
   const initialReport = validateAndNormalizeReport({
     summary: snapshot.reportMeta?.summary ?? null,
-    ideas: snapshot.reportMeta?.ideas ?? null,
+    ideas: snapshot.ideas ?? null,
     recommendations: snapshot.reportMeta?.recommendations ?? null,
   })
   const [aiSummary, setAiSummary] = useState<AiSummary | null>(
@@ -192,8 +192,9 @@ export const ReportPage = ({
   const [lastSummaryTextHash, setLastSummaryTextHash] = useState<string | null>(
     snapshot.reportMeta?.lastSummaryTextHash ?? null
   )
+  // IMPORTANT: "Zebrane pomysły i obserwacje" is live data, not report snapshot.
   const [summaryItems, setSummaryItems] = useState<ReportSnapshot['ideas']>(
-    sanitizeReportPayload(initialReport.ideas)
+    sanitizeReportPayload(snapshot.ideas)
   )
   const [reportRecommendations, setReportRecommendations] = useState<ReportRecommendations>(
     normalizeRecommendations(sanitizeReportPayload(initialReport.recommendations))
@@ -258,6 +259,10 @@ export const ReportPage = ({
   }, [])
 
   useEffect(() => {
+    setSummaryItems(sanitizeReportPayload(snapshot.ideas))
+  }, [snapshot.ideas])
+
+  useEffect(() => {
     if (!client || !reportSessionId) {
       setReportMetaLoaded(true)
       return
@@ -268,10 +273,6 @@ export const ReportPage = ({
       try {
         const record = await fetchReportBySessionId(reportSessionId)
         if (cancelled || !record) return
-        if (record.ideas && record.ideas.length) {
-          const sanitizedIdeas = sanitizeReportPayload(record.ideas)
-          setSummaryItems(sanitizedIdeas)
-        }
         setReportRecommendations(
           normalizeRecommendations(sanitizeReportPayload(record.recommendations))
         )
@@ -308,11 +309,14 @@ export const ReportPage = ({
     return !(window.history.state && window.history.state.newlyCreated === true)
   })()
 
-  if (import.meta.env.DEV) {
-    console.assert(
-      sanitizeReportText('Rynek ... (A1).') === 'Rynek ...',
-      'sanitizeReportText should remove (A1)'
-    )
+    if (import.meta.env.DEV) {
+      if (snapshot.reportMeta?.ideas?.length) {
+        console.warn('Items section must not use summary_json as source')
+      }
+      console.assert(
+        sanitizeReportText('Rynek ... (A1).') === 'Rynek ...',
+        'sanitizeReportText should remove (A1)'
+      )
     console.assert(
       sanitizeReportText('..., (B1, C1) oraz ...') === '..., oraz ...',
       'sanitizeReportText should remove (B1, C1)'
@@ -355,7 +359,6 @@ export const ReportPage = ({
             recommendations: record.recommendations,
           })
           const sanitized = sanitizeReportPayload(normalized)
-          setSummaryItems(sanitized.ideas)
           setReportRecommendations(sanitized.recommendations)
           setAiSummary(sanitized.summary)
           setLastSummaryTextHash(record.lastSummaryTextHash ?? null)
