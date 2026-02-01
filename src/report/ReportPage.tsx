@@ -226,6 +226,7 @@ export const ReportPage = ({
   const [reportRecommendations, setReportRecommendations] = useState<ReportRecommendations>(
     normalizeRecommendations(sanitizeReportPayload(initialReport.recommendations))
   )
+  const [isReportUpdating, setIsReportUpdating] = useState(false)
   const [labelUpdating, setLabelUpdating] = useState<Record<string, boolean>>({})
   const [summaryUsage] = useState<SummaryUsage | null>(null)
   const [updateNotice, setUpdateNotice] = useState<string | null>(null)
@@ -370,6 +371,7 @@ export const ReportPage = ({
       return
     }
     console.log('[report:update] no-llm step1')
+    setIsReportUpdating(true)
     try {
       await fetch('/api/report/update', {
         method: 'POST',
@@ -378,6 +380,8 @@ export const ReportPage = ({
       })
     } catch {
       // ignore
+    } finally {
+      setIsReportUpdating(false)
     }
     if (reportSessionId) {
       try {
@@ -575,8 +579,8 @@ export const ReportPage = ({
         <div>
           <div className="report-title-row">
             <h1>{t.title}</h1>
-            <span className="report-updating-slot" aria-hidden={naFillStatus !== 'running'}>
-              {naFillStatus === 'running' && (
+            <span className="report-updating-slot" aria-hidden={!isReportUpdating}>
+              {isReportUpdating && (
                 <span
                   className="report-updating-indicator"
                   role="status"
