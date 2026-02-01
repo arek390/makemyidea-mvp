@@ -2358,6 +2358,7 @@ function App() {
   const [feedbackMessage, setFeedbackMessage] = useState('')
   const [feedbackHoneypot, setFeedbackHoneypot] = useState('')
   const [feedbackSending] = useState(false)
+  const facilitationIntroRef = useRef<string | null>(null)
   const [feedbackCooldown, setFeedbackCooldown] = useState(0)
   const [feedbackNotice, setFeedbackNotice] = useState<{ message: string; variant: 'success' | 'error' } | null>(null)
   const [engineEntryHint, setEngineEntryHint] = useState<{
@@ -5622,6 +5623,35 @@ const isMissingLabel = (item: EngineBoardItem) => {
       .map(({ item }) => item)
   }, [enginePreviewItems])
 
+  const facilitationIntros = useMemo(
+    () =>
+      uiLanguage === 'Polish'
+        ? [
+            'Zatrzymajmy się na chwilę i spójrzmy na to z innej strony.',
+            'Na początek spróbujmy dobrze ustawić problem.',
+            'Wyobraź sobie, że ktoś z zewnątrz patrzy na Twój pomysł.',
+            'Masz chwilę? Zróbmy krótki krok w bok i sprawdźmy inną perspektywę.',
+          ]
+        : [
+            'Pause for a moment and look at this from a different angle.',
+            'To start, let’s frame the problem clearly.',
+            'Imagine an outsider looking at your idea.',
+            'Take a brief step sideways and check another perspective.',
+          ],
+    [uiLanguage]
+  )
+
+  useEffect(() => {
+    if (engineAskedQuestionTexts.length === 0) {
+      facilitationIntroRef.current = null
+      return
+    }
+    if (!facilitationIntroRef.current && engineAskedQuestionTexts.length === 1) {
+      const pick = facilitationIntros[Math.floor(Math.random() * facilitationIntros.length)]
+      facilitationIntroRef.current = pick || facilitationIntros[0] || null
+    }
+  }, [engineAskedQuestionTexts.length, facilitationIntros])
+
   const engineUnassignedItems = useMemo(
     () => enginePreviewItems.filter((item) => !item.matrix_row || !item.matrix_col),
     [enginePreviewItems]
@@ -8296,11 +8326,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   : engineActivePrompt?.text) && (
                   <div className="engine-helper engine-facilitation-prompt">
                     <div className="engine-facilitation-question">
-                      {engineFacilitationLoading && showEngineFacilitationLoadingUI
-                        ? `${copy.engineFacilitationLoadingPlaceholder}${'.'.repeat(
-                            engineFacilitationLoadingDots
-                          )}`
-                        : engineActivePrompt?.text}
+                      {engineFacilitationLoading && showEngineFacilitationLoadingUI ? (
+                        `${copy.engineFacilitationLoadingPlaceholder}${'.'.repeat(
+                          engineFacilitationLoadingDots
+                        )}`
+                      ) : (
+                        <>
+                          {engineAskedQuestionTexts.length === 1 && facilitationIntroRef.current ? (
+                            <div className="engine-facilitation-intro">
+                              {facilitationIntroRef.current}
+                            </div>
+                          ) : null}
+                          <div>{engineActivePrompt?.text}</div>
+                        </>
+                      )}
                     </div>
                     {!engineFacilitationLoading && showDiagnostics && enginePromptSource && (
                       <span className="impulse-source-row">
