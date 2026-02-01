@@ -2281,7 +2281,6 @@ function App() {
   const [enginePreviewError, setEnginePreviewError] = useState<string | null>(null)
   const [engineSessionsOpen, setEngineSessionsOpen] = useState(false)
   const [engineSessions, setEngineSessions] = useState<EngineSessionSummary[]>([])
-  const [engineSessionsLoading, setEngineSessionsLoading] = useState(false)
   const [engineSessionsError, setEngineSessionsError] = useState<string | null>(null)
   const [cloudSessionPayloads, setCloudSessionPayloads] = useState<
     Record<string, CloudSessionPayload>
