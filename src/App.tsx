@@ -6007,6 +6007,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
             Boolean(entry)
         )
       console.log('[matrix_assign] computed_assignments_count', updates.length)
+      if (updates.length && (!authSession?.user?.id || !client)) {
+        console.error('[matrix_assign] persist_skipped_no_auth', {
+          count: updates.length,
+        })
+      }
       if (authSession?.user?.id && client && updates.length) {
         try {
           await Promise.all(
@@ -6026,6 +6031,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
             message: error instanceof Error ? error.message : String(error),
           })
         }
+      } else if (updates.length) {
+        console.error('[matrix_assign] persisted_assignments_count', 0)
       }
       if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
         setEngineSessionDetail((prev) =>

@@ -474,6 +474,9 @@ export default async function handler(req, res) {
         console.log('[report:update][step3] validation errors', recValidation.errors)
         if (!recValidation.ok || !summaryValidation.ok) {
           validationErrors = recValidation.errors.concat(summaryValidation.errors || [])
+          if (recValidation.errors.some((err) => err.startsWith('group_count_invalid'))) {
+            validationErrors.push('wrong_item_count_return_exactly_2_per_list')
+          }
           console.log('[report:update][step3] retry default')
           defaultResult = await runDefault(undefined, validationErrors)
           if (defaultResult.ok && defaultResult.data) {
