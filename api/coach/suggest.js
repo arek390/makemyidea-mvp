@@ -1418,36 +1418,28 @@ export default async function handler(req, res) {
     const selectBaseQuestion = (localAskedIds = [], mode) => {
       const askedSet = new Set(localAskedIds.filter(Boolean))
       const current = resolveCurrentCell()
-      if (mode === 'DEEPEN') {
-        if (!current) return { question: null, cell: null, pointer: null }
-        const key = cellKey(current.group, current.mode)
+      const pickFromCell = (cell) => {
+        if (!cell) return { question: null, cell: null, pointer: null }
+        const key = cellKey(cell.group, cell.mode)
         const pointer = memory.cellPointers[key] || 0
         const { question, nextPointer } = pickSequentialFromCell({
           dataset,
-          group: current.group,
-          mode: Number(current.mode),
+          group: cell.group,
+          mode: Number(cell.mode),
           pointer,
           askedSet,
         })
         memory.cellPointers[key] = nextPointer
-        updateMemoryCell(current)
-        return { question, cell: current, pointer: nextPointer }
+        updateMemoryCell(cell)
+        return { question, cell, pointer: nextPointer }
+      }
+      if (mode === 'DEEPEN') {
+        const target = current || pickRandomCell()
+        return pickFromCell(target)
       }
       if (mode === 'PERSPECTIVE') {
-        const nextCell = pickPerspectiveCell()
-        if (!nextCell) return { question: null, cell: null, pointer: null }
-        const key = cellKey(nextCell.group, nextCell.mode)
-        const pointer = memory.cellPointers[key] || 0
-        const { question, nextPointer } = pickSequentialFromCell({
-          dataset,
-          group: nextCell.group,
-          mode: Number(nextCell.mode),
-          pointer,
-          askedSet,
-        })
-        memory.cellPointers[key] = nextPointer
-        updateMemoryCell(nextCell)
-        return { question, cell: nextCell, pointer: nextPointer }
+        const nextCell = pickPerspectiveCell() || pickRandomCell()
+        return pickFromCell(nextCell)
       }
       if (mode === 'NEXT') {
         const nextCell = pickRandomCell()
@@ -1567,7 +1559,21 @@ export default async function handler(req, res) {
 
     const baseSelection = selectBaseQuestion(askedIds, actionNormalized)
     const baseQuestion = baseSelection.question
-    if (!baseQuestion) {
+    const baseMapped = baseQuestion ? mapQuestion(baseQuestion, lang) : null
+    if (!baseMapped || !baseMapped.text) {
+      console.error('[coach/suggest][base_missing]', {
+        requestId,
+        action: actionNormalized,
+        board_items_count: boardEntries.length,
+        payload: {
+          sessionId: body.sessionId || null,
+          sessionName: sessionName || null,
+          language: lang,
+          action: actionNormalized,
+          askedIdsCount: Array.isArray(askedIds) ? askedIds.length : 0,
+          boardEntriesCount: Array.isArray(boardEntries) ? boardEntries.length : 0,
+        },
+      })
       sendJson(res, 200, {
         ok: false,
         code: 'BASE_QUESTION_MISSING',
@@ -1576,7 +1582,14 @@ export default async function handler(req, res) {
       })
       return
     }
-    const baseMapped = mapQuestion(baseQuestion, lang)
+    console.log('[coach/suggest][base_selected]', {
+      requestId,
+      action: actionNormalized,
+      base_question_id: baseMapped.id,
+      base_question_text_len: baseMapped.text.length,
+      board_items_count: boardEntries.length,
+      prompt_template_used: templateUsed,
+    })
     buildBaseLog({
       action: actionNormalized,
       attempt: 0,
