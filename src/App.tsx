@@ -7714,7 +7714,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   <div className="engine-actions-group">
                     <button
                       type="button"
-                      className="ghost"
+                      className="primary"
                       data-testid="session-report"
                       onClick={() => {
                         markUserInitiatedInteraction('pointer')
