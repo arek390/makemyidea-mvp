@@ -2289,13 +2289,13 @@ function App() {
   const [enginePreviewEditText, setEnginePreviewEditText] = useState('')
   const [engineAssignLoading, setEngineAssignLoading] = useState(false)
   const [engineEntryDeleteId, setEngineEntryDeleteId] = useState<string | null>(null)
-  const [engineApiDebug, setEngineApiDebug] = useState<{
+  const [, setEngineApiDebug] = useState<{
     endpoint: string
     status: number
     response: unknown
     rawText: string
   } | null>(null)
-  const [engineFacilitationDiagnostics, setEngineFacilitationDiagnostics] = useState<{
+  const [, setEngineFacilitationDiagnostics] = useState<{
     url: string
     status: number
     contentType: string
