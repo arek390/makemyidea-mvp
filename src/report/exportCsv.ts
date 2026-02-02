@@ -25,6 +25,7 @@ export type ReportSnapshot = {
     summary?: { today: string; change: string; product: string } | null
     ideas?: ReportIdea[] | null
     recommendations?: unknown
+    lang?: 'pl' | 'en' | null
   } | null
 }
 

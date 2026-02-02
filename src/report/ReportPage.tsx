@@ -377,7 +377,7 @@ export const ReportPage = ({
       await fetch('/api/report/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sessionId: reportSessionId }),
+        body: JSON.stringify({ sessionId: reportSessionId, lang: language }),
       })
     } catch {
       // ignore

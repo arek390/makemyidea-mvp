@@ -818,7 +818,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     finalReportIntro: 'Summary of the workshop data gathered so far.',
     reportLanguageLabel: 'Report language',
     reportLanguageHint:
-      'Language selection will be used for report translation in a later version.',
+      'Report language follows the app language selected on the landing page.',
     enginePreviewOpenReport: 'Open report',
     productLabel: 'Product',
     spacesLabel: 'Where do we look?',
@@ -1267,7 +1267,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     finalReportIntro: 'Podsumowanie danych zebranych podczas warsztatu.',
     reportLanguageLabel: 'Język raportu',
     reportLanguageHint:
-      'Wybór języka będzie użyty do tłumaczenia raportu w późniejszej wersji.',
+      'Język raportu jest zgodny z językiem wybranym na landing page.',
     enginePreviewOpenReport: 'Przejdź do raportu',
     productLabel: 'Produkt',
     spacesLabel: 'Gdzie patrzymy?',
@@ -2201,7 +2201,6 @@ function App() {
   const [postItEditOriginalText, setPostItEditOriginalText] = useState('')
   const [postItEdit, setPostItEdit] = useState<Idea | null>(null)
   const [postItEditCell, setPostItEditCell] = useState<string | null>(null)
-  const [reportLanguage, setReportLanguage] = useState<Language>('Polish')
   const [uiLanguage, setUiLanguage] = useState<Language>(() => {
     if (typeof window === 'undefined') return 'Polish'
     const postAuthLang = window.sessionStorage.getItem(POST_AUTH_LANG_KEY)
@@ -2216,6 +2215,7 @@ function App() {
     window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, defaultLanguage)
     return defaultLanguage
   })
+  const reportLanguage = uiLanguage
   const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
   const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
   const [enginePreviewSessionName, setEnginePreviewSessionName] = useState('')
@@ -3752,6 +3752,7 @@ const isAuthFlowInProgress = () => {
           summary: reportMeta.summary ?? null,
           ideas: reportMeta.ideas ?? null,
           recommendations: reportMeta.recommendations ?? null,
+          lang: reportMeta.lang ?? null,
         }
       : null
     return {
@@ -5764,7 +5765,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
               (max, item) => Math.max(max, Number(item.created_at || 0)),
               0
             ) || 0
-          const ensured = await ensureReportExists(sessionId, sourceUpdatedAt)
+          const reportLang: 'pl' | 'en' = uiLanguage === 'Polish' ? 'pl' : 'en'
+          const ensured = await ensureReportExists(sessionId, sourceUpdatedAt, reportLang)
           setReportRecords((prev) => ({ ...prev, [sessionId]: ensured }))
           const existedAfterEnsure = Boolean(hasDbReport || ensured?.id)
           window.history.pushState({ newlyCreated: !existedAfterEnsure }, '', '/report')
@@ -6291,6 +6293,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         id: dbReport.id,
         created_at: dbReport.createdAt,
         updated_at: dbReport.updatedAt,
+        lang: dbReport.lang ?? null,
         lastSummaryTextHash: dbReport.lastSummaryTextHash ?? null,
         summary: dbReport.summary ?? null,
         ideas: dbReport.ideas ?? null,
@@ -6318,6 +6321,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
   const markReportCreated = async (sessionId: string) => {
     const now = Date.now()
+    const reportLang: 'pl' | 'en' = uiLanguage === 'Polish' ? 'pl' : 'en'
     const detail = await getSession(sessionId)
     if (!detail?.session) return
     if (authSession?.user?.id && client) {
@@ -6327,7 +6331,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           0
         ) || 0
       try {
-        const ensured = await ensureReportExists(sessionId, sourceUpdatedAt)
+        const ensured = await ensureReportExists(sessionId, sourceUpdatedAt, reportLang)
         setReportRecords((prev) => ({ ...prev, [sessionId]: ensured }))
       } catch (error) {
         const message = error instanceof Error ? error.message : 'unknown'
@@ -6343,6 +6347,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         id: existing?.id ?? sessionId,
         created_at: now,
         updated_at: now,
+        lang: existing?.lang ?? reportLang,
         lastSummaryTextHash: existing?.lastSummaryTextHash ?? null,
         summary: existing?.summary ?? null,
       },
@@ -7192,8 +7197,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   if (isReport) {
-    const reportLanguage = uiLanguage === 'Polish' ? 'pl' : 'en'
     const snapshot = getReportSessionSnapshot()
+    const reportLanguage =
+      snapshot.reportMeta?.lang === 'pl' || snapshot.reportMeta?.lang === 'en'
+        ? snapshot.reportMeta.lang
+        : uiLanguage === 'Polish'
+          ? 'pl'
+          : 'en'
     const handleReportLogout = async () => {
       const sessionId = snapshot.sessionId || enginePreviewSessionId
       if (sessionId) {
@@ -7249,6 +7259,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           const nextReport = {
             ...(existing || {}),
             id: existing?.id ?? sessionId,
+            lang: existing?.lang ?? reportLanguage,
             summary: meta.summary ?? existing?.summary ?? null,
             lastSummaryTextHash:
               meta.lastSummaryTextHash ?? existing?.lastSummaryTextHash ?? null,
@@ -9553,7 +9564,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
               <select
                 id="report-language"
                 value={reportLanguage}
-                onChange={(event) => setReportLanguage(event.target.value as Language)}
+                disabled
               >
                 {languageOptions.map((language) => (
                   <option key={language} value={language}>
@@ -9823,7 +9834,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 <select
                   id="report-language-modal"
                   value={reportLanguage}
-                  onChange={(event) => setReportLanguage(event.target.value as Language)}
+                  disabled
                 >
                   {languageOptions.map((language) => (
                     <option key={language} value={language}>

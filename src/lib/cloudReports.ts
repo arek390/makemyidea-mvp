@@ -13,6 +13,7 @@ export type ReportRecord = {
   summary: ReportSummary | null
   ideas: ReportIdea[] | null
   recommendations: ReportRecommendations | null
+  lang?: 'pl' | 'en' | null
   lastSummaryTextHash: string | null
   sourceUpdatedAt: number
 }
@@ -36,15 +37,20 @@ const parseSummaryJson = (
   summary: ReportSummary | null
   ideas: ReportIdea[] | null
   recommendations: ReportRecommendations | null
+  lang?: 'pl' | 'en' | null
 } => {
   if (!value || typeof value !== 'object') {
-    return { summary: null, ideas: null, recommendations: null }
+    return { summary: null, ideas: null, recommendations: null, lang: null }
   }
   const maybeSummary = value as {
     summary?: ReportSummary
     ideas?: unknown
     recommendations?: unknown
+    lang?: unknown
   }
+  const rawLang = typeof maybeSummary.lang === 'string' ? maybeSummary.lang.toLowerCase() : ''
+  const lang =
+    rawLang === 'pl' || rawLang === 'polish' ? 'pl' : rawLang === 'en' || rawLang === 'english' ? 'en' : null
   if (maybeSummary.summary || maybeSummary.ideas || maybeSummary.recommendations) {
     return {
       summary: (maybeSummary.summary as ReportSummary | null) ?? null,
@@ -53,6 +59,7 @@ const parseSummaryJson = (
         maybeSummary.recommendations && typeof maybeSummary.recommendations === 'object'
           ? (maybeSummary.recommendations as ReportRecommendations)
           : null,
+      lang,
     }
   }
   const legacy = value as Partial<ReportSummary>
@@ -61,9 +68,9 @@ const parseSummaryJson = (
     typeof legacy.change === 'string' ||
     typeof legacy.product === 'string'
   ) {
-    return { summary: legacy as ReportSummary, ideas: null, recommendations: null }
+    return { summary: legacy as ReportSummary, ideas: null, recommendations: null, lang }
   }
-  return { summary: null, ideas: null, recommendations: null }
+  return { summary: null, ideas: null, recommendations: null, lang }
 }
 
 const normalizeReportRow = (row: ReportRow): ReportRecord => {
@@ -77,6 +84,7 @@ const normalizeReportRow = (row: ReportRow): ReportRecord => {
     summary: parsed.summary,
     ideas: parsed.ideas,
     recommendations: parsed.recommendations,
+    lang: parsed.lang ?? null,
     lastSummaryTextHash: row.last_summary_text_hash ?? null,
     sourceUpdatedAt: toNumber(row.source_updated_at, 0),
   }
@@ -103,7 +111,8 @@ export const fetchReportBySessionId = async (
 
 export const ensureReportExists = async (
   sessionId: string,
-  sourceUpdatedAt: number
+  sourceUpdatedAt: number,
+  lang?: 'pl' | 'en' | null
 ): Promise<ReportRecord> => {
   if (!supabase) {
     throw new Error('Missing Supabase client.')
@@ -115,6 +124,7 @@ export const ensureReportExists = async (
     .insert({
       session_id: sessionId,
       source_updated_at: sourceUpdatedAt,
+      summary_json: lang ? { lang } : undefined,
       updated_at: new Date().toISOString(),
     })
     .select(

@@ -15,6 +15,16 @@ const sanitizeReportText = (input) => {
   return value
 }
 
+const normalizeReportLang = (value) => {
+  if (!value) return null
+  const normalized = String(value).toLowerCase().trim()
+  if (normalized === 'pl' || normalized === 'polish') return 'pl'
+  if (normalized === 'en' || normalized === 'english') return 'en'
+  return null
+}
+
+const toLlmLanguage = (lang) => (lang === 'en' ? 'English' : 'Polish')
+
 const sanitizeReportPayload = (payload) => {
   if (payload == null) return payload
   if (typeof payload === 'string') return sanitizeReportText(payload)
@@ -48,6 +58,7 @@ const normalizeRecommendations = (value) => {
 
 const validateAndNormalizeReport = (payload) => {
   const empty = {
+    lang: null,
     summary: { today: '', change: '', product: '' },
     ideas: [],
     items: [],
@@ -60,6 +71,7 @@ const validateAndNormalizeReport = (payload) => {
   }
   if (!payload || typeof payload !== 'object') return { ...empty }
   const value = payload
+  const lang = normalizeReportLang(value.lang)
   let summary =
     value.summary && typeof value.summary === 'object'
       ? value.summary
@@ -90,6 +102,7 @@ const validateAndNormalizeReport = (payload) => {
   const items = Array.isArray(value.items) ? value.items : []
   const recommendations = normalizeRecommendations(value.recommendations)
   return {
+    lang,
     summary,
     ideas,
     items,
@@ -163,7 +176,7 @@ const logLlmMeta = (label, result) => {
   })
 }
 
-const validateSummary = (summary, itemsCount) => {
+const validateSummary = (summary, itemsCount, lang = 'pl') => {
   const errors = []
   if (!summary || typeof summary !== 'object') {
     return { ok: false, errors: ['summary_missing'] }
@@ -175,12 +188,21 @@ const validateSummary = (summary, itemsCount) => {
     if (today.length < 30) errors.push('summary_today_too_short')
     if (change.length < 30) errors.push('summary_change_too_short')
     if (!product) errors.push('summary_product_empty')
-    const insufficientPatterns = [
-      /brak wystarczających danych/i,
-      /brak informacji/i,
-      /brak wpisów/i,
-      /zbyt mało informacji/i,
-    ]
+    const insufficientPatterns =
+      lang === 'en'
+        ? [
+            /not enough data/i,
+            /insufficient data/i,
+            /no (direct )?information/i,
+            /no entries/i,
+            /cannot generate/i,
+          ]
+        : [
+            /brak wystarczających danych/i,
+            /brak informacji/i,
+            /brak wpisów/i,
+            /zbyt mało informacji/i,
+          ]
     if (insufficientPatterns.some((pattern) => pattern.test(today) || pattern.test(change))) {
       errors.push('summary_insufficient')
     }
@@ -242,6 +264,7 @@ export default async function handler(req, res) {
       res.status(400).json({ ok: false, error: 'SESSION_ID_REQUIRED' })
       return
     }
+    const requestedLang = normalizeReportLang(body.lang || body.language || body.reportLanguage)
     const supabaseAdmin = getSupabaseAdmin()
     const reportRes = await supabaseAdmin
       .schema('public')
@@ -272,6 +295,8 @@ export default async function handler(req, res) {
     )
     const contentHash = buildContentHash(items)
     const existingNormalized = validateAndNormalizeReport(reportRes.data?.summary_json ?? null)
+    const reportLang = normalizeReportLang(existingNormalized.lang) || requestedLang || 'pl'
+    const llmLanguage = toLlmLanguage(reportLang)
 
     const itemsFromDb = items.map((item) => ({
       id: item.id,
@@ -285,6 +310,7 @@ export default async function handler(req, res) {
     }))
     const phaseAReport = {
       ...existingNormalized,
+      lang: reportLang,
       items: itemsFromDb,
       recommendations: normalizeRecommendations(existingNormalized.recommendations),
       source_snapshot: {
@@ -326,31 +352,39 @@ export default async function handler(req, res) {
     try {
       const representativeItems = items
         .slice(0, 25)
-        .map((item) => ({
-          text: String(item.text ?? '').trim(),
-          label: item.label ?? '',
-          question:
-            String(item.question_text_pl || item.question_text_en || '').trim() || '',
-        }))
+        .map((item) => {
+          const question =
+            reportLang === 'en'
+              ? item.question_text_en || item.question_text_pl || ''
+              : item.question_text_pl || item.question_text_en || ''
+          return {
+            text: String(item.text ?? '').trim(),
+            label: item.label ?? '',
+            question: String(question).trim() || '',
+          }
+        })
         .filter((item) => item.text)
         .slice(0, 25)
 
       const preprocessInput = JSON.stringify({
-        lang: 'pl',
+        lang: reportLang,
         session_id: sessionId,
         items: representativeItems,
       })
 
       let analysisJson = null
       try {
+        const preprocessTaskInstructions =
+          reportLang === 'en'
+            ? 'Return ONLY valid JSON. No markdown. Schema: { "lang":"pl|en","topic":"1-2 sentences","key_themes":["3-6 short phrases"],"tensions_or_opportunities":["3-6 short bullets"],"representative_items":[{"quote":"...","label":"","question":""}],"user_intent":"optional 1 sentence" }. Do NOT include matrix codes A1..C3. Output must be in English.'
+            : 'Zwróć WYŁĄCZNIE poprawny JSON. Bez markdown. Schemat: { "lang":"pl|en","topic":"1-2 sentences","key_themes":["3-6 short phrases"],"tensions_or_opportunities":["3-6 short bullets"],"representative_items":[{"quote":"...","label":"","question":""}],"user_intent":"optional 1 sentence" }. Nie używaj kodów A1..C3. Całość po polsku.'
         const preprocessResult = await runLlmTask({
           apiKey: process.env.OPENAI_API_KEY,
           aiSupportEnabled: true,
           task: 'report-preprocess',
           input: preprocessInput,
-          language: 'Polish',
-          taskInstructions:
-            'Return ONLY valid JSON. No markdown. Schema: { "lang":"pl|en","topic":"1-2 sentences","key_themes":["3-6 short phrases"],"tensions_or_opportunities":["3-6 short bullets"],"representative_items":[{"quote":"...","label":"","question":""}],"user_intent":"optional 1 sentence" }. Do NOT include matrix codes A1..C3.',
+          language: llmLanguage,
+          taskInstructions: preprocessTaskInstructions,
           parseResponse: (value) => {
             try {
               const parsed = JSON.parse(value)
@@ -381,6 +415,21 @@ export default async function handler(req, res) {
       }
       const themeCount = Array.isArray(analysisJson?.key_themes) ? analysisJson.key_themes.length : 0
       console.log('[report:update][step3] preprocess themes', themeCount)
+
+      const summaryNotes =
+        reportLang === 'en'
+          ? [
+              'Always fill summary.today and summary.change. If entries >= 3, do not return empty fields or "Not enough data...".',
+              'Always return summary.product as a string; never omit the field.',
+              'In the "Summary" section, write in 2nd person singular, like a facilitator addressing the user. Use forms like "You plan…", "You want…", "You care about…". Do not use 3rd person ("The user", "The author").',
+              'Output must be written in English.',
+            ]
+          : [
+              'Zawsze wypełnij summary.today i summary.change. Jeśli liczba wpisów >= 3, nie wolno zwrócić pustych pól ani tekstu "Brak wystarczających danych...".',
+              'Zawsze zwróć summary.product jako string; nie pomijaj pola.',
+              'W sekcji "Podsumowanie" pisz zawsze w 2. osobie liczby pojedynczej, jak facylitator zwracający się do użytkownika. Używaj form: "Planujesz…", "Chcesz…", "Masz…", "Zależy Ci…". Nie używaj 3. osoby ("Użytkownik", "Autor", "Osoba").',
+              'Całość musi być napisana po polsku.',
+            ]
 
       const defaultPrompt = JSON.stringify({
         existing_summary: phaseASanitized.summary ?? null,
@@ -421,21 +470,24 @@ export default async function handler(req, res) {
           notes: [
             'You MUST return a single valid JSON object with ONLY: summary, recommendations.',
             'No markdown. No commentary. Do not include items or source_snapshot.',
-            'Zawsze wypełnij summary.today i summary.change. Jeśli liczba wpisów >= 3, nie wolno zwrócić pustych pól ani tekstu "Brak wystarczających danych...".',
-            'Zawsze zwróć summary.product jako string; nie pomijaj pola.',
-            'W sekcji "Podsumowanie" pisz zawsze w 2. osobie liczby pojedynczej, jak facylitator zwracający się do użytkownika. Używaj form: "Planujesz…", "Chcesz…", "Masz…", "Zależy Ci…". Nie używaj 3. osoby ("Użytkownik", "Autor", "Osoba").',
             'The JSON MUST include "recommendations" as an OBJECT (never null, never string).',
             'It MUST contain exactly these keys: based_on_user_ideas, morphological, market_trends.',
-          'Each array MUST contain exactly 2 items.',
+            'Each array MUST contain exactly 2 items.',
             'Each item MUST have non-empty fields: title, rationale, how_to_test.',
             'If session data is sparse, create minimal but still concrete items (not generic).',
             'Do not output matrix codes A1..C3 anywhere.',
-          'Exactly 2 items per group.',
+            'Exactly 2 items per group.',
             'Rationale should reference analysis_json themes/representative_items briefly (no long quotes).',
+            ...summaryNotes,
           ],
         },
         session_items: representativeItems,
       })
+
+      const defaultTaskInstructions =
+        reportLang === 'en'
+          ? 'Return ONLY valid JSON with keys summary and recommendations. Do not include items. recommendations must be an object with 3 arrays; each array min 1 item; items must include title, rationale, how_to_test; never output A1..C3. Output must be in English.'
+          : 'Zwróć WYŁĄCZNIE poprawny JSON z kluczami summary i recommendations. Nie dodawaj items. recommendations musi być obiektem z 3 tablicami; każda tablica min 1 element; elementy muszą mieć title, rationale, how_to_test; nie wypisuj A1..C3. Całość po polsku.'
 
       const runDefault = async (modelOverride, validationErrors) =>
         runLlmTask({
@@ -446,9 +498,8 @@ export default async function handler(req, res) {
             prompt: defaultPrompt,
             validation_errors: validationErrors || null,
           }),
-          language: 'Polish',
-          taskInstructions:
-            'Return ONLY valid JSON with keys summary and recommendations. Do not include items. recommendations must be an object with 3 arrays; each array min 1 item; items must include title, rationale, how_to_test; never output A1..C3.',
+          language: llmLanguage,
+          taskInstructions: defaultTaskInstructions,
           parseResponse: (value) => {
             try {
               const parsed = JSON.parse(value)
@@ -473,7 +524,7 @@ export default async function handler(req, res) {
       let validationErrors = []
       let summaryCandidate = phaseASanitized.summary
       let recommendationsCandidate = normalizeRecommendations(phaseASanitized.recommendations)
-      let summaryValidation = validateSummary(summaryCandidate, itemsFromDb.length)
+      let summaryValidation = validateSummary(summaryCandidate, itemsFromDb.length, reportLang)
       let recValidation = validateRecommendations(recommendationsCandidate)
       logSummaryLengths('existing', phaseASanitized.summary)
 
@@ -481,7 +532,7 @@ export default async function handler(req, res) {
         if (!generated || typeof generated !== 'object') return
         if (generated.summary && typeof generated.summary === 'object') {
           summaryCandidate = generated.summary
-          summaryValidation = validateSummary(summaryCandidate, itemsFromDb.length)
+          summaryValidation = validateSummary(summaryCandidate, itemsFromDb.length, reportLang)
         }
         if (generated.recommendations && typeof generated.recommendations === 'object') {
           recommendationsCandidate = normalizeRecommendations(generated.recommendations)
@@ -531,6 +582,14 @@ export default async function handler(req, res) {
 
       const fallbackSummary = (() => {
         const topic = typeof analysisJson?.topic === 'string' ? analysisJson.topic.trim() : ''
+        if (reportLang === 'en') {
+          const topicSuffix = topic ? ` about: ${topic}.` : '.'
+          return {
+            today: `You have ${itemsFromDb.length} entries${topicSuffix}`,
+            change: 'Add more detail or refine your criteria to get a richer summary.',
+            product: '',
+          }
+        }
         const topicSuffix = topic ? ` dotyczących: ${topic}.` : '.'
         return {
           today: `Masz ${itemsFromDb.length} wpisów${topicSuffix}`,
@@ -539,13 +598,17 @@ export default async function handler(req, res) {
           product: '',
         }
       })()
+      const insufficientSummaryPattern =
+        reportLang === 'en'
+          ? /not enough data|insufficient data|no (direct )?information|no entries|cannot generate/i
+          : /brak wystarczających danych|brak informacji|brak wpisów|zbyt mało informacji/i
       const hasUsableExistingSummary =
         typeof phaseASanitized.summary?.today === 'string' &&
         phaseASanitized.summary.today.trim().length >= 30 &&
         typeof phaseASanitized.summary?.change === 'string' &&
         phaseASanitized.summary.change.trim().length >= 30 &&
-        !/brak wystarczających danych/i.test(phaseASanitized.summary.today) &&
-        !/brak wystarczających danych/i.test(phaseASanitized.summary.change)
+        !insufficientSummaryPattern.test(phaseASanitized.summary.today) &&
+        !insufficientSummaryPattern.test(phaseASanitized.summary.change)
       const finalSummary = summaryValidation.ok
         ? summaryCandidate
         : hasUsableExistingSummary
