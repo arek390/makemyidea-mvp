@@ -3145,16 +3145,6 @@ const isAuthFlowInProgress = () => {
     setLoginSending(false)
   }
 
-  const handleGuestMode = () => {
-    enableGuestMode()
-    setEngineSessionPersisted(false)
-    if (import.meta.env.DEV) {
-      console.log('[route-force] redirect to /engine')
-      console.trace()
-    }
-    window.location.replace('/engine?guest=1')
-  }
-
   const handleGuestMerge = async () => {
     setGuestMergeLoading(true)
     try {
@@ -7319,7 +7309,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   if (isLogin) {
-    const isGuestActive = isGuestMode()
     if (showSupabaseConfigError) {
       return withDevOverlay(
         <div className="app auth-screen">
