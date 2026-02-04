@@ -2746,6 +2746,7 @@ const isAuthFlowInProgress = () => {
         if (!authResolved) setAuthResolved(true)
         if (typeof window !== 'undefined') {
           if (event === 'SIGNED_OUT') {
+            if (isAdminRoute) return
             if (window.location.pathname !== '/') {
               window.location.replace('/')
             }
@@ -2772,6 +2773,7 @@ const isAuthFlowInProgress = () => {
     if (!authSession?.user) return
     if (authRedirectedRef.current) return
     if (typeof window === 'undefined') return
+    if (isAdminRoute) return
     const nextRaw = readPostAuthNext()
     const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
     const lang = readPostAuthLang()
@@ -2802,6 +2804,7 @@ const isAuthFlowInProgress = () => {
     if (initialRouteResolvedRef.current) return
     if (!authResolved) return
     if (typeof window === 'undefined') return
+    if (isAdminRoute) return
     if (isAuthCallback || isAuthFlowInProgress()) return
     if (authSession?.user) return
     const path = window.location.pathname
