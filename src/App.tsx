@@ -57,6 +57,7 @@ import {
 import { DIAGNOSTICS_STORAGE_KEY, isAdminUser } from './lib/diagnostics'
 import { ReportPage } from './report/ReportPage'
 import type { ReportSnapshot } from './report/exportCsv'
+import { AdminPage } from './admin/AdminPage'
 
 type StepId = 1 | 2 | 3 | 4
 type SpaceSlot = 'supersystem' | 'subsystem'
@@ -2628,6 +2629,7 @@ const isAuthFlowInProgress = () => {
   const isIdeaGrid = normalizedPath === '/grid'
   const isLogin = normalizedPath === '/login'
   const isAuthCallback = normalizedPath === '/auth/callback'
+  const isAdminRoute = normalizedPath === '/admin' || normalizedPath.endsWith('/admin')
   const isProtectedRoute = normalizedPath.startsWith('/app')
   const supabaseInitError = getSupabaseInitError()
   const showSupabaseConfigError = Boolean(supabaseInitError)
@@ -7477,6 +7479,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
           )}
         </section>
       </div>
+    )
+  }
+
+  if (isAdminRoute) {
+    return withDevOverlay(
+      <AdminPage session={authSession} authLoading={authLoading} />
     )
   }
 

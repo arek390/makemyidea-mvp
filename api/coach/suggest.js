@@ -870,11 +870,12 @@ export default async function handler(req, res) {
         }
         if (result.ok && assignments) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          const usage = buildUsagePayload(meta)
           sendJson(res, 200, {
             ok: true,
             source: 'llm',
             assignments,
-            usage: buildUsagePayload(meta),
+            usage,
             meta,
           })
           return
@@ -1185,12 +1186,13 @@ export default async function handler(req, res) {
       }
       if (result.ok && result.data) {
         const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+        const usage = buildUsagePayload(meta)
         sendJson(res, 200, {
           ok: true,
           source: 'llm',
           summary: result.data.summary,
           recommendations: result.data.recommendations,
-          usage: buildUsagePayload(meta),
+          usage,
           meta,
         })
         return
@@ -1270,6 +1272,7 @@ export default async function handler(req, res) {
         })
         if (result.ok && result.data) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          const usage = buildUsagePayload(meta)
           if (entries.length && result.data.summary && result.data.classifications) {
             const classifications = result.data.classifications
               .map((entry) => ({
@@ -1280,24 +1283,24 @@ export default async function handler(req, res) {
                 reason: String(entry?.reason || ''),
               }))
               .filter((entry) => entry.id)
-        sendJson(res, 200, {
-          ok: true,
-          source: 'llm',
-          summary: result.data.summary,
-          classifications,
-          usage: buildUsagePayload(meta),
-          meta,
-        })
-      } else {
-        sendJson(res, 200, {
-          ok: true,
-          source: 'llm',
-          summary: result.data,
-          usage: buildUsagePayload(meta),
-          meta,
-        })
-      }
-      return
+            sendJson(res, 200, {
+              ok: true,
+              source: 'llm',
+              summary: result.data.summary,
+              classifications,
+              usage,
+              meta,
+            })
+          } else {
+            sendJson(res, 200, {
+              ok: true,
+              source: 'llm',
+              summary: result.data,
+              usage,
+              meta,
+            })
+          }
+          return
         }
         sendJson(res, 200, buildSummaryFallback(locale, 'LLM_FAILED'))
         return

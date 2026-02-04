@@ -519,7 +519,6 @@ export default async function handler(req, res) {
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
         })
-
       console.log('[report:update] itemsCount', itemsFromDb.length)
       let validationErrors = []
       let summaryCandidate = phaseASanitized.summary
