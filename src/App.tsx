@@ -2613,6 +2613,13 @@ const isAuthFlowInProgress = () => {
   }
 
   const normalizeApiBase = (value: string) => value.trim().replace(/\/+$/, '')
+  const getAppPath = () => {
+    if (typeof window === 'undefined') return ''
+    if (window.location.hash?.startsWith('#/')) {
+      return window.location.hash.slice(1)
+    }
+    return window.location.pathname || ''
+  }
   const idleThresholdMs = isE2EEnabled()
     ? 800
     : isDebugEnabled()
@@ -2622,6 +2629,7 @@ const isAuthFlowInProgress = () => {
   // Routing is handled manually using window.location.pathname (no router library).
   const rawPath = typeof window !== 'undefined' ? window.location.pathname : ''
   const normalizedPath = rawPath.replace(/\/+$/, '')
+  const appPath = getAppPath()
   const isEnginePreview = normalizedPath === '/engine'
   const isReportPath = normalizedPath === '/report' || normalizedPath.endsWith('/report')
   const isReport = isReportPath || reportViewOpen
@@ -2629,7 +2637,7 @@ const isAuthFlowInProgress = () => {
   const isIdeaGrid = normalizedPath === '/grid'
   const isLogin = normalizedPath === '/login'
   const isAuthCallback = normalizedPath === '/auth/callback'
-  const isAdminRoute = normalizedPath === '/admin' || normalizedPath.endsWith('/admin')
+  const isAdminRoute = appPath === '/admin' || appPath.startsWith('/admin/')
   const isProtectedRoute = normalizedPath.startsWith('/app')
   const supabaseInitError = getSupabaseInitError()
   const showSupabaseConfigError = Boolean(supabaseInitError)
