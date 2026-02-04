@@ -51,6 +51,7 @@ const formatDateTime = (value: string | null | undefined) => {
 export const AdminPage = ({ authLoading }: AdminPageProps) => {
   const [adminLoading, setAdminLoading] = useState(true)
   const [adminEmail, setAdminEmail] = useState('')
+  const [hasToken, setHasToken] = useState(false)
   const [rows, setRows] = useState<AdminRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -73,6 +74,10 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       }
       setAdminLoading(true)
       try {
+        const { data: sessionData } = await supabase.auth.getSession()
+        if (!cancelled) {
+          setHasToken(Boolean(sessionData.session?.access_token))
+        }
         const { data, error } = await supabase.auth.getUser()
         if (error) throw error
         const email = (data.user?.email || '').trim().toLowerCase()
@@ -82,6 +87,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       } catch {
         if (!cancelled) {
           setAdminEmail('')
+          setHasToken(false)
         }
       } finally {
         if (!cancelled) setAdminLoading(false)
@@ -177,9 +183,9 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
         <div className="admin-panel">
           <h1>Admin</h1>
           <p className="muted">Brak dostępu</p>
-          {import.meta.env.DEV && (
-            <p className="muted">debug: email={adminEmail || '—'}</p>
-          )}
+          <p className="muted" style={{ fontSize: 12, opacity: 0.7 }}>
+            debug: email={adminEmail || '—'} hasToken={String(hasToken)} loading={String(adminLoading)}
+          </p>
         </div>
       </div>
     )
