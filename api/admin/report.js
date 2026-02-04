@@ -43,7 +43,13 @@ export default async function handler(req, res) {
   }
   try {
     const supabase = createSupabaseServerClient(req, res)
-    const { data, error } = await supabase.auth.getUser()
+    const auth = String(req.headers.authorization || '')
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+    if (!token) {
+      res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
+      return
+    }
+    const { data, error } = await supabase.auth.getUser(token)
     const rawEmail = data?.user?.email ? String(data.user.email) : ''
     const email = rawEmail.trim().toLowerCase()
     if (error || !email || email !== ADMIN_EMAIL) {

@@ -104,7 +104,17 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       setLoading(true)
       setError(null)
       try {
-        const response = await fetch('/api/admin/report?limit=500&offset=0')
+        if (!supabase) {
+          throw new Error('AUTH_REQUIRED')
+        }
+        const { data } = await supabase.auth.getSession()
+        const token = data.session?.access_token || ''
+        if (!token) {
+          throw new Error('AUTH_REQUIRED')
+        }
+        const response = await fetch('/api/admin/report?limit=500&offset=0', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
         const payload = await response.json().catch(() => null)
         if (!response.ok || !payload?.ok) {
           throw new Error(payload?.error || 'LOAD_FAILED')
