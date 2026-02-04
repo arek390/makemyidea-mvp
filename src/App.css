@@ -1133,7 +1133,7 @@
 }
 
 .auth-panel {
-  width: min(980px, 100%);
+  width: min(370px, 100%);
   display: grid;
   gap: 1rem;
 }
@@ -1204,7 +1204,7 @@
 }
 
 .auth-options--actions {
-  grid-template-columns: repeat(3, minmax(180px, 1fr));
+  grid-template-columns: 1fr;
   align-items: stretch;
 }
 
