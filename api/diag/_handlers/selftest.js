@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from '../_lib/supabaseAdmin.js'
+import { getSupabaseAdmin } from '../../_lib/supabaseAdmin.js'
 
 const getEnvHost = () => {
   const url = process.env.SUPABASE_URL || ''
@@ -9,7 +9,7 @@ const getEnvHost = () => {
   }
 }
 
-export default async function handler(req, res) {
+export const handle = async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.status(204).end()
     return

@@ -1,4 +1,4 @@
-import { getSupabaseAdmin } from '../_lib/supabaseAdmin.js'
+import { getSupabaseAdmin } from '../../_lib/supabaseAdmin.js'
 
 const getEnvHost = () => {
   const url = process.env.SUPABASE_URL || ''
@@ -9,7 +9,7 @@ const getEnvHost = () => {
   }
 }
 
-export default async function handler(req, res) {
+export const handle = async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.status(204).end()
     return
@@ -25,6 +25,8 @@ export default async function handler(req, res) {
   }
   let data = null
   let error = null
+  let publicRawRes = null
+  let authRawRes = null
   try {
     const supabaseAdmin = getSupabaseAdmin()
     const resSelect = await supabaseAdmin
@@ -33,12 +35,12 @@ export default async function handler(req, res) {
       .select('id,user_id,name')
       .eq('id', sessionId)
       .maybeSingle()
-    const publicRawRes = await supabaseAdmin
+    publicRawRes = await supabaseAdmin
       .schema('public')
       .from('sessions')
       .select('id')
       .eq('id', sessionId)
-    const authRawRes = await supabaseAdmin
+    authRawRes = await supabaseAdmin
       .schema('auth')
       .from('sessions')
       .select('id')
