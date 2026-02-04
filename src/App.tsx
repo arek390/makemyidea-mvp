@@ -7492,7 +7492,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
   if (isAdminRoute) {
     return withDevOverlay(
-      <AdminPage session={authSession} authLoading={authLoading} />
+      <AdminPage authLoading={authLoading} />
     )
   }
 

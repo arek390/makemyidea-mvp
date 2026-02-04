@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase/client'
 
 type AdminRow = {
@@ -19,7 +18,6 @@ type AdminRow = {
 }
 
 type AdminPageProps = {
-  session: Session | null
   authLoading: boolean
 }
 
@@ -50,7 +48,7 @@ const formatDateTime = (value: string | null | undefined) => {
   }).format(date)
 }
 
-export const AdminPage = ({ session, authLoading }: AdminPageProps) => {
+export const AdminPage = ({ authLoading }: AdminPageProps) => {
   const [adminLoading, setAdminLoading] = useState(true)
   const [adminEmail, setAdminEmail] = useState('')
   const [isAdmin, setIsAdmin] = useState(false)
