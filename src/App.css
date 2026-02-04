@@ -1133,7 +1133,7 @@
 }
 
 .auth-panel {
-  width: min(370px, 100%);
+  width: min(333px, 100%);
   display: grid;
   gap: 1rem;
 }
