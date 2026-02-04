@@ -1,3 +1,27 @@
+
+
+
+console.log("[ADMIN] authLoading:", authLoading);
+console.log("[ADMIN] session:", session);
+console.log("[ADMIN] session.user:", session?.user);
+console.log("[ADMIN] email:", session?.user?.email);
+console.log("[ADMIN] user_metadata.email:", session?.user?.user_metadata?.email);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 import { useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { isAdminUser } from '../lib/diagnostics'
