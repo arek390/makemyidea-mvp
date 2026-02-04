@@ -5,6 +5,7 @@ import {
   buildGenerationUserPrompt,
 } from './llmPrompts.mjs'
 import { callOpenAIChat } from '../api/_lib/openaiClient.js'
+import { getSupabaseAdmin } from '../api/_lib/supabaseAdmin.js'
 
 const DEFAULT_MODELS = {
   default: 'gpt-4.1-mini',
@@ -26,6 +27,55 @@ const mergeUsage = (current, usage) => {
     input: current.input + input,
     output: current.output + output,
     total: current.total + total,
+  }
+}
+
+const extractInOutFromUsageTotals = (usageTotals) => {
+  const rawIn = Number(
+    usageTotals?.prompt_tokens ??
+      usageTotals?.input_tokens ??
+      usageTotals?.input ??
+      0
+  )
+  const rawOut = Number(
+    usageTotals?.completion_tokens ??
+      usageTotals?.output_tokens ??
+      usageTotals?.output ??
+      0
+  )
+  const rawTotal = Number(usageTotals?.total_tokens ?? usageTotals?.total ?? 0)
+  if (!rawIn && !rawOut && rawTotal) {
+    return { inTokens: Math.max(0, Math.floor(rawTotal)), outTokens: 0 }
+  }
+  return {
+    inTokens: Math.max(0, Math.floor(rawIn)),
+    outTokens: Math.max(0, Math.floor(rawOut)),
+  }
+}
+
+const persistSessionTokensIfPossible = async (sessionId, usageTotals) => {
+  if (!sessionId) return
+  const { inTokens, outTokens } = extractInOutFromUsageTotals(usageTotals)
+  if (!inTokens && !outTokens) return
+  try {
+    const supabaseAdmin = getSupabaseAdmin()
+    const res = await supabaseAdmin
+      .schema('public')
+      .rpc('increment_session_tokens', {
+        p_session_id: sessionId,
+        p_tokens_in: inTokens,
+        p_tokens_out: outTokens,
+      })
+    if (res.error) {
+      console.warn('[llm] token increment failed', {
+        message: res.error?.message ?? null,
+        code: res.error?.code ?? null,
+      })
+    }
+  } catch (error) {
+    console.warn('[llm] token increment failed', {
+      message: error?.message ?? null,
+    })
   }
 }
 
@@ -127,27 +177,33 @@ export const runLlmTask = async ({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   rateLimiter,
   rateLimitKey,
+  sessionId = null,
 }) => {
+  let usageTotals = buildEmptyUsage()
+  const finalize = async (payload) => {
+    await persistSessionTokensIfPossible(sessionId, usageTotals)
+    return payload
+  }
   if (!aiSupportEnabled) {
     if (process.env.NODE_ENV !== 'production') {
       console.log('[ai] LLM skipped: aiSupport=off', { task })
     }
-    return {
+    return await finalize({
       ok: true,
       data: fallbackData,
       meta: { aiSupportEnabled: false, modelUsed: null, escalated: false, tokens: buildEmptyUsage() },
-    }
+    })
   }
 
   if (!apiKey) {
     if (process.env.NODE_ENV !== 'production') {
       console.log('[ai] llm decision', { willCallLLM: false, reason: 'missing_api_key', task })
     }
-    return {
+    return await finalize({
       ok: false,
       error: 'OPENAI_API_KEY is not set on the server.',
       meta: { aiSupportEnabled: true, modelUsed: null, escalated: false, tokens: buildEmptyUsage() },
-    }
+    })
   }
 
   if (rateLimiter && rateLimitKey) {
@@ -156,11 +212,11 @@ export const runLlmTask = async ({
       if (process.env.NODE_ENV !== 'production') {
         console.log('[ai] llm decision', { willCallLLM: false, reason: 'rate_limited', task })
       }
-      return {
+      return await finalize({
         ok: false,
         error: 'Rate limit exceeded.',
         meta: { aiSupportEnabled: true, modelUsed: null, escalated: false, tokens: buildEmptyUsage() },
-      }
+      })
     }
   }
 
@@ -185,7 +241,6 @@ export const runLlmTask = async ({
     constraint_count: 0,
     valid: false,
   }
-  let usageTotals = buildEmptyUsage()
   const logCoachSuggestStart = (model, messages) => {
     if (task !== 'coach-suggest') return
     console.log('[coach/suggest][llm][start]', {
@@ -291,7 +346,7 @@ export const runLlmTask = async ({
   try {
     const result = await runGeneration(primaryModel)
     usageTotals = mergeUsage(usageTotals, result.usage)
-    return {
+    return await finalize({
       ok: true,
       data: result.parsed,
       meta: {
@@ -300,7 +355,7 @@ export const runLlmTask = async ({
         escalated,
         tokens: usageTotals,
       },
-    }
+    })
   } catch (error) {
     if (error?.usage) {
       usageTotals = mergeUsage(usageTotals, error.usage)
@@ -309,7 +364,7 @@ export const runLlmTask = async ({
       try {
         const fallback = await runGeneration(models.default)
         usageTotals = mergeUsage(usageTotals, fallback.usage)
-        return {
+        return await finalize({
           ok: true,
           data: fallback.parsed,
           meta: {
@@ -318,22 +373,22 @@ export const runLlmTask = async ({
             escalated: false,
             tokens: usageTotals,
           },
-        }
+        })
       } catch (fallbackError) {
         if (fallbackError?.usage) {
           usageTotals = mergeUsage(usageTotals, fallbackError.usage)
         }
-        return {
+        return await finalize({
           ok: false,
           error: String(fallbackError),
           meta: { aiSupportEnabled: true, modelUsed: null, escalated: true, tokens: usageTotals },
-        }
+        })
       }
     }
-    return {
+    return await finalize({
       ok: false,
       error: String(error),
       meta: { aiSupportEnabled: true, modelUsed: null, escalated: false, tokens: usageTotals },
-    }
+    })
   }
 }

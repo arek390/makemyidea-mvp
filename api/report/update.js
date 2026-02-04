@@ -383,6 +383,7 @@ export default async function handler(req, res) {
           aiSupportEnabled: true,
           task: 'report-preprocess',
           input: preprocessInput,
+          sessionId,
           language: llmLanguage,
           taskInstructions: preprocessTaskInstructions,
           parseResponse: (value) => {
@@ -498,6 +499,7 @@ export default async function handler(req, res) {
             prompt: defaultPrompt,
             validation_errors: validationErrors || null,
           }),
+          sessionId,
           language: llmLanguage,
           taskInstructions: defaultTaskInstructions,
           parseResponse: (value) => {

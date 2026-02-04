@@ -827,6 +827,7 @@ export default async function handler(req, res) {
           aiSupportEnabled: true,
           task: 'assign-na',
           input: `Matrix definition: ${JSON.stringify(matrixDefinition)}\n${promptInput}`,
+          sessionId,
           language: locale === 'pl' ? 'Polish' : 'English',
           taskInstructions: instructions,
           parseResponse: (value) => {
@@ -972,6 +973,7 @@ export default async function handler(req, res) {
           aiSupportEnabled: true,
           task: 'report-reclass',
           input,
+          sessionId,
           language: locale === 'pl' ? 'Polish' : 'English',
           taskInstructions: instructions,
           parseResponse: (value) => {
@@ -1087,6 +1089,7 @@ export default async function handler(req, res) {
           aiSupportEnabled: true,
           task: 'report-preprocess',
           input: preprocessInput,
+          sessionId,
           language: locale === 'pl' ? 'Polish' : 'English',
           taskInstructions:
             'Return JSON with keys: key_themes (array), tensions (array), representative_items (array of strings, max 10), user_intent (string).',
@@ -1165,6 +1168,7 @@ export default async function handler(req, res) {
           aiSupportEnabled: true,
           task: 'report-full',
           input: fullPrompt,
+          sessionId,
           language: locale === 'pl' ? 'Polish' : 'English',
           taskInstructions:
             'Return JSON with keys: summary {today, change, product} and recommendations {based_on_user_ideas[], morphological[], market_trends[]}. Each recommendation item must include title, rationale, how_to_test, methods (array), confidence (low|med|high). Keep recommendations tied to entries.',
@@ -1243,6 +1247,7 @@ export default async function handler(req, res) {
           aiSupportEnabled: true,
           task: 'report-summary',
           input: prompt.summaryInput || prompt.input,
+          sessionId,
           language: locale === 'pl' ? 'Polish' : 'English',
           taskInstructions: prompt.instructions,
           parseResponse: (value) => {
@@ -1539,6 +1544,7 @@ export default async function handler(req, res) {
         aiSupportEnabled: true,
         task: 'coach-rewrite',
         input: buildPrompt(baseQuestionText),
+        sessionId,
         language: lang === 'pl' ? 'Polish' : 'English',
         taskInstructions:
           lang === 'pl'

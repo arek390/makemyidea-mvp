@@ -32,8 +32,5 @@ export const isAdminUser = (
   }
 
   const result = email.trim().toLowerCase() === admin
-  if (import.meta?.env?.DEV) {
-    console.log('[isAdminUser] email:', email, 'isAdmin:', result)
-  }
   return result
 }

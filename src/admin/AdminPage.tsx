@@ -51,7 +51,6 @@ const formatDateTime = (value: string | null | undefined) => {
 export const AdminPage = ({ authLoading }: AdminPageProps) => {
   const [adminLoading, setAdminLoading] = useState(true)
   const [adminEmail, setAdminEmail] = useState('')
-  const [hasToken, setHasToken] = useState(false)
   const [rows, setRows] = useState<AdminRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -74,10 +73,6 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       }
       setAdminLoading(true)
       try {
-        const { data: sessionData } = await supabase.auth.getSession()
-        if (!cancelled) {
-          setHasToken(Boolean(sessionData.session?.access_token))
-        }
         const { data, error } = await supabase.auth.getUser()
         if (error) throw error
         const email = (data.user?.email || '').trim().toLowerCase()
@@ -87,7 +82,6 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       } catch {
         if (!cancelled) {
           setAdminEmail('')
-          setHasToken(false)
         }
       } finally {
         if (!cancelled) setAdminLoading(false)
@@ -108,14 +102,10 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       setLoading(true)
       setError(null)
       try {
-        if (!supabase) {
-          throw new Error('AUTH_REQUIRED')
-        }
+        if (!supabase) throw new Error('AUTH_REQUIRED')
         const { data } = await supabase.auth.getSession()
         const token = data.session?.access_token || ''
-        if (!token) {
-          throw new Error('AUTH_REQUIRED')
-        }
+        if (!token) throw new Error('AUTH_REQUIRED')
         const response = await fetch('/api/admin/report?limit=500&offset=0', {
           headers: { Authorization: `Bearer ${token}` },
         })
@@ -129,7 +119,9 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       } catch (err) {
         if (!cancelled) {
           const message = err instanceof Error ? err.message : 'LOAD_FAILED'
-          setError(message)
+          setError(
+            message === 'AUTH_REQUIRED' ? 'Brak sesji. Zaloguj się ponownie.' : message
+          )
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -183,9 +175,6 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
         <div className="admin-panel">
           <h1>Admin</h1>
           <p className="muted">Brak dostępu</p>
-          <p className="muted" style={{ fontSize: 12, opacity: 0.7 }}>
-            debug: email={adminEmail || '—'} hasToken={String(hasToken)} loading={String(adminLoading)}
-          </p>
         </div>
       </div>
     )
