@@ -44,7 +44,8 @@ export default async function handler(req, res) {
   try {
     const supabase = createSupabaseServerClient(req, res)
     const { data, error } = await supabase.auth.getUser()
-    const email = data?.user?.email ? String(data.user.email).toLowerCase() : null
+    const rawEmail = data?.user?.email ? String(data.user.email) : ''
+    const email = rawEmail.trim().toLowerCase()
     if (error || !email || email !== ADMIN_EMAIL) {
       res.status(403).json({ ok: false, error: 'FORBIDDEN' })
       return
