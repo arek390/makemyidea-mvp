@@ -1,21 +1,37 @@
+import type { Session } from '@supabase/supabase-js'
+
 export const ADMIN_EMAIL = 'arektest8@gmail.com'
 
 export const DIAGNOSTICS_STORAGE_KEY = 'mmw:diagnosticsEnabled'
 
-type EmailCarrier =
-  | { email?: string | null }
-  | { user?: { email?: string | null; user_metadata?: { email?: string | null } } | null }
-  | null
-  | undefined
+type EmailOnly = { email?: string | null }
+type UserEmail = {
+  user?: { email?: string | null; user_metadata?: { email?: string | null } | undefined } | null
+}
 
-export const isAdminUser = (session: EmailCarrier) => {
-  const email = String(
-    session?.user?.email ||
-      (session?.user as { user_metadata?: { email?: string | null } } | null)?.user_metadata?.email ||
-      ''
-  )
-  const normalized = email.trim().toLowerCase()
-  const result = normalized === ADMIN_EMAIL
+const hasUser = (value: unknown): value is UserEmail => {
+  return typeof value === 'object' && value !== null && 'user' in value
+}
+
+const hasEmail = (value: unknown): value is EmailOnly => {
+  return typeof value === 'object' && value !== null && 'email' in value
+}
+
+export const isAdminUser = (
+  session: Session | EmailOnly | UserEmail | null | undefined
+): boolean => {
+  const admin = ADMIN_EMAIL
+  let email = ''
+
+  if (!session) return false
+
+  if (hasUser(session) && session.user) {
+    email = session.user.email || session.user.user_metadata?.email || ''
+  } else if (hasEmail(session)) {
+    email = session.email || ''
+  }
+
+  const result = email.trim().toLowerCase() === admin
   if (import.meta?.env?.DEV) {
     console.log('[isAdminUser] email:', email, 'isAdmin:', result)
   }
