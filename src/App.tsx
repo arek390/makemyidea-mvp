@@ -7371,17 +7371,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
               </div>
             </div>
             <div className="auth-option">
-              <p className="auth-option-title">{copy.loginGuestLabel}</p>
-              <div className="actions">
-                <button type="button" className="primary" onClick={handleGuestMode}>
-                  {copy.loginGuestCta}
-                </button>
-              </div>
-              {isGuestActive && !authSession && (
-                <p className="muted auth-guest-note">{copy.loginGuestActive}</p>
-              )}
-            </div>
-            <div className="auth-option auth-option--align-actions">
               <label className="auth-option-title" htmlFor="login-email">
                 {copy.loginEmailLabel}
               </label>
