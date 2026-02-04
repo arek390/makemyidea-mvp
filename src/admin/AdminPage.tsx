@@ -51,7 +51,6 @@ const formatDateTime = (value: string | null | undefined) => {
 export const AdminPage = ({ authLoading }: AdminPageProps) => {
   const [adminLoading, setAdminLoading] = useState(true)
   const [adminEmail, setAdminEmail] = useState('')
-  const [isAdmin, setIsAdmin] = useState(false)
   const [rows, setRows] = useState<AdminRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -68,7 +67,6 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       if (!supabase) {
         if (!cancelled) {
           setAdminEmail('')
-          setIsAdmin(false)
           setAdminLoading(false)
         }
         return
@@ -80,12 +78,10 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
         const email = (data.user?.email || '').trim().toLowerCase()
         if (!cancelled) {
           setAdminEmail(email)
-          setIsAdmin(email === ADMIN_EMAIL)
         }
       } catch {
         if (!cancelled) {
           setAdminEmail('')
-          setIsAdmin(false)
         }
       } finally {
         if (!cancelled) setAdminLoading(false)
@@ -96,6 +92,8 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       cancelled = true
     }
   }, [authLoading])
+
+  const isAdmin = adminEmail === ADMIN_EMAIL
 
   useEffect(() => {
     if (!isAdmin) return
@@ -179,8 +177,8 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
         <div className="admin-panel">
           <h1>Admin</h1>
           <p className="muted">Brak dostępu</p>
-          {import.meta.env.DEV && adminEmail && (
-            <p className="muted">Email: {adminEmail}</p>
+          {import.meta.env.DEV && (
+            <p className="muted">debug: email={adminEmail || '—'}</p>
           )}
         </div>
       </div>
