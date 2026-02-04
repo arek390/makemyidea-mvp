@@ -50,7 +50,6 @@ import { saveSessionToCloud } from './lib/cloudSessions'
 import {
   clearGuestMode,
   clearGuestSessions,
-  enableGuestMode,
   isGuestMode,
   readGuestSessions,
 } from './lib/guest'
