@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { isAdminUser } from '../lib/diagnostics'
+import { supabase } from '../lib/supabase/client'
 
 type AdminRow = {
   user_id: string | null
@@ -22,6 +22,8 @@ type AdminPageProps = {
   session: Session | null
   authLoading: boolean
 }
+
+const ADMIN_EMAIL = 'arektest8@gmail.com'
 
 const formatNumber = (value: number | null | undefined) => {
   if (value == null || Number.isNaN(value)) return '—'
@@ -49,7 +51,9 @@ const formatDateTime = (value: string | null | undefined) => {
 }
 
 export const AdminPage = ({ session, authLoading }: AdminPageProps) => {
-  const isAdmin = isAdminUser(session)
+  const [adminLoading, setAdminLoading] = useState(true)
+  const [adminEmail, setAdminEmail] = useState('')
+  const [isAdmin, setIsAdmin] = useState(false)
   const [rows, setRows] = useState<AdminRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -58,6 +62,42 @@ export const AdminPage = ({ session, authLoading }: AdminPageProps) => {
     'session_created_at'
   )
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+
+  useEffect(() => {
+    let cancelled = false
+    const run = async () => {
+      if (authLoading) return
+      if (!supabase) {
+        if (!cancelled) {
+          setAdminEmail('')
+          setIsAdmin(false)
+          setAdminLoading(false)
+        }
+        return
+      }
+      setAdminLoading(true)
+      try {
+        const { data, error } = await supabase.auth.getUser()
+        if (error) throw error
+        const email = (data.user?.email || '').trim().toLowerCase()
+        if (!cancelled) {
+          setAdminEmail(email)
+          setIsAdmin(email === ADMIN_EMAIL)
+        }
+      } catch {
+        if (!cancelled) {
+          setAdminEmail('')
+          setIsAdmin(false)
+        }
+      } finally {
+        if (!cancelled) setAdminLoading(false)
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [authLoading])
 
   useEffect(() => {
     if (!isAdmin) return
@@ -115,7 +155,7 @@ export const AdminPage = ({ session, authLoading }: AdminPageProps) => {
     return sorted
   }, [filteredRows, sortKey, sortDir])
 
-  if (authLoading) {
+  if (authLoading || adminLoading) {
     return (
       <div className="app admin-page">
         <div className="admin-panel">
@@ -131,6 +171,9 @@ export const AdminPage = ({ session, authLoading }: AdminPageProps) => {
         <div className="admin-panel">
           <h1>Admin</h1>
           <p className="muted">Brak dostępu</p>
+          {import.meta.env.DEV && adminEmail && (
+            <p className="muted">Email: {adminEmail}</p>
+          )}
         </div>
       </div>
     )
