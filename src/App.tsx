@@ -5283,46 +5283,48 @@ const isMissingLabel = (item: EngineBoardItem) => {
           id: sessionId,
           name,
         })
-        if (sessionDetail.session?.id) {
-          setEnginePreviewSessionId(sessionDetail.session.id)
-          setEnginePreviewSessionName(sessionDetail.session.name ?? '')
+        const createdSession = sessionDetail.session
+        if (createdSession?.id) {
+          setEnginePreviewSessionId(createdSession.id)
+          setEnginePreviewSessionName(createdSession.name ?? '')
           setEngineSessionPersisted(true)
           setEnginePreviewItems([])
           setEngineBoardItemsLoadedBySession((prev) => ({
             ...prev,
-            [sessionDetail.session.id]: true,
+            [createdSession.id]: true,
           }))
           setEngineSessionEmptyOnLoadById((prev) => ({
             ...prev,
-            [sessionDetail.session.id]: true,
+            [createdSession.id]: true,
           }))
           setEngineSessionDetail(sessionDetail)
           setEngineSessions(await listSessions())
           setFeedbackReminder(null)
-          return sessionDetail.session.id
+          return createdSession.id
         }
         return null
       }
       const sessionDetail = await createSession({
         name,
       })
-      if (sessionDetail.session?.id) {
-        setEnginePreviewSessionId(sessionDetail.session.id)
-        setEnginePreviewSessionName(sessionDetail.session.name ?? '')
+      const createdSession = sessionDetail.session
+      if (createdSession?.id) {
+        setEnginePreviewSessionId(createdSession.id)
+        setEnginePreviewSessionName(createdSession.name ?? '')
         setEngineSessionPersisted(false)
         setEnginePreviewItems([])
         setEngineBoardItemsLoadedBySession((prev) => ({
           ...prev,
-          [sessionDetail.session.id]: true,
+          [createdSession.id]: true,
         }))
         setEngineSessionEmptyOnLoadById((prev) => ({
           ...prev,
-          [sessionDetail.session.id]: true,
+          [createdSession.id]: true,
         }))
         setEngineSessionDetail(sessionDetail)
         setEngineSessions(await listSessions())
         setFeedbackReminder(null)
-        return sessionDetail.session.id
+        return createdSession.id
       }
     } catch {
       setEnginePreviewError('Unable to create engine session.')
