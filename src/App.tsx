@@ -2226,6 +2226,12 @@ function App() {
   const [engineNameSaving, setEngineNameSaving] = useState(false)
   const [resumeNamePromptAfterList, setResumeNamePromptAfterList] = useState(false)
   const [enginePreviewItems, setEnginePreviewItems] = useState<EngineBoardItem[]>([])
+  const [engineBoardItemsLoadedBySession, setEngineBoardItemsLoadedBySession] = useState<
+    Record<string, boolean>
+  >({})
+  const [engineSessionEmptyOnLoadById, setEngineSessionEmptyOnLoadById] = useState<
+    Record<string, boolean>
+  >({})
   const [enginePreviewInput, setEnginePreviewInput] = useState('')
   const [engineUiState, setEngineUiState] = useState<
     'INIT' | 'FREE_FLOW' | 'FACILITATION_OFFER' | 'FACILITATED_INPUT'
@@ -5282,6 +5288,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
           setEnginePreviewSessionName(sessionDetail.session.name ?? '')
           setEngineSessionPersisted(true)
           setEnginePreviewItems([])
+          setEngineBoardItemsLoadedBySession((prev) => ({
+            ...prev,
+            [sessionDetail.session.id]: true,
+          }))
+          setEngineSessionEmptyOnLoadById((prev) => ({
+            ...prev,
+            [sessionDetail.session.id]: true,
+          }))
           setEngineSessionDetail(sessionDetail)
           setEngineSessions(await listSessions())
           setFeedbackReminder(null)
@@ -5297,6 +5311,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
         setEnginePreviewSessionName(sessionDetail.session.name ?? '')
         setEngineSessionPersisted(false)
         setEnginePreviewItems([])
+        setEngineBoardItemsLoadedBySession((prev) => ({
+          ...prev,
+          [sessionDetail.session.id]: true,
+        }))
+        setEngineSessionEmptyOnLoadById((prev) => ({
+          ...prev,
+          [sessionDetail.session.id]: true,
+        }))
         setEngineSessionDetail(sessionDetail)
         setEngineSessions(await listSessions())
         setFeedbackReminder(null)
@@ -5575,6 +5597,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEnginePreviewSessionId(null)
     setEngineSessionPersisted(false)
     setEnginePreviewItems([])
+    setEngineBoardItemsLoadedBySession({})
+    setEngineSessionEmptyOnLoadById({})
     setEnginePreviewError(null)
     setEngineSessionDetail(null)
     setEngineSessionsError(null)
@@ -5650,16 +5674,30 @@ const isMissingLabel = (item: EngineBoardItem) => {
     [uiLanguage]
   )
 
+  const activeEngineSessionId = enginePreviewSessionId
+  const engineBoardItemsLoaded = Boolean(
+    activeEngineSessionId && engineBoardItemsLoadedBySession[activeEngineSessionId]
+  )
+  const engineSessionEmptyOnOpen = Boolean(
+    activeEngineSessionId && engineSessionEmptyOnLoadById[activeEngineSessionId]
+  )
+  // Facilitation wrapper should only show for the first question in a session that opened with no items.
+  const showFirstQuestionWrapper =
+    Boolean(activeEngineSessionId) &&
+    engineBoardItemsLoaded &&
+    engineSessionEmptyOnOpen &&
+    engineAskedQuestionTexts.length === 1
+
   useEffect(() => {
-    if (engineAskedQuestionTexts.length === 0) {
+    if (!showFirstQuestionWrapper) {
       facilitationIntroRef.current = null
       return
     }
-    if (!facilitationIntroRef.current && engineAskedQuestionTexts.length === 1) {
+    if (!facilitationIntroRef.current) {
       const pick = facilitationIntros[Math.floor(Math.random() * facilitationIntros.length)]
       facilitationIntroRef.current = pick || facilitationIntros[0] || null
     }
-  }, [engineAskedQuestionTexts.length, facilitationIntros])
+  }, [showFirstQuestionWrapper, facilitationIntros])
 
   const engineUnassignedItems = useMemo(
     () => enginePreviewItems.filter((item) => !item.matrix_row || !item.matrix_col),
@@ -6516,6 +6554,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineSessionsError(null)
     setEngineEditItemId(null)
     setEngineEditText('')
+    setEngineBoardItemsLoadedBySession((prev) => ({ ...prev, [sessionId]: false }))
+    setEngineSessionEmptyOnLoadById((prev) => ({ ...prev, [sessionId]: false }))
     try {
       if (authSession?.user?.id && client) {
         // IMPORTANT: boardItems in user_sessions.payload are legacy only.
@@ -6788,6 +6828,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
         setEnginePreviewSessionName(sessionSummary.name ?? '')
         setEngineSessionPersisted(true)
         setEnginePreviewItems(normalizedItems)
+        setEngineBoardItemsLoadedBySession((prev) => ({
+          ...prev,
+          [sessionSummary.id]: true,
+        }))
+        setEngineSessionEmptyOnLoadById((prev) => ({
+          ...prev,
+          [sessionSummary.id]: normalizedItems.length === 0,
+        }))
         syncEngineLabelCache(normalizedItems)
         setEnginePreviewInput('')
         setEnginePreviewError(null)
@@ -6877,6 +6925,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
       setEnginePreviewSessionName(data.session?.name ?? '')
       setEngineSessionPersisted(false)
       setEnginePreviewItems(normalizedItems)
+      if (data.session?.id) {
+        setEngineBoardItemsLoadedBySession((prev) => ({
+          ...prev,
+          [data.session!.id]: true,
+        }))
+        setEngineSessionEmptyOnLoadById((prev) => ({
+          ...prev,
+          [data.session!.id]: normalizedItems.length === 0,
+        }))
+      }
       syncEngineLabelCache(normalizedItems)
       setEnginePreviewInput('')
       setEnginePreviewError(null)
@@ -8356,7 +8414,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                         </span>
                       ) : (
                         <>
-                          {engineAskedQuestionTexts.length === 1 && facilitationIntroRef.current ? (
+                          {showFirstQuestionWrapper && facilitationIntroRef.current ? (
                             <div className="engine-facilitation-intro">
                               {facilitationIntroRef.current}
                             </div>
