@@ -9,15 +9,6 @@ const parseNumber = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-const getSupabaseAnon = () => {
-  const url = process.env.SUPABASE_URL || ''
-  const key = process.env.SUPABASE_ANON_KEY || ''
-  if (!url || !key) {
-    throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY')
-  }
-  return createClient(url, key, { auth: { persistSession: false } })
-}
-
 const resolveBackendSupabaseHost = () => {
   try {
     const url = process.env.SUPABASE_URL
@@ -62,26 +53,58 @@ const readBearerToken = (req) => {
 const requireAuthUser = async (req, res) => {
   const token = readBearerToken(req)
   if (!token) {
-    res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
+    res.status(401).json({ ok: false, error: 'UNAUTHORIZED', reason: 'NO_TOKEN' })
     return null
   }
   console.log('auth_check', { hasAuthHeader: Boolean(token), tokenLen: token.length })
-  const supabase = getSupabaseAnon()
-  const { data, error } = await supabase.auth.getUser(token)
-  if (error) {
+
+  const supabaseUrl = process.env.SUPABASE_URL || ''
+  const anonKey = process.env.SUPABASE_ANON_KEY || ''
+  if (!supabaseUrl || !anonKey) {
+    res.status(500).json({ ok: false, error: 'MISSING_SUPABASE_ENV' })
+    return null
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: anonKey,
+      },
+    })
+    if (!response.ok) {
+      const text = await response.text().catch(() => '')
+      res.status(401).json({
+        ok: false,
+        error: 'UNAUTHORIZED',
+        reason: 'INVALID_TOKEN',
+        details: text || String(response.status),
+      })
+      return null
+    }
+    const payload = await response.json().catch(() => null)
+    const userId = payload?.id ?? payload?.user?.id ?? null
+    const email = payload?.email ?? payload?.user?.email ?? null
+    if (!userId) {
+      res.status(401).json({
+        ok: false,
+        error: 'UNAUTHORIZED',
+        reason: 'INVALID_TOKEN',
+        details: 'missing_user_id',
+      })
+      return null
+    }
+    return { id: userId, email }
+  } catch (error) {
     res.status(401).json({
       ok: false,
       error: 'UNAUTHORIZED',
       reason: 'INVALID_TOKEN',
-      details: error.message,
+      details: error?.message || 'fetch_failed',
     })
     return null
   }
-  if (!data?.user?.id) {
-    res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
-    return null
-  }
-  return data.user
 }
 
 const requireAdmin = async (req, res) => {
@@ -201,7 +224,7 @@ export const handleAdminDebug = async (req, res) => {
     },
     backendSupabaseHost: resolveBackendSupabaseHost(),
     env: resolveEnvDebug(),
-    authPath: 'getUser(token)',
+    authPath: 'rest: /auth/v1/user',
     getUser: { ok: false },
     adminCheck: { ok: false },
   }
@@ -301,16 +324,24 @@ export const handleAdminAuthProbe = async (req, res) => {
       },
     })
     const status = response.status
-    const payload = await response.json().catch(() => null)
-    const userId = payload?.id ?? payload?.user?.id ?? null
-    const email = payload?.email ?? payload?.user?.email ?? null
+    const bodyText = await response.text()
+    let parsed = null
+    try {
+      parsed = bodyText ? JSON.parse(bodyText) : null
+    } catch {
+      parsed = null
+    }
+    const userId = parsed?.id ?? parsed?.user?.id ?? null
+    const email = parsed?.email ?? parsed?.user?.email ?? null
     res.status(200).json({
       ok: true,
       tokenLen: token.length,
       rest: {
         ok: response.ok,
         status,
-        error: response.ok ? null : payload?.error_description || payload?.message || null,
+        error: response.ok
+          ? null
+          : parsed?.error_description || parsed?.message || bodyText || null,
         userId,
         email,
       },
