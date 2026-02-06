@@ -51,10 +51,20 @@ export const createSupabaseServerClient = (req, res) => {
     throw new Error('Missing Supabase env vars for server.')
   }
 
+  const authHeader =
+    req?.headers?.authorization ||
+    req?.headers?.Authorization ||
+    (typeof req?.headers?.get === 'function' ? req.headers.get('authorization') : '') ||
+    ''
+  const hasBearer = typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
+
   const cookieHeader = req?.headers?.cookie || ''
   const cookies = parseCookies(cookieHeader)
 
   return createServerClient(supabaseUrl, supabaseAnonKey, {
+    global: {
+      headers: hasBearer ? { Authorization: authHeader } : {},
+    },
     cookies: {
       get: (name) => cookies[name],
       set: (name, value, options) => {

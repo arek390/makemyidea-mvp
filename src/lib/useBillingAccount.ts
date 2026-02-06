@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { apiFetch } from './apiFetch'
 
 type BillingAccountState = {
   balancePLN: number
@@ -35,7 +36,7 @@ export const useBillingAccount = (
     setState((prev) => ({ ...prev, loading: true, error: null }))
 
     const run = async () => {
-      const response = await fetch('/api/billing?action=balance', { method: 'GET' })
+      const response = await apiFetch('/api/billing?action=balance', { method: 'GET' })
       const payload = await response.json().catch(() => null)
 
       if (cancelled) return

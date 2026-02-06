@@ -9,6 +9,10 @@ const handleBalance = async (req, res) => {
   }
   try {
     const supabase = createSupabaseServerClient(req, res)
+    if (process.env.NODE_ENV !== 'production') {
+      const authHeader = req?.headers?.authorization || req?.headers?.Authorization || ''
+      console.log('[billing] auth header present', Boolean(authHeader))
+    }
     const { data, error } = await supabase.auth.getUser()
     if (error || !data?.user) {
       res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
