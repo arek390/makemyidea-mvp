@@ -1,6 +1,66 @@
 export type Database = {
   public: {
     Tables: {
+      billing_accounts: {
+        Row: {
+          user_id: string
+          balance_pln: number | string | null
+          total_paid_pln: number | string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          user_id: string
+          balance_pln?: number | string | null
+          total_paid_pln?: number | string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          user_id?: string
+          balance_pln?: number | string | null
+          total_paid_pln?: number | string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      billing_balance_adjustments: {
+        Row: {
+          id: string
+          admin_user_id: string
+          target_user_id: string
+          delta_pln: number | string
+          balance_before: number | string
+          balance_after: number | string
+          created_at: string
+          note: string | null
+          request_id: string | null
+        }
+        Insert: {
+          id?: string
+          admin_user_id: string
+          target_user_id: string
+          delta_pln: number | string
+          balance_before: number | string
+          balance_after: number | string
+          created_at?: string
+          note?: string | null
+          request_id?: string | null
+        }
+        Update: {
+          id?: string
+          admin_user_id?: string
+          target_user_id?: string
+          delta_pln?: number | string
+          balance_before?: number | string
+          balance_after?: number | string
+          created_at?: string
+          note?: string | null
+          request_id?: string | null
+        }
+        Relationships: []
+      }
       sessions: {
         Row: {
           id: string

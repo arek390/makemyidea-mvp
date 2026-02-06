@@ -2436,6 +2436,43 @@ details.report-section > summary {
   margin-left: auto;
 }
 
+.engine-header-balance {
+  position: absolute;
+  left: 120px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.engine-balance {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.8);
+  color: var(--navy);
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.engine-balance--loading {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.engine-balance:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.engine-balance-icon {
+  font-size: 0.95rem;
+}
+
 .engine-notice {
   padding: 0.3rem 0.8rem;
   border-radius: 999px;
@@ -3794,6 +3831,16 @@ button.ghost.danger:hover {
   background: #fbfbfa;
 }
 
+.admin-section {
+  margin-top: 28px;
+}
+
+.admin-notice {
+  color: #0f5132;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
 .admin-session-name {
   font-weight: 600;
   color: #1f2326;
@@ -3816,6 +3863,21 @@ button.ghost.danger:hover {
   color: #b42318;
   font-weight: 600;
   margin-bottom: 12px;
+}
+
+.admin-topup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.admin-topup input {
+  width: 140px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(31, 35, 38, 0.16);
+  font-size: 0.9rem;
 }
 
 @media (max-width: 720px) {

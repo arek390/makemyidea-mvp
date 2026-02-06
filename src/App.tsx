@@ -47,6 +47,7 @@ import {
 import type { Database } from './lib/supabase/types'
 import { getSupabaseInitError, supabase as client, supabaseEnvDiag } from './lib/supabase/client'
 import { saveSessionToCloud } from './lib/cloudSessions'
+import { useBillingAccount } from './lib/useBillingAccount'
 import {
   clearGuestMode,
   clearGuestSessions,
@@ -2063,6 +2064,7 @@ function App() {
     if (Date.now() - cached.updatedAt > FX_CACHE_TTL_MS) return null
     return cached.rate
   })
+  const [balanceCurrency, setBalanceCurrency] = useState<'PLN' | 'USD'>('PLN')
   const [lastLlmSource, setLastLlmSource] = useState<'llm' | 'fallback' | null>(null)
   const [lastLlmWhy, setLastLlmWhy] = useState<string | null>(null)
   const [llmPingResult, setLlmPingResult] = useState<{
@@ -2646,6 +2648,9 @@ const isAuthFlowInProgress = () => {
   const isProtectedRoute = normalizedPath.startsWith('/app')
   const supabaseInitError = getSupabaseInitError()
   const showSupabaseConfigError = Boolean(supabaseInitError)
+  const billingAccount = useBillingAccount(authSession?.user?.id ?? null, {
+    enabled: isEnginePreview,
+  })
 
   useEffect(() => {
     if (!isEnginePreview) return
@@ -2970,6 +2975,12 @@ const isAuthFlowInProgress = () => {
       clearGuestSessions()
     }
   }, [authSession])
+
+  useEffect(() => {
+    if (!authSession?.user?.id) {
+      setBalanceCurrency('PLN')
+    }
+  }, [authSession?.user?.id])
 
   const handleGoogleLogin = async () => {
     if (!client) {
@@ -7639,6 +7650,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
     new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
       Math.max(0, value || 0)
     )
+  const formatUsdBalance = (value: number) =>
+    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+      Math.max(0, value || 0)
+    )
+  const formatPlnBalance = (value: number) =>
+    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+      Math.max(0, value || 0)
+    )
   const totalCostUsd = engineUsage.totalUSD
   const totalCostPln = usdPlnRate ? totalCostUsd * usdPlnRate : null
   const modelUsageEntries = Object.entries(engineUsage.perModel)
@@ -7653,6 +7672,40 @@ const isMissingLabel = (item: EngineBoardItem) => {
               <img src={landingLogoUrl} alt="MakeMyIdea.Work" />
             </div>
           </div>
+          {isAuthed && (
+            <div className="engine-header-balance" aria-live="polite">
+              <div
+                className={`engine-balance${
+                  billingAccount.loading || billingAccount.error ? ' engine-balance--loading' : ''
+                }`}
+                role="button"
+                tabIndex={0}
+                title="Toggle currency"
+                onClick={() => {
+                  setBalanceCurrency((prev) => (prev === 'PLN' ? 'USD' : 'PLN'))
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    setBalanceCurrency((prev) => (prev === 'PLN' ? 'USD' : 'PLN'))
+                  }
+                }}
+              >
+                <span className="engine-balance-icon" aria-hidden="true">
+                  💰
+                </span>
+                <span className="engine-balance-value">
+                  {billingAccount.loading || billingAccount.error
+                    ? '—'
+                    : balanceCurrency === 'USD'
+                      ? usdPlnRate
+                        ? `${formatUsdBalance(billingAccount.balancePLN / usdPlnRate)} USD`
+                        : 'USD: …'
+                      : `${formatPlnBalance(billingAccount.balancePLN)} PLN`}
+                </span>
+              </div>
+            </div>
+          )}
           <div className="engine-header-actions">
             <button
               className="secondary"

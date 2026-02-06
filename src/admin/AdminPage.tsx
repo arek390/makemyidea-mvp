@@ -17,6 +17,12 @@ type AdminRow = {
   total_paid_pln: number | null
 }
 
+type BillingRow = {
+  user_id: string
+  email: string | null
+  balance_pln: number | null
+}
+
 type AdminPageProps = {
   authLoading: boolean
 }
@@ -55,6 +61,13 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  const [billingSearch, setBillingSearch] = useState('')
+  const [billingRows, setBillingRows] = useState<BillingRow[]>([])
+  const [billingLoading, setBillingLoading] = useState(false)
+  const [billingError, setBillingError] = useState<string | null>(null)
+  const [billingNotice, setBillingNotice] = useState<string | null>(null)
+  const [billingInputs, setBillingInputs] = useState<Record<string, string>>({})
+  const [billingBusy, setBillingBusy] = useState<Record<string, boolean>>({})
   const [sortKey, setSortKey] = useState<'session_created_at' | 'cost_pln' | 'tokens_total'>(
     'session_created_at'
   )
@@ -133,6 +146,44 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
     }
   }, [isAdmin])
 
+  useEffect(() => {
+    if (!isAdmin) return
+    let cancelled = false
+    const load = async () => {
+      setBillingLoading(true)
+      setBillingError(null)
+      try {
+        if (!supabase) throw new Error('AUTH_REQUIRED')
+        const { data } = await supabase.auth.getSession()
+        const token = data.session?.access_token || ''
+        if (!token) throw new Error('AUTH_REQUIRED')
+        const response = await fetch('/api/admin/billing/list?limit=500&offset=0', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok || !payload?.ok) {
+          throw new Error(payload?.error || 'LOAD_FAILED')
+        }
+        if (!cancelled) {
+          setBillingRows(Array.isArray(payload.items) ? payload.items : [])
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : 'LOAD_FAILED'
+          setBillingError(
+            message === 'AUTH_REQUIRED' ? 'Brak sesji. Zaloguj się ponownie.' : message
+          )
+        }
+      } finally {
+        if (!cancelled) setBillingLoading(false)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [isAdmin])
+
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase()
     if (!query) return rows
@@ -158,6 +209,65 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
     })
     return sorted
   }, [filteredRows, sortKey, sortDir])
+
+  const filteredBillingRows = useMemo(() => {
+    const query = billingSearch.trim().toLowerCase()
+    if (!query) return billingRows
+    return billingRows.filter((row) => String(row.email || '').toLowerCase().includes(query))
+  }, [billingRows, billingSearch])
+
+  const handleTopup = async (row: BillingRow) => {
+    const raw = billingInputs[row.user_id] || ''
+    const delta = Number(raw)
+    setBillingNotice(null)
+    setBillingError(null)
+    if (!Number.isFinite(delta) || delta <= 0) {
+      setBillingError('Podaj dodatnią kwotę.')
+      return
+    }
+    if (!supabase) {
+      setBillingError('Brak sesji. Zaloguj się ponownie.')
+      return
+    }
+    setBillingBusy((prev) => ({ ...prev, [row.user_id]: true }))
+    try {
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token || ''
+      if (!token) throw new Error('AUTH_REQUIRED')
+      const response = await fetch('/api/admin/billing/topup', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          targetUserId: row.user_id,
+          deltaPLN: delta,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || 'TOPUP_FAILED')
+      }
+      const balanceAfter = Number(payload.balanceAfter ?? 0)
+      setBillingRows((prev) =>
+        prev.map((item) =>
+          item.user_id === row.user_id ? { ...item, balance_pln: balanceAfter } : item
+        )
+      )
+      setBillingInputs((prev) => ({ ...prev, [row.user_id]: '' }))
+      setBillingNotice(
+        `Zasilono: +${delta.toFixed(2)} PLN → saldo ${balanceAfter.toFixed(2)} PLN`
+      )
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'TOPUP_FAILED'
+      setBillingError(
+        message === 'AUTH_REQUIRED' ? 'Brak sesji. Zaloguj się ponownie.' : message
+      )
+    } finally {
+      setBillingBusy((prev) => ({ ...prev, [row.user_id]: false }))
+    }
+  }
 
   if (authLoading || adminLoading) {
     return (
@@ -275,6 +385,89 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
             </table>
           </div>
         )}
+
+        <div className="admin-section">
+          <header className="admin-header">
+            <div>
+              <h1>Billing / Saldo</h1>
+              <p className="muted">Zasilenie kont użytkowników (admin-only)</p>
+            </div>
+            <div className="admin-controls">
+              <input
+                type="search"
+                placeholder="Szukaj po emailu"
+                value={billingSearch}
+                onChange={(event) => setBillingSearch(event.target.value)}
+              />
+            </div>
+          </header>
+
+          {billingNotice && <p className="admin-notice">{billingNotice}</p>}
+          {billingError && <p className="admin-error">{billingError}</p>}
+          {billingLoading && <p className="muted">Loading billing...</p>}
+
+          {!billingLoading && (
+            <div className="admin-table-wrap">
+              <table className="admin-table admin-table--billing">
+                <thead>
+                  <tr>
+                    <th>Email</th>
+                    <th>Balance PLN</th>
+                    <th>Zasil</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredBillingRows.length === 0 && (
+                    <tr>
+                      <td colSpan={3} className="admin-empty">
+                        Brak danych
+                      </td>
+                    </tr>
+                  )}
+                  {filteredBillingRows.map((row) => (
+                    <tr key={row.user_id}>
+                      <td>{row.email || '—'}</td>
+                      <td>{formatMoney(row.balance_pln, 'PLN')}</td>
+                      <td>
+                        <div className="admin-topup">
+                          <input
+                            type="number"
+                            inputMode="decimal"
+                            min="0"
+                            step="0.01"
+                            placeholder="Kwota PLN"
+                            value={billingInputs[row.user_id] ?? ''}
+                            onChange={(event) =>
+                              setBillingInputs((prev) => ({
+                                ...prev,
+                                [row.user_id]: event.target.value,
+                              }))
+                            }
+                          />
+                          <button
+                            type="button"
+                            className="secondary"
+                            disabled={billingBusy[row.user_id] === true}
+                            onClick={() => handleTopup(row)}
+                          >
+                            {billingBusy[row.user_id] ? '...' : 'Zasil'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Manual test checklist:
+            1) Zaloguj jako arektest8@gmail.com → widzisz tabelę Billing.
+            2) Zaloguj jako zwykły user → nie widzisz tabeli, endpointy zwracają 403.
+            3) Zasil +20 → saldo rośnie, audyt zapisany.
+            4) Refresh → saldo nadal poprawne.
+            5) Próba delta<=0 → 400. */}
       </div>
     </div>
   )
