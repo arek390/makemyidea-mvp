@@ -26,7 +26,8 @@ export const useBillingAccount = (
 
   useEffect(() => {
     let cancelled = false
-    if (!enabled || !userId || !client) {
+    const supabase = client
+    if (!enabled || !userId || !supabase) {
       setState(defaultState)
       return () => {
         cancelled = true
@@ -36,7 +37,7 @@ export const useBillingAccount = (
     setState((prev) => ({ ...prev, loading: true, error: null }))
 
     const run = async () => {
-      const { data, error } = await client
+      const { data, error } = await supabase
         .from('billing_accounts')
         .select('balance_pln')
         .eq('user_id', userId)
