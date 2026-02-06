@@ -64,6 +64,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       isPl
         ? `User ID: ${userId || '—'} | Email: ${email || '—'}`
         : `User ID: ${userId || '—'} | Email: ${email || '—'}`,
+    adminCopyUserId: isPl ? 'Skopiuj User ID' : 'Copy User ID',
     billingTitle: isPl ? 'Zasilenie kont użytkowników (admin-only)' : 'User account top-ups (admin-only)',
     billingSearchPlaceholder: isPl
       ? 'Szukaj po session_name lub session_id'
@@ -507,6 +508,18 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
               adminIdentity?.email ?? authEmail
             )}
           </p>
+          <button
+            type="button"
+            className="ghost"
+            disabled={!adminIdentity?.userId && !authUserId}
+            onClick={() => {
+              const value = adminIdentity?.userId ?? authUserId
+              if (!value) return
+              void navigator.clipboard.writeText(value)
+            }}
+          >
+            {t.adminCopyUserId}
+          </button>
             </div>
             <div className="admin-controls">
             <input
