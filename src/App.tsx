@@ -1865,7 +1865,13 @@ const IconElement = () => (
   </svg>
 )
 
-function DebugMatrixPage({ llmApiBase }: { llmApiBase: string }) {
+function DebugMatrixPage({
+  llmApiBase,
+  uiLanguage,
+}: {
+  llmApiBase: string
+  uiLanguage: Language
+}) {
   const params =
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const sessionId = params ? params.get('sessionId') : null
@@ -5698,7 +5704,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         const codeLabel = (error as { code?: string | null })?.code ?? 'n/a'
         const message = ((error as { message?: string | null })?.message || '').slice(0, 120)
         showEngineNotice(
-          notices.addEntryFailedDetail(statusLabel, codeLabel, message || null),
+          notices.addEntryFailedDetail(String(statusLabel), String(codeLabel), message || null),
           'error'
         )
         return
@@ -6372,7 +6378,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           console.log('[cloud save]', { status, message: (error as Error).message })
         }
         console.error('[cloud save] failed', { status, error })
-        showEngineNotice(notices.saveToCloudFailed(status ?? 'err'), 'error')
+        showEngineNotice(notices.saveToCloudFailed(String(status ?? 'err')), 'error')
         return false
       }
       if (!silentSuccess) {
@@ -7444,7 +7450,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
   )
 
   if (isDebugMatrix) {
-    return withDevOverlay(<DebugMatrixPage llmApiBase={llmApiBase} />)
+    return withDevOverlay(<DebugMatrixPage llmApiBase={llmApiBase} uiLanguage={uiLanguage} />)
   }
 
   if (isAuthCallback) {
