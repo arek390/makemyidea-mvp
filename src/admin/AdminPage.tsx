@@ -69,6 +69,8 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     adminAccessDeniedBody: isPl
       ? 'Nie masz dostępu do panelu admina. Skopiuj swój User ID i dodaj go do tabeli admin_users.'
       : 'You do not have access to the admin panel. Copy your User ID and add it to the admin_users table.',
+    adminDebugAccess: isPl ? 'Debug access' : 'Debug access',
+    adminDebugError: isPl ? 'Nie udało się pobrać debug.' : 'Failed to fetch debug.',
     billingTitle: isPl ? 'Zasilenie kont użytkowników (admin-only)' : 'User account top-ups (admin-only)',
     billingSearchPlaceholder: isPl
       ? 'Szukaj po session_name lub session_id'
@@ -126,6 +128,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
   const [billingNotice, setBillingNotice] = useState<string | null>(null)
   const [billingInputs, setBillingInputs] = useState<Record<string, string>>({})
   const [billingBusy, setBillingBusy] = useState<Record<string, boolean>>({})
+  const [debugPayload, setDebugPayload] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<'session_created_at' | 'cost_pln' | 'tokens_total'>(
     'session_created_at'
   )
@@ -417,6 +420,29 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     }
   }
 
+  const handleDebugAccess = async () => {
+    setDebugPayload(null)
+    try {
+      if (!supabase) throw new Error('AUTH_REQUIRED')
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token || ''
+      if (!token) throw new Error('AUTH_REQUIRED')
+      const response = await fetch('/api/admin?action=admin.debug', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok && !payload) {
+        throw new Error(t.adminDebugError)
+      }
+      setDebugPayload(JSON.stringify(payload, null, 2))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t.adminDebugError
+      setDebugPayload(
+        JSON.stringify({ ok: false, error: message }, null, 2)
+      )
+    }
+  }
+
   if (authLoading || adminLoading) {
     return (
       <div className="app admin-page">
@@ -462,6 +488,12 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
           >
             {t.adminCopyUserId}
           </button>
+          <button type="button" className="ghost" onClick={handleDebugAccess}>
+            {t.adminDebugAccess}
+          </button>
+          {debugPayload && (
+            <pre className="admin-debug">{debugPayload}</pre>
+          )}
         </div>
       </div>
     )
@@ -588,6 +620,9 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
           </button>
             </div>
             <div className="admin-controls">
+            <button type="button" className="ghost" onClick={handleDebugAccess}>
+              {t.adminDebugAccess}
+            </button>
             <input
               type="search"
               placeholder={t.billingEmailSearchPlaceholder}
@@ -596,6 +631,10 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
               />
             </div>
           </header>
+
+          {debugPayload && (
+            <pre className="admin-debug">{debugPayload}</pre>
+          )}
 
           {billingNotice && <p className="admin-notice">{billingNotice}</p>}
           {billingError && <p className="admin-error">{billingError}</p>}

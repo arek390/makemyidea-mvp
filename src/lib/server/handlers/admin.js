@@ -98,6 +98,24 @@ export const handleAdminWhoAmI = async (req, res) => {
   }
 }
 
+const parseAuthHeader = (req) => {
+  const auth = String(req?.headers?.authorization || '')
+  const startsWithBearer = auth.startsWith('Bearer ')
+  const token = startsWithBearer ? auth.slice(7) : ''
+  return {
+    auth,
+    token,
+    present: Boolean(auth),
+    startsWithBearer,
+  }
+}
+
+const getRequestOrigin = (req) => {
+  const originHeader = req?.headers?.origin
+  if (typeof originHeader === 'string') return originHeader
+  return null
+}
+
 export const handleAdminCheck = async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.status(204).end()
@@ -126,6 +144,85 @@ export const handleAdminCheck = async (req, res) => {
   } catch (error) {
     res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
   }
+}
+
+export const handleAdminDebug = async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.status(204).end()
+    return
+  }
+  if (req.method !== 'GET') {
+    res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['GET'] })
+    return
+  }
+
+  const { auth, token, present, startsWithBearer } = parseAuthHeader(req)
+  const debug = {
+    request: {
+      method: req.method,
+      url: req.url || null,
+      host: req.headers?.host || null,
+      origin: getRequestOrigin(req),
+    },
+    authHeader: {
+      present,
+      startsWithBearer,
+      tokenLen: token.length,
+    },
+    backendSupabaseHost: resolveBackendSupabaseHost(),
+    getUser: { ok: false },
+    adminCheck: { ok: false },
+  }
+
+  if (!token) {
+    res.status(401).json({
+      ok: false,
+      error: 'UNAUTHORIZED',
+      debug,
+    })
+    return
+  }
+
+  try {
+    const supabase = getSupabaseAnon()
+    const { data, error } = await supabase.auth.getUser(token)
+    if (error) {
+      debug.getUser = { ok: false, error: error.message }
+    } else if (data?.user?.id) {
+      debug.getUser = {
+        ok: true,
+        userId: data.user.id,
+        email: data.user.email ?? null,
+      }
+      const supabaseAdmin = getSupabaseAdmin()
+      const adminCheck = await supabaseAdmin
+        .schema('public')
+        .from('admin_users')
+        .select('user_id')
+        .eq('user_id', data.user.id)
+        .limit(1)
+        .maybeSingle()
+      if (adminCheck.error) {
+        debug.adminCheck = {
+          ok: false,
+          userId: data.user.id,
+          error: adminCheck.error.message || 'QUERY_FAILED',
+        }
+      } else {
+        const adminRowFound = Boolean(adminCheck.data?.user_id)
+        debug.adminCheck = {
+          ok: true,
+          userId: data.user.id,
+          isAdmin: adminRowFound,
+          adminRowFound,
+        }
+      }
+    }
+  } catch (error) {
+    debug.getUser = { ok: false, error: error?.message || 'UNKNOWN_ERROR' }
+  }
+
+  res.status(200).json({ ok: true, debug })
 }
 
 export const handleAdminBillingList = async (req, res) => {
