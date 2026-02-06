@@ -18,9 +18,9 @@ type AdminRow = {
 }
 
 type BillingRow = {
-  user_id: string
+  userId: string
   email: string | null
-  balance_pln: number | null
+  balancePLN: number | null
 }
 
 type AdminPageProps = {
@@ -162,7 +162,9 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
         })
         const payload = await response.json().catch(() => null)
         if (!response.ok || !payload?.ok) {
-          throw new Error(payload?.error || 'LOAD_FAILED')
+          const errorMessage =
+            payload?.error?.message || payload?.error || 'LOAD_FAILED'
+          throw new Error(errorMessage)
         }
         if (!cancelled) {
           setBillingRows(Array.isArray(payload.items) ? payload.items : [])
@@ -217,7 +219,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
   }, [billingRows, billingSearch])
 
   const handleTopup = async (row: BillingRow) => {
-    const raw = billingInputs[row.user_id] || ''
+    const raw = billingInputs[row.userId] || ''
     const delta = Number(raw)
     setBillingNotice(null)
     setBillingError(null)
@@ -229,7 +231,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       setBillingError('Brak sesji. Zaloguj się ponownie.')
       return
     }
-    setBillingBusy((prev) => ({ ...prev, [row.user_id]: true }))
+    setBillingBusy((prev) => ({ ...prev, [row.userId]: true }))
     try {
       const { data } = await supabase.auth.getSession()
       const token = data.session?.access_token || ''
@@ -241,21 +243,23 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          targetUserId: row.user_id,
+          targetUserId: row.userId,
           deltaPLN: delta,
         }),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.ok) {
-        throw new Error(payload?.error || 'TOPUP_FAILED')
+        const errorMessage =
+          payload?.error?.message || payload?.error || 'TOPUP_FAILED'
+        throw new Error(errorMessage)
       }
       const balanceAfter = Number(payload.balanceAfter ?? 0)
       setBillingRows((prev) =>
         prev.map((item) =>
-          item.user_id === row.user_id ? { ...item, balance_pln: balanceAfter } : item
+          item.userId === row.userId ? { ...item, balancePLN: balanceAfter } : item
         )
       )
-      setBillingInputs((prev) => ({ ...prev, [row.user_id]: '' }))
+      setBillingInputs((prev) => ({ ...prev, [row.userId]: '' }))
       setBillingNotice(
         `Zasilono: +${delta.toFixed(2)} PLN → saldo ${balanceAfter.toFixed(2)} PLN`
       )
@@ -265,7 +269,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
         message === 'AUTH_REQUIRED' ? 'Brak sesji. Zaloguj się ponownie.' : message
       )
     } finally {
-      setBillingBusy((prev) => ({ ...prev, [row.user_id]: false }))
+      setBillingBusy((prev) => ({ ...prev, [row.userId]: false }))
     }
   }
 
@@ -425,9 +429,9 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
                     </tr>
                   )}
                   {filteredBillingRows.map((row) => (
-                    <tr key={row.user_id}>
+                    <tr key={row.userId}>
                       <td>{row.email || '—'}</td>
-                      <td>{formatMoney(row.balance_pln, 'PLN')}</td>
+                      <td>{formatMoney(row.balancePLN, 'PLN')}</td>
                       <td>
                         <div className="admin-topup">
                           <input
@@ -436,21 +440,21 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
                             min="0"
                             step="0.01"
                             placeholder="Kwota PLN"
-                            value={billingInputs[row.user_id] ?? ''}
+                            value={billingInputs[row.userId] ?? ''}
                             onChange={(event) =>
                               setBillingInputs((prev) => ({
                                 ...prev,
-                                [row.user_id]: event.target.value,
+                                [row.userId]: event.target.value,
                               }))
                             }
                           />
                           <button
                             type="button"
                             className="secondary"
-                            disabled={billingBusy[row.user_id] === true}
+                            disabled={billingBusy[row.userId] === true}
                             onClick={() => handleTopup(row)}
                           >
-                            {billingBusy[row.user_id] ? '...' : 'Zasil'}
+                            {billingBusy[row.userId] ? '...' : 'Zasil'}
                           </button>
                         </div>
                       </td>

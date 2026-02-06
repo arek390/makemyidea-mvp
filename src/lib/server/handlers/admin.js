@@ -45,23 +45,26 @@ export const handleAdminBillingList = async (req, res) => {
     const offsetRaw = parseNumber(req.query?.offset, 0)
     const limit = Math.min(Math.max(limitRaw, 1), 500)
     const offset = Math.max(offsetRaw, 0)
-    const to = offset + limit - 1
 
     const supabaseAdmin = getSupabaseAdmin()
-    const usersRes = await supabaseAdmin
-      .schema('auth')
-      .from('users')
-      .select('id, email, created_at')
-      .order('created_at', { ascending: false })
-      .range(offset, to)
+    const offsetRemainder = offset % limit
+    const perPage = Math.min(500, limit + offsetRemainder)
+    const page = Math.floor(offset / limit) + 1
+
+    const usersRes = await supabaseAdmin.auth.admin.listUsers({
+      page,
+      perPage,
+    })
 
     if (usersRes.error) {
-      res.status(500).json({ ok: false, error: 'QUERY_FAILED' })
+      console.error('[admin][billing_list] listUsers failed', usersRes.error)
+      res.status(500).json({ ok: false, error: usersRes.error.message || 'LIST_USERS_FAILED' })
       return
     }
 
-    const users = usersRes.data || []
-    const userIds = users.map((row) => row.id).filter(Boolean)
+    const users = usersRes.data?.users || []
+    const pagedUsers = offsetRemainder ? users.slice(offsetRemainder) : users
+    const userIds = pagedUsers.map((row) => row.id).filter(Boolean)
     let balances = []
 
     if (userIds.length) {
@@ -70,7 +73,8 @@ export const handleAdminBillingList = async (req, res) => {
         .select('user_id, balance_pln')
         .in('user_id', userIds)
       if (balanceRes.error) {
-        res.status(500).json({ ok: false, error: 'QUERY_FAILED' })
+        console.error('[admin][billing_list] billing_accounts failed', balanceRes.error)
+        res.status(500).json({ ok: false, error: balanceRes.error.message || 'QUERY_FAILED' })
         return
       }
       balances = balanceRes.data || []
@@ -80,15 +84,19 @@ export const handleAdminBillingList = async (req, res) => {
       balances.map((row) => [String(row.user_id), Number(row.balance_pln ?? 0)])
     )
 
-    const items = users.map((row) => ({
-      user_id: row.id,
-      email: row.email,
-      balance_pln: balanceByUser.get(String(row.id)) ?? 0,
+    const items = pagedUsers.slice(0, limit).map((row) => ({
+      userId: row.id,
+      email: row.email || null,
+      balancePLN: balanceByUser.get(String(row.id)) ?? 0,
     }))
 
     res.status(200).json({ ok: true, items })
   } catch (error) {
-    res.status(500).json({ ok: false, error: 'SERVER_ERROR' })
+    console.error('[admin][billing_list] unhandled', error)
+    res.status(500).json({
+      ok: false,
+      error: error?.message || 'SERVER_ERROR',
+    })
   }
 }
 
