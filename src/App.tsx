@@ -3054,7 +3054,12 @@ const isAuthFlowInProgress = () => {
           return
         }
         clearAuthRedirect()
-        const nextRaw = readPostAuthNext()
+        const nextParam = normalizeNextPath(
+          typeof window !== 'undefined'
+            ? new URLSearchParams(window.location.search).get('next')
+            : null
+        )
+        const nextRaw = nextParam || readPostAuthNext()
         const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
         const lang = readPostAuthLang()
         if (lang) {
@@ -3123,7 +3128,7 @@ const isAuthFlowInProgress = () => {
     setAuthError(null)
     setLoginNotice(null)
     setLoginOauthLoading(true)
-    const redirectTo = getOAuthRedirectTo()
+    const redirectTo = `${getOAuthRedirectTo()}?next=/admin`
     const next =
       typeof window !== 'undefined'
         ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))

@@ -27,6 +27,29 @@ const resolveEnvDebug = () => ({
   commit: process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT || null,
 })
 
+const decodeJwtPayload = (token) => {
+  try {
+    const parts = token.split('.')
+    if (parts.length < 2) return null
+    const payload = parts[1]
+    const padded = payload.replace(/-/g, '+').replace(/_/g, '/')
+    const padLength = padded.length % 4
+    const normalized = padLength === 0 ? padded : padded + '='.repeat(4 - padLength)
+    const decoded = Buffer.from(normalized, 'base64').toString('utf-8')
+    const json = JSON.parse(decoded)
+    return {
+      iss: json.iss ?? null,
+      sub: json.sub ?? null,
+      exp: json.exp ?? null,
+      iat: json.iat ?? null,
+      session_id: json.session_id ?? json.sid ?? null,
+      aud: json.aud ?? null,
+    }
+  } catch {
+    return null
+  }
+}
+
 const readAuthorizationHeader = (req) => {
   const direct = req?.headers?.authorization
   if (typeof direct === 'string') return direct
@@ -210,6 +233,9 @@ export const handleAdminDebug = async (req, res) => {
   }
 
   const { auth, token, present, startsWithBearer } = parseAuthHeader(req)
+  const jwt = token ? decodeJwtPayload(token) : null
+  const supabaseUrl = process.env.SUPABASE_URL || null
+  const issMatchesSupabaseUrl = jwt?.iss && supabaseUrl ? jwt.iss === supabaseUrl : null
   const debug = {
     request: {
       method: req.method,
@@ -225,6 +251,8 @@ export const handleAdminDebug = async (req, res) => {
     backendSupabaseHost: resolveBackendSupabaseHost(),
     env: resolveEnvDebug(),
     authPath: 'rest: /auth/v1/user',
+    jwt,
+    issMatchesSupabaseUrl,
     getUser: { ok: false },
     adminCheck: { ok: false },
   }

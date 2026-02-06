@@ -158,22 +158,11 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       try {
         const sessionRes = await supabase.auth.getSession()
         const sessionUser = sessionRes.data?.session?.user ?? null
-        if (sessionUser?.id) {
-          if (!cancelled) {
-            setAuthUserId(sessionUser.id)
-            setAuthEmail(sessionUser.email ?? null)
-            setAdminAllowed('unknown')
-            setSessionLoading(false)
-          }
-        } else {
-          const userRes = await supabase.auth.getUser()
-          const nextUserId = userRes.data?.user?.id ?? null
-          if (!cancelled) {
-            setAuthUserId(nextUserId)
-            setAuthEmail(userRes.data?.user?.email ?? null)
-            setAdminAllowed(nextUserId ? 'unknown' : 'no')
-            setSessionLoading(false)
-          }
+        if (!cancelled) {
+          setAuthUserId(sessionUser?.id ?? null)
+          setAuthEmail(sessionUser?.email ?? null)
+          setAdminAllowed(sessionUser?.id ? 'unknown' : 'no')
+          setSessionLoading(false)
         }
       } catch {
         if (!cancelled) {
