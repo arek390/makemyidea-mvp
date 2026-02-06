@@ -103,3 +103,11 @@ export const mapLlmError = (error) => {
   }
   return { status: 500, code: 'LLM_FAILED', message: 'LLM request failed.' }
 }
+
+export const methodNotAllowed = (res, allowed) => {
+  sendJson(res, 405, { ok: false, error: 'METHOD_NOT_ALLOWED', allowed })
+}
+
+export const notFound = (res) => {
+  sendJson(res, 404, { ok: false, error: 'NOT_FOUND' })
+}

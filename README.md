@@ -102,6 +102,30 @@ Run all tests:
 npm test
 ```
 
+## API (Vercel Hobby limit)
+
+API endpoints consolidated into routers to fit Vercel Hobby function limit.
+
+Routers (action-based):
+- `/api/core` (health, ping, version, FX, feedback)
+- `/api/auth` (auth/me)
+- `/api/coach` (suggest, generate ideas/names/options, engine next-question)
+- `/api/report` (report update)
+- `/api/billing` (balance)
+- `/api/admin` (billing list/topup, admin reports)
+- `/api/dev` (dev/diag endpoints, gated by `ENABLE_DEV_ENDPOINTS=true`)
+
+Examples:
+- `GET /api/core?action=health`
+- `GET /api/core?action=health&scope=llm`
+- `GET /api/core?action=fx_usdpln`
+- `POST /api/coach?action=suggest`
+- `POST /api/coach?action=ideas`
+- `POST /api/report?action=update`
+- `GET /api/billing?action=balance`
+- `GET /api/admin?action=billing_list`
+- `POST /api/admin?action=billing_topup`
+
 ## Engine report (PL/EN)
 
 In the Engine view, start a session and click **Utwórz raport** in the “Sesja” panel.  

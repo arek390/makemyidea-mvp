@@ -10,6 +10,6 @@ export const getSupabaseAdmin = () => {
 
   return createClient(url, key, {
     auth: { persistSession: false },
-    db: { schema: 'public' }
+    db: { schema: 'public' },
   })
 }

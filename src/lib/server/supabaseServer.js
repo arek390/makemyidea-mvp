@@ -1,7 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 
-const parseCookies = (cookieHeader = '') => {
-  return cookieHeader
+const parseCookies = (cookieHeader = '') =>
+  cookieHeader
     .split(';')
     .map((part) => part.trim())
     .filter(Boolean)
@@ -13,7 +13,6 @@ const parseCookies = (cookieHeader = '') => {
       acc[key] = value
       return acc
     }, {})
-}
 
 const serializeCookie = (name, value, options = {}) => {
   const opts = {
@@ -45,14 +44,8 @@ const appendSetCookie = (res, value) => {
 }
 
 export const createSupabaseServerClient = (req, res) => {
-  const supabaseUrl =
-    process.env.SUPABASE_URL ||
-    process.env.VITE_SUPABASE_URL ||
-    ''
-  const supabaseAnonKey =
-    process.env.SUPABASE_ANON_KEY ||
-    process.env.VITE_SUPABASE_ANON_KEY ||
-    ''
+  const supabaseUrl = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL || ''
+  const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY || ''
 
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Missing Supabase env vars for server.')

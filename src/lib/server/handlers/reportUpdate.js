@@ -1,5 +1,5 @@
-import { getSupabaseAdmin } from '../_lib/supabaseAdmin.js'
-import { runLlmTask, createRateLimiter } from '../../llm/llmRouter.mjs'
+import { getSupabaseAdmin } from '../supabaseAdmin.js'
+import { runLlmTask, createRateLimiter } from '../../../llm/llmRouter.mjs'
 
 const limiter = createRateLimiter({ windowMs: 60_000, max: 10 })
 
@@ -247,7 +247,7 @@ const buildContentHash = (items) => {
   return String(hash)
 }
 
-export default async function handler(req, res) {
+export const handleReportUpdate = async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.status(204).end()
     return

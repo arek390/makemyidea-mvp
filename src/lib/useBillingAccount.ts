@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react'
-import { supabase as client } from './supabase/client'
 
 type BillingAccountState = {
   balancePLN: number
@@ -26,8 +25,7 @@ export const useBillingAccount = (
 
   useEffect(() => {
     let cancelled = false
-    const supabase = client
-    if (!enabled || !userId || !supabase) {
+    if (!enabled || !userId) {
       setState(defaultState)
       return () => {
         cancelled = true
@@ -37,21 +35,21 @@ export const useBillingAccount = (
     setState((prev) => ({ ...prev, loading: true, error: null }))
 
     const run = async () => {
-      const { data, error } = await supabase
-        .from('billing_accounts')
-        .select('balance_pln')
-        .eq('user_id', userId)
-        .limit(1)
-        .maybeSingle()
+      const response = await fetch('/api/billing?action=balance', { method: 'GET' })
+      const payload = await response.json().catch(() => null)
 
       if (cancelled) return
 
-      if (error) {
-        setState({ balancePLN: 0, loading: false, error: error.message })
+      if (!response.ok || !payload?.ok) {
+        setState({
+          balancePLN: 0,
+          loading: false,
+          error: payload?.error || 'Unable to load billing balance.',
+        })
         return
       }
 
-      const balance = Number(data?.balance_pln ?? 0)
+      const balance = Number(payload?.balancePLN ?? 0)
       setState({
         balancePLN: Number.isFinite(balance) ? balance : 0,
         loading: false,

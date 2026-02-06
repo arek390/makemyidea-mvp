@@ -1,8 +1,8 @@
 import fs from 'node:fs'
 import path from 'node:path'
-import { runLlmTask, createRateLimiter } from '../../llm/llmRouter.mjs'
-import { getSupabaseAdmin } from '../_lib/supabaseAdmin.js'
-import { getSessionState, getSessionStoreType, updateSessionStateRow } from '../../engine/storage/sessionStore.mjs'
+import { runLlmTask, createRateLimiter } from '../../../llm/llmRouter.mjs'
+import { getSupabaseAdmin } from '../supabaseAdmin.js'
+import { getSessionState, getSessionStoreType, updateSessionStateRow } from '../../../engine/storage/sessionStore.mjs'
 import {
   buildMeta,
   readJsonBody,
@@ -10,7 +10,7 @@ import {
   resolveDiagnosticsEnabled,
   sendError,
   sendJson,
-} from '../_lib/http.js'
+} from '../http.js'
 
 let cachedDataset = null
 const limiter = createRateLimiter({ windowMs: 60_000, max: 20 })
@@ -61,7 +61,6 @@ const normalizeLang = (value) => {
   if (raw.startsWith('pl')) return 'pl'
   return raw || 'pl'
 }
-
 
 const sanitizeQuestionText = (input) => {
   let value = String(input || '')
@@ -133,8 +132,6 @@ const sortByNumericSuffix = (items) =>
     if (aNum === bNum) return String(a.id).localeCompare(String(b.id))
     return aNum - bNum
   })
-
-const pickFirst = (items) => (items.length ? items[0] : null)
 
 const pickRandom = (items) => {
   if (!items.length) return null
@@ -450,7 +447,7 @@ const buildSummaryWithReclassPrompt = ({ locale, sessionName, entries }) => {
   return { input, instructions }
 }
 
-export default async function handler(req, res) {
+export const handleCoachSuggest = async (req, res) => {
   const requestId =
     req.headers['x-request-id'] ||
     (typeof crypto !== 'undefined' && crypto.randomUUID

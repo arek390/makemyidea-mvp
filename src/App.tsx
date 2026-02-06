@@ -1859,7 +1859,7 @@ function DebugMatrixPage({ llmApiBase }: { llmApiBase: string }) {
       setMatrixError(null)
       try {
         const response = await fetch(
-          `${llmApiBase}/api/debug/matrix?sessionId=${sessionId}&debug=1`
+          `${llmApiBase}/api/dev?action=matrix&sessionId=${sessionId}`
         )
         if (!response.ok) {
           const msg = await response.text()
@@ -2694,7 +2694,7 @@ const isAuthFlowInProgress = () => {
         return
       }
       try {
-        const response = await fetch('/api/fx?action=usdpln')
+        const response = await fetch('/api/core?action=fx_usdpln')
         const payload = (await response.json()) as {
           ok?: boolean
           usdpln?: number
@@ -3406,7 +3406,7 @@ const isAuthFlowInProgress = () => {
       return
     }
     try {
-      const response = await fetch(`${base}/api/health`, { method: 'GET' })
+      const response = await fetch(`${base}/api/core?action=health`, { method: 'GET' })
       setLlmStatus(response.ok ? 'online' : 'offline')
     } catch {
       setLlmStatus('offline')
@@ -3416,7 +3416,7 @@ const isAuthFlowInProgress = () => {
   const handleLlmPing = async () => {
     try {
       setLlmPingResult(null)
-      const response = await fetch(`${llmApiBase}/api/health?scope=llm`, {
+      const response = await fetch(`${llmApiBase}/api/core?action=health&scope=llm`, {
         method: 'GET',
       })
       const payload = (await response.json()) as {
@@ -4197,7 +4197,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const requestOptions = async () => {
       try {
         const [spaceRes, timeRes] = await Promise.all([
-          fetch(`${llmApiBase}/api/generate?action=space-options`, {
+          fetch(`${llmApiBase}/api/coach?action=space-options`, {
             method: 'POST',
             headers: llmHeaders,
             body: JSON.stringify({
@@ -4209,7 +4209,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
               sessionId: enginePreviewSessionId || engineSessionId || undefined,
             }),
           }),
-          fetch(`${llmApiBase}/api/generate?action=time-options`, {
+          fetch(`${llmApiBase}/api/coach?action=time-options`, {
             method: 'POST',
             headers: llmHeaders,
             body: JSON.stringify({
@@ -4299,7 +4299,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
 
     try {
-      const response = await fetch(`${llmApiBase}/api/generate?action=names`, {
+      const response = await fetch(`${llmApiBase}/api/coach?action=names`, {
         method: 'POST',
         headers: llmHeaders,
         body: JSON.stringify({
@@ -4587,7 +4587,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           timeDef: selectedScenario.timeDefs[timeKey],
         }))
       )
-      const response = await fetch(`${llmApiBase}/api/generate?action=ideas`, {
+      const response = await fetch(`${llmApiBase}/api/coach?action=ideas`, {
         method: 'POST',
         headers: llmHeaders,
         body: JSON.stringify({
@@ -4655,7 +4655,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const boardItems = Object.values(workshopIdeas)
       .flat()
       .map((idea) => ({ type: 'idea', text: idea.text }))
-    const endpoint = '/api/coach/suggest'
+    const endpoint = '/api/coach?action=suggest'
     const sessionName = enginePreviewSessionName || productName || ''
     const language = reportLanguage === 'English' ? 'en' : 'pl'
     const boardEntries = boardItems.map((item, index) => ({
@@ -4879,7 +4879,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }, 300)
     setEnginePreviewError(null)
     setEngineFacilitationDiagnostics(null)
-    const endpoint = '/api/coach/suggest'
+    const endpoint = '/api/coach?action=suggest'
     const context = getSessionContext(enginePreviewSessionId)
     console.log('[suggest] sessionId', { sessionId: context.sessionId })
     const boardEntries = context.boardEntries
@@ -5964,7 +5964,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         headers['x-diagnostics'] = '1'
       }
       console.log('[suggest] sessionId', { sessionId: enginePreviewSessionId })
-      const response = await fetch('/api/coach/suggest', {
+      const response = await fetch('/api/coach?action=suggest', {
         method: 'POST',
         headers,
         body: JSON.stringify({

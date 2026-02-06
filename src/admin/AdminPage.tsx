@@ -119,7 +119,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
         const { data } = await supabase.auth.getSession()
         const token = data.session?.access_token || ''
         if (!token) throw new Error('AUTH_REQUIRED')
-        const response = await fetch('/api/admin/report?limit=500&offset=0', {
+        const response = await fetch('/api/admin?action=report_list&limit=500&offset=0', {
           headers: { Authorization: `Bearer ${token}` },
         })
         const payload = await response.json().catch(() => null)
@@ -157,7 +157,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
         const { data } = await supabase.auth.getSession()
         const token = data.session?.access_token || ''
         if (!token) throw new Error('AUTH_REQUIRED')
-        const response = await fetch('/api/admin/billing/list?limit=500&offset=0', {
+        const response = await fetch('/api/admin?action=billing_list&limit=500&offset=0', {
           headers: { Authorization: `Bearer ${token}` },
         })
         const payload = await response.json().catch(() => null)
@@ -234,7 +234,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       const { data } = await supabase.auth.getSession()
       const token = data.session?.access_token || ''
       if (!token) throw new Error('AUTH_REQUIRED')
-      const response = await fetch('/api/admin/billing/topup', {
+      const response = await fetch('/api/admin?action=billing_topup', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

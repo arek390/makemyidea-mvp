@@ -1,4 +1,4 @@
-import { runLlmTask, parseJsonArray, parseJsonObject, createRateLimiter } from '../llm/llmRouter.mjs'
+import { runLlmTask, parseJsonArray, parseJsonObject, createRateLimiter } from '../../../llm/llmRouter.mjs'
 import {
   assertMaxInput,
   buildMeta,
@@ -7,20 +7,16 @@ import {
   resolveAiSupportEnabled,
   sendError,
   sendJson,
-} from './_lib/http.js'
+} from '../http.js'
 import {
   buildIdeaFallbacks,
   buildNameFallbacks,
   buildSpaceFallbacks,
   buildTimeFallbacks,
-} from './_lib/fallbacks.js'
+} from '../fallbacks.js'
+import { normalizeAction } from '../router.js'
 
 const limiter = createRateLimiter({ windowMs: 60_000, max: 30 })
-
-const resolveAction = (req) => {
-  const url = new URL(req.url || '/', `http://${req.headers.host}`)
-  return String(url.searchParams.get('action') || '').trim().toLowerCase()
-}
 
 const buildModels = () => ({
   default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
@@ -28,7 +24,7 @@ const buildModels = () => ({
   escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
 })
 
-export default async function handler(req, res) {
+export const handleCoachGenerate = async (req, res, actionOverride) => {
   if (req.method === 'OPTIONS') {
     res.status(204).end()
     return
@@ -38,7 +34,7 @@ export default async function handler(req, res) {
     return
   }
 
-  const action = resolveAction(req)
+  const action = normalizeAction(actionOverride)
   if (!action) {
     sendJson(res, 400, { ok: false, error: 'INVALID_ACTION' })
     return

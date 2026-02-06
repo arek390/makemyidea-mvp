@@ -24,7 +24,7 @@ const normalizeEngineLanguage = (language) => {
   return normalized.slice(0, 2)
 }
 
-module.exports = async (req, res) => {
+export const handleEngineNextQuestion = async (req, res) => {
   if (req.method !== 'POST') {
     res.statusCode = 405
     res.setHeader('Content-Type', 'application/json')
@@ -60,12 +60,12 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { initEngineDb } = await import('../../engine/db.mjs')
-    const { loadQuestionsFromCsvOnce } = await import('../../engine/questionsCsvSource.mjs')
+    const { initEngineDb } = await import('../../../engine/db.mjs')
+    const { loadQuestionsFromCsvOnce } = await import('../../../engine/questionsCsvSource.mjs')
     const {
       selectQuestionFromList,
       finalizeSelection,
-    } = await import('../../engine/questionSelector.mjs')
+    } = await import('../../../engine/questionSelector.mjs')
 
     initEngineDb()
     const normalizedLang = normalizeEngineLanguage(language)

@@ -374,7 +374,7 @@ export const ReportPage = ({
     console.log('[report:update] no-llm step1')
     setIsReportUpdating(true)
     try {
-      await fetch('/api/report/update', {
+      await fetch('/api/report?action=update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ sessionId: reportSessionId, lang: language }),

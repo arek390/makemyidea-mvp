@@ -32,11 +32,9 @@ import {
   parseJsonArray,
   parseJsonObject,
 } from './llm/llmRouter.mjs'
-import coachSuggestHandler from './api/coach/suggest.js'
-import debugHandler from './api/debug/index.js'
-import fxHandler from './api/fx/index.js'
-import generateHandler from './api/generate.js'
-import healthHandler from './api/health.js'
+import coachHandler from './api/coach.js'
+import coreHandler from './api/core.js'
+import devHandler from './api/dev.js'
 import {
   buildContextPrompt,
   buildQuestionPrompt,
@@ -338,24 +336,18 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  if (url.pathname === '/api/health' && req.method === 'GET') {
+  if (url.pathname === '/api/core') {
     const resShim = createResShim(res)
-    await healthHandler(req, resShim)
+    await coreHandler(req, resShim)
     return
   }
 
-  if (url.pathname === '/api/fx' && req.method === 'GET') {
-    const resShim = createResShim(res)
-    await fxHandler(req, resShim)
-    return
-  }
-
-  if (url.pathname === '/api/coach/suggest' || url.pathname === '/coach/suggest') {
+  if (url.pathname === '/api/coach') {
     const resShim = createResShim(res)
     try {
-      await coachSuggestHandler(req, resShim)
+      await coachHandler(req, resShim)
     } catch (error) {
-      console.error('[server][coach/suggest] unhandled error', {
+      console.error('[server][coach] unhandled error', {
         name: error?.name,
         message: error?.message,
       })
@@ -364,15 +356,9 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
-  if (url.pathname === '/api/generate' && req.method === 'POST') {
+  if (url.pathname === '/api/dev') {
     const resShim = createResShim(res)
-    await generateHandler(req, resShim)
-    return
-  }
-
-  if (url.pathname === '/api/debug' && req.method === 'GET') {
-    const resShim = createResShim(res)
-    await debugHandler(req, resShim)
+    await devHandler(req, resShim)
     return
   }
 

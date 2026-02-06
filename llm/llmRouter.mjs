@@ -4,8 +4,8 @@ import {
   buildPreprocessUserPrompt,
   buildGenerationUserPrompt,
 } from './llmPrompts.mjs'
-import { callOpenAIChat } from '../api/_lib/openaiClient.js'
-import { getSupabaseAdmin } from '../api/_lib/supabaseAdmin.js'
+import { callOpenAIChat } from '../src/lib/server/openaiClient.js'
+import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
 
 const DEFAULT_MODELS = {
   default: 'gpt-4.1-mini',
