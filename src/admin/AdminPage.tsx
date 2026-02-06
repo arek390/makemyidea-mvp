@@ -71,6 +71,10 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       : 'You do not have access to the admin panel. Copy your User ID and add it to the admin_users table.',
     adminDebugAccess: isPl ? 'Debug access' : 'Debug access',
     adminDebugError: isPl ? 'Nie udało się pobrać debug.' : 'Failed to fetch debug.',
+    sessionLoading: isPl ? 'Ładowanie sesji…' : 'Loading session…',
+    sessionMissing: isPl ? 'Brak sesji. Zaloguj się ponownie.' : 'No session. Please sign in again.',
+    sessionLoginCta: isPl ? 'Zaloguj ponownie' : 'Sign in again',
+    sessionDebug: isPl ? 'Debug session' : 'Debug session',
     billingTitle: isPl ? 'Zasilenie kont użytkowników (admin-only)' : 'User account top-ups (admin-only)',
     billingSearchPlaceholder: isPl
       ? 'Szukaj po session_name lub session_id'
@@ -113,6 +117,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     billingAmountPlaceholder: isPl ? 'Kwota PLN' : 'Amount PLN',
   }
   const [adminLoading, setAdminLoading] = useState(true)
+  const [sessionLoading, setSessionLoading] = useState(true)
   const [authUserId, setAuthUserId] = useState<string | null>(null)
   const [authEmail, setAuthEmail] = useState<string | null>(null)
   const [adminIdentity, setAdminIdentity] = useState<{ userId: string | null; email: string | null } | null>(null)
@@ -129,6 +134,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
   const [billingInputs, setBillingInputs] = useState<Record<string, string>>({})
   const [billingBusy, setBillingBusy] = useState<Record<string, boolean>>({})
   const [debugPayload, setDebugPayload] = useState<string | null>(null)
+  const [sessionDebugPayload, setSessionDebugPayload] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<'session_created_at' | 'cost_pln' | 'tokens_total'>(
     'session_created_at'
   )
@@ -143,32 +149,61 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
           setAuthUserId(null)
           setAuthEmail(null)
           setAdminLoading(false)
+          setSessionLoading(false)
         }
         return
       }
       setAdminLoading(true)
+      setSessionLoading(true)
       try {
-        const { data, error } = await supabase.auth.getUser()
-        if (error) throw error
-        if (!cancelled) {
-          const nextUserId = data.user?.id ?? null
-          setAuthUserId(nextUserId)
-          setAuthEmail(data.user?.email ?? null)
-          setAdminAllowed(nextUserId ? 'unknown' : 'no')
+        const sessionRes = await supabase.auth.getSession()
+        const sessionUser = sessionRes.data?.session?.user ?? null
+        if (sessionUser?.id) {
+          if (!cancelled) {
+            setAuthUserId(sessionUser.id)
+            setAuthEmail(sessionUser.email ?? null)
+            setAdminAllowed('unknown')
+            setSessionLoading(false)
+          }
+        } else {
+          const userRes = await supabase.auth.getUser()
+          const nextUserId = userRes.data?.user?.id ?? null
+          if (!cancelled) {
+            setAuthUserId(nextUserId)
+            setAuthEmail(userRes.data?.user?.email ?? null)
+            setAdminAllowed(nextUserId ? 'unknown' : 'no')
+            setSessionLoading(false)
+          }
         }
       } catch {
         if (!cancelled) {
           setAuthUserId(null)
           setAuthEmail(null)
           setAdminAllowed('no')
+          setSessionLoading(false)
         }
       } finally {
         if (!cancelled) setAdminLoading(false)
       }
     }
     void run()
+    if (!supabase) return
+    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setAuthUserId(null)
+        setAuthEmail(null)
+        setAdminAllowed('no')
+        return
+      }
+      if (session?.user?.id) {
+        setAuthUserId(session.user.id)
+        setAuthEmail(session.user.email ?? null)
+        setAdminAllowed('unknown')
+      }
+    })
     return () => {
       cancelled = true
+      subscription?.subscription?.unsubscribe?.()
     }
   }, [authLoading])
 
@@ -443,11 +478,40 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     }
   }
 
-  if (authLoading || adminLoading) {
+  const handleSessionDebug = async () => {
+    setSessionDebugPayload(null)
+    try {
+      if (!supabase) throw new Error('AUTH_REQUIRED')
+      const sessionRes = await supabase.auth.getSession()
+      const userRes = await supabase.auth.getUser()
+      const session = sessionRes.data?.session
+      const user = userRes.data?.user
+      const payload = {
+        origin: typeof window !== 'undefined' ? window.location.origin : null,
+        supabaseHost: (() => {
+          try {
+            return new URL(import.meta.env.VITE_SUPABASE_URL).hostname
+          } catch {
+            return null
+          }
+        })(),
+        session: session
+          ? { userId: session.user?.id ?? null, expiresAt: session.expires_at ?? null }
+          : null,
+        user: user ? { id: user.id, email: user.email ?? null } : null,
+      }
+      setSessionDebugPayload(JSON.stringify(payload, null, 2))
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'SESSION_DEBUG_FAILED'
+      setSessionDebugPayload(JSON.stringify({ ok: false, error: message }, null, 2))
+    }
+  }
+
+  if (authLoading || adminLoading || sessionLoading) {
     return (
       <div className="app admin-page">
         <div className="admin-panel">
-          <p className="muted">{t.loading}</p>
+          <p className="muted">{t.sessionLoading}</p>
         </div>
       </div>
     )
@@ -458,7 +522,26 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       <div className="app admin-page">
         <div className="admin-panel">
           <h1>{t.adminTitle}</h1>
-          <p className="muted">{t.authRequired}</p>
+          <p className="muted">{t.sessionMissing}</p>
+          <div className="actions">
+            <button
+              type="button"
+              className="primary"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/login'
+                }
+              }}
+            >
+              {t.sessionLoginCta}
+            </button>
+            <button type="button" className="ghost" onClick={handleSessionDebug}>
+              {t.sessionDebug}
+            </button>
+          </div>
+          {sessionDebugPayload && (
+            <pre className="admin-debug">{sessionDebugPayload}</pre>
+          )}
         </div>
       </div>
     )
