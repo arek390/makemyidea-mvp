@@ -1,8 +1,7 @@
 import crypto from 'crypto'
-import { createSupabaseServerClient } from '../supabaseServer.js'
 import { getSupabaseAdmin } from '../supabaseAdmin.js'
+import { createSupabaseServerClient } from '../supabaseServer.js'
 
-const ADMIN_EMAIL = 'arektest8@gmail.com'
 const MAX_DELTA = 100000
 
 const parseNumber = (value, fallback) => {
@@ -10,7 +9,7 @@ const parseNumber = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
-const requireAdmin = async (req, res) => {
+const requireAuthUser = async (req, res) => {
   const supabase = createSupabaseServerClient(req, res)
   const auth = String(req.headers.authorization || '')
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
@@ -19,26 +18,54 @@ const requireAdmin = async (req, res) => {
     return null
   }
   const { data, error } = await supabase.auth.getUser(token)
-  const user = data?.user || null
-  const seenEmail = String(
-    user?.email ||
-      user?.user_metadata?.email ||
-      user?.identities?.[0]?.identity_data?.email ||
-      ''
-  )
-    .trim()
-    .toLowerCase()
-  console.log('admin_check', { seenEmail })
-  if (error || !seenEmail || seenEmail !== ADMIN_EMAIL) {
-    res.status(403).json({
-      ok: false,
-      error: 'FORBIDDEN',
-      seenEmail,
-      allowed: [ADMIN_EMAIL],
-    })
+  if (error || !data?.user?.id) {
+    res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
     return null
   }
-  return user
+  return data.user
+}
+
+const requireAdmin = async (req, res) => {
+  const authUser = await requireAuthUser(req, res)
+  if (!authUser) return null
+
+  const supabaseAdmin = getSupabaseAdmin()
+  const adminCheck = await supabaseAdmin
+    .schema('public')
+    .from('admin_users')
+    .select('user_id')
+    .eq('user_id', authUser.id)
+    .limit(1)
+    .maybeSingle()
+
+  if (adminCheck.error || !adminCheck.data?.user_id) {
+    res.status(403).json({ ok: false, error: 'FORBIDDEN', seenUserId: authUser.id })
+    return null
+  }
+
+  return authUser
+}
+
+export const handleAdminWhoAmI = async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.status(204).end()
+    return
+  }
+  if (req.method !== 'GET') {
+    res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['GET'] })
+    return
+  }
+  try {
+    const authUser = await requireAuthUser(req, res)
+    if (!authUser) return
+    res.status(200).json({
+      ok: true,
+      userId: authUser.id,
+      email: authUser.email ?? null,
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
+  }
 }
 
 export const handleAdminBillingList = async (req, res) => {

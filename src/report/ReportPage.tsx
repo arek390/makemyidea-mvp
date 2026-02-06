@@ -335,6 +335,10 @@ export const ReportPage = ({
     return () => window.clearTimeout(timer)
   }, [updateNotice])
 
+  useEffect(() => {
+    setUpdateNotice(null)
+  }, [language])
+
   const showUpdate = (() => {
     if (typeof window === 'undefined') return true
     return !(window.history.state && window.history.state.newlyCreated === true)

@@ -15,13 +15,16 @@ const formatPln = (value: number, locale: 'pl-PL' | 'en-US') =>
 
 export const UsageBadge = ({ totalTokens, costPln, model, locale }: UsageBadgeProps) => {
   const modelClass = model ? `llm-model-${model.replace(/\./g, '-')}` : 'llm-model-none'
+  const isPl = locale === 'pl-PL'
+  const label = isPl ? 'Wskaźnik użycia LLM' : 'LLM usage indicator'
+  const modelTitle = model ? `Model: ${model}` : 'Model: —'
   return (
     <div className="report-usage-badge">
       <button
         className={`ai-support-toggle llm-usage-indicator ${modelClass}`}
         type="button"
-        aria-label="LLM usage indicator"
-        title={model ? `Model: ${model}` : 'Model: —'}
+        aria-label={label}
+        title={modelTitle}
         disabled
       >
         {`${formatTokenTotal(totalTokens, locale)} tok`}

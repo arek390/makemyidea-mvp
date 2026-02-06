@@ -28,8 +28,6 @@ type AdminPageProps = {
   uiLanguage: 'Polish' | 'English'
 }
 
-const ADMIN_EMAIL = 'arektest8@gmail.com'
-
 const formatNumber = (value: number | null | undefined) => {
   if (value == null || Number.isNaN(value)) return '—'
   return new Intl.NumberFormat('pl-PL', { maximumFractionDigits: 0 }).format(value)
@@ -61,6 +59,11 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     authRequired: isPl ? 'Brak sesji. Zaloguj się ponownie.' : 'No session. Please sign in again.',
     positiveAmount: isPl ? 'Podaj dodatnią kwotę.' : 'Enter a positive amount.',
     noAccess: isPl ? 'Brak dostępu' : 'No access',
+    adminTitle: isPl ? 'Admin' : 'Admin',
+    adminIdentityLine: (userId: string | null, email: string | null) =>
+      isPl
+        ? `User ID: ${userId || '—'} | Email: ${email || '—'}`
+        : `User ID: ${userId || '—'} | Email: ${email || '—'}`,
     billingTitle: isPl ? 'Zasilenie kont użytkowników (admin-only)' : 'User account top-ups (admin-only)',
     billingSearchPlaceholder: isPl
       ? 'Szukaj po session_name lub session_id'
@@ -79,6 +82,8 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     sortCreatedAt: isPl ? 'Utworzono' : 'Created at',
     sortCostPln: isPl ? 'Koszt PLN' : 'Cost PLN',
     sortTokens: isPl ? 'Tokeny' : 'Tokens total',
+    sortAsc: isPl ? 'Rosnąco' : 'Ascending',
+    sortDesc: isPl ? 'Malejąco' : 'Descending',
     tableUserEmail: isPl ? 'Email użytkownika' : 'User email',
     tableSession: isPl ? 'Sesja' : 'Session',
     tableCreated: isPl ? 'Utworzono' : 'Created',
@@ -90,14 +95,21 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     tableCostUsd: isPl ? 'Koszt USD' : 'Cost USD',
     tableBalancePln: isPl ? 'Saldo PLN' : 'Balance PLN',
     tableTotalPaidPln: isPl ? 'Suma wpłat PLN' : 'Total paid PLN',
+    tableYes: isPl ? 'Tak' : 'Yes',
+    tableNo: isPl ? 'Nie' : 'No',
+    tableEmpty: isPl ? 'Brak danych' : 'No data',
     billingHeader: isPl ? 'Billing / Saldo' : 'Billing / Balance',
     billingTableEmail: isPl ? 'Email' : 'Email',
     billingTableBalance: isPl ? 'Saldo PLN' : 'Balance PLN',
     billingTableAction: isPl ? 'Zasil' : 'Top up',
     billingEmailSearchPlaceholder: isPl ? 'Szukaj po emailu' : 'Search by email',
+    billingAmountPlaceholder: isPl ? 'Kwota PLN' : 'Amount PLN',
   }
   const [adminLoading, setAdminLoading] = useState(true)
-  const [adminEmail, setAdminEmail] = useState('')
+  const [authUserId, setAuthUserId] = useState<string | null>(null)
+  const [authEmail, setAuthEmail] = useState<string | null>(null)
+  const [adminIdentity, setAdminIdentity] = useState<{ userId: string | null; email: string | null } | null>(null)
+  const [adminAllowed, setAdminAllowed] = useState<'unknown' | 'yes' | 'no'>('unknown')
   const [rows, setRows] = useState<AdminRow[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -120,7 +132,8 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       if (authLoading) return
       if (!supabase) {
         if (!cancelled) {
-          setAdminEmail('')
+          setAuthUserId(null)
+          setAuthEmail(null)
           setAdminLoading(false)
         }
         return
@@ -129,13 +142,17 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       try {
         const { data, error } = await supabase.auth.getUser()
         if (error) throw error
-        const email = (data.user?.email || '').trim().toLowerCase()
         if (!cancelled) {
-          setAdminEmail(email)
+          const nextUserId = data.user?.id ?? null
+          setAuthUserId(nextUserId)
+          setAuthEmail(data.user?.email ?? null)
+          setAdminAllowed(nextUserId ? 'unknown' : 'no')
         }
       } catch {
         if (!cancelled) {
-          setAdminEmail('')
+          setAuthUserId(null)
+          setAuthEmail(null)
+          setAdminAllowed('no')
         }
       } finally {
         if (!cancelled) setAdminLoading(false)
@@ -147,10 +164,47 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     }
   }, [authLoading])
 
-  const isAdmin = adminEmail === ADMIN_EMAIL
+  useEffect(() => {
+    if (!authUserId) {
+      setAdminIdentity(null)
+      return
+    }
+    let cancelled = false
+    const load = async () => {
+      try {
+        if (!supabase) throw new Error('AUTH_REQUIRED')
+        const { data } = await supabase.auth.getSession()
+        const token = data.session?.access_token || ''
+        if (!token) throw new Error('AUTH_REQUIRED')
+        const response = await fetch('/api/admin?action=admin.whoami', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok || !payload?.ok) return
+        if (!cancelled) {
+          setAdminIdentity({
+            userId: payload.userId ?? null,
+            email: payload.email ?? null,
+          })
+        }
+      } catch {
+        if (!cancelled) setAdminIdentity(null)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [authUserId])
 
   useEffect(() => {
-    if (!isAdmin) return
+    setError(null)
+    setBillingError(null)
+    setBillingNotice(null)
+  }, [uiLanguage])
+
+  useEffect(() => {
+    if (adminAllowed === 'no') return
     let cancelled = false
     const load = async () => {
       setLoading(true)
@@ -160,14 +214,22 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         const { data } = await supabase.auth.getSession()
         const token = data.session?.access_token || ''
         if (!token) throw new Error('AUTH_REQUIRED')
-        const response = await fetch('/api/admin?action=report_list&limit=500&offset=0', {
+        const response = await fetch('/api/admin?action=admin.report.list&limit=500&offset=0', {
           headers: { Authorization: `Bearer ${token}` },
         })
         const payload = await response.json().catch(() => null)
         if (!response.ok || !payload?.ok) {
+          if (response.status === 403 || payload?.error === 'FORBIDDEN') {
+            if (!cancelled) {
+              setAdminAllowed('no')
+              setError(t.noAccess)
+            }
+            return
+          }
           throw new Error(payload?.error || 'LOAD_FAILED')
         }
         if (!cancelled) {
+          setAdminAllowed('yes')
           setRows(Array.isArray(payload.rows) ? payload.rows : [])
         }
       } catch (err) {
@@ -183,10 +245,10 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     return () => {
       cancelled = true
     }
-  }, [isAdmin])
+  }, [adminAllowed])
 
   useEffect(() => {
-    if (!isAdmin) return
+    if (adminAllowed === 'no') return
     let cancelled = false
     const load = async () => {
       setBillingLoading(true)
@@ -196,16 +258,24 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         const { data } = await supabase.auth.getSession()
         const token = data.session?.access_token || ''
         if (!token) throw new Error('AUTH_REQUIRED')
-        const response = await fetch('/api/admin?action=billing_list&limit=500&offset=0', {
+        const response = await fetch('/api/admin?action=admin.billing.list&limit=500&offset=0', {
           headers: { Authorization: `Bearer ${token}` },
         })
         const payload = await response.json().catch(() => null)
         if (!response.ok || !payload?.ok) {
+          if (response.status === 403 || payload?.error === 'FORBIDDEN') {
+            if (!cancelled) {
+              setAdminAllowed('no')
+              setBillingError(t.noAccess)
+            }
+            return
+          }
           const errorMessage =
             payload?.error?.message || payload?.error || 'LOAD_FAILED'
           throw new Error(errorMessage)
         }
         if (!cancelled) {
+          setAdminAllowed('yes')
           setBillingRows(Array.isArray(payload.items) ? payload.items : [])
         }
       } catch (err) {
@@ -221,7 +291,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     return () => {
       cancelled = true
     }
-  }, [isAdmin])
+  }, [adminAllowed])
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -273,7 +343,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       const { data } = await supabase.auth.getSession()
       const token = data.session?.access_token || ''
       if (!token) throw new Error('AUTH_REQUIRED')
-      const response = await fetch('/api/admin?action=billing_topup', {
+      const response = await fetch('/api/admin?action=admin.billing.topup', {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
@@ -288,7 +358,10 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       if (!response.ok || !payload?.ok) {
         const errorMessage =
           payload?.error?.message || payload?.error || 'TOPUP_FAILED'
-        throw new Error(errorMessage)
+        const seenUserId = payload?.seenUserId
+        throw new Error(
+          seenUserId ? `${errorMessage} (seenUserId: ${seenUserId})` : errorMessage
+        )
       }
       const balanceAfter = Number(payload.balanceAfter ?? 0)
       setBillingRows((prev) =>
@@ -316,11 +389,11 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     )
   }
 
-  if (!isAdmin) {
+  if (adminAllowed === 'no') {
     return (
       <div className="app admin-page">
         <div className="admin-panel">
-          <h1>Admin</h1>
+          <h1>{t.adminTitle}</h1>
           <p className="muted">{t.noAccess}</p>
         </div>
       </div>
@@ -361,7 +434,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                 className="ghost"
                 onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
               >
-                {sortDir === 'asc' ? 'ASC' : 'DESC'}
+                {sortDir === 'asc' ? t.sortAsc : t.sortDesc}
               </button>
             </div>
           </div>
@@ -389,13 +462,13 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                 </tr>
               </thead>
               <tbody>
-                {sortedRows.length === 0 && (
-                  <tr>
-                    <td colSpan={11} className="admin-empty">
-                      Brak danych
-                    </td>
-                  </tr>
-                )}
+                  {sortedRows.length === 0 && (
+                    <tr>
+                      <td colSpan={11} className="admin-empty">
+                      {t.tableEmpty}
+                      </td>
+                    </tr>
+                  )}
                 {sortedRows.map((row) => (
                   <tr key={`${row.user_id || 'user'}-${row.session_id || 'session'}`}>
                     <td>{row.user_email || '—'}</td>
@@ -409,8 +482,8 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                     </td>
                     <td>{formatDateTime(row.session_created_at)}</td>
                     <td>{formatNumber(row.board_items_count)}</td>
-                    <td>{row.report_created ? 'Yes' : 'No'}</td>
-                    <td>{row.report_updated ? 'Yes' : 'No'}</td>
+                    <td>{row.report_created ? t.tableYes : t.tableNo}</td>
+                    <td>{row.report_updated ? t.tableYes : t.tableNo}</td>
                     <td>{formatNumber(row.tokens_total)}</td>
                     <td>{formatMoney(row.cost_pln, 'PLN')}</td>
                     <td>{formatMoney(row.cost_usd, 'USD')}</td>
@@ -428,6 +501,12 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
             <div>
           <h1>{t.billingHeader}</h1>
           <p className="muted">{t.billingTitle}</p>
+          <p className="muted">
+            {t.adminIdentityLine(
+              adminIdentity?.userId ?? authUserId,
+              adminIdentity?.email ?? authEmail
+            )}
+          </p>
             </div>
             <div className="admin-controls">
             <input
@@ -457,7 +536,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                   {filteredBillingRows.length === 0 && (
                     <tr>
                       <td colSpan={3} className="admin-empty">
-                        Brak danych
+                        {t.tableEmpty}
                       </td>
                     </tr>
                   )}
@@ -472,7 +551,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                             inputMode="decimal"
                             min="0"
                             step="0.01"
-                            placeholder="Kwota PLN"
+                            placeholder={t.billingAmountPlaceholder}
                             value={billingInputs[row.userId] ?? ''}
                             onChange={(event) =>
                               setBillingInputs((prev) => ({

@@ -3,6 +3,18 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
+
+const resolveUiLanguage = () => {
+  if (typeof window !== 'undefined') {
+    const stored = window.localStorage.getItem(UI_LANGUAGE_STORAGE_KEY)
+    if (stored === 'English' || stored === 'Polish') return stored
+    const lang = window.navigator?.language || ''
+    if (lang.toLowerCase().startsWith('pl')) return 'Polish'
+  }
+  return 'English'
+}
+
 if (location.hostname === 'localhost') {
   const el = document.getElementById('boot-overlay')
   if (el) el.textContent += '\nREACT: entry loaded'
@@ -28,6 +40,13 @@ class ErrorBoundary extends React.Component<
 
   render() {
     if (this.state.error) {
+      const isPl = resolveUiLanguage() === 'Polish'
+      const copy = {
+        title: isPl ? 'Coś poszło nie tak' : 'Something went wrong',
+        unknownError: isPl ? 'Nieznany błąd' : 'Unknown error',
+        copyStack: isPl ? 'Skopiuj stack' : 'Copy stack',
+        backToLanding: isPl ? 'Wróć na landing' : 'Back to landing',
+      }
       const stack =
         import.meta.env.DEV && this.state.stack
           ? this.state.stack.split('\n').slice(0, 60).join('\n')
@@ -35,9 +54,9 @@ class ErrorBoundary extends React.Component<
       return (
         <div className="app auth-screen">
           <section className="panel auth-panel">
-            <h1>Something went wrong</h1>
+            <h1>{copy.title}</h1>
             <p className="engine-error">
-              {this.state.error ? this.state.error.message : 'Unknown error'}
+              {this.state.error ? this.state.error.message : copy.unknownError}
             </p>
             {stack && (
               <>
@@ -50,7 +69,7 @@ class ErrorBoundary extends React.Component<
                       void navigator.clipboard.writeText(stack)
                     }}
                   >
-                    Copy stack
+                    {copy.copyStack}
                   </button>
                 </div>
               </>
@@ -63,7 +82,7 @@ class ErrorBoundary extends React.Component<
                   window.location.href = '/'
                 }}
               >
-                Back to landing
+                {copy.backToLanding}
               </button>
             </div>
           </section>

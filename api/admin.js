@@ -4,6 +4,7 @@ import {
   handleAdminBillingList,
   handleAdminBillingTopup,
   handleAdminReportList,
+  handleAdminWhoAmI,
 } from '../src/lib/server/handlers/admin.js'
 
 export default async function handler(req, res) {
@@ -15,7 +16,7 @@ export default async function handler(req, res) {
   if (body) req.body = body
 
   const action = resolveAction(req, body)
-  if (action === 'billing_list') {
+  if (action === 'admin.billing.list') {
     if (req.method !== 'GET') {
       methodNotAllowed(res, ['GET'])
       return
@@ -23,7 +24,7 @@ export default async function handler(req, res) {
     await handleAdminBillingList(req, res)
     return
   }
-  if (action === 'billing_topup') {
+  if (action === 'admin.billing.topup') {
     if (req.method !== 'POST') {
       methodNotAllowed(res, ['POST'])
       return
@@ -31,12 +32,20 @@ export default async function handler(req, res) {
     await handleAdminBillingTopup(req, res)
     return
   }
-  if (action === 'report_list') {
+  if (action === 'admin.report.list') {
     if (req.method !== 'GET') {
       methodNotAllowed(res, ['GET'])
       return
     }
     await handleAdminReportList(req, res)
+    return
+  }
+  if (action === 'admin.whoami') {
+    if (req.method !== 'GET') {
+      methodNotAllowed(res, ['GET'])
+      return
+    }
+    await handleAdminWhoAmI(req, res)
     return
   }
   notFound(res)

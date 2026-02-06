@@ -326,6 +326,10 @@ type Translations = {
   impulseTitle: string
   impulseEmpty: string
   impulseClose: string
+  impulseSourceFallback: string
+  impulseSourceAi: string
+  impulseSourceAiGenerated: string
+  impulseSourceDeterministic: string
   report: string
   llmSettings: string
   languageLabel: string
@@ -615,6 +619,9 @@ type Translations = {
   labelDropPlaceholder: string
   noLabelText: string
   save: string
+  debugMatrixUnavailable: string
+  debugMatrixMissingSession: string
+  debugMatrixLoadError: string
   llmSettingsTitle: string
   llmSettingsIntro: string
   llmApiBaseLabel: string
@@ -622,6 +629,17 @@ type Translations = {
   llmSettingsSave: string
   llmSettingsSaved: string
   llmSettingsCostNote: string
+  llmUsageIndicatorLabel: string
+  llmCostLabel: (usd: string) => string
+  llmCostPlnLabel: (pln: string) => string
+  llmCostPlnFallback: string
+  llmCostBreakdown: string
+  llmCostTotalTokens: (tokens: string) => string
+  llmCostTotalUsd: (usd: string) => string
+  llmCostTotalPln: (pln: string) => string
+  llmCostTotalPlnFallback: string
+  llmCostModelRow: (model: string, input: string, output: string, usd: string) => string
+  diagnosticsAuthLabel: string
   llmStatusOnline: string
   llmStatusOffline: string
   llmStatusUnknown: string
@@ -704,6 +722,10 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     impulseTitle: 'Suggested question',
     impulseEmpty: 'No question available yet.',
     impulseClose: 'Close',
+    impulseSourceFallback: 'Offline mode (fallback)',
+    impulseSourceAi: 'AI',
+    impulseSourceAiGenerated: 'AI generated',
+    impulseSourceDeterministic: 'Deterministic fallback',
     report: 'Report',
     llmSettings: 'LLM settings',
     languageLabel: 'JĘZYK/LANGUAGE',
@@ -999,8 +1021,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     editIdeaTitle: 'Edit idea',
     generatedIdeaTitle: 'Generated idea',
     questionsTitle: 'Supportive questions',
-    nextQuestionsLabel: 'Next 10 guiding questions',
-    prevQuestionsLabel: 'Previous 10 guiding questions',
+    nextQuestionsLabel: 'Następne 10 pytań naprowadzających',
+    prevQuestionsLabel: 'Poprzednie 10 pytań naprowadzających',
     labelEditorTitle: 'Label editor',
     labelEditorSave: 'Save',
     labelEditorAdd: 'Add label',
@@ -1012,6 +1034,9 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     labelDropPlaceholder: 'Place your label',
     noLabelText: 'No label',
     save: 'Save',
+    debugMatrixUnavailable: 'Not available.',
+    debugMatrixMissingSession: 'Missing sessionId.',
+    debugMatrixLoadError: 'Unable to load matrix data.',
     llmSettingsTitle: 'OpenAI server settings',
     llmSettingsIntro:
       'Connect your server to OpenAI by setting OPENAI_API_KEY and provide the API base URL.',
@@ -1021,6 +1046,18 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     llmSettingsSaved: 'Saved.',
     llmSettingsCostNote:
       'Using your API key will bill usage to your OpenAI account per their pricing.',
+    llmUsageIndicatorLabel: 'LLM usage indicator',
+    llmCostLabel: (usd) => `Cost: $${usd}`,
+    llmCostPlnLabel: (pln) => `Cost (PLN): ${pln} zł`,
+    llmCostPlnFallback: 'PLN: …',
+    llmCostBreakdown: 'Breakdown',
+    llmCostTotalTokens: (tokens) => `Total tokens: ${tokens}`,
+    llmCostTotalUsd: (usd) => `Total USD: $${usd}`,
+    llmCostTotalPln: (pln) => `Total PLN: ${pln} zł`,
+    llmCostTotalPlnFallback: 'Total PLN: …',
+    llmCostModelRow: (model, input, output, usd) =>
+      `${model}: ${input} in / ${output} out · $${usd}`,
+    diagnosticsAuthLabel: 'auth',
     llmStatusOnline: 'Server status: online',
     llmStatusOffline: 'Server status: offline',
     llmStatusUnknown: 'Server status: unknown',
@@ -1164,6 +1201,10 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     impulseTitle: 'Sugerowane pytanie',
     impulseEmpty: 'Brak pytania na ten moment.',
     impulseClose: 'Zamknij',
+    impulseSourceFallback: 'Tryb offline (fallback)',
+    impulseSourceAi: 'AI',
+    impulseSourceAiGenerated: 'Wygenerowane przez AI',
+    impulseSourceDeterministic: 'Deterministyczny fallback',
     report: 'Raport',
     llmSettings: 'Ustawienia LLM',
     languageLabel: 'JĘZYK/LANGUAGE',
@@ -1384,6 +1425,9 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     labelDropPlaceholder: 'Upuść etykietę',
     noLabelText: 'Brak etykiety',
     save: 'Zapisz',
+    debugMatrixUnavailable: 'Niedostępne.',
+    debugMatrixMissingSession: 'Brak sessionId.',
+    debugMatrixLoadError: 'Nie udało się wczytać danych matrycy.',
     enginePreviewTitle: 'Podgląd silnika pytań',
     enginePreviewLandingLink: 'Landing page',
     enginePreviewLink: 'Podgląd silnika',
@@ -1482,6 +1526,18 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     llmSettingsSaved: 'Zapisano.',
     llmSettingsCostNote:
       'Użycie klucza API obciąża Twoje konto OpenAI zgodnie z ich cennikiem.',
+    llmUsageIndicatorLabel: 'Wskaźnik użycia LLM',
+    llmCostLabel: (usd) => `Koszt: $${usd}`,
+    llmCostPlnLabel: (pln) => `Koszt (PLN): ${pln} zł`,
+    llmCostPlnFallback: 'PLN: …',
+    llmCostBreakdown: 'Szczegóły',
+    llmCostTotalTokens: (tokens) => `Łącznie tokenów: ${tokens}`,
+    llmCostTotalUsd: (usd) => `Suma USD: $${usd}`,
+    llmCostTotalPln: (pln) => `Suma PLN: ${pln} zł`,
+    llmCostTotalPlnFallback: 'Suma PLN: …',
+    llmCostModelRow: (model, input, output, usd) =>
+      `${model}: ${input} wej. / ${output} wyj. · $${usd}`,
+    diagnosticsAuthLabel: 'auth',
     llmStatusOnline: 'Status serwera: online',
     llmStatusOffline: 'Status serwera: offline',
     llmStatusUnknown: 'Status serwera: nieznany',
@@ -1872,6 +1928,7 @@ function DebugMatrixPage({
   llmApiBase: string
   uiLanguage: Language
 }) {
+  const copy = getTranslations(uiLanguage)
   const params =
     typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null
   const sessionId = params ? params.get('sessionId') : null
@@ -1906,7 +1963,7 @@ function DebugMatrixPage({
         const data = await response.json()
         setMatrixData(data)
       } catch {
-        setMatrixError('Unable to load matrix data.')
+        setMatrixError(copy.debugMatrixLoadError)
       } finally {
         setMatrixLoading(false)
       }
@@ -1918,13 +1975,17 @@ function DebugMatrixPage({
     }
   }, [debugEnabled, sessionId, llmApiBase])
 
+  useEffect(() => {
+    setMatrixError(null)
+  }, [uiLanguage])
+
   const isPl = uiLanguage === 'Polish'
   if (!debugEnabled) {
-    return <div className="debug-matrix">{isPl ? 'Niedostępne.' : 'Not available.'}</div>
+    return <div className="debug-matrix">{copy.debugMatrixUnavailable}</div>
   }
 
   if (!sessionId) {
-    return <div className="debug-matrix">{isPl ? 'Brak sessionId.' : 'Missing sessionId.'}</div>
+    return <div className="debug-matrix">{copy.debugMatrixMissingSession}</div>
   }
 
   const rows = ['WORLD', 'PRODUCT', 'ELEMENTS']
@@ -3554,6 +3615,23 @@ const isAuthFlowInProgress = () => {
   useEffect(() => {
     if (typeof window === 'undefined') return
     window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, uiLanguage)
+  }, [uiLanguage])
+
+  useEffect(() => {
+    if (engineNoticeTimer.current) {
+      window.clearTimeout(engineNoticeTimer.current)
+      engineNoticeTimer.current = null
+    }
+    setEngineNotice(null)
+    setEnginePreviewError(null)
+    setEngineFacilitationInlineError(null)
+    setEngineNameError(null)
+    setEngineSessionsError(null)
+    setAuthError(null)
+    setAuthCallbackError(null)
+    setAuthCallbackHint(null)
+    setLoginNotice(null)
+    setFeedbackNotice(null)
   }, [uiLanguage])
 
   useEffect(() => {
@@ -7956,7 +8034,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             )}
             {isDiagEnabled() && (
               <span className="muted">
-                auth: {authSession?.user?.email ?? '—'}
+                {copy.diagnosticsAuthLabel}: {authSession?.user?.email ?? '—'}
               </span>
             )}
             {isAdmin && (
@@ -7996,31 +8074,43 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 <button
                   className={`ai-support-toggle llm-usage-indicator ${llmUsageClass}`}
                   type="button"
-                  aria-label="LLM usage indicator"
-                  title="LLM usage indicator"
+                  aria-label={copy.llmUsageIndicatorLabel}
+                  title={copy.llmUsageIndicatorLabel}
                   disabled
                 >
                   {`${formatTokenTotal(currentTokensTotal)} tok`}
                 </button>
                 <div className="llm-cost-panel" aria-live="polite">
-                  <div className="llm-cost-line">{`Cost: $${formatUsd(totalCostUsd)}`}</div>
                   <div className="llm-cost-line">
-                    {usdPlnRate ? `Cost (PLN): ${formatPln(totalCostPln || 0)} zł` : 'PLN: …'}
+                    {copy.llmCostLabel(formatUsd(totalCostUsd))}
+                  </div>
+                  <div className="llm-cost-line">
+                    {usdPlnRate
+                      ? copy.llmCostPlnLabel(formatPln(totalCostPln || 0))
+                      : copy.llmCostPlnFallback}
                   </div>
                   <details className="llm-cost-details">
-                    <summary>Breakdown</summary>
+                    <summary>{copy.llmCostBreakdown}</summary>
                     <div className="llm-cost-breakdown">
                       <div className="llm-cost-row">
-                        Total tokens: {formatTokenTotal(engineUsage.totalTokens)}
+                        {copy.llmCostTotalTokens(formatTokenTotal(engineUsage.totalTokens))}
                       </div>
-                      <div className="llm-cost-row">{`Total USD: $${formatUsd(totalCostUsd)}`}</div>
                       <div className="llm-cost-row">
-                        {usdPlnRate ? `Total PLN: ${formatPln(totalCostPln || 0)} zł` : 'Total PLN: …'}
+                        {copy.llmCostTotalUsd(formatUsd(totalCostUsd))}
+                      </div>
+                      <div className="llm-cost-row">
+                        {usdPlnRate
+                          ? copy.llmCostTotalPln(formatPln(totalCostPln || 0))
+                          : copy.llmCostTotalPlnFallback}
                       </div>
                       {modelUsageEntries.map(([model, usage]) => (
                         <div key={model} className="llm-cost-row">
-                          {model}: {formatTokenTotal(usage.inputTokens)} in /{' '}
-                          {formatTokenTotal(usage.outputTokens)} out · ${formatUsd(usage.totalUSD)}
+                          {copy.llmCostModelRow(
+                            model,
+                            formatTokenTotal(usage.inputTokens),
+                            formatTokenTotal(usage.outputTokens),
+                            formatUsd(usage.totalUSD)
+                          )}
                         </div>
                       ))}
                     </div>
@@ -8705,14 +8795,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
                           }`}
                         >
                           {enginePromptSource === 'fallback'
-                            ? uiLanguage === 'Polish'
-                              ? 'Tryb offline (fallback)'
-                              : 'Offline mode (fallback)'
-                            : 'AI'}
+                            ? copy.impulseSourceFallback
+                            : copy.impulseSourceAi}
                         </span>
                         {import.meta.env.DEV && (
                           <span className="impulse-source-note">
-                            {lastLlmSource === 'llm' ? 'AI generated' : 'Deterministic fallback'}
+                            {lastLlmSource === 'llm'
+                              ? copy.impulseSourceAiGenerated
+                              : copy.impulseSourceDeterministic}
                             {lastLlmWhy ? ` · ${lastLlmWhy}` : ''}
                           </span>
                         )}
@@ -10118,11 +10208,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       impulseSource === 'fallback' ? 'fallback' : 'ai'
                     }`}
                   >
-                    {impulseSource === 'fallback' ? 'Tryb offline (fallback)' : 'AI'}
+                    {impulseSource === 'fallback'
+                      ? copy.impulseSourceFallback
+                      : copy.impulseSourceAi}
                   </span>
                   {import.meta.env.DEV && (
                     <span className="impulse-source-note">
-                      {lastLlmSource === 'llm' ? 'AI generated' : 'Deterministic fallback'}
+                      {lastLlmSource === 'llm'
+                        ? copy.impulseSourceAiGenerated
+                        : copy.impulseSourceDeterministic}
                       {lastLlmWhy ? ` · ${lastLlmWhy}` : ''}
                     </span>
                   )}
