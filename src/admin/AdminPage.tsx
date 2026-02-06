@@ -487,6 +487,10 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       const session = sessionRes.data?.session
       const user = userRes.data?.user
       const payload = {
+        href: typeof window !== 'undefined' ? window.location.href : null,
+        hasCode: typeof window !== 'undefined'
+          ? new URLSearchParams(window.location.search).has('code')
+          : false,
         origin: typeof window !== 'undefined' ? window.location.origin : null,
         supabaseHost: (() => {
           try {

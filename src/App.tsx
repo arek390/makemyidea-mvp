@@ -204,11 +204,7 @@ const MODEL_PRICING_USD: Record<string, ModelPricing> = {
 
 const getOAuthRedirectTo = () => {
   if (typeof window === 'undefined') return ''
-  const storedOrigin =
-    window.localStorage.getItem(AUTH_OAUTH_ORIGIN_KEY) ||
-    window.localStorage.getItem(AUTH_LOGIN_ORIGIN_KEY)
-  const origin = storedOrigin || window.location.origin
-  return `${origin}/auth/callback`
+  return `${window.location.origin}/auth/callback`
 }
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
@@ -3045,31 +3041,32 @@ const isAuthFlowInProgress = () => {
         return
       }
       try {
-        const start = Date.now()
-        const timeoutMs = 5000
-        const intervalMs = 200
-        while (Date.now() - start < timeoutMs) {
-          const { data, error } = await auth.getSession()
-          if (cancelled) return
-          if (error) {
-            console.error(error)
-            const codeValue = (error as { code?: string }).code
-            setAuthCallbackError(
-              `${error.message}${codeValue ? ` (${codeValue})` : ''}`
-            )
-            setAuthCallbackLoading(false)
-            return
-          }
-          if (data.session) {
-            clearAuthRedirect()
-            setAuthCallbackLoading(false)
-            return
-          }
-          await new Promise((resolve) => setTimeout(resolve, intervalMs))
+        const { data, error } = await auth.exchangeCodeForSession(href)
+        if (cancelled) return
+        if (error || !data?.session) {
+          const codeValue = (error as { code?: string })?.code
+          setAuthCallbackError(
+            error
+              ? `${error.message}${codeValue ? ` (${codeValue})` : ''}`
+              : copy.authCallback.signInFailed
+          )
+          setAuthCallbackLoading(false)
+          return
         }
-        console.error('[auth callback] timeout, no session')
-        setAuthCallbackError(copy.authCallback.signInFailed)
+        clearAuthRedirect()
+        const nextRaw = readPostAuthNext()
+        const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
+        const lang = readPostAuthLang()
+        if (lang) {
+          setUiLanguage(lang)
+          window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, lang)
+          clearPostAuthLang()
+        }
+        clearPostAuthNext()
         setAuthCallbackLoading(false)
+        if (typeof window !== 'undefined') {
+          window.location.replace(next)
+        }
       } finally {
         setAuthFlowInProgress(false)
       }
