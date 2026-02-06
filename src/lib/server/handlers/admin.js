@@ -201,8 +201,7 @@ export const handleAdminDebug = async (req, res) => {
     },
     backendSupabaseHost: resolveBackendSupabaseHost(),
     env: resolveEnvDebug(),
-    authCallUsed: 'getUser(token)',
-    tokenFirstChars: token ? token.slice(0, 12) : '',
+    authPath: 'getUser(token)',
     getUser: { ok: false },
     adminCheck: { ok: false },
   }
@@ -217,41 +216,34 @@ export const handleAdminDebug = async (req, res) => {
   }
 
   try {
-    const supabaseAnon = createClient(
-      process.env.SUPABASE_URL || '',
-      process.env.SUPABASE_ANON_KEY || ''
-    )
-    const { data, error } = await supabaseAnon.auth.getUser(token)
-    if (error) {
-      debug.getUser = { ok: false, error: error.message }
-    } else if (data?.user?.id) {
-      debug.getUser = {
-        ok: true,
-        userId: data.user.id,
-        email: data.user.email ?? null,
+    const authUser = await requireAuthUser(req, res)
+    if (!authUser) return
+    debug.getUser = {
+      ok: true,
+      userId: authUser.id,
+      email: authUser.email ?? null,
+    }
+    const supabaseAdmin = getSupabaseAdmin()
+    const adminCheck = await supabaseAdmin
+      .schema('public')
+      .from('admin_users')
+      .select('user_id')
+      .eq('user_id', authUser.id)
+      .limit(1)
+      .maybeSingle()
+    if (adminCheck.error) {
+      debug.adminCheck = {
+        ok: false,
+        userId: authUser.id,
+        error: adminCheck.error.message || 'QUERY_FAILED',
       }
-      const supabaseAdmin = getSupabaseAdmin()
-      const adminCheck = await supabaseAdmin
-        .schema('public')
-        .from('admin_users')
-        .select('user_id')
-        .eq('user_id', data.user.id)
-        .limit(1)
-        .maybeSingle()
-      if (adminCheck.error) {
-        debug.adminCheck = {
-          ok: false,
-          userId: data.user.id,
-          error: adminCheck.error.message || 'QUERY_FAILED',
-        }
-      } else {
-        const adminRowFound = Boolean(adminCheck.data?.user_id)
-        debug.adminCheck = {
-          ok: true,
-          userId: data.user.id,
-          isAdmin: adminRowFound,
-          adminRowFound,
-        }
+    } else {
+      const adminRowFound = Boolean(adminCheck.data?.user_id)
+      debug.adminCheck = {
+        ok: true,
+        userId: authUser.id,
+        isAdmin: adminRowFound,
+        adminRowFound,
       }
     }
   } catch (error) {
