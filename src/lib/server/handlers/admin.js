@@ -52,15 +52,20 @@ const readAuthorizationHeader = (req) => {
   return ''
 }
 
-const requireAuthUser = async (req, res) => {
+const readBearerToken = (req) => {
   const auth = String(readAuthorizationHeader(req) || '')
-  const startsWithBearer = auth.toLowerCase().startsWith('bearer ')
-  const token = startsWithBearer ? auth.slice(7) : ''
+  if (!auth) return ''
+  if (auth.toLowerCase().startsWith('bearer ')) return auth.slice(7)
+  return ''
+}
+
+const requireAuthUser = async (req, res) => {
+  const token = readBearerToken(req)
   if (!token) {
     res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
     return null
   }
-  console.log('auth_check', { hasAuthHeader: Boolean(auth), tokenLen: token.length })
+  console.log('auth_check', { hasAuthHeader: Boolean(token), tokenLen: token.length })
   const supabase = getSupabaseAnon()
   const { data, error } = await supabase.auth.getUser(token)
   if (error) {
@@ -196,6 +201,8 @@ export const handleAdminDebug = async (req, res) => {
     },
     backendSupabaseHost: resolveBackendSupabaseHost(),
     env: resolveEnvDebug(),
+    authCallUsed: 'getUser(token)',
+    tokenFirstChars: token ? token.slice(0, 12) : '',
     getUser: { ok: false },
     adminCheck: { ok: false },
   }
@@ -210,8 +217,11 @@ export const handleAdminDebug = async (req, res) => {
   }
 
   try {
-    const supabase = getSupabaseAnon()
-    const { data, error } = await supabase.auth.getUser(token)
+    const supabaseAnon = createClient(
+      process.env.SUPABASE_URL || '',
+      process.env.SUPABASE_ANON_KEY || ''
+    )
+    const { data, error } = await supabaseAnon.auth.getUser(token)
     if (error) {
       debug.getUser = { ok: false, error: error.message }
     } else if (data?.user?.id) {
