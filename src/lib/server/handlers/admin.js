@@ -28,6 +28,14 @@ const resolveBackendSupabaseHost = () => {
   }
 }
 
+const resolveEnvDebug = () => ({
+  hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+  hasSupabaseAnonKey: Boolean(process.env.SUPABASE_ANON_KEY),
+  hasServiceRole: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+  vercelEnv: process.env.VERCEL_ENV || null,
+  commit: process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT || null,
+})
+
 const requireAuthUser = async (req, res) => {
   const auth = String(req.headers.authorization || '')
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
@@ -170,6 +178,7 @@ export const handleAdminDebug = async (req, res) => {
       tokenLen: token.length,
     },
     backendSupabaseHost: resolveBackendSupabaseHost(),
+    env: resolveEnvDebug(),
     getUser: { ok: false },
     adminCheck: { ok: false },
   }
