@@ -1,4 +1,4 @@
-import { createSupabaseServerClient } from './supabaseServer.js'
+import { createClient } from '@supabase/supabase-js'
 
 const MAX_INPUT_CHARS = 10_000
 const ADMIN_EMAIL = 'arektest8@gmail.com'
@@ -72,8 +72,14 @@ export const resolveDiagnosticsEnabled = async (req, res) => {
   const requested = parseBooleanHeader(headerValue)
   if (!requested) return false
   try {
-    const supabase = createSupabaseServerClient(req, res)
-    const { data, error } = await supabase.auth.getUser()
+    const auth = String(req.headers.authorization || '')
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+    if (!token) return false
+    const url = process.env.SUPABASE_URL || ''
+    const key = process.env.SUPABASE_ANON_KEY || ''
+    if (!url || !key) return false
+    const supabase = createClient(url, key, { auth: { persistSession: false } })
+    const { data, error } = await supabase.auth.getUser(token)
     if (error || !data?.user?.email) return false
     return String(data.user.email).toLowerCase() === ADMIN_EMAIL
   } catch {

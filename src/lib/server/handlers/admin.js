@@ -1,12 +1,21 @@
 import crypto from 'crypto'
+import { createClient } from '@supabase/supabase-js'
 import { getSupabaseAdmin } from '../supabaseAdmin.js'
-import { createSupabaseServerClient } from '../supabaseServer.js'
 
 const MAX_DELTA = 100000
 
 const parseNumber = (value, fallback) => {
   const parsed = Number.parseInt(String(value ?? ''), 10)
   return Number.isFinite(parsed) ? parsed : fallback
+}
+
+const getSupabaseAnon = () => {
+  const url = process.env.SUPABASE_URL || ''
+  const key = process.env.SUPABASE_ANON_KEY || ''
+  if (!url || !key) {
+    throw new Error('Missing SUPABASE_URL or SUPABASE_ANON_KEY')
+  }
+  return createClient(url, key, { auth: { persistSession: false } })
 }
 
 const resolveBackendSupabaseHost = () => {
@@ -20,7 +29,6 @@ const resolveBackendSupabaseHost = () => {
 }
 
 const requireAuthUser = async (req, res) => {
-  const supabase = createSupabaseServerClient(req, res)
   const auth = String(req.headers.authorization || '')
   const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
   if (!token) {
@@ -28,6 +36,7 @@ const requireAuthUser = async (req, res) => {
     return null
   }
   console.log('auth_check', { hasAuthHeader: Boolean(auth), tokenLen: token.length })
+  const supabase = getSupabaseAnon()
   const { data, error } = await supabase.auth.getUser(token)
   if (error) {
     res.status(401).json({
