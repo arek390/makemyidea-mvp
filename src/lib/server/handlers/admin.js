@@ -294,6 +294,30 @@ export const handleAdminAuthProbe = async (req, res) => {
 
   const supabaseUrl = process.env.SUPABASE_URL || ''
   const anonKey = process.env.SUPABASE_ANON_KEY || ''
+  const backendSupabaseHost = resolveBackendSupabaseHost()
+  const jwt = (() => {
+    try {
+      const parts = token.split('.')
+      if (parts.length < 2) return null
+      const payload = parts[1]
+      const padded = payload.replace(/-/g, '+').replace(/_/g, '/')
+      const padLength = padded.length % 4
+      const normalized =
+        padLength === 0 ? padded : padded + '='.repeat(4 - padLength)
+      const decoded = Buffer.from(normalized, 'base64').toString('utf-8')
+      const json = JSON.parse(decoded)
+      return {
+        iss: json.iss ?? null,
+        sub: json.sub ?? null,
+        exp: json.exp ?? null,
+        iat: json.iat ?? null,
+        session_id: json.session_id ?? json.sid ?? null,
+        aud: json.aud ?? null,
+      }
+    } catch {
+      return null
+    }
+  })()
   const env = {
     vercelEnv: process.env.VERCEL_ENV ?? null,
     commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7) || null,
@@ -310,6 +334,9 @@ export const handleAdminAuthProbe = async (req, res) => {
         userId: null,
         email: null,
       },
+      jwt,
+      supabaseUrl,
+      backendSupabaseHost,
       env,
     })
     return
@@ -345,6 +372,9 @@ export const handleAdminAuthProbe = async (req, res) => {
         userId,
         email,
       },
+      jwt,
+      supabaseUrl,
+      backendSupabaseHost,
       env,
     })
   } catch (error) {
@@ -358,6 +388,9 @@ export const handleAdminAuthProbe = async (req, res) => {
         userId: null,
         email: null,
       },
+      jwt,
+      supabaseUrl,
+      backendSupabaseHost,
       env,
     })
   }
