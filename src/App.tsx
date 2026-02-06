@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, MouseEvent as ReactMouseEvent } from 'react'
-import type { AuthChangeEvent, Session } from '@supabase/supabase-js'
 import './App.css'
 import {
   MATRIX_COLS,
@@ -58,6 +57,7 @@ import { DIAGNOSTICS_STORAGE_KEY, isAdminUser } from './lib/diagnostics'
 import { ReportPage } from './report/ReportPage'
 import type { ReportSnapshot } from './report/exportCsv'
 import { AdminPage } from './admin/AdminPage'
+import { useAuthState } from './lib/authState'
 
 type StepId = 1 | 2 | 3 | 4
 type SpaceSlot = 'supersystem' | 'subsystem'
@@ -2114,13 +2114,13 @@ function App() {
   const [activeStep, setActiveStep] = useState<StepId>(1)
   const [showLanding, setShowLanding] = useState(true)
   const [landingView, setLandingView] = useState<'main' | 'threeSteps'>('main')
-  const [authSession, setAuthSession] = useState<Session | null>(null)
-  const [authLoading, setAuthLoading] = useState(true)
+  const { session: authSession, authReady } = useAuthState()
+  const authLoading = !authReady
   const [authError, setAuthError] = useState<string | null>(null)
   const [authCallbackError, setAuthCallbackError] = useState<string | null>(null)
   const [authCallbackLoading, setAuthCallbackLoading] = useState(false)
   const [authCallbackHint, setAuthCallbackHint] = useState<string | null>(null)
-  const [authResolved, setAuthResolved] = useState(false)
+  const authResolved = authReady
   const [loginEmail, setLoginEmail] = useState('')
   const [loginSending, setLoginSending] = useState(false)
   const [loginOauthLoading, setLoginOauthLoading] = useState(false)
@@ -2863,54 +2863,10 @@ const isAuthFlowInProgress = () => {
   }, [isEnginePreview])
 
   useEffect(() => {
-    let cancelled = false
     if (!client) {
-      setAuthLoading(false)
-      setAuthResolved(true)
       setAuthError(missingSupabaseEnvMessage)
-      return () => {
-        cancelled = true
-      }
+      return
     }
-    const auth = client.auth
-    const init = async () => {
-      const { data } = await auth.getSession()
-      if (!cancelled) {
-        setAuthSession(data.session ?? null)
-        setAuthLoading(false)
-        setAuthResolved(true)
-      }
-    }
-    init()
-    const { data } = auth.onAuthStateChange(
-      (event: AuthChangeEvent, session: Session | null) => {
-        setAuthSession(session ?? null)
-        if (!authResolved) setAuthResolved(true)
-        if (typeof window !== 'undefined') {
-          if (event === 'SIGNED_OUT') {
-            if (isAdminRoute) return
-            if (window.location.pathname !== '/') {
-              window.location.replace('/')
-            }
-          }
-        }
-      }
-    )
-    return () => {
-      cancelled = true
-      data.subscription.unsubscribe()
-    }
-  }, [])
-
-  useEffect(() => {
-    if (!isProtectedRoute || authLoading || authDisabled) return
-    if (!authSession) {
-      const next = window.location.pathname + window.location.search
-      window.location.href = `/login?next=${encodeURIComponent(next)}`
-    }
-  }, [isProtectedRoute, authLoading, authSession, authDisabled])
-
-  useEffect(() => {
     if (!authResolved) return
     if (!authSession?.user) return
     if (authRedirectedRef.current) return
@@ -2932,6 +2888,14 @@ const isAuthFlowInProgress = () => {
       window.location.replace(next)
     }
   }, [authResolved, authSession?.user?.id])
+
+  useEffect(() => {
+    if (!isProtectedRoute || authLoading || authDisabled) return
+    if (!authSession) {
+      const next = window.location.pathname + window.location.search
+      window.location.href = `/login?next=${encodeURIComponent(next)}`
+    }
+  }, [isProtectedRoute, authLoading, authSession, authDisabled])
 
   useEffect(() => {
     if (!isEnginePreview) return

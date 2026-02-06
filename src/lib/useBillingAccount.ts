@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { apiFetch } from './apiFetch'
+import { useAuthState } from './authState'
 
 type BillingAccountState = {
   balancePLN: number
@@ -21,12 +22,13 @@ export const useBillingAccount = (
   userId: string | null,
   options?: UseBillingAccountOptions
 ): BillingAccountState => {
+  const { authReady } = useAuthState()
   const enabled = options?.enabled ?? true
   const [state, setState] = useState<BillingAccountState>(defaultState)
 
   useEffect(() => {
     let cancelled = false
-    if (!enabled || !userId) {
+    if (!authReady || !enabled || !userId) {
       setState(defaultState)
       return () => {
         cancelled = true
@@ -63,7 +65,7 @@ export const useBillingAccount = (
     return () => {
       cancelled = true
     }
-  }, [enabled, userId])
+  }, [authReady, enabled, userId])
 
   return state
 }

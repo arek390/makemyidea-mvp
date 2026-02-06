@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase/client'
+import { useAuthState } from '../lib/authState'
 
 type AdminRow = {
   user_id: string | null
@@ -116,10 +117,9 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     billingEmailSearchPlaceholder: isPl ? 'Szukaj po emailu' : 'Search by email',
     billingAmountPlaceholder: isPl ? 'Kwota PLN' : 'Amount PLN',
   }
-  const [adminLoading, setAdminLoading] = useState(true)
-  const [sessionLoading, setSessionLoading] = useState(true)
-  const [authUserId, setAuthUserId] = useState<string | null>(null)
-  const [authEmail, setAuthEmail] = useState<string | null>(null)
+  const { user, authReady } = useAuthState()
+  const authUserId = user?.id ?? null
+  const authEmail = user?.email ?? null
   const [adminIdentity, setAdminIdentity] = useState<{ userId: string | null; email: string | null } | null>(null)
   const [adminAllowed, setAdminAllowed] = useState<'unknown' | 'yes' | 'no'>('unknown')
   const [rows, setRows] = useState<AdminRow[]>([])
@@ -141,63 +141,28 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
 
   useEffect(() => {
-    let cancelled = false
-    const run = async () => {
-      if (authLoading) return
-      if (!supabase) {
-        if (!cancelled) {
-          setAuthUserId(null)
-          setAuthEmail(null)
-          setAdminLoading(false)
-          setSessionLoading(false)
-        }
-        return
-      }
-      setAdminLoading(true)
-      setSessionLoading(true)
-      try {
-        const sessionRes = await supabase.auth.getSession()
-        const sessionUser = sessionRes.data?.session?.user ?? null
-        if (!cancelled) {
-          setAuthUserId(sessionUser?.id ?? null)
-          setAuthEmail(sessionUser?.email ?? null)
-          setAdminAllowed(sessionUser?.id ? 'unknown' : 'no')
-          setSessionLoading(false)
-        }
-      } catch {
-        if (!cancelled) {
-          setAuthUserId(null)
-          setAuthEmail(null)
-          setAdminAllowed('no')
-          setSessionLoading(false)
-        }
-      } finally {
-        if (!cancelled) setAdminLoading(false)
-      }
+    if (!authReady) return
+    if (!authUserId) {
+      setAdminAllowed('no')
+      return
     }
-    void run()
-    if (!supabase) return
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === 'SIGNED_OUT') {
-        setAuthUserId(null)
-        setAuthEmail(null)
-        setAdminAllowed('no')
-        return
-      }
-      if (session?.user?.id) {
-        setAuthUserId(session.user.id)
-        setAuthEmail(session.user.email ?? null)
-        setAdminAllowed('unknown')
-      }
-    })
-    return () => {
-      cancelled = true
-      subscription?.subscription?.unsubscribe?.()
-    }
-  }, [authLoading])
+    setAdminAllowed('unknown')
+  }, [authReady, authUserId])
 
   useEffect(() => {
-    if (!authUserId) {
+    if (!authReady) return
+    if (authUserId) return
+    setRows([])
+    setBillingRows([])
+    setError(null)
+    setBillingError(null)
+    setBillingNotice(null)
+    setDebugPayload(null)
+    setSessionDebugPayload(null)
+  }, [authReady, authUserId])
+
+  useEffect(() => {
+    if (!authReady || !authUserId) {
       setAdminIdentity(null)
       return
     }
@@ -227,7 +192,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     return () => {
       cancelled = true
     }
-  }, [authUserId])
+  }, [authReady, authUserId])
 
   useEffect(() => {
     if (!authUserId) {
@@ -269,6 +234,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
   }, [uiLanguage])
 
   useEffect(() => {
+    if (!authReady || !authUserId) return
     if (adminAllowed === 'no') return
     let cancelled = false
     const load = async () => {
@@ -310,9 +276,10 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     return () => {
       cancelled = true
     }
-  }, [adminAllowed])
+  }, [authReady, authUserId, adminAllowed])
 
   useEffect(() => {
+    if (!authReady || !authUserId) return
     if (adminAllowed === 'no') return
     let cancelled = false
     const load = async () => {
@@ -356,7 +323,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     return () => {
       cancelled = true
     }
-  }, [adminAllowed])
+  }, [authReady, authUserId, adminAllowed])
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -500,7 +467,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     }
   }
 
-  if (authLoading || adminLoading || sessionLoading) {
+  if (authLoading || !authReady) {
     return (
       <div className="app admin-page">
         <div className="admin-panel">
