@@ -401,7 +401,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
           seenUserId ? `${errorMessage} (seenUserId: ${seenUserId})` : errorMessage
         )
       }
-      const balanceAfter = Number(payload.balanceAfter ?? 0)
+      const balanceAfter = Number(payload.balance_after ?? 0)
       setBillingRows((prev) =>
         prev.map((item) =>
           item.userId === row.userId ? { ...item, balancePLN: balanceAfter } : item

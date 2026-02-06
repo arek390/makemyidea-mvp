@@ -224,10 +224,10 @@ export const handleAdminBillingTopup = async (req, res) => {
     const adminUserId = adminUser?.id || null
     const supabaseAdmin = getSupabaseAdmin()
     const rpcRes = await supabaseAdmin.rpc('admin_increment_balance', {
+      admin_user: adminUserId,
       target_user: targetUserId,
       delta_pln: deltaRaw,
-      request_id: requestId,
-      admin_user: adminUserId,
+      request_id: requestId ?? null,
     })
 
     if (rpcRes.error) {
@@ -241,12 +241,11 @@ export const handleAdminBillingTopup = async (req, res) => {
 
     res.status(200).json({
       ok: true,
-      balanceBefore,
-      balanceAfter,
-      requestId,
+      balance_before: balanceBefore,
+      balance_after: balanceAfter,
     })
   } catch (error) {
-    res.status(500).json({ ok: false, error: 'SERVER_ERROR' })
+    res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
   }
 }
 
