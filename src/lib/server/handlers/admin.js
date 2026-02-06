@@ -36,9 +36,26 @@ const resolveEnvDebug = () => ({
   commit: process.env.VERCEL_GIT_COMMIT_SHA || process.env.GIT_COMMIT || null,
 })
 
+const readAuthorizationHeader = (req) => {
+  const direct = req?.headers?.authorization
+  if (typeof direct === 'string') return direct
+  if (direct && typeof direct.get === 'function') {
+    const value = direct.get('authorization')
+    if (typeof value === 'string') return value
+  }
+  const headers = req?.headers || {}
+  for (const [key, value] of Object.entries(headers)) {
+    if (String(key).toLowerCase() === 'authorization') {
+      return Array.isArray(value) ? value[0] : String(value || '')
+    }
+  }
+  return ''
+}
+
 const requireAuthUser = async (req, res) => {
-  const auth = String(req.headers.authorization || '')
-  const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
+  const auth = String(readAuthorizationHeader(req) || '')
+  const startsWithBearer = auth.toLowerCase().startsWith('bearer ')
+  const token = startsWithBearer ? auth.slice(7) : ''
   if (!token) {
     res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
     return null
@@ -107,8 +124,8 @@ export const handleAdminWhoAmI = async (req, res) => {
 }
 
 const parseAuthHeader = (req) => {
-  const auth = String(req?.headers?.authorization || '')
-  const startsWithBearer = auth.startsWith('Bearer ')
+  const auth = String(readAuthorizationHeader(req) || '')
+  const startsWithBearer = auth.toLowerCase().startsWith('bearer ')
   const token = startsWithBearer ? auth.slice(7) : ''
   return {
     auth,
