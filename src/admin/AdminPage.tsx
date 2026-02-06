@@ -65,6 +65,10 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         ? `User ID: ${userId || '—'} | Email: ${email || '—'}`
         : `User ID: ${userId || '—'} | Email: ${email || '—'}`,
     adminCopyUserId: isPl ? 'Skopiuj User ID' : 'Copy User ID',
+    adminAccessDeniedTitle: isPl ? 'Brak dostępu' : 'Access denied',
+    adminAccessDeniedBody: isPl
+      ? 'Nie masz dostępu do panelu admina. Skopiuj swój User ID i dodaj go do tabeli admin_users.'
+      : 'You do not have access to the admin panel. Copy your User ID and add it to the admin_users table.',
     billingTitle: isPl ? 'Zasilenie kont użytkowników (admin-only)' : 'User account top-ups (admin-only)',
     billingSearchPlaceholder: isPl
       ? 'Szukaj po session_name lub session_id'
@@ -190,6 +194,39 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         }
       } catch {
         if (!cancelled) setAdminIdentity(null)
+      }
+    }
+    void load()
+    return () => {
+      cancelled = true
+    }
+  }, [authUserId])
+
+  useEffect(() => {
+    if (!authUserId) {
+      setAdminAllowed('no')
+      return
+    }
+    let cancelled = false
+    const load = async () => {
+      try {
+        if (!supabase) throw new Error('AUTH_REQUIRED')
+        const { data } = await supabase.auth.getSession()
+        const token = data.session?.access_token || ''
+        if (!token) throw new Error('AUTH_REQUIRED')
+        const response = await fetch('/api/admin?action=admin.check', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok || !payload?.ok) {
+          if (!cancelled) setAdminAllowed('no')
+          return
+        }
+        if (!cancelled) {
+          setAdminAllowed(payload.isAdmin ? 'yes' : 'no')
+        }
+      } catch {
+        if (!cancelled) setAdminAllowed('no')
       }
     }
     void load()
@@ -390,12 +427,41 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     )
   }
 
-  if (adminAllowed === 'no') {
+  if (!authUserId) {
     return (
       <div className="app admin-page">
         <div className="admin-panel">
           <h1>{t.adminTitle}</h1>
-          <p className="muted">{t.noAccess}</p>
+          <p className="muted">{t.authRequired}</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (adminAllowed === 'no') {
+    return (
+      <div className="app admin-page">
+        <div className="admin-panel">
+          <h1>{t.adminAccessDeniedTitle}</h1>
+          <p className="muted">{t.adminAccessDeniedBody}</p>
+          <p className="muted">
+            {t.adminIdentityLine(
+              adminIdentity?.userId ?? authUserId,
+              adminIdentity?.email ?? authEmail
+            )}
+          </p>
+          <button
+            type="button"
+            className="primary"
+            disabled={!adminIdentity?.userId && !authUserId}
+            onClick={() => {
+              const value = adminIdentity?.userId ?? authUserId
+              if (!value) return
+              void navigator.clipboard.writeText(value)
+            }}
+          >
+            {t.adminCopyUserId}
+          </button>
         </div>
       </div>
     )

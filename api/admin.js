@@ -4,6 +4,7 @@ import {
   handleAdminBillingList,
   handleAdminBillingTopup,
   handleAdminReportList,
+  handleAdminCheck,
   handleAdminWhoAmI,
 } from '../src/lib/server/handlers/admin.js'
 
@@ -46,6 +47,14 @@ export default async function handler(req, res) {
       return
     }
     await handleAdminWhoAmI(req, res)
+    return
+  }
+  if (action === 'admin.check') {
+    if (req.method !== 'GET') {
+      methodNotAllowed(res, ['GET'])
+      return
+    }
+    await handleAdminCheck(req, res)
     return
   }
   notFound(res)

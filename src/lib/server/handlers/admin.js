@@ -9,6 +9,16 @@ const parseNumber = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+const resolveBackendSupabaseHost = () => {
+  try {
+    const url = process.env.SUPABASE_URL
+    if (!url) return null
+    return new URL(url).hostname
+  } catch {
+    return null
+  }
+}
+
 const requireAuthUser = async (req, res) => {
   const supabase = createSupabaseServerClient(req, res)
   const auth = String(req.headers.authorization || '')
@@ -17,8 +27,18 @@ const requireAuthUser = async (req, res) => {
     res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
     return null
   }
+  console.log('auth_check', { hasAuthHeader: Boolean(auth), tokenLen: token.length })
   const { data, error } = await supabase.auth.getUser(token)
-  if (error || !data?.user?.id) {
+  if (error) {
+    res.status(401).json({
+      ok: false,
+      error: 'UNAUTHORIZED',
+      reason: 'INVALID_TOKEN',
+      details: error.message,
+    })
+    return null
+  }
+  if (!data?.user?.id) {
     res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
     return null
   }
@@ -62,7 +82,38 @@ export const handleAdminWhoAmI = async (req, res) => {
       ok: true,
       userId: authUser.id,
       email: authUser.email ?? null,
+      backendSupabaseHost: resolveBackendSupabaseHost(),
     })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
+  }
+}
+
+export const handleAdminCheck = async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.status(204).end()
+    return
+  }
+  if (req.method !== 'GET') {
+    res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['GET'] })
+    return
+  }
+  try {
+    const authUser = await requireAuthUser(req, res)
+    if (!authUser) return
+    const supabaseAdmin = getSupabaseAdmin()
+    const adminCheck = await supabaseAdmin
+      .schema('public')
+      .from('admin_users')
+      .select('user_id')
+      .eq('user_id', authUser.id)
+      .limit(1)
+      .maybeSingle()
+    if (adminCheck.error) {
+      res.status(500).json({ ok: false, error: adminCheck.error.message || 'QUERY_FAILED' })
+      return
+    }
+    res.status(200).json({ ok: true, isAdmin: Boolean(adminCheck.data?.user_id) })
   } catch (error) {
     res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
   }
