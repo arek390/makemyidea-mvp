@@ -46,6 +46,12 @@ export const reportCopy: Record<
     tableQuestion: string
     noEntries: string
     placeholder: string
+    labelSaveError: string
+    recommendationsEmpty: string
+    recommendationsIdeasTitle: string
+    recommendationsMorphTitle: string
+    recommendationsTrendsTitle: string
+    updatingAria: string
   }
 > = {
   en: {
@@ -93,6 +99,12 @@ export const reportCopy: Record<
     tableQuestion: 'Question',
     noEntries: 'No entries',
     placeholder: 'Placeholder content — to be completed in later versions.',
+    labelSaveError: 'Failed to save label.',
+    recommendationsEmpty: 'No recommendations. Click “Update report” to generate them.',
+    recommendationsIdeasTitle: 'Based on your ideas',
+    recommendationsMorphTitle: 'Morphological alternatives',
+    recommendationsTrendsTitle: 'Market trends',
+    updatingAria: 'Updating…',
   },
   pl: {
     title: 'Raport',
@@ -139,5 +151,11 @@ export const reportCopy: Record<
     tableQuestion: 'Pytanie',
     noEntries: 'Brak wpisów',
     placeholder: 'Treść przykładowa — do uzupełnienia w kolejnych wersjach.',
+    labelSaveError: 'Nie udało się zapisać etykiety.',
+    recommendationsEmpty: 'Brak rekomendacji. Kliknij “Aktualizuj raport”, aby je wygenerować.',
+    recommendationsIdeasTitle: 'Na podstawie twoich pomysłów',
+    recommendationsMorphTitle: 'Alternatywy morfologiczne',
+    recommendationsTrendsTitle: 'Trendy rynkowe',
+    updatingAria: 'Aktualizowanie…',
   },
 }

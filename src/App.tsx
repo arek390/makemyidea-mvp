@@ -210,8 +210,6 @@ const getOAuthRedirectTo = () => {
   const origin = storedOrigin || window.location.origin
   return `${origin}/auth/callback`
 }
-const MISSING_SUPABASE_ENV_MESSAGE =
-  'Auth disabled in this environment (missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).'
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
 const CANONICAL_HOST = (() => {
@@ -309,8 +307,10 @@ type Translations = {
   landingIntroSubtextLines: [string, string, string, string]
   landingIntroSubtextEmphasis: string
   landingCta: string
+  landingCtaNote: string
   landingThreeStepsCta: string
   landingThreeStepsTitle: string
+  landingBackToFull: string
   landingBeforeLead: string
   landingBeforeList: string[]
   landingBeforeEmphasis: { strong: string; medium: string; rest: string }
@@ -370,16 +370,24 @@ type Translations = {
   loginEmailPlaceholder: string
   loginEmailCta: string
   loginEmailSending: string
+  loginEmailCooldown: (seconds: number) => string
+  loginPasswordToggleLabel: string
+  loginPasswordPlaceholder: string
+  loginPasswordSignIn: string
+  loginPasswordSignUp: string
   loginGuestLabel: string
   loginGuestCta: string
   loginGuestActive: string
   loginNoticeSent: string
+  loginNoticeSignup: string
   loginEmailError: string
   loginCallbackTitle: string
   loginGuestMergePrompt: string
   loginGuestMergeYes: string
   loginGuestMergeNo: string
   loginGuestMergeLoading: string
+  loginDevSmtpNotice: string
+  loginDevResetAuth: string
   steps: Record<StepId, string>
   step1Intro: string
   productDescriptionLabel: string
@@ -661,8 +669,10 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     ],
     landingIntroSubtextEmphasis: 'you',
     landingCta: '▶ Start for free',
+    landingCtaNote: 'Sign up in 30 seconds • No credit card required',
     landingThreeStepsCta: 'Get started in 3 steps',
     landingThreeStepsTitle: '3 steps',
+    landingBackToFull: '← Back to full page',
     landingBeforeLead: 'If any of this sounds familiar — you are in the right place.',
     landingBeforeList: ['❌ Chaos', '❌ Lost notes', '❌ No decisions'],
     landingBeforeEmphasis: {
@@ -741,16 +751,26 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     loginEmailPlaceholder: 'you@company.com',
     loginEmailCta: 'Email me a login link',
     loginEmailSending: 'Sending...',
+    loginEmailCooldown: (seconds) => `Wait ${seconds}s`,
+    loginPasswordToggleLabel: 'Email + password (dev)',
+    loginPasswordPlaceholder: 'password',
+    loginPasswordSignIn: 'Sign in',
+    loginPasswordSignUp: 'Sign up',
     loginGuestLabel: 'Guest',
     loginGuestCta: 'Try as guest',
     loginGuestActive: 'In guest mode — data is stored locally.',
     loginNoticeSent: 'Check your email for the login link.',
+    loginNoticeSignup:
+      'Account created. If email confirmation is required, check your inbox.',
     loginEmailError: 'Enter a valid email.',
     loginCallbackTitle: 'Signing you in...',
     loginGuestMergePrompt: 'We found work from your guest session. Import it?',
     loginGuestMergeYes: 'Yes, import',
     loginGuestMergeNo: 'No, discard',
     loginGuestMergeLoading: 'Importing...',
+    loginDevSmtpNotice:
+      'Supabase default SMTP has a very low send limit. If you see 429, use password login or Google.',
+    loginDevResetAuth: 'Reset auth (dev)',
     steps: {
       1: 'Tell us about your new product',
       2: 'Idea Clarity Grid scenario confirmation',
@@ -1109,8 +1129,10 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     ],
     landingIntroSubtextEmphasis: 'Ciebie',
     landingCta: '▶ Zacznij za darmo',
+    landingCtaNote: 'rejestracja w 30 s • bez karty',
     landingThreeStepsCta: 'Get started in 3 steps',
     landingThreeStepsTitle: '3 kroki',
+    landingBackToFull: '← Wróć do pełnej strony',
     landingBeforeLead: 'Jeśli choć jedno brzmi znajomo — jesteś w dobrym miejscu.',
     landingBeforeList: ['❌ Chaos', '❌ Zgubione notatki', '❌ Brak decyzji'],
     landingBeforeEmphasis: {
@@ -1189,16 +1211,26 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     loginEmailPlaceholder: 'you@company.com',
     loginEmailCta: 'Wyślij link do logowania',
     loginEmailSending: 'Wysyłanie...',
+    loginEmailCooldown: (seconds) => `Poczekaj ${seconds}s`,
+    loginPasswordToggleLabel: 'E-mail + hasło (dev)',
+    loginPasswordPlaceholder: 'hasło',
+    loginPasswordSignIn: 'Zaloguj się',
+    loginPasswordSignUp: 'Zarejestruj się',
     loginGuestLabel: 'Gość',
     loginGuestCta: 'Wypróbuj jako gość',
     loginGuestActive: 'W trybie gościa — dane są zapisywane lokalnie.',
     loginNoticeSent: 'Sprawdź e-mail — wysłaliśmy link do logowania.',
+    loginNoticeSignup:
+      'Konto utworzone. Jeśli wymagane jest potwierdzenie email, sprawdź skrzynkę.',
     loginEmailError: 'Wpisz poprawny adres e-mail.',
     loginCallbackTitle: 'Logowanie...',
     loginGuestMergePrompt: 'Znaleźliśmy pracę z sesji gościa. Zaimportować?',
     loginGuestMergeYes: 'Tak, importuj',
     loginGuestMergeNo: 'Nie, odrzuć',
     loginGuestMergeLoading: 'Importowanie...',
+    loginDevSmtpNotice:
+      'Supabase default SMTP ma bardzo niski limit wysyłek. Jeśli widzisz 429, użyj logowania hasłem lub Google.',
+    loginDevResetAuth: 'Zresetuj auth (dev)',
     steps: {
       1: 'Opowiedz o swoim nowym produkcie',
       2: 'Potwierdzenie scenariusza Idea Clarity Grid',
@@ -1880,26 +1912,41 @@ function DebugMatrixPage({ llmApiBase }: { llmApiBase: string }) {
     }
   }, [debugEnabled, sessionId, llmApiBase])
 
+  const isPl = uiLanguage === 'Polish'
   if (!debugEnabled) {
-    return <div className="debug-matrix">Not available.</div>
+    return <div className="debug-matrix">{isPl ? 'Niedostępne.' : 'Not available.'}</div>
   }
 
   if (!sessionId) {
-    return <div className="debug-matrix">Missing sessionId.</div>
+    return <div className="debug-matrix">{isPl ? 'Brak sessionId.' : 'Missing sessionId.'}</div>
   }
 
   const rows = ['WORLD', 'PRODUCT', 'ELEMENTS']
   const cols = ['AS_IS', 'NOT_WORKING', 'SHOULD_BE']
   const recent = matrixData?.timeline?.[0]
   const formatMatrixLabel = (row: string, col: string) => {
-    const rowLabel =
-      row === 'WORLD' ? 'Świat / Środowisko' : row === 'PRODUCT' ? 'Produkt' : 'Elementy'
-    const colLabel =
-      col === 'AS_IS'
+    const rowLabel = isPl
+      ? row === 'WORLD'
+        ? 'Świat / Środowisko'
+        : row === 'PRODUCT'
+          ? 'Produkt'
+          : 'Elementy'
+      : row === 'WORLD'
+        ? 'World / Environment'
+        : row === 'PRODUCT'
+          ? 'Product'
+          : 'Elements'
+    const colLabel = isPl
+      ? col === 'AS_IS'
         ? 'Jak jest?'
         : col === 'NOT_WORKING'
           ? 'Co nie działa?'
           : 'Jak powinno być?'
+      : col === 'AS_IS'
+        ? 'As is'
+        : col === 'NOT_WORKING'
+          ? 'Not working'
+          : 'Should be'
     const cell = `${row === 'WORLD' ? 'A' : row === 'PRODUCT' ? 'B' : 'C'}${
       col === 'AS_IS' ? '1' : col === 'NOT_WORKING' ? '2' : '3'
     }`
@@ -1908,26 +1955,46 @@ function DebugMatrixPage({ llmApiBase }: { llmApiBase: string }) {
 
   const recentKey = recent ? `${recent.matrix_row}-${recent.matrix_col}` : null
   const rowLabel = (row: string) =>
-    row === 'WORLD' ? 'Świat / Środowisko' : row === 'PRODUCT' ? 'Produkt' : 'Elementy'
+    isPl
+      ? row === 'WORLD'
+        ? 'Świat / Środowisko'
+        : row === 'PRODUCT'
+          ? 'Produkt'
+          : 'Elementy'
+      : row === 'WORLD'
+        ? 'World / Environment'
+        : row === 'PRODUCT'
+          ? 'Product'
+          : 'Elements'
   const colLabel = (col: string) =>
-    col === 'AS_IS' ? 'Jak jest?' : col === 'NOT_WORKING' ? 'Co nie działa?' : 'Jak powinno być?'
+    isPl
+      ? col === 'AS_IS'
+        ? 'Jak jest?'
+        : col === 'NOT_WORKING'
+          ? 'Co nie działa?'
+          : 'Jak powinno być?'
+      : col === 'AS_IS'
+        ? 'As is'
+        : col === 'NOT_WORKING'
+          ? 'Not working'
+          : 'Should be'
 
   return (
     <div className="debug-matrix">
       <header>
-        <h1>Debug Matrix</h1>
+        <h1>{isPl ? 'Debug matrycy' : 'Debug Matrix'}</h1>
         <div className="debug-meta">
-          <span>Session: {sessionId}</span>
+          <span>{isPl ? 'Sesja' : 'Session'}: {sessionId}</span>
           {matrixData && (
             <span>
-              Pokrycie analizy: {matrixData.coverage.filledCells} /{' '}
+              {isPl ? 'Pokrycie analizy' : 'Coverage'}: {matrixData.coverage.filledCells} /{' '}
               {matrixData.coverage.totalCells}
             </span>
           )}
         </div>
       </header>
       {matrixError && <div className="engine-error">{matrixError}</div>}
-      {matrixLoading && <div className="engine-empty">Loading…</div>}
+      {matrixLoading && <div className="engine-empty">{isPl ? 'Ładowanie…' : 'Loading…'}</div>}
       {matrixData && (
         <div className="debug-grid">
           <div className="debug-corner" />
@@ -1946,7 +2013,9 @@ function DebugMatrixPage({ llmApiBase }: { llmApiBase: string }) {
                 const isRecent = recentKey === `${row}-${col}`
                 return (
                   <div key={`${row}-${col}`} className={`debug-cell ${isRecent ? 'recent' : ''}`}>
-                    <div className="debug-count">{answers.length} wpisów</div>
+                    <div className="debug-count">
+                      {answers.length} {isPl ? 'wpisów' : 'entries'}
+                    </div>
                     <ul>
                       {answers.map((answer) => (
                         <li key={`${answer.id}-${answer.created_at}`}>{answer.short_text}</li>
@@ -1961,7 +2030,7 @@ function DebugMatrixPage({ llmApiBase }: { llmApiBase: string }) {
       )}
       {matrixData && (
         <section className="debug-timeline">
-          <h2>Ostatnie wpisy</h2>
+          <h2>{isPl ? 'Ostatnie wpisy' : 'Recent entries'}</h2>
           <ul>
             {matrixData.timeline.map((entry) => (
               <li key={`${entry.id}-${entry.created_at}`}>
@@ -2735,7 +2804,7 @@ const isAuthFlowInProgress = () => {
     if (!client) {
       setAuthLoading(false)
       setAuthResolved(true)
-      setAuthError(MISSING_SUPABASE_ENV_MESSAGE)
+      setAuthError(missingSupabaseEnvMessage)
       return () => {
         cancelled = true
       }
@@ -2984,7 +3053,7 @@ const isAuthFlowInProgress = () => {
 
   const handleGoogleLogin = async () => {
     if (!client) {
-      setAuthError(MISSING_SUPABASE_ENV_MESSAGE)
+      setAuthError(missingSupabaseEnvMessage)
       return
     }
     setAuthError(null)
@@ -3046,7 +3115,7 @@ const isAuthFlowInProgress = () => {
 
   const handleMagicLink = async () => {
     if (!client) {
-      setAuthError(MISSING_SUPABASE_ENV_MESSAGE)
+      setAuthError(missingSupabaseEnvMessage)
       return
     }
     if (!loginEmail.trim()) {
@@ -3093,8 +3162,7 @@ const isAuthFlowInProgress = () => {
         })
       }
       if (isRateLimit) {
-        const baseMessage =
-          'Limit maili przekroczony — odczekaj lub użyj Google/hasła'
+        const baseMessage = notices.authRateLimit
         const devDetail = import.meta.env.DEV
           ? ` (${codeValue ?? 'no_code'}: ${error.message})`
           : ''
@@ -3114,7 +3182,7 @@ const isAuthFlowInProgress = () => {
 
   const handlePasswordAuth = async () => {
     if (!client) {
-      setAuthError(MISSING_SUPABASE_ENV_MESSAGE)
+      setAuthError(missingSupabaseEnvMessage)
       return
     }
     if (!loginEmail.trim() || !loginPassword) {
@@ -3153,9 +3221,7 @@ const isAuthFlowInProgress = () => {
         const detail = import.meta.env.DEV && codeValue ? ` (${codeValue})` : ''
         setAuthError(`${error.message}${detail}`)
       } else if (!data?.session) {
-        setLoginNotice(
-          'Konto utworzone. Jeśli wymagane jest potwierdzenie email, sprawdź skrzynkę.'
-        )
+        setLoginNotice(copy.loginNoticeSignup)
       }
     }
     setLoginSending(false)
@@ -3804,10 +3870,7 @@ const isAuthFlowInProgress = () => {
     const trimmed = feedbackMessage.trim()
     if (trimmed.length < 10 || trimmed.length > 4000) {
       setFeedbackNotice({
-        message:
-          uiLanguage === 'English'
-            ? 'Please enter at least 10 characters.'
-            : 'Wpisz co najmniej 10 znaków.',
+        message: notices.feedbackMinChars,
         variant: 'error',
       })
       return
@@ -3821,12 +3884,14 @@ const isAuthFlowInProgress = () => {
     const sessionName =
       enginePreviewSessionName || sessionId || feedbackContext.sessionId || ''
     const body = [
-      'Feedback z aplikacji makemyidea.work',
+      uiLanguage === 'Polish'
+        ? 'Feedback z aplikacji makemyidea.work'
+        : 'Feedback from makemyidea.work',
       '',
-      'Sesja:',
+      uiLanguage === 'Polish' ? 'Sesja:' : 'Session:',
       sessionName || '—',
       '',
-      'Treść feedbacku:',
+      uiLanguage === 'Polish' ? 'Treść feedbacku:' : 'Feedback message:',
       '--------------------------------',
       trimmed,
       '--------------------------------',
@@ -3945,6 +4010,153 @@ const isAuthFlowInProgress = () => {
 
 
   const copy = useMemo(() => getTranslations(uiLanguage), [uiLanguage])
+  const notices = useMemo(() => {
+    const isPl = uiLanguage === 'Polish'
+    return {
+      createSessionFirst: isPl ? 'Najpierw utwórz sesję.' : 'Create a session first.',
+      noActiveSession: isPl ? 'Brak aktywnej sesji.' : 'No active session.',
+      sessionNameRequired: isPl ? 'Podaj nazwę sesji.' : 'Please enter a session name.',
+      authSessionExpired: isPl
+        ? 'Sesja logowania wygasła. Zaloguj się ponownie.'
+        : 'Your login session has expired. Please sign in again.',
+      sessionNameCheckFailed: (message: string) =>
+        isPl
+          ? `Nie udało się sprawdzić nazwy sesji. ${message}`
+          : `Unable to check the session name. ${message}`,
+      sessionIdGenerateFailed: isPl
+        ? 'Nie udało się wygenerować ID sesji.'
+        : 'Unable to generate a session ID.',
+      createSessionFailed: (message: string) =>
+        isPl
+          ? `Nie udało się utworzyć sesji. ${message}`
+          : `Unable to create the session. ${message}`,
+      createSessionFailedGeneric: isPl
+        ? 'Nie udało się utworzyć sesji. Spróbuj ponownie.'
+        : 'Unable to create the session. Please try again.',
+      createEngineSessionFailed: isPl
+        ? 'Nie udało się utworzyć sesji silnika.'
+        : 'Unable to create an engine session.',
+      addEntryFailed: isPl ? 'Nie udało się dodać wpisu.' : 'Unable to add the entry.',
+      addEntryFailedDetail: (status: string, code: string, message: string | null) =>
+        isPl
+          ? `Nie udało się dodać wpisu. (status: ${status}, code: ${code})${message ? ` ${message}` : ''}`
+          : `Unable to add the entry. (status: ${status}, code: ${code})${message ? ` ${message}` : ''}`,
+      noNaEntries: isPl ? 'Brak wpisów N/A.' : 'No N/A entries.',
+      aiDisabled: isPl ? 'AI jest wyłączony.' : 'AI is disabled.',
+      assignFailed: isPl ? 'Nie udało się przypisać wpisów.' : 'Unable to assign entries.',
+      assignRetryFailed: isPl
+        ? 'Nie udało się uzupełnić przyporządkowań. Spróbuj ponownie.'
+        : 'Unable to complete assignments. Please try again.',
+      assignNaAction: isPl ? 'Uzupełnij N/A (AI)' : 'Fill N/A (AI)',
+      assignNaLoading: isPl ? 'Uzupełniam…' : 'Filling…',
+      noAssignments: isPl ? 'Brak przypisań z AI.' : 'No assignments from AI.',
+      naFilled: isPl ? 'Uzupełniono wpisy N/A.' : 'N/A entries filled.',
+      saveToCloudRequiresAuth: isPl
+        ? 'Zaloguj się, aby zapisać w chmurze'
+        : 'Sign in to save to the cloud.',
+      saveToCloudFailed: (status: string | null | undefined) =>
+        isPl
+          ? `Nie udało się zapisać (${status ?? 'err'})`
+          : `Save failed (${status ?? 'err'})`,
+      saveToCloudSuccess: isPl
+        ? 'Sesja zapisana w chmurze'
+        : 'Session saved to the cloud.',
+      supabaseConnectionMissing: isPl
+        ? 'Brak połączenia z Supabase.'
+        : 'No connection to Supabase.',
+      sessionsListFailed: (message: string) =>
+        isPl
+          ? `Nie udało się pobrać listy sesji. ${message}`
+          : `Unable to fetch session list. ${message}`,
+      sessionsMetadataFailed: (message: string) =>
+        isPl
+          ? `Nie udało się pobrać metadanych sesji. ${message}`
+          : `Unable to fetch session metadata. ${message}`,
+      sessionDeleteFailed: (message: string) =>
+        isPl
+          ? `Nie udało się usunąć sesji. ${message}`
+          : `Unable to delete the session. ${message}`,
+      sessionDeleteForbidden: isPl
+        ? 'Nie udało się usunąć sesji (brak uprawnień).'
+        : 'Unable to delete the session (insufficient permissions).',
+      labelSaveFailed: (message: string) =>
+        isPl
+          ? `Nie udało się zapisać etykiety. ${message}`
+          : `Unable to save the label. ${message}`,
+      sessionDetailsFailed: (message: string) =>
+        isPl
+          ? `Nie udało się pobrać szczegółów sesji. ${message}`
+          : `Unable to fetch session details. ${message}`,
+      saveChangesFailed: (message: string) =>
+        isPl
+          ? `Nie udało się zapisać zmian. ${message}`
+          : `Unable to save changes. ${message}`,
+      deleteItemFailed: (message: string) =>
+        isPl
+          ? `Nie udało się usunąć elementu. ${message}`
+          : `Unable to delete the item. ${message}`,
+      sessionAccessDenied: isPl
+        ? 'Nie masz dostępu do tej sesji (brak powiązania).'
+        : 'You do not have access to this session (no link).',
+      sessionAccessCheckFailed: (message: string) =>
+        isPl
+          ? `Nie udało się potwierdzić dostępu. ${message}`
+          : `Unable to confirm access. ${message}`,
+      openSessionFailed: (status: string | number | null | undefined, code: string | null | undefined) =>
+        isPl
+          ? `Nie udało się otworzyć sesji: ${status ?? 'n/a'}/${code ?? 'n/a'}.`
+          : `Open session failed: ${status ?? 'n/a'}/${code ?? 'n/a'}.`,
+      legacySessionMissingMeta: isPl
+        ? 'Ta sesja jest w trybie legacy i wymaga naprawy (brak metadanych w chmurze).'
+        : 'This session is in legacy mode and needs repair (missing cloud metadata).',
+      reportOpenFailed: isPl
+        ? 'Nie udało się utworzyć/otworzyć raportu. Sprawdź połączenie lub uprawnienia.'
+        : 'Unable to create/open the report. Check your connection or permissions.',
+      invalidImportFile: isPl ? 'Nieprawidłowy format pliku.' : 'Invalid file format.',
+      exportFailed: (message: string) =>
+        isPl
+          ? `Nie udało się wyeksportować sesji. ${message}`
+          : `Unable to export the session. ${message}`,
+      importFailed: (message: string) =>
+        isPl
+          ? `Nie udało się zaimportować sesji. ${message}`
+          : `Unable to import the session. ${message}`,
+      sessionNameCollision: isPl
+        ? 'Taka nazwa już istnieje — zmień nazwę.'
+        : 'That name already exists — please choose another.',
+      feedbackMinChars: isPl
+        ? 'Wpisz co najmniej 10 znaków.'
+        : 'Please enter at least 10 characters.',
+      feedbackCooldown: (seconds: number) =>
+        isPl
+          ? `Możesz wysłać kolejną wiadomość za ${seconds}s.`
+          : `You can send another message in ${seconds}s.`,
+      authRateLimit: isPl
+        ? 'Limit maili przekroczony — odczekaj lub użyj Google/hasła'
+        : 'Email limit reached — please wait or use Google/password.',
+      sessionNameSaveFailed: isPl
+        ? 'Nie udało się utworzyć sesji. Spróbuj ponownie.'
+        : 'Unable to create the session. Please try again.',
+      editAction: isPl ? 'Edytuj' : 'Edit',
+      deleteAction: isPl ? 'Usuń' : 'Delete',
+      supabaseConfigTitle: isPl
+        ? 'Supabase nie jest poprawnie skonfigurowany.'
+        : 'Supabase is not configured correctly.',
+      supabaseConfigBody: isPl
+        ? 'Sprawdź VITE_SUPABASE_URL oraz VITE_SUPABASE_ANON_KEY w środowisku produkcyjnym Vercel.'
+        : 'Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel Production env.',
+      loading: isPl ? 'Ładowanie...' : 'Loading...',
+      redirectingToLogin: isPl
+        ? 'Przekierowanie do logowania...'
+        : 'Redirecting to login...',
+      sessionLabelPrefix: isPl ? 'Sesja' : 'Session',
+      honeypotLabel: isPl ? 'Strona' : 'Website',
+    }
+  }, [uiLanguage])
+  const missingSupabaseEnvMessage =
+    uiLanguage === 'Polish'
+      ? 'Autoryzacja wyłączona w tym środowisku (brak VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).'
+      : 'Auth disabled in this environment (missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).'
   const stepTitle = (stepId: StepId) => copy.steps[stepId]
   const stepHeading = (stepId: StepId) =>
     `${copy.stepLabel}${stepId} | ${stepTitle(stepId)}`
@@ -4011,7 +4223,7 @@ const isAuthFlowInProgress = () => {
           />
         </label>
         <label className="sr-only" aria-hidden="true">
-          <span>Website</span>
+          <span>{notices.honeypotLabel}</span>
           <input
             type="text"
             value={feedbackHoneypot}
@@ -4046,9 +4258,7 @@ const isAuthFlowInProgress = () => {
         )}
         {feedbackCooldown > 0 && (
           <div className="muted">
-            {uiLanguage === 'English'
-              ? `You can send another message in ${feedbackCooldown}s.`
-              : `Możesz wysłać kolejną wiadomość za ${feedbackCooldown}s.`}
+            {notices.feedbackCooldown(feedbackCooldown)}
           </div>
         )}
         <div className="muted">{copy.feedbackPrivacyNote}</div>
@@ -4631,7 +4841,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
   const requestImpulse = async () => {
     if (isSuggestLoading) return
     if (!engineSessionPersisted || !enginePreviewSessionId) {
-      showEngineNotice('Najpierw utwórz sesję.', 'error')
+      showEngineNotice(notices.createSessionFirst, 'error')
       return
     }
     if (suggestDiagEnabled) {
@@ -4853,7 +5063,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
   const activateFacilitationPrompt = async (type: FacilitationType, retryCount = 0) => {
     if (!engineSessionPersisted || !enginePreviewSessionId) {
-      setEngineFacilitationInlineError('Najpierw utwórz sesję.')
+      setEngineFacilitationInlineError(notices.createSessionFirst)
       return
     }
     if (suggestDiagEnabled) {
@@ -5218,7 +5428,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (enginePreviewSessionId) return enginePreviewSessionId
     const name = (nameOverride ?? enginePreviewSessionName)?.trim()
     if (!name) {
-      showEngineNotice('Podaj nazwę sesji.', 'error')
+      showEngineNotice(notices.sessionNameRequired, 'error')
       return null
     }
     try {
@@ -5226,7 +5436,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         const { data: u } = await client.auth.getUser()
         const userId = u?.user?.id ?? null
         if (!userId) {
-          showEngineNotice('Sesja logowania wygasła. Zaloguj się ponownie.', 'error')
+          showEngineNotice(notices.authSessionExpired, 'error')
           return null
         }
         const normalizedName = name.trim().toLowerCase()
@@ -5237,7 +5447,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         if (nameCheckError) {
           const message =
             (nameCheckError as { message?: string | null })?.message ?? 'Request failed'
-          showEngineNotice(`Nie udało się sprawdzić nazwy sesji. ${message}`, 'error')
+          showEngineNotice(notices.sessionNameCheckFailed(message), 'error')
           return null
         }
         const hasCollision = Boolean(
@@ -5254,7 +5464,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           return null
         }
         if (typeof crypto === 'undefined' || !('randomUUID' in crypto)) {
-          showEngineNotice('Nie udało się wygenerować ID sesji.', 'error')
+          showEngineNotice(notices.sessionIdGenerateFailed, 'error')
           return null
         }
         const sessionId = crypto.randomUUID()
@@ -5271,7 +5481,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           } else {
             const message =
               (insertSessionError as { message?: string | null })?.message ?? 'Request failed'
-            showEngineNotice(`Nie udało się utworzyć sesji. ${message}`, 'error')
+            showEngineNotice(notices.createSessionFailed(message), 'error')
           }
           options?.onInsertError?.()
           return null
@@ -5338,7 +5548,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         return createdSession.id
       }
     } catch {
-      setEnginePreviewError('Unable to create engine session.')
+      setEnginePreviewError(notices.createEngineSessionFailed)
       logSessionStore('engine_preview_create_failed', {})
     }
     return null
@@ -5398,7 +5608,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEnginePreviewError(null)
     try {
       if (!client) {
-        showEngineNotice('Sesja logowania wygasła. Zaloguj się ponownie.', 'error')
+        showEngineNotice(notices.authSessionExpired, 'error')
         return
       }
       const { data: userData, error: userErr } = await client.auth.getUser()
@@ -5408,7 +5618,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         hasAuthSession: Boolean(authSession?.user),
       })
       if (userErr || !authedUserId) {
-        showEngineNotice('Sesja logowania wygasła. Zaloguj się ponownie.', 'error')
+        showEngineNotice(notices.authSessionExpired, 'error')
         return
       }
       const itemId =
@@ -5488,13 +5698,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
         const codeLabel = (error as { code?: string | null })?.code ?? 'n/a'
         const message = ((error as { message?: string | null })?.message || '').slice(0, 120)
         showEngineNotice(
-          `Nie udało się dodać wpisu. (status: ${statusLabel}, code: ${codeLabel})${message ? ` ${message}` : ''}`,
+          notices.addEntryFailedDetail(statusLabel, codeLabel, message || null),
           'error'
         )
         return
       }
       if (!inserted) {
-        showEngineNotice('Nie udało się dodać wpisu.', 'error')
+        showEngineNotice(notices.addEntryFailed, 'error')
         return
       }
       const insertedRow = inserted as Database['public']['Tables']['board_items']['Row']
@@ -5597,7 +5807,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       setEngineLastEntryShort(isShort)
       engineInputRef.current?.focus()
     } catch {
-      setEnginePreviewError('Nie udało się dodać wpisu.')
+      setEnginePreviewError(notices.addEntryFailed)
       logSessionStore('engine_preview_add_failed', { sessionId })
     }
   }
@@ -5828,10 +6038,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         } catch (error) {
           const message = error instanceof Error ? error.message : 'unknown'
           console.error('[report] ensure failed', { sessionId, message })
-          showEngineNotice(
-            'Nie udało się utworzyć/otworzyć raportu. Sprawdź połączenie lub uprawnienia.',
-            'error'
-          )
+          showEngineNotice(notices.reportOpenFailed, 'error')
           return
         }
       } else if (isGuestMode()) {
@@ -5907,12 +6114,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
   const fillNaAssignments = async (source: 'manual' | 'auto') => {
     if (engineAssignLoading || naFillStatus === 'running') return
     if (!enginePreviewSessionId) {
-      if (source === 'manual') showEngineNotice('Brak aktywnej sesji.', 'error')
+      if (source === 'manual') showEngineNotice(notices.noActiveSession, 'error')
       return
     }
     if (!engineSessionPersisted) {
       if (source === 'manual') {
-        showEngineNotice('Najpierw utwórz sesję.', 'error')
+        showEngineNotice(notices.createSessionFirst, 'error')
       }
       return
     }
@@ -5928,11 +6135,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
         ? [...engineUnassignedItems, ...engineDirtyItems]
         : engineUnassignedItems
     if (candidates.length === 0) {
-      if (source === 'manual') showEngineNotice('Brak wpisów N/A.', 'success')
+      if (source === 'manual') showEngineNotice(notices.noNaEntries, 'success')
       return
     }
     if (source === 'manual' && !aiSupportEnabled) {
-      showEngineNotice('AI jest wyłączony.', 'error')
+      showEngineNotice(notices.aiDisabled, 'error')
       return
     }
     setEngineAssignLoading(true)
@@ -5994,9 +6201,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
       }
       if (!response.ok || !data || data.ok === false) {
         if (source === 'manual') {
-          showEngineNotice('Nie udało się przypisać wpisów.', 'error')
+          showEngineNotice(notices.assignFailed, 'error')
         } else {
-          showEngineNotice('Nie udało się uzupełnić przyporządkowań. Spróbuj ponownie.', 'error')
+          showEngineNotice(notices.assignRetryFailed, 'error')
         }
         setNaFillStatus('error')
         return
@@ -6004,7 +6211,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const assignments = Array.isArray(data.assignments) ? data.assignments : []
       if (!assignments.length) {
         if (source === 'manual') {
-          showEngineNotice('Brak przypisań z AI.', 'success')
+          showEngineNotice(notices.noAssignments, 'success')
         }
         setNaFillStatus('done')
         return
@@ -6115,14 +6322,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
       }
       setNaFillStatus('done')
       if (source === 'manual') {
-        showEngineNotice('Uzupełniono wpisy N/A.', 'success')
+        showEngineNotice(notices.naFilled, 'success')
       }
     } catch {
       setNaFillStatus('error')
       if (source === 'manual') {
-        showEngineNotice('Nie udało się przypisać wpisów.', 'error')
+        showEngineNotice(notices.assignFailed, 'error')
       } else {
-        showEngineNotice('Nie udało się uzupełnić przyporządkowań. Spróbuj ponownie.', 'error')
+        showEngineNotice(notices.assignRetryFailed, 'error')
       }
     } finally {
       setEngineAssignLoading(false)
@@ -6151,7 +6358,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const { data } = await client.auth.getSession()
       const session = data.session
       if (!session?.user?.id) {
-        showEngineNotice('Zaloguj się, aby zapisać w chmurze', 'error')
+        showEngineNotice(notices.saveToCloudRequiresAuth, 'error')
         return false
       }
       try {
@@ -6165,11 +6372,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
           console.log('[cloud save]', { status, message: (error as Error).message })
         }
         console.error('[cloud save] failed', { status, error })
-        showEngineNotice(`Nie udało się zapisać (${status ?? 'err'})`, 'error')
+        showEngineNotice(notices.saveToCloudFailed(status ?? 'err'), 'error')
         return false
       }
       if (!silentSuccess) {
-        showEngineNotice('Sesja zapisana w chmurze', 'success')
+      showEngineNotice(notices.saveToCloudSuccess, 'success')
       }
       if (engineSessionsOpen) {
         void fetchEngineSessions()
@@ -6224,13 +6431,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const localSessions = await listSessions()
       if (authSession?.user?.id) {
         if (!client) {
-          setEngineSessionsError('Brak połączenia z Supabase.')
+          setEngineSessionsError(notices.supabaseConnectionMissing)
           return
         }
         const { data: u } = await client.auth.getUser()
         const userId = u?.user?.id ?? null
         if (!userId) {
-          setEngineSessionsError('Sesja logowania wygasła. Zaloguj się ponownie.')
+          setEngineSessionsError(notices.authSessionExpired)
           return
         }
         const { data: us, error: use } = await client
@@ -6239,7 +6446,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           .eq('user_id', userId)
         if (use) {
           const message = (use as { message?: string | null })?.message ?? 'Request failed'
-          setEngineSessionsError(`Nie udało się pobrać listy sesji. ${message}`)
+          setEngineSessionsError(notices.sessionsListFailed(message))
           return
         }
         const sessionIds = (us || [])
@@ -6254,7 +6461,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             .in('id', uniqueIds)
           if (se) {
             const message = (se as { message?: string | null })?.message ?? 'Request failed'
-            setEngineSessionsError(`Nie udało się pobrać metadanych sesji. ${message}`)
+            setEngineSessionsError(notices.sessionsMetadataFailed(message))
             return
           }
           const now = Date.now()
@@ -6293,7 +6500,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           : typeof error === 'object' && error
             ? String((error as { message?: string }).message || 'Request failed')
             : 'Request failed'
-      setEngineSessionsError(`Nie udało się pobrać listy sesji. ${message}`)
+      setEngineSessionsError(notices.sessionsListFailed(message))
       logSessionStore('engine_sessions_list_failed', { message })
     } finally {
     }
@@ -6459,9 +6666,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(`Nie udało się usunąć sesji. ${message}`)
+      setEngineSessionsError(notices.sessionDeleteFailed(message))
       logSessionStore('engine_session_delete_failed', { sessionId, message })
-      showEngineNotice('Nie udało się usunąć sesji (brak uprawnień).', 'error')
+      showEngineNotice(notices.sessionDeleteForbidden, 'error')
     } finally {
       setEngineDeleteLoadingId(null)
     }
@@ -6506,7 +6713,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       return true
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(`Nie udało się zapisać etykiety. ${message}`)
+      setEngineSessionsError(notices.labelSaveFailed(message))
       logSessionStore('engine_entry_label_failed', { entryId, message })
       setEnginePreviewItems((prev) =>
         prev.map((item) =>
@@ -6558,7 +6765,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       setEngineSessionDetail({ ...data, boardItems: normalizedItems })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(`Nie udało się pobrać szczegółów sesji. ${message}`)
+      setEngineSessionsError(notices.saveChangesFailed(message))
       logSessionStore('engine_session_detail_failed', { sessionId, message })
     }
   }
@@ -6645,7 +6852,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           err: ue?.message ?? null,
         })
         if (ue || !userId) {
-          showEngineNotice('Sesja logowania wygasła. Zaloguj się ponownie.', 'error')
+          showEngineNotice(notices.authSessionExpired, 'error')
           return
         }
         const usRes = await client
@@ -6666,7 +6873,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
         })
         if (usRes.error) {
           showEngineNotice(
-            `Open session failed: ${(usRes.error as { status?: number | null })?.status ?? 'n/a'}/${(usRes.error as { code?: string | null })?.code ?? 'n/a'}.`,
+            notices.openSessionFailed(
+              (usRes.error as { status?: number | null })?.status ?? 'n/a',
+              (usRes.error as { code?: string | null })?.code ?? 'n/a'
+            ),
             'error'
           )
         }
@@ -6685,16 +6895,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 found: Boolean(usRetry?.session_id),
               })
               if (!usRetry?.session_id) {
-                showEngineNotice('Nie masz dostępu do tej sesji (brak powiązania).', 'error')
+                showEngineNotice(notices.sessionAccessDenied, 'error')
                 return
               }
             } catch (error) {
               const message = error instanceof Error ? error.message : 'Request failed'
-              showEngineNotice(`Nie udało się potwierdzić dostępu. ${message}`, 'error')
+              showEngineNotice(notices.sessionAccessCheckFailed(message), 'error')
               return
             }
           } else {
-            showEngineNotice('Nie masz dostępu do tej sesji (brak powiązania).', 'error')
+            showEngineNotice(notices.sessionAccessDenied, 'error')
             return
           }
         }
@@ -6727,15 +6937,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
         })
         if (sRes.error) {
           showEngineNotice(
-            `Open session failed: ${(sRes.error as { status?: number | null })?.status ?? 'n/a'}/${(sRes.error as { code?: string | null })?.code ?? 'n/a'}.`,
+            notices.openSessionFailed(
+              (sRes.error as { status?: number | null })?.status ?? 'n/a',
+              (sRes.error as { code?: string | null })?.code ?? 'n/a'
+            ),
             'error'
           )
         }
         if (!sRes.data) {
-          showEngineNotice(
-            'Ta sesja jest w trybie legacy i wymaga naprawy (brak metadanych w chmurze).',
-            'error'
-          )
+          showEngineNotice(notices.legacySessionMissingMeta, 'error')
           return
         }
         const biRes = await client
@@ -6765,7 +6975,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
         }
         if (biRes.error) {
           showEngineNotice(
-            `Open session failed: ${(biRes.error as { status?: number | null })?.status ?? 'n/a'}/${(biRes.error as { code?: string | null })?.code ?? 'n/a'}.`,
+            notices.openSessionFailed(
+              (biRes.error as { status?: number | null })?.status ?? 'n/a',
+              (biRes.error as { code?: string | null })?.code ?? 'n/a'
+            ),
             'error'
           )
           return
@@ -6791,7 +7004,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
         })
         if (rRes.error) {
           showEngineNotice(
-            `Open session failed: ${(rRes.error as { status?: number | null })?.status ?? 'n/a'}/${(rRes.error as { code?: string | null })?.code ?? 'n/a'}.`,
+            notices.openSessionFailed(
+              (rRes.error as { status?: number | null })?.status ?? 'n/a',
+              (rRes.error as { code?: string | null })?.code ?? 'n/a'
+            ),
             'error'
           )
         }
@@ -6962,7 +7178,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(`Nie udało się pobrać szczegółów sesji. ${message}`)
+      setEngineSessionsError(notices.saveChangesFailed(message))
       logSessionStore('engine_session_open_failed', { sessionId, message })
     }
   }
@@ -7013,7 +7229,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       await fetchEngineSessionDetail(sessionId)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(`Nie udało się zapisać zmian. ${message}`)
+      setEngineSessionsError(notices.deleteItemFailed(message))
       logSessionStore('engine_item_save_failed', { sessionId, message })
     } finally {
       setEngineEditLoading(false)
@@ -7070,7 +7286,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       await updateSession(updatedDetail)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(`Nie udało się zapisać zmian. ${message}`)
+      setEngineSessionsError(notices.deleteItemFailed(message))
       logSessionStore('engine_preview_edit_failed', { message })
     } finally {
       cancelEnginePreviewEdit()
@@ -7110,7 +7326,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       delete engineLabelCache.current[itemId]
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(`Nie udało się usunąć elementu. ${message}`)
+      setEngineSessionsError(notices.deleteItemFailed(message))
       logSessionStore('engine_preview_item_delete_failed', { itemId, message })
     } finally {
       setEngineEntryDeleteId(null)
@@ -7134,7 +7350,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       await fetchEngineSessionDetail(engineSessionDetail.session.id)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(`Nie udało się usunąć elementu. ${message}`)
+      setEngineSessionsError(notices.sessionDetailsFailed(message))
       logSessionStore('engine_item_delete_failed', { itemId, message })
     } finally {
       setEngineEditLoading(false)
@@ -7161,7 +7377,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       URL.revokeObjectURL(url)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(`Nie udało się wyeksportować sesji. ${message}`)
+      setEngineSessionsError(notices.exportFailed(message))
       logSessionStore('engine_export_failed', { message })
     }
   }
@@ -7178,7 +7394,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           ? (parsed as { sessions: unknown[] }).sessions
           : null
       if (!sessions) {
-        throw new Error('Nieprawidłowy format pliku.')
+        throw new Error(notices.invalidImportFile)
       }
       const result = await importSessions(sessions as Parameters<typeof importSessions>[0])
       setEngineSessionsError(null)
@@ -7186,7 +7402,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       logSessionStore('engine_import_done', { imported: result.imported })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(`Nie udało się zaimportować sesji. ${message}`)
+      setEngineSessionsError(notices.importFailed(message))
       logSessionStore('engine_import_failed', { message })
     } finally {
       if (engineImportInputRef.current) {
@@ -7383,10 +7599,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
       return withDevOverlay(
         <div className="app auth-screen">
           <section className="panel auth-panel">
-            <h1>Supabase is not configured correctly.</h1>
-            <p className="muted">
-              Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel Production env.
-            </p>
+            <h1>{notices.supabaseConfigTitle}</h1>
+            <p className="muted">{notices.supabaseConfigBody}</p>
             {isDiagEnabled() && (
               <div className="muted">
                 <div>hasUrl: {supabaseEnvDiag.hasUrl ? 'true' : 'false'}</div>
@@ -7407,12 +7621,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
           {import.meta.env.DEV && (
             <div className="actions">
               <button type="button" className="ghost" onClick={() => void resetAuthDev()}>
-                Reset auth (dev)
+                {copy.loginDevResetAuth}
               </button>
             </div>
           )}
           {!hasSupabaseEnv && (
-            <p className="engine-error">{MISSING_SUPABASE_ENV_MESSAGE}</p>
+            <p className="engine-error">{missingSupabaseEnvMessage}</p>
           )}
           <p className="muted">{copy.loginSubtitle}</p>
           <div className="auth-options auth-options--actions">
@@ -7449,7 +7663,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     checked={loginUsePassword}
                     onChange={(event) => setLoginUsePassword(event.target.checked)}
                   />
-                  <span>Email + password (dev)</span>
+                  <span>{copy.loginPasswordToggleLabel}</span>
                 </label>
               )}
               {loginUsePassword && import.meta.env.DEV ? (
@@ -7460,7 +7674,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       type="password"
                       value={loginPassword}
                       onChange={(event) => setLoginPassword(event.target.value)}
-                      placeholder="password"
+                      placeholder={copy.loginPasswordPlaceholder}
                     />
                   </div>
                   <div className="actions">
@@ -7470,7 +7684,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     onClick={() => setLoginAuthMode('signin')}
                     disabled={authDisabled}
                   >
-                      Sign in
+                      {copy.loginPasswordSignIn}
                     </button>
                   <button
                     type="button"
@@ -7478,7 +7692,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     onClick={() => setLoginAuthMode('signup')}
                     disabled={authDisabled}
                   >
-                      Sign up
+                      {copy.loginPasswordSignUp}
                     </button>
                   </div>
                   <div className="actions">
@@ -7488,7 +7702,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       onClick={handlePasswordAuth}
                       disabled={loginSending || authDisabled}
                     >
-                      {loginSending ? '...' : loginAuthMode === 'signin' ? 'Sign in' : 'Sign up'}
+                      {loginSending
+                        ? '...'
+                        : loginAuthMode === 'signin'
+                          ? copy.loginPasswordSignIn
+                          : copy.loginPasswordSignUp}
                     </button>
                   </div>
                 </>
@@ -7503,15 +7721,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     {loginSending
                       ? copy.loginEmailSending
                       : loginCooldownSeconds > 0
-                        ? `Poczekaj ${loginCooldownSeconds}s`
+                        ? copy.loginEmailCooldown(loginCooldownSeconds)
                         : copy.loginEmailCta}
                   </button>
                 </div>
               )}
               {import.meta.env.DEV && !loginUsePassword && (
                 <p className="muted">
-                  Supabase default SMTP ma bardzo niski limit wysyłek. Jeśli widzisz 429,
-                  użyj login hasłem lub Google.
+                  {copy.loginDevSmtpNotice}
                 </p>
               )}
             </div>
@@ -7543,7 +7760,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
   if (isAdminRoute) {
     return withDevOverlay(
-      <AdminPage authLoading={authLoading} />
+      <AdminPage authLoading={authLoading} uiLanguage={uiLanguage} />
     )
   }
 
@@ -7559,10 +7776,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
       return withDevOverlay(
         <div className="app auth-screen">
           <section className="panel auth-panel">
-            <h1>Supabase is not configured correctly.</h1>
-            <p className="muted">
-              Check VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in Vercel Production env.
-            </p>
+            <h1>{notices.supabaseConfigTitle}</h1>
+            <p className="muted">{notices.supabaseConfigBody}</p>
             {isDiagEnabled() && (
               <div className="muted">
                 <div>hasUrl: {supabaseEnvDiag.hasUrl ? 'true' : 'false'}</div>
@@ -7580,7 +7795,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       return withDevOverlay(
         <div className="app auth-screen">
           <section className="panel auth-panel">
-            <p className="muted">Loading...</p>
+            <p className="muted">{notices.loading}</p>
           </section>
         </div>
       )
@@ -7594,9 +7809,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         <div className="app auth-screen">
           <section className="panel auth-panel">
             <p className="muted">
-              {uiLanguage === 'Polish'
-                ? 'Przekierowanie do logowania...'
-                : 'Redirecting to login...'}
+              {notices.redirectingToLogin}
             </p>
             <div className="actions">
               <a
@@ -7620,7 +7833,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         return <span className="engine-session-name">{name}</span>
       }
       const shortId = id.slice(0, 8)
-      return `Session ${shortId}`
+      return `${notices.sessionLabelPrefix} ${shortId}`
     }
 
   const engineRemainingWords = Math.max(0, WORD_LIMIT - countWords(enginePreviewInput))
@@ -7813,7 +8026,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         </header>
         {authDisabled && (
           <div className="engine-error" role="status">
-            {MISSING_SUPABASE_ENV_MESSAGE}
+            {missingSupabaseEnvMessage}
           </div>
         )}
         <main className="engine-main">
@@ -8022,7 +8235,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                                       onClick={() => startEditEngineItem(item)}
                                       disabled={engineEditLoading}
                                     >
-                                      Edytuj
+                                      {notices.editAction}
                                     </button>
                                     <button
                                       type="button"
@@ -8030,7 +8243,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                                       onClick={() => deleteEngineItem(item.id)}
                                       disabled={engineEditLoading}
                                     >
-                                      Usuń
+                                      {notices.deleteAction}
                                     </button>
                                   </>
                                 )}
@@ -8180,7 +8393,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       if (engineNameSaving) return
                       const name = engineNameDraft.trim().replace(/\s+/g, ' ')
                       if (!name) {
-                        setEngineNameError('Podaj nazwę sesji.')
+                        setEngineNameError(notices.sessionNameRequired)
                         return
                       }
                       setEngineNameSaving(true)
@@ -8190,7 +8403,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                         const userId = u?.user?.id ?? null
                         if (!userId) {
                           showEngineNotice(
-                            'Sesja logowania wygasła. Zaloguj się ponownie.',
+                            notices.authSessionExpired,
                             'error'
                           )
                           setEngineNameSaving(false)
@@ -8213,7 +8426,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                         )
                         console.log('[createSession] nameCollision', hasCollision)
                         if (hasCollision) {
-                          setEngineNameError('Taka nazwa już istnieje — zmień nazwę.')
+                          setEngineNameError(notices.sessionNameCollision)
                           setEngineNameSaving(false)
                           return
                         }
@@ -8226,9 +8439,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       enginePendingFocusRef.current = true
                       const sessionId = await ensureEnginePreviewSession(name, {
                         onNameCollision: () =>
-                          setEngineNameError('Taka nazwa już istnieje — zmień nazwę.'),
+                          setEngineNameError(notices.sessionNameCollision),
                         onInsertError: () =>
-                          setEngineNameError('Nie udało się utworzyć sesji. Spróbuj ponownie.'),
+                          setEngineNameError(notices.sessionNameSaveFailed),
                       })
                       if (!sessionId) {
                         setEngineNameSaving(false)
@@ -8319,15 +8532,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     }
                     title={
                       !aiSupportEnabled
-                        ? 'AI jest wyłączony'
+                        ? notices.aiDisabled
                         : !engineSessionPersisted
-                          ? 'Najpierw utwórz sesję'
+                          ? notices.createSessionFirst
                           : engineUnassignedItems.length === 0
-                          ? 'Brak wpisów N/A'
-                          : 'Uzupełnij N/A (AI)'
+                          ? notices.noNaEntries
+                          : notices.assignNaAction
                     }
                   >
-                    {engineAssignLoading ? 'Uzupełniam…' : 'Uzupełnij N/A (AI)'}
+                    {engineAssignLoading ? notices.assignNaLoading : notices.assignNaAction}
                   </button>
                 )}
                 {highlightMissingLabels && missingLabelCount > 0 && (
@@ -8379,7 +8592,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   data-testid="facilitation-deepen"
                   onClick={() => {
                     if (facilitationDisabled) {
-                      setEngineFacilitationInlineError('Najpierw utwórz sesję.')
+                      setEngineFacilitationInlineError(notices.createSessionFirst)
                       return
                     }
                     setFacilitationCooldown('DEEPEN')
@@ -8406,7 +8619,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   data-testid="facilitation-perspective"
                   onClick={() => {
                     if (facilitationDisabled) {
-                      setEngineFacilitationInlineError('Najpierw utwórz sesję.')
+                      setEngineFacilitationInlineError(notices.createSessionFirst)
                       return
                     }
                     setFacilitationCooldown('PERSPECTIVE')
@@ -8996,14 +9209,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   >
                     {copy.landingCta}
                   </a>
-                  {uiLanguage === 'English' && (
-                    <div className="landing-microcopy">
-                      Sign up in 30 seconds • No credit card required
-                    </div>
-                  )}
-                  {uiLanguage === 'Polish' && (
-                    <div className="landing-microcopy">rejestracja w 30 s • bez karty</div>
-                  )}
+                  <div className="landing-microcopy">{copy.landingCtaNote}</div>
                 </div>
               </div>
             </div>
@@ -9070,14 +9276,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   >
                     {copy.landingCta}
                   </a>
-                  {uiLanguage === 'English' && (
-                    <div className="landing-microcopy">
-                      Sign up in 30 seconds • No credit card required
-                    </div>
-                  )}
-                  {uiLanguage === 'Polish' && (
-                    <div className="landing-microcopy">rejestracja w 30 s • bez karty</div>
-                  )}
+                  <div className="landing-microcopy">{copy.landingCtaNote}</div>
                 </div>
               </div>
             </div>
@@ -9091,7 +9290,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 <h1>{copy.landingHeroTitle}</h1>
                 <p>{copy.landingHeroSubtitle}</p>
                 <button type="button" className="ghost landing-back" onClick={openMainLanding}>
-                  ← Back to full page
+                  {copy.landingBackToFull}
                 </button>
               </div>
             </div>
@@ -9510,7 +9709,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   {showSuggestLoadingUI && (
                     <span className="button-spinner" aria-hidden="true" />
                   )}
-                  {showSuggestLoadingUI ? 'Generuję pytanie…' : copy.impulseButtonLabel}
+                  {showSuggestLoadingUI ? copy.engineFacilitationLoadingLabel : copy.impulseButtonLabel}
                 </button>
                 <button type="button" className="primary" onClick={() => void addLlmIdeas()}>
                   {copy.ideaGenerator}
@@ -9898,7 +10097,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   <div className="impulse-placeholder" role="status" aria-live="polite">
                     <div className="impulse-placeholder-line" />
                     <div className="impulse-placeholder-line short" />
-                    <p className="muted">Dobieram perspektywę do Twojej tablicy…</p>
+                    <p className="muted">{copy.engineFacilitationLoadingPerspective}</p>
                   </div>
                 ) : (
                   <div className="impulse-placeholder" aria-hidden="true" />

@@ -19,13 +19,26 @@ const requireAdmin = async (req, res) => {
     return null
   }
   const { data, error } = await supabase.auth.getUser(token)
-  const rawEmail = data?.user?.email ? String(data.user.email) : ''
-  const email = rawEmail.trim().toLowerCase()
-  if (error || !email || email !== ADMIN_EMAIL) {
-    res.status(403).json({ ok: false, error: 'FORBIDDEN' })
+  const user = data?.user || null
+  const seenEmail = String(
+    user?.email ||
+      user?.user_metadata?.email ||
+      user?.identities?.[0]?.identity_data?.email ||
+      ''
+  )
+    .trim()
+    .toLowerCase()
+  console.log('admin_check', { seenEmail })
+  if (error || !seenEmail || seenEmail !== ADMIN_EMAIL) {
+    res.status(403).json({
+      ok: false,
+      error: 'FORBIDDEN',
+      seenEmail,
+      allowed: [ADMIN_EMAIL],
+    })
     return null
   }
-  return data?.user || null
+  return user
 }
 
 export const handleAdminBillingList = async (req, res) => {

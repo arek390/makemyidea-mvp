@@ -25,6 +25,7 @@ type BillingRow = {
 
 type AdminPageProps = {
   authLoading: boolean
+  uiLanguage: 'Polish' | 'English'
 }
 
 const ADMIN_EMAIL = 'arektest8@gmail.com'
@@ -54,7 +55,47 @@ const formatDateTime = (value: string | null | undefined) => {
   }).format(date)
 }
 
-export const AdminPage = ({ authLoading }: AdminPageProps) => {
+export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
+  const isPl = uiLanguage === 'Polish'
+  const t = {
+    authRequired: isPl ? 'Brak sesji. Zaloguj się ponownie.' : 'No session. Please sign in again.',
+    positiveAmount: isPl ? 'Podaj dodatnią kwotę.' : 'Enter a positive amount.',
+    noAccess: isPl ? 'Brak dostępu' : 'No access',
+    billingTitle: isPl ? 'Zasilenie kont użytkowników (admin-only)' : 'User account top-ups (admin-only)',
+    billingSearchPlaceholder: isPl
+      ? 'Szukaj po session_name lub session_id'
+      : 'Search by session_name or session_id',
+    topupAction: isPl ? 'Zasil' : 'Top up',
+    topupNotice: (delta: number, balanceAfter: number) =>
+      isPl
+        ? `Zasilono: +${delta.toFixed(2)} PLN → saldo ${balanceAfter.toFixed(2)} PLN`
+        : `Topped up: +${delta.toFixed(2)} PLN → balance ${balanceAfter.toFixed(2)} PLN`,
+    loading: isPl ? 'Ładowanie...' : 'Loading...',
+    loadingReport: isPl ? 'Ładowanie raportu...' : 'Loading report...',
+    loadingBilling: isPl ? 'Ładowanie billing...' : 'Loading billing...',
+    usersSessionsTitle: isPl ? 'Użytkownicy → Sesje' : 'Users → Sessions',
+    adminOnlyReport: isPl ? 'Raport tylko dla admina' : 'Admin-only report',
+    sortLabel: isPl ? 'Sortuj' : 'Sort',
+    sortCreatedAt: isPl ? 'Utworzono' : 'Created at',
+    sortCostPln: isPl ? 'Koszt PLN' : 'Cost PLN',
+    sortTokens: isPl ? 'Tokeny' : 'Tokens total',
+    tableUserEmail: isPl ? 'Email użytkownika' : 'User email',
+    tableSession: isPl ? 'Sesja' : 'Session',
+    tableCreated: isPl ? 'Utworzono' : 'Created',
+    tableBoardItems: isPl ? 'Wpisy na tablicy' : 'Board items',
+    tableReportCreated: isPl ? 'Raport utworzony' : 'Report created',
+    tableReportUpdated: isPl ? 'Raport zaktualizowany' : 'Report updated',
+    tableTokens: isPl ? 'Tokeny' : 'Tokens',
+    tableCostPln: isPl ? 'Koszt PLN' : 'Cost PLN',
+    tableCostUsd: isPl ? 'Koszt USD' : 'Cost USD',
+    tableBalancePln: isPl ? 'Saldo PLN' : 'Balance PLN',
+    tableTotalPaidPln: isPl ? 'Suma wpłat PLN' : 'Total paid PLN',
+    billingHeader: isPl ? 'Billing / Saldo' : 'Billing / Balance',
+    billingTableEmail: isPl ? 'Email' : 'Email',
+    billingTableBalance: isPl ? 'Saldo PLN' : 'Balance PLN',
+    billingTableAction: isPl ? 'Zasil' : 'Top up',
+    billingEmailSearchPlaceholder: isPl ? 'Szukaj po emailu' : 'Search by email',
+  }
   const [adminLoading, setAdminLoading] = useState(true)
   const [adminEmail, setAdminEmail] = useState('')
   const [rows, setRows] = useState<AdminRow[]>([])
@@ -132,9 +173,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       } catch (err) {
         if (!cancelled) {
           const message = err instanceof Error ? err.message : 'LOAD_FAILED'
-          setError(
-            message === 'AUTH_REQUIRED' ? 'Brak sesji. Zaloguj się ponownie.' : message
-          )
+          setError(message === 'AUTH_REQUIRED' ? t.authRequired : message)
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -172,9 +211,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       } catch (err) {
         if (!cancelled) {
           const message = err instanceof Error ? err.message : 'LOAD_FAILED'
-          setBillingError(
-            message === 'AUTH_REQUIRED' ? 'Brak sesji. Zaloguj się ponownie.' : message
-          )
+          setBillingError(message === 'AUTH_REQUIRED' ? t.authRequired : message)
         }
       } finally {
         if (!cancelled) setBillingLoading(false)
@@ -224,11 +261,11 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
     setBillingNotice(null)
     setBillingError(null)
     if (!Number.isFinite(delta) || delta <= 0) {
-      setBillingError('Podaj dodatnią kwotę.')
+      setBillingError(t.positiveAmount)
       return
     }
     if (!supabase) {
-      setBillingError('Brak sesji. Zaloguj się ponownie.')
+      setBillingError(t.authRequired)
       return
     }
     setBillingBusy((prev) => ({ ...prev, [row.userId]: true }))
@@ -260,14 +297,10 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
         )
       )
       setBillingInputs((prev) => ({ ...prev, [row.userId]: '' }))
-      setBillingNotice(
-        `Zasilono: +${delta.toFixed(2)} PLN → saldo ${balanceAfter.toFixed(2)} PLN`
-      )
+      setBillingNotice(t.topupNotice(delta, balanceAfter))
     } catch (err) {
       const message = err instanceof Error ? err.message : 'TOPUP_FAILED'
-      setBillingError(
-        message === 'AUTH_REQUIRED' ? 'Brak sesji. Zaloguj się ponownie.' : message
-      )
+      setBillingError(message === 'AUTH_REQUIRED' ? t.authRequired : message)
     } finally {
       setBillingBusy((prev) => ({ ...prev, [row.userId]: false }))
     }
@@ -277,7 +310,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
     return (
       <div className="app admin-page">
         <div className="admin-panel">
-          <p className="muted">Loading...</p>
+          <p className="muted">{t.loading}</p>
         </div>
       </div>
     )
@@ -288,7 +321,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       <div className="app admin-page">
         <div className="admin-panel">
           <h1>Admin</h1>
-          <p className="muted">Brak dostępu</p>
+          <p className="muted">{t.noAccess}</p>
         </div>
       </div>
     )
@@ -299,28 +332,28 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
       <div className="admin-panel">
         <header className="admin-header">
           <div>
-            <h1>Users → Sessions</h1>
-            <p className="muted">Admin-only report</p>
+          <h1>{t.usersSessionsTitle}</h1>
+          <p className="muted">{t.adminOnlyReport}</p>
           </div>
           <div className="admin-controls">
             <input
               type="search"
-              placeholder="Szukaj po session_name lub session_id"
+              placeholder={t.billingSearchPlaceholder}
               value={search}
               onChange={(event) => setSearch(event.target.value)}
             />
             <div className="admin-sort">
               <label>
-                Sort
+                {t.sortLabel}
                 <select
                   value={sortKey}
                   onChange={(event) =>
                     setSortKey(event.target.value as 'session_created_at' | 'cost_pln' | 'tokens_total')
                   }
                 >
-                  <option value="session_created_at">Created at</option>
-                  <option value="cost_pln">Cost PLN</option>
-                  <option value="tokens_total">Tokens total</option>
+                  <option value="session_created_at">{t.sortCreatedAt}</option>
+                  <option value="cost_pln">{t.sortCostPln}</option>
+                  <option value="tokens_total">{t.sortTokens}</option>
                 </select>
               </label>
               <button
@@ -335,24 +368,24 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
         </header>
 
         {error && <p className="admin-error">{error}</p>}
-        {loading && <p className="muted">Loading report...</p>}
+        {loading && <p className="muted">{t.loadingReport}</p>}
 
         {!loading && (
           <div className="admin-table-wrap">
             <table className="admin-table">
               <thead>
                 <tr>
-                  <th>User email</th>
-                  <th>Session</th>
-                  <th>Created</th>
-                  <th>Board items</th>
-                  <th>Report created</th>
-                  <th>Report updated</th>
-                  <th>Tokens</th>
-                  <th>Cost PLN</th>
-                  <th>Cost USD</th>
-                  <th>Balance PLN</th>
-                  <th>Total paid PLN</th>
+                  <th>{t.tableUserEmail}</th>
+                  <th>{t.tableSession}</th>
+                  <th>{t.tableCreated}</th>
+                  <th>{t.tableBoardItems}</th>
+                  <th>{t.tableReportCreated}</th>
+                  <th>{t.tableReportUpdated}</th>
+                  <th>{t.tableTokens}</th>
+                  <th>{t.tableCostPln}</th>
+                  <th>{t.tableCostUsd}</th>
+                  <th>{t.tableBalancePln}</th>
+                  <th>{t.tableTotalPaidPln}</th>
                 </tr>
               </thead>
               <tbody>
@@ -393,13 +426,13 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
         <div className="admin-section">
           <header className="admin-header">
             <div>
-              <h1>Billing / Saldo</h1>
-              <p className="muted">Zasilenie kont użytkowników (admin-only)</p>
+          <h1>{t.billingHeader}</h1>
+          <p className="muted">{t.billingTitle}</p>
             </div>
             <div className="admin-controls">
-              <input
-                type="search"
-                placeholder="Szukaj po emailu"
+            <input
+              type="search"
+              placeholder={t.billingEmailSearchPlaceholder}
                 value={billingSearch}
                 onChange={(event) => setBillingSearch(event.target.value)}
               />
@@ -408,16 +441,16 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
 
           {billingNotice && <p className="admin-notice">{billingNotice}</p>}
           {billingError && <p className="admin-error">{billingError}</p>}
-          {billingLoading && <p className="muted">Loading billing...</p>}
+          {billingLoading && <p className="muted">{t.loadingBilling}</p>}
 
           {!billingLoading && (
             <div className="admin-table-wrap">
               <table className="admin-table admin-table--billing">
                 <thead>
                   <tr>
-                    <th>Email</th>
-                    <th>Balance PLN</th>
-                    <th>Zasil</th>
+                    <th>{t.billingTableEmail}</th>
+                    <th>{t.billingTableBalance}</th>
+                    <th>{t.billingTableAction}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -454,7 +487,7 @@ export const AdminPage = ({ authLoading }: AdminPageProps) => {
                             disabled={billingBusy[row.userId] === true}
                             onClick={() => handleTopup(row)}
                           >
-                            {billingBusy[row.userId] ? '...' : 'Zasil'}
+                            {billingBusy[row.userId] ? '...' : t.topupAction}
                           </button>
                         </div>
                       </td>

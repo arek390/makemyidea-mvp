@@ -234,8 +234,7 @@ export const ReportPage = ({
   const summaryAutoAttempted = useRef(false)
   const reportSessionId = snapshot.sessionId || null
   const [reportMetaLoaded, setReportMetaLoaded] = useState(!client || !reportSessionId)
-  const labelErrorText =
-    language === 'pl' ? 'Nie udało się zapisać etykiety.' : 'Failed to save label.'
+  const labelErrorText = t.labelSaveError
 
   const isEmptySummaryText = (text: string | null | undefined, lang: 'pl' | 'en') => {
     const value = String(text || '').trim()
@@ -585,8 +584,8 @@ export const ReportPage = ({
                 <span
                   className="report-updating-indicator"
                   role="status"
-                  aria-label={language === 'pl' ? 'Aktualizowanie…' : 'Updating…'}
-                  title={language === 'pl' ? 'Aktualizowanie…' : 'Updating…'}
+                  aria-label={t.updatingAria}
+                  title={t.updatingAria}
                 />
               )}
             </span>
@@ -808,16 +807,12 @@ export const ReportPage = ({
         <section id="next" className="report-section">
           <h2>{t.nextSteps}</h2>
           {!hasRecommendations ? (
-            <p>Brak rekomendacji. Kliknij “Aktualizuj raport”, aby je wygenerować.</p>
+            <p>{t.recommendationsEmpty}</p>
           ) : (
             <div className="report-recommendations">
               {recommendations?.based_on_user_ideas.length ? (
                 <>
-                  <h3>
-                    {language === 'pl'
-                      ? 'Na podstawie twoich pomysłów'
-                      : 'Based on user ideas'}
-                  </h3>
+                  <h3>{t.recommendationsIdeasTitle}</h3>
                   <ul>
                     {recommendations.based_on_user_ideas.map((item, idx) => (
                       <li key={`rec-ideas-${idx}`}>
@@ -836,11 +831,7 @@ export const ReportPage = ({
               ) : null}
               {recommendations?.morphological.length ? (
                 <>
-                  <h3>
-                    {language === 'pl'
-                      ? 'Alternatywy morfologiczne'
-                      : 'Morphological alternatives'}
-                  </h3>
+                  <h3>{t.recommendationsMorphTitle}</h3>
                   <ul>
                     {recommendations.morphological.map((item, idx) => (
                       <li key={`rec-morph-${idx}`}>
@@ -859,7 +850,7 @@ export const ReportPage = ({
               ) : null}
               {recommendations?.market_trends.length ? (
                 <>
-                  <h3>{language === 'pl' ? 'Trendy rynkowe' : 'Market trends'}</h3>
+                  <h3>{t.recommendationsTrendsTitle}</h3>
                   <ul>
                     {recommendations.market_trends.map((item, idx) => (
                       <li key={`rec-trends-${idx}`}>
