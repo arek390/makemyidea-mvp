@@ -253,6 +253,85 @@ export const handleAdminDebug = async (req, res) => {
   res.status(200).json({ ok: true, debug })
 }
 
+export const handleAdminAuthProbe = async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.status(204).end()
+    return
+  }
+  if (req.method !== 'GET') {
+    res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['GET'] })
+    return
+  }
+
+  const token = readBearerToken(req)
+  if (!token) {
+    res.status(401).json({ ok: false, error: 'NO_TOKEN' })
+    return
+  }
+
+  const supabaseUrl = process.env.SUPABASE_URL || ''
+  const anonKey = process.env.SUPABASE_ANON_KEY || ''
+  const env = {
+    vercelEnv: process.env.VERCEL_ENV ?? null,
+    commit: (process.env.VERCEL_GIT_COMMIT_SHA ?? '').slice(0, 7) || null,
+  }
+
+  if (!supabaseUrl || !anonKey) {
+    res.status(200).json({
+      ok: true,
+      tokenLen: token.length,
+      rest: {
+        ok: false,
+        status: 0,
+        error: 'MISSING_SUPABASE_ENV',
+        userId: null,
+        email: null,
+      },
+      env,
+    })
+    return
+  }
+
+  try {
+    const response = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        apikey: anonKey,
+      },
+    })
+    const status = response.status
+    const payload = await response.json().catch(() => null)
+    const userId = payload?.id ?? payload?.user?.id ?? null
+    const email = payload?.email ?? payload?.user?.email ?? null
+    res.status(200).json({
+      ok: true,
+      tokenLen: token.length,
+      rest: {
+        ok: response.ok,
+        status,
+        error: response.ok ? null : payload?.error_description || payload?.message || null,
+        userId,
+        email,
+      },
+      env,
+    })
+  } catch (error) {
+    res.status(200).json({
+      ok: true,
+      tokenLen: token.length,
+      rest: {
+        ok: false,
+        status: 0,
+        error: error?.message || 'FETCH_FAILED',
+        userId: null,
+        email: null,
+      },
+      env,
+    })
+  }
+}
+
 export const handleAdminBillingList = async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.status(204).end()

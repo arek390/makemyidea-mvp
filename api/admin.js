@@ -6,6 +6,7 @@ import {
   handleAdminReportList,
   handleAdminCheck,
   handleAdminDebug,
+  handleAdminAuthProbe,
   handleAdminWhoAmI,
 } from '../src/lib/server/handlers/admin.js'
 
@@ -64,6 +65,14 @@ export default async function handler(req, res) {
       return
     }
     await handleAdminDebug(req, res)
+    return
+  }
+  if (action === 'admin.auth_probe') {
+    if (req.method !== 'GET') {
+      methodNotAllowed(res, ['GET'])
+      return
+    }
+    await handleAdminAuthProbe(req, res)
     return
   }
   notFound(res)
