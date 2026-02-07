@@ -1138,6 +1138,10 @@
   gap: 1rem;
 }
 
+.auth-panel h1 {
+  text-align: center;
+}
+
 .auth-logo {
   border: none;
   background: transparent;
@@ -1148,7 +1152,7 @@
 }
 
 .auth-logo img {
-  width: min(220px, 100%);
+  width: min(110px, 100%);
   height: auto;
 }
 
@@ -1740,10 +1744,20 @@
   min-height: 100vh;
   background: #f8f6f2;
   color: #1b1b1b;
-  padding: 2.5rem 6vw 4rem;
+  padding: 0 6vw 4rem;
   display: flex;
   flex-direction: column;
   align-items: center;
+}
+
+.report-engine-header {
+  width: calc(100% + 12vw);
+  margin: 0 -6vw 2rem;
+  padding-left: 20px;
+  padding-right: 20px;
+  position: sticky;
+  top: 0;
+  z-index: 12;
 }
 
 .report-header {
@@ -1751,7 +1765,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 1.5rem;
-  margin-bottom: 2rem;
+  margin: 2.5rem 0 2rem;
   width: min(900px, 100%);
 }
 
@@ -1775,10 +1789,10 @@
 }
 
 .report-updating-indicator {
-  width: 14px;
-  height: 14px;
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
-  border: 2px solid #d9d2c6;
+  border: 4px solid #d9d2c6;
   border-top-color: #7d6c55;
   display: inline-block;
   animation: report-spin 0.9s linear infinite;
@@ -1800,6 +1814,36 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
+}
+
+.report-update-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  padding-top: 0.65rem;
+  padding-bottom: 0.65rem;
+  max-width: 180px;
+  text-align: center;
+}
+
+.report-update-btn > span:first-child {
+  font-size: 1.56em;
+}
+
+.report-ai-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: inherit;
+  font-style: italic;
+  white-space: normal;
+  line-height: 1.1;
+}
+
+.report-ai-icon {
+  font-size: 1.6rem;
 }
 
 .perspective-bar {

@@ -12,6 +12,7 @@ import { UsageBadge } from '../components/UsageBadge'
 import { buildSessionGoalText, extractProductNameFromSessionName } from './sessionGoal'
 import { fetchReportBySessionId } from '../lib/cloudReports'
 import { supabase as client } from '../lib/supabase/client'
+import { fetchFxUsdPlnRate, getFreshFxRate } from '../lib/fx'
  
 
 type ReportPageProps = {
@@ -19,6 +20,8 @@ type ReportPageProps = {
   language: ReportLang
   onBack: () => void
   onLogout: () => void
+  onSaveSession?: () => void
+  saveSessionLabel?: string
   userId?: string | null
   aiSupportEnabled: boolean
   diagnosticsEnabled: boolean
@@ -33,6 +36,12 @@ type ReportPageProps = {
   }) => void
   onUpdateLabel?: (itemId: string, label: string | null) => Promise<boolean>
   onBillingInsufficient?: () => void
+  balanceCurrency?: 'PLN' | 'USD'
+  onToggleBalanceCurrency?: () => void
+  balancePLN?: number
+  billingLoading?: boolean
+  billingError?: string | null
+  usdPlnRate?: number | null
 }
 
 type AiSummary = { today: string; change: string; product: string }
@@ -207,6 +216,14 @@ export const ReportPage = ({
   naFillStatus,
   onUpdateLabel,
   onBillingInsufficient,
+  onSaveSession,
+  saveSessionLabel,
+  balanceCurrency = 'PLN',
+  onToggleBalanceCurrency,
+  balancePLN = 0,
+  billingLoading = false,
+  billingError = null,
+  usdPlnRate = null,
 }: ReportPageProps) => {
   const t = reportCopy[language]
   const reportLogoUrl = new URL('../../logo/logo_makemyideawork.png', import.meta.url).href
@@ -229,6 +246,64 @@ export const ReportPage = ({
   const [reportRecommendations, setReportRecommendations] = useState<ReportRecommendations>(
     normalizeRecommendations(sanitizeReportPayload(initialReport.recommendations))
   )
+  const [fxUsdPlnRate, setFxUsdPlnRate] = useState<number | null>(() => getFreshFxRate())
+  const [priceGrosze, setPriceGrosze] = useState<number | null>(null)
+  const [priceLoading, setPriceLoading] = useState(false)
+  const formatUsdBalance = (value: number) =>
+    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+      Math.max(0, value || 0)
+    )
+  const formatPlnBalance = (value: number) =>
+    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+      Math.max(0, value || 0)
+    )
+  const formatPlnCurrency = (value: number) =>
+    new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(value)
+  const formatUsdCurrency = (value: number) =>
+    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
+
+  useEffect(() => {
+    let cancelled = false
+    const loadFx = async () => {
+      const rate = await fetchFxUsdPlnRate()
+      if (!cancelled) setFxUsdPlnRate(rate)
+    }
+    void loadFx()
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!client) return
+    let cancelled = false
+    const loadPrice = async () => {
+      setPriceLoading(true)
+      try {
+        const { data, error } = await client
+          .from('pricing_rules')
+          .select('price_grosze')
+          .eq('action_key', 'report_update')
+          .maybeSingle()
+        if (!cancelled) {
+          if (error) {
+            setPriceGrosze(null)
+          } else {
+            const value = Number(data?.price_grosze)
+            setPriceGrosze(Number.isFinite(value) ? value : null)
+          }
+        }
+      } catch {
+        if (!cancelled) setPriceGrosze(null)
+      } finally {
+        if (!cancelled) setPriceLoading(false)
+      }
+    }
+    void loadPrice()
+    return () => {
+      cancelled = true
+    }
+  }, [])
   const [isReportUpdating, setIsReportUpdating] = useState(false)
   const [labelUpdating, setLabelUpdating] = useState<Record<string, boolean>>({})
   const [summaryUsage] = useState<SummaryUsage | null>(null)
@@ -506,7 +581,8 @@ export const ReportPage = ({
         : sanitizeReportText(aiSummary?.product || ''),
     }
   }, [aiSummary, language])
-  const resolveQuestionText = (idea: (typeof summaryItems)[number]) => {
+  const resolveQuestionText = (idea: (typeof summaryItems)[number] | null | undefined) => {
+    if (!idea) return ''
     const primary =
       language === 'pl'
         ? (idea as { questionTextPl?: string | null }).questionTextPl ??
@@ -596,6 +672,59 @@ export const ReportPage = ({
   }, [summaryItems])
   return (
     <div className="report-page">
+      <header className="engine-header report-engine-header">
+        <div>
+          <div className="engine-header-logo">
+            <img src={reportLogoUrl} alt="MakeMyIdea.work" />
+          </div>
+        </div>
+        <div className="engine-header-balance" aria-live="polite">
+          <div
+            className={`engine-balance${
+              billingLoading || billingError ? ' engine-balance--loading' : ''
+            }`}
+            role="button"
+            tabIndex={0}
+            title="Toggle currency"
+            onClick={() => {
+              onToggleBalanceCurrency?.()
+            }}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                onToggleBalanceCurrency?.()
+              }
+            }}
+          >
+            <span className="engine-balance-icon" aria-hidden="true">
+              💰
+            </span>
+            <span className="engine-balance-value">
+              {billingLoading || billingError
+                ? '—'
+                : balanceCurrency === 'USD'
+                  ? usdPlnRate
+                    ? `${formatUsdBalance(balancePLN / usdPlnRate)} USD`
+                    : 'USD: …'
+                  : `${formatPlnBalance(balancePLN)} PLN`}
+            </span>
+          </div>
+        </div>
+        <div className="engine-header-actions">
+          <button type="button" className="primary" onClick={onBack}>
+            {t.back}
+          </button>
+          {onSaveSession && (
+            <button
+              className="secondary"
+              type="button"
+              onClick={onSaveSession}
+            >
+              {saveSessionLabel || 'Save session'}
+            </button>
+          )}
+        </div>
+      </header>
       <header className="report-header">
         <div>
           <div className="report-title-row">
@@ -613,12 +742,24 @@ export const ReportPage = ({
           </div>
         </div>
         <div className="report-actions">
-          <button type="button" className="primary" onClick={onBack}>
-            {t.back}
-          </button>
           {showUpdate && (
-            <button type="button" className="primary" onClick={handleUpdateReport}>
-              {t.reportUpdate}
+            <button type="button" className="primary report-update-btn" onClick={handleUpdateReport}>
+              <span>{t.reportUpdate}</span>
+              <span className="report-ai-inline">
+                <span className="report-ai-text">
+                  {language === 'pl' ? 'wspierane przez AI · koszt ' : 'AI-assisted · cost '}
+                  {(() => {
+                    if (priceLoading || priceGrosze == null) return '—'
+                    const pln = priceGrosze / 100
+                    if (language === 'pl') return formatPlnCurrency(pln)
+                    if (!fxUsdPlnRate || fxUsdPlnRate <= 0) return '—'
+                    return formatUsdCurrency(pln / fxUsdPlnRate)
+                  })()}
+                </span>
+                <span className="report-ai-icon" aria-hidden="true">
+                  ✨
+                </span>
+              </span>
             </button>
           )}
           {naFillStatus === 'error' && <span className="muted">{t.naAssigningError}</span>}
@@ -781,7 +922,7 @@ export const ReportPage = ({
                     <td colSpan={3}>{t.noEntries}</td>
                   </tr>
                 ) : (
-                  summaryItems.map((idea) => {
+                  summaryItems.filter(Boolean).map((idea) => {
                     const questionText = resolveQuestionText(idea)
                     const isUpdating = Boolean(labelUpdating[idea.id])
                     const labelValue = idea.label ?? ''

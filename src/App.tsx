@@ -187,14 +187,12 @@ const MAX_AUTO_CLASSIFY = 25
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
 const LLM_TOKENS_TOTAL_KEY = 'llm_tokens_total'
 const ENGINE_USAGE_KEY = 'engine_usage_v1'
-const ENGINE_FX_KEY = 'engine_fx_usdpln_v1'
 const AUTH_LOGIN_ORIGIN_KEY = 'auth-login-origin'
 const AUTH_LOGIN_REDIRECT_KEY = 'auth-login-redirect'
 const AUTH_OAUTH_ORIGIN_KEY = 'auth_oauth_origin'
 const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
 const POST_AUTH_NEXT_KEY = 'post-auth-next'
 const POST_AUTH_LANG_KEY = 'post-auth-lang'
-const FX_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const FX_FALLBACK_RATE = 3.55
 const MODEL_PRICING_USD: Record<string, ModelPricing> = {
   'gpt-4.1-mini': { input: 0.4, output: 1.6 },
@@ -279,20 +277,7 @@ const saveEngineUsage = (usage: EngineUsage) => {
   window.sessionStorage.setItem(ENGINE_USAGE_KEY, JSON.stringify(usage))
 }
 
-const loadFxCache = () => {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = window.sessionStorage.getItem(ENGINE_FX_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as { rate: number; updatedAt: number } | null
-    if (!parsed || !Number.isFinite(parsed.rate) || !Number.isFinite(parsed.updatedAt)) {
-      return null
-    }
-    return parsed
-  } catch {
-    return null
-  }
-}
+import { fetchFxUsdPlnRate, getFreshFxRate } from './lib/fx'
 
 type Translations = {
   stepLabel: string
@@ -2197,10 +2182,7 @@ function App() {
   })
   const [engineUsage, setEngineUsage] = useState<EngineUsage>(() => loadEngineUsage())
   const [usdPlnRate, setUsdPlnRate] = useState<number | null>(() => {
-    const cached = loadFxCache()
-    if (!cached) return null
-    if (Date.now() - cached.updatedAt > FX_CACHE_TTL_MS) return null
-    return cached.rate
+    return getFreshFxRate()
   })
   const [balanceCurrency, setBalanceCurrency] = useState<'PLN' | 'USD'>('PLN')
   const [lastLlmSource, setLastLlmSource] = useState<'llm' | 'fallback' | null>(null)
@@ -2366,7 +2348,7 @@ function App() {
   useEffect(() => {
     setBalanceCurrency(uiLanguage === 'Polish' ? 'PLN' : 'USD')
   }, [uiLanguage])
-  const reportLanguage = uiLanguage
+  const reportLanguage: 'pl' | 'en' = uiLanguage === 'Polish' ? 'pl' : 'en'
   const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
   const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
   const [enginePreviewSessionName, setEnginePreviewSessionName] = useState('')
@@ -2799,7 +2781,7 @@ const isAuthFlowInProgress = () => {
   const supabaseInitError = getSupabaseInitError()
   const showSupabaseConfigError = Boolean(supabaseInitError)
   const billingAccount = useBillingAccount(authSession?.user?.id ?? null, {
-    enabled: isEnginePreview,
+    enabled: isEnginePreview || isReport,
   })
   const [billingBalanceOverride, setBillingBalanceOverride] = useState<number | null>(null)
   const [insufficientBalanceState, setInsufficientBalanceState] = useState<{
@@ -2869,36 +2851,17 @@ const isAuthFlowInProgress = () => {
     if (!isEnginePreview) return
     let cancelled = false
     const loadFx = async () => {
-      const cached = loadFxCache()
-      if (cached && Date.now() - cached.updatedAt < FX_CACHE_TTL_MS) {
-        if (!cancelled) setUsdPlnRate(cached.rate)
-        return
-      }
       try {
-        const response = await fetch('/api/core?action=fx_usdpln')
-        const payload = (await response.json()) as {
-          ok?: boolean
-          usdpln?: number
-          updatedAt?: number
-        }
-        const rate = Number(payload?.usdpln)
-        if (response.ok && Number.isFinite(rate) && rate > 0) {
-          if (!cancelled) setUsdPlnRate(rate)
-          if (typeof window !== 'undefined') {
-            window.sessionStorage.setItem(
-              ENGINE_FX_KEY,
-              JSON.stringify({ rate, updatedAt: payload?.updatedAt ?? Date.now() })
-            )
+        const rate = await fetchFxUsdPlnRate()
+        if (!cancelled) {
+          if (Number.isFinite(rate) && (rate || 0) > 0) {
+            setUsdPlnRate(rate as number)
+          } else {
+            setUsdPlnRate(FX_FALLBACK_RATE)
           }
-        } else if (cached && !cancelled) {
-          setUsdPlnRate(cached.rate)
-        } else if (!cancelled) {
-          setUsdPlnRate(FX_FALLBACK_RATE)
         }
       } catch {
-        if (cached && !cancelled) {
-          setUsdPlnRate(cached.rate)
-        } else if (!cancelled) {
+        if (!cancelled) {
           setUsdPlnRate(FX_FALLBACK_RATE)
         }
       } finally {
@@ -7764,6 +7727,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
         naFillStatus={naFillStatus}
         onUpdateLabel={updateEngineEntryLabel}
         onBillingInsufficient={triggerInsufficientBalance}
+        onSaveSession={() => {
+          void saveCurrentSessionToCloud()
+        }}
+        saveSessionLabel={copy.engine.saveSession}
+        balanceCurrency={balanceCurrency}
+        onToggleBalanceCurrency={() => {
+          setBalanceCurrency((prev) => (prev === 'PLN' ? 'USD' : 'PLN'))
+        }}
+        balancePLN={billingBalanceOverride ?? billingAccount.balancePLN}
+        billingLoading={billingAccount.loading}
+        billingError={billingAccount.error}
+        usdPlnRate={usdPlnRate}
         onReportMetaChange={async (meta) => {
           const sessionId = snapshot.sessionId || enginePreviewSessionId
           if (!sessionId) return
@@ -7851,7 +7826,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
               }
             }}
           >
-            <img src="/logo/logo_makemyideawork" alt="MakeMyIdea.work" />
+            <img src={landingLogoUrl} alt="MakeMyIdea.work" />
           </button>
           <h1>{copy.loginTitle}</h1>
           {import.meta.env.DEV && (
