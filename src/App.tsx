@@ -637,6 +637,7 @@ type Translations = {
   llmCostModelRow: (model: string, input: string, output: string, usd: string) => string
   diagnosticsAuthLabel: string
   adminNavLabel: string
+  insufficientBalanceNotice: string
   llmStatusOnline: string
   llmStatusOffline: string
   llmStatusUnknown: string
@@ -1056,6 +1057,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       `${model}: ${input} in / ${output} out · $${usd}`,
     diagnosticsAuthLabel: 'auth',
     adminNavLabel: 'Admin',
+    insufficientBalanceNotice: 'Insufficient funds. Top up your account.',
     llmStatusOnline: 'Server status: online',
     llmStatusOffline: 'Server status: offline',
     llmStatusUnknown: 'Server status: unknown',
@@ -1537,6 +1539,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       `${model}: ${input} wej. / ${output} wyj. · $${usd}`,
     diagnosticsAuthLabel: 'auth',
     adminNavLabel: 'Panel admina',
+    insufficientBalanceNotice: 'Brak środków, zasil konto.',
     llmStatusOnline: 'Status serwera: online',
     llmStatusOffline: 'Status serwera: offline',
     llmStatusUnknown: 'Status serwera: nieznany',
@@ -2228,6 +2231,13 @@ function App() {
     },
     [aiSupportEnabled, diagnosticsEnabledForUser]
   )
+  const triggerInsufficientBalance = () => {
+    const currentBalance = billingBalanceOverride ?? billingAccount.balancePLN
+    setInsufficientBalanceState({
+      active: true,
+      atBalance: Number.isFinite(currentBalance) ? currentBalance : null,
+    })
+  }
   const resolveUsageModel = (meta?: LlmUsageMeta): LlmUsageModel | null => {
     if (!meta || meta.aiSupportEnabled === false || !meta.modelUsed) return null
     if (meta.modelUsed === 'gpt-4.1-mini') return 'gpt-4.1-mini'
@@ -2792,6 +2802,10 @@ const isAuthFlowInProgress = () => {
     enabled: isEnginePreview,
   })
   const [billingBalanceOverride, setBillingBalanceOverride] = useState<number | null>(null)
+  const [insufficientBalanceState, setInsufficientBalanceState] = useState<{
+    active: boolean
+    atBalance: number | null
+  }>({ active: false, atBalance: null })
 
   useEffect(() => {
     if (billingBalanceOverride == null) return
@@ -2799,6 +2813,20 @@ const isAuthFlowInProgress = () => {
       setBillingBalanceOverride(null)
     }
   }, [billingAccount.balancePLN, billingBalanceOverride])
+
+  useEffect(() => {
+    if (!insufficientBalanceState.active) return
+    const currentBalance = billingBalanceOverride ?? billingAccount.balancePLN
+    const baseline = insufficientBalanceState.atBalance
+    if (baseline != null && currentBalance > baseline + 0.001) {
+      setInsufficientBalanceState({ active: false, atBalance: null })
+    }
+  }, [
+    billingAccount.balancePLN,
+    billingBalanceOverride,
+    insufficientBalanceState.active,
+    insufficientBalanceState.atBalance,
+  ])
 
   useEffect(() => {
     if (!isEnginePreview) return
@@ -5755,6 +5783,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
         const statusLabel = response.status || 'n/a'
         const codeLabel = apiPayload?.error || 'n/a'
         const message = String(apiPayload?.message || '').slice(0, 120)
+        if (codeLabel === 'INSUFFICIENT_BALANCE') {
+          triggerInsufficientBalance()
+          if (showDiagnostics) {
+            showEngineNotice(
+              notices.addEntryFailedDetail(String(statusLabel), String(codeLabel), message || null),
+              'error'
+            )
+          }
+          return
+        }
         showEngineNotice(
           notices.addEntryFailedDetail(String(statusLabel), String(codeLabel), message || null),
           'error'
@@ -6774,8 +6812,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
       return true
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
-      setEngineSessionsError(notices.labelSaveFailed(message))
-      logSessionStore('engine_entry_label_failed', { entryId, message })
+      if (message.includes('INSUFFICIENT_BALANCE')) {
+        triggerInsufficientBalance()
+        if (showDiagnostics) {
+          setEngineSessionsError(notices.labelSaveFailed(message))
+          logSessionStore('engine_entry_label_failed', { entryId, message })
+        }
+      } else {
+        setEngineSessionsError(notices.labelSaveFailed(message))
+        logSessionStore('engine_entry_label_failed', { entryId, message })
+      }
       setEnginePreviewItems((prev) =>
         prev.map((item) =>
           item.id === entryId ? { ...item, label: previousLabel } : item
@@ -7600,6 +7646,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         diagnosticsEnabled={showDiagnostics}
         naFillStatus={naFillStatus}
         onUpdateLabel={updateEngineEntryLabel}
+        onBillingInsufficient={triggerInsufficientBalance}
         onReportMetaChange={async (meta) => {
           const sessionId = snapshot.sessionId || enginePreviewSessionId
           if (!sessionId) return
@@ -7948,35 +7995,42 @@ const isMissingLabel = (item: EngineBoardItem) => {
           </div>
           {isAuthed && (
             <div className="engine-header-balance" aria-live="polite">
-              <div
-                className={`engine-balance${
-                  billingAccount.loading || billingAccount.error ? ' engine-balance--loading' : ''
-                }`}
-                role="button"
-                tabIndex={0}
-                title="Toggle currency"
-                onClick={() => {
-                  setBalanceCurrency((prev) => (prev === 'PLN' ? 'USD' : 'PLN'))
-                }}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter' || event.key === ' ') {
-                    event.preventDefault()
+              <div className="engine-balance-row">
+                <div
+                  className={`engine-balance${
+                    billingAccount.loading || billingAccount.error ? ' engine-balance--loading' : ''
+                  }`}
+                  role="button"
+                  tabIndex={0}
+                  title="Toggle currency"
+                  onClick={() => {
                     setBalanceCurrency((prev) => (prev === 'PLN' ? 'USD' : 'PLN'))
-                  }
-                }}
-              >
-                <span className="engine-balance-icon" aria-hidden="true">
-                  💰
-                </span>
-                <span className="engine-balance-value">
-                  {billingAccount.loading || billingAccount.error
-                    ? '—'
-                    : balanceCurrency === 'USD'
-                      ? usdPlnRate
-                        ? `${formatUsdBalance((billingBalanceOverride ?? billingAccount.balancePLN) / usdPlnRate)} USD`
-                        : 'USD: …'
-                      : `${formatPlnBalance(billingBalanceOverride ?? billingAccount.balancePLN)} PLN`}
-                </span>
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setBalanceCurrency((prev) => (prev === 'PLN' ? 'USD' : 'PLN'))
+                    }
+                  }}
+                >
+                  <span className="engine-balance-icon" aria-hidden="true">
+                    💰
+                  </span>
+                  <span className="engine-balance-value">
+                    {billingAccount.loading || billingAccount.error
+                      ? '—'
+                      : balanceCurrency === 'USD'
+                        ? usdPlnRate
+                          ? `${formatUsdBalance((billingBalanceOverride ?? billingAccount.balancePLN) / usdPlnRate)} USD`
+                          : 'USD: …'
+                        : `${formatPlnBalance(billingBalanceOverride ?? billingAccount.balancePLN)} PLN`}
+                  </span>
+                </div>
+                {insufficientBalanceState.active && (
+                  <span className="engine-balance-warning">
+                    {copy.insufficientBalanceNotice}
+                  </span>
+                )}
               </div>
             </div>
           )}

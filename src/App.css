@@ -2443,6 +2443,12 @@ details.report-section > summary {
   transform: translateY(-50%);
 }
 
+.engine-balance-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
 .engine-balance {
   display: inline-flex;
   align-items: center;
@@ -2471,6 +2477,17 @@ details.report-section > summary {
 
 .engine-balance-icon {
   font-size: 0.95rem;
+}
+
+.engine-balance-warning {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #a94442;
+  background: #fff0f0;
+  border: 1px solid rgba(169, 68, 66, 0.2);
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  white-space: nowrap;
 }
 
 .engine-notice {

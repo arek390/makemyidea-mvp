@@ -32,6 +32,7 @@ type ReportPageProps = {
     recommendations?: ReportRecommendations | null
   }) => void
   onUpdateLabel?: (itemId: string, label: string | null) => Promise<boolean>
+  onBillingInsufficient?: () => void
 }
 
 type AiSummary = { today: string; change: string; product: string }
@@ -379,7 +380,7 @@ export const ReportPage = ({
     try {
       const sessionRes = client ? await client.auth.getSession() : null
       const token = sessionRes?.data?.session?.access_token || ''
-      await fetch('/api/report?action=update', {
+      const response = await fetch('/api/report?action=update', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -387,6 +388,16 @@ export const ReportPage = ({
         },
         body: JSON.stringify({ sessionId: reportSessionId, lang: language }),
       })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.ok) {
+        if (payload?.error === 'INSUFFICIENT_BALANCE') {
+          onBillingInsufficient?.()
+          if (diagnosticsEnabled) {
+            console.warn('[report:update] insufficient balance', payload)
+          }
+          return
+        }
+      }
     } catch {
       // ignore
     } finally {
