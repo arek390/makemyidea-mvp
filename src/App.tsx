@@ -58,6 +58,7 @@ import { ReportPage } from './report/ReportPage'
 import type { ReportSnapshot } from './report/exportCsv'
 import { AdminPage } from './admin/AdminPage'
 import { useAuthState } from './lib/authState'
+import { AiCostButton } from './components/AiCostButton'
 
 type StepId = 1 | 2 | 3 | 4
 type SpaceSlot = 'supersystem' | 'subsystem'
@@ -2196,6 +2197,8 @@ function App() {
   } | null>(null)
   const isAdmin = useMemo(() => isAdminUser(authSession), [authSession])
   const diagnosticsEnabledForUser = isAdmin && diagnosticsEnabled
+  const [reportCreatePriceGrosze, setReportCreatePriceGrosze] = useState<number | null>(null)
+  const [reportCreatePriceLoading, setReportCreatePriceLoading] = useState(false)
 
   const suggestDiagEnabled =
     import.meta.env.VITE_SUGGEST_DIAG === '1' || diagnosticsEnabledForUser
@@ -2809,6 +2812,38 @@ const isAuthFlowInProgress = () => {
     insufficientBalanceState.active,
     insufficientBalanceState.atBalance,
   ])
+
+  useEffect(() => {
+    if (!client || !isEnginePreview) return
+    let cancelled = false
+    const loadPrice = async () => {
+      setReportCreatePriceLoading(true)
+      try {
+        const { data, error } = await client
+          .from('pricing_rules')
+          .select('price_grosze')
+          .eq('action_key', 'report_generate')
+          .maybeSingle()
+        if (!cancelled) {
+          if (error) {
+            setReportCreatePriceGrosze(null)
+          } else {
+            const row = data as { price_grosze?: number | string | null } | null
+            const value = Number(row?.price_grosze)
+            setReportCreatePriceGrosze(Number.isFinite(value) ? value : null)
+          }
+        }
+      } catch {
+        if (!cancelled) setReportCreatePriceGrosze(null)
+      } finally {
+        if (!cancelled) setReportCreatePriceLoading(false)
+      }
+    }
+    void loadPrice()
+    return () => {
+      cancelled = true
+    }
+  }, [client, isEnginePreview])
 
   useEffect(() => {
     if (!isEnginePreview) return
@@ -8298,26 +8333,39 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 )}
                 {enginePreviewSessionId && (
                   <div className="engine-actions-group">
-                    <button
-                      type="button"
-                      className="primary"
-                      data-testid="session-report"
-                      onClick={() => {
-                        markUserInitiatedInteraction('pointer')
-                        setEngineLastInputActivityAt(Date.now())
-                        void handleReportNavigation()
-                      }}
-                    >
-                      {enginePreviewSessionId &&
-                      (authSession?.user?.id
-                        ? Boolean(reportRecords[enginePreviewSessionId]?.id)
-                        : typeof window !== 'undefined' &&
-                          window.sessionStorage.getItem(
-                            `report_exists::${enginePreviewSessionId}`
-                          ) === 'true')
-                        ? copy.enginePreviewOpenReport
-                        : copy.enginePreviewCreateReport}
-                    </button>
+                    {enginePreviewSessionId &&
+                    (authSession?.user?.id
+                      ? Boolean(reportRecords[enginePreviewSessionId]?.id)
+                      : typeof window !== 'undefined' &&
+                        window.sessionStorage.getItem(
+                          `report_exists::${enginePreviewSessionId}`
+                        ) === 'true') ? (
+                      <button
+                        type="button"
+                        className="primary"
+                        data-testid="session-report"
+                        onClick={() => {
+                          markUserInitiatedInteraction('pointer')
+                          setEngineLastInputActivityAt(Date.now())
+                          void handleReportNavigation()
+                        }}
+                      >
+                        {copy.enginePreviewOpenReport}
+                      </button>
+                    ) : (
+                      <AiCostButton
+                        label={copy.enginePreviewCreateReport}
+                        lang={uiLanguage === 'Polish' ? 'pl' : 'en'}
+                        priceGrosze={reportCreatePriceGrosze}
+                        priceLoading={reportCreatePriceLoading}
+                        fxUsdPln={usdPlnRate}
+                        onClick={() => {
+                          markUserInitiatedInteraction('pointer')
+                          setEngineLastInputActivityAt(Date.now())
+                          void handleReportNavigation()
+                        }}
+                      />
+                    )}
                   </div>
                 )}
                 {!enginePreviewSessionId &&

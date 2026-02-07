@@ -13,6 +13,7 @@ import { buildSessionGoalText, extractProductNameFromSessionName } from './sessi
 import { fetchReportBySessionId } from '../lib/cloudReports'
 import { supabase as client } from '../lib/supabase/client'
 import { fetchFxUsdPlnRate, getFreshFxRate } from '../lib/fx'
+import { AiCostButton } from '../components/AiCostButton'
  
 
 type ReportPageProps = {
@@ -261,11 +262,6 @@ export const ReportPage = ({
     new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
       Math.max(0, value || 0)
     )
-  const formatPlnCurrency = (value: number) =>
-    new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(value)
-  const formatUsdCurrency = (value: number) =>
-    new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
-
   useEffect(() => {
     let cancelled = false
     const loadFx = async () => {
@@ -756,40 +752,14 @@ export const ReportPage = ({
         </div>
         <div className="report-actions">
           {showUpdate && (
-            <button type="button" className="primary report-update-btn" onClick={handleUpdateReport}>
-              <span>{t.reportUpdate}</span>
-              <span className="report-ai-inline">
-                {language === 'pl' ? (
-                  <span className="report-ai-text report-ai-text--stack">
-                    <span className="report-ai-text-line">wspierane przez AI ·</span>
-                    <span className="report-ai-text-line">
-                      koszt{' '}
-                      {(() => {
-                        if (priceLoading || priceGrosze == null) return '—'
-                        const pln = priceGrosze / 100
-                        return formatPlnCurrency(pln)
-                      })()}
-                    </span>
-                  </span>
-                ) : (
-                  <span className="report-ai-text report-ai-text--stack">
-                    <span className="report-ai-text-line">AI-assisted ·</span>
-                    <span className="report-ai-text-line">
-                      cost{' '}
-                      {(() => {
-                        if (priceLoading || priceGrosze == null) return '—'
-                        const pln = priceGrosze / 100
-                        if (!fxUsdPlnRate || fxUsdPlnRate <= 0) return '—'
-                        return formatUsdCurrency(pln / fxUsdPlnRate)
-                      })()}
-                    </span>
-                  </span>
-                )}
-                <span className="report-ai-icon" aria-hidden="true">
-                  ✨
-                </span>
-              </span>
-            </button>
+            <AiCostButton
+              label={t.reportUpdate}
+              lang={language}
+              priceGrosze={priceGrosze}
+              priceLoading={priceLoading}
+              fxUsdPln={fxUsdPlnRate}
+              onClick={handleUpdateReport}
+            />
           )}
           {naFillStatus === 'error' && <span className="muted">{t.naAssigningError}</span>}
         </div>
