@@ -6207,6 +6207,93 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   }
 
+  const persistBoardItemsToCloud = async (sessionId: string, userId: string) => {
+    if (!client) return { inserts: 0, updates: 0, deletes: 0 }
+    const { data: existing, error } = await client
+      .from('board_items')
+      .select(
+        'id,session_id,user_id,text,label,matrix_row,matrix_col,question_id,question_text_pl,question_text_en,entry_type,prompt_type'
+      )
+      .eq('session_id', sessionId)
+      .eq('user_id', userId)
+    if (error) throw error
+    const current = normalizeBoardItems(enginePreviewItems)
+    const byId = new Map((existing || []).map((row) => [String(row.id), row]))
+    const currentIds = new Set(current.map((item) => String(item.id)))
+    const deletes = (existing || []).filter((row) => !currentIds.has(String(row.id)))
+    const inserts = current.filter((item) => !byId.has(String(item.id)))
+    const updates = current.filter((item) => {
+      const row = byId.get(String(item.id))
+      if (!row) return false
+      return (
+        String(row.text || '') !== String(item.text || '') ||
+        (row.label ?? null) !== (item.label ?? null) ||
+        (row.matrix_row ?? null) !== (item.matrix_row ?? null) ||
+        (row.matrix_col ?? null) !== (item.matrix_col ?? null) ||
+        (row.question_id ?? null) !== (item.question_id ?? null) ||
+        (row.question_text_pl ?? null) !== (item.question_text_pl ?? null) ||
+        (row.question_text_en ?? null) !== (item.question_text_en ?? null) ||
+        (row.entry_type ?? null) !== (item.entry_type ?? null) ||
+        (row.prompt_type ?? null) !== (item.prompt_type ?? null)
+      )
+    })
+
+    if (deletes.length) {
+      const ids = deletes.map((row) => String(row.id))
+      const { error: delError } = await client
+        .from('board_items')
+        .delete()
+        .in('id', ids)
+        .eq('session_id', sessionId)
+        .eq('user_id', userId)
+      if (delError) throw delError
+    }
+
+    if (updates.length) {
+      await Promise.all(
+        updates.map((item) =>
+          client
+            .from('board_items')
+            .update({
+              text: item.text,
+              label: item.label ?? null,
+              matrix_row: item.matrix_row ?? null,
+              matrix_col: item.matrix_col ?? null,
+              question_id: item.question_id ?? null,
+              question_text_pl: item.question_text_pl ?? null,
+              question_text_en: item.question_text_en ?? null,
+              entry_type: item.entry_type ?? null,
+              prompt_type: item.prompt_type ?? null,
+            })
+            .eq('id', item.id)
+            .eq('session_id', sessionId)
+            .eq('user_id', userId)
+        )
+      )
+    }
+
+    if (inserts.length) {
+      const payload = inserts.map((item) => ({
+        id: item.id,
+        user_id: userId,
+        session_id: sessionId,
+        text: item.text,
+        label: item.label ?? null,
+        matrix_row: item.matrix_row ?? null,
+        matrix_col: item.matrix_col ?? null,
+        question_id: item.question_id ?? null,
+        question_text_pl: item.question_text_pl ?? null,
+        question_text_en: item.question_text_en ?? null,
+        entry_type: item.entry_type ?? null,
+        prompt_type: item.prompt_type ?? null,
+      }))
+      const { error: insError } = await client.from('board_items').insert(payload)
+      if (insError) throw insError
+    }
+
+    return { inserts: inserts.length, updates: updates.length, deletes: deletes.length }
+  }
+
   const fillNaAssignments = async (source: 'manual' | 'auto') => {
     if (engineAssignLoading || naFillStatus === 'running') return
     if (!enginePreviewSessionId) {
@@ -6436,7 +6523,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
     await fillNaAssignments('manual')
   }
 
-  const saveCurrentSessionToCloud = async (silentSuccess = false) => {
+  const persistSessionChanges = async (
+    silentSuccess = false,
+    reason: 'save' | 'logout' = 'save'
+  ) => {
     if (!enginePreviewSessionId) {
       showEngineNotice(copy.engine.saveMissingSession, 'error')
       return false
@@ -6458,6 +6548,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
         return false
       }
       try {
+        try {
+          const sync = await persistBoardItemsToCloud(
+            enginePreviewSessionId,
+            session.user.id
+          )
+          if (import.meta.env.DEV) {
+            console.log('[board_items] sync', { reason, ...sync })
+          }
+        } catch (error) {
+          const status = (error as { status?: number }).status
+          console.error('[board_items] sync failed', { status, error })
+          showEngineNotice(notices.saveToCloudFailed(String(status ?? 'err')), 'error')
+          return false
+        }
         await saveSessionToCloud(session.user.id, detail, uiLanguage)
         if (import.meta.env.DEV) {
           console.log('[cloud save]', { status: 200 })
@@ -6486,6 +6590,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   }
 
+  const saveCurrentSessionToCloud = async (silentSuccess = false) =>
+    persistSessionChanges(silentSuccess, 'save')
+
   const startNewSession = async () => {
     if (enginePreviewSessionId) {
       const saved = await saveCurrentSessionToCloud(true)
@@ -6500,6 +6607,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (!client) {
       showEngineNotice(copy.auth.logoutFailed, 'error')
       return
+    }
+    const persistPromise = persistSessionChanges(true, 'logout')
+    const timeoutMs = 2500
+    const timeout = new Promise((resolve) =>
+      window.setTimeout(() => resolve(false), timeoutMs)
+    )
+    const persisted = await Promise.race([persistPromise, timeout])
+    if (persisted === false && import.meta.env.DEV) {
+      console.warn('[logout] persist timed out', { timeoutMs })
     }
     const { error } = await client.auth.signOut()
     if (error) {
@@ -7725,6 +7841,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return withDevOverlay(
       <div className="app auth-screen">
         <section className="panel auth-panel">
+          <button
+            type="button"
+            className="auth-logo"
+            onClick={() => {
+              if (typeof window !== 'undefined') {
+                window.location.href = '/'
+              }
+            }}
+          >
+            <img src="/logo/logo_makemyideawork" alt="MakeMyIdea.work" />
+          </button>
           <h1>{copy.loginTitle}</h1>
           {import.meta.env.DEV && (
             <div className="actions">

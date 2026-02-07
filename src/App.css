@@ -1138,6 +1138,20 @@
   gap: 1rem;
 }
 
+.auth-logo {
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  justify-content: center;
+  cursor: pointer;
+}
+
+.auth-logo img {
+  width: min(220px, 100%);
+  height: auto;
+}
+
 .auth-options {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
