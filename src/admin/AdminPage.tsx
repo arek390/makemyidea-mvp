@@ -546,54 +546,6 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
   return (
     <div className="app admin-page">
       <div className="admin-panel">
-        <header className="admin-header">
-          <div>
-          <h1>{t.usersSessionsTitle}</h1>
-          <p className="muted">{t.adminOnlyReport}</p>
-          </div>
-          <div className="admin-controls">
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  window.location.href = '/engine'
-                }
-              }}
-            >
-              {t.adminBackToEngine}
-            </button>
-            <input
-              type="search"
-              placeholder={t.billingSearchPlaceholder}
-              value={search}
-              onChange={(event) => setSearch(event.target.value)}
-            />
-            <div className="admin-sort">
-              <label>
-                {t.sortLabel}
-                <select
-                  value={sortKey}
-                  onChange={(event) =>
-                    setSortKey(event.target.value as 'session_created_at' | 'cost_pln' | 'tokens_total')
-                  }
-                >
-                  <option value="session_created_at">{t.sortCreatedAt}</option>
-                  <option value="cost_pln">{t.sortCostPln}</option>
-                  <option value="tokens_total">{t.sortTokens}</option>
-                </select>
-              </label>
-              <button
-                type="button"
-                className="ghost"
-                onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
-              >
-                {sortDir === 'asc' ? t.sortAsc : t.sortDesc}
-              </button>
-            </div>
-          </div>
-        </header>
-
         <div className="admin-section">
           <header className="admin-header">
             <div>
@@ -694,6 +646,54 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
             </div>
           )}
         </div>
+
+        <header className="admin-header">
+          <div>
+          <h1>{t.usersSessionsTitle}</h1>
+          <p className="muted">{t.adminOnlyReport}</p>
+          </div>
+          <div className="admin-controls">
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/engine'
+                }
+              }}
+            >
+              {t.adminBackToEngine}
+            </button>
+            <input
+              type="search"
+              placeholder={t.billingSearchPlaceholder}
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+            />
+            <div className="admin-sort">
+              <label>
+                {t.sortLabel}
+                <select
+                  value={sortKey}
+                  onChange={(event) =>
+                    setSortKey(event.target.value as 'session_created_at' | 'cost_pln' | 'tokens_total')
+                  }
+                >
+                  <option value="session_created_at">{t.sortCreatedAt}</option>
+                  <option value="cost_pln">{t.sortCostPln}</option>
+                  <option value="tokens_total">{t.sortTokens}</option>
+                </select>
+              </label>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+              >
+                {sortDir === 'asc' ? t.sortAsc : t.sortDesc}
+              </button>
+            </div>
+          </div>
+        </header>
 
         {error && <p className="admin-error">{error}</p>}
         {loading && <p className="muted">{t.loadingReport}</p>}
