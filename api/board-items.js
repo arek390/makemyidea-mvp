@@ -106,7 +106,6 @@ export default async function handler(req, res) {
         question_text_en: payload.questionTextEn ?? null,
         entry_type: payload.entryType ?? null,
         prompt_type: payload.promptType ?? null,
-        created_at: payload.createdAt ?? Date.now(),
       }
       const { data, error } = await supabaseAdmin
         .from('board_items')
