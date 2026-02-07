@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from '../src/lib/server/supabaseServer.js'
+import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../src/lib/server/http.js'
 import { resolveAction } from '../src/lib/server/router.js'
 
@@ -21,6 +22,15 @@ const handleMe = async (req, res) => {
         email: data.user.email || null,
       },
     })
+    try {
+      const supabaseAdmin = getSupabaseAdmin()
+      await supabaseAdmin.rpc('grant_welcome_balance', { p_user_id: data.user.id })
+    } catch (error) {
+      console.error('[auth][welcome_balance] failed', {
+        message: error?.message ?? null,
+        code: error?.code ?? null,
+      })
+    }
   } catch (error) {
     res.status(500).json({ ok: false, error: 'SERVER_ERROR' })
   }

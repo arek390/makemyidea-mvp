@@ -206,6 +206,7 @@ export const ReportPage = ({
   diagnosticsEnabled,
   naFillStatus,
   onUpdateLabel,
+  onBillingInsufficient,
 }: ReportPageProps) => {
   const t = reportCopy[language]
   const reportLogoUrl = new URL('../../logo/logo_makemyideawork.png', import.meta.url).href

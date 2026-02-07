@@ -6208,8 +6208,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   const persistBoardItemsToCloud = async (sessionId: string, userId: string) => {
-    if (!client) return { inserts: 0, updates: 0, deletes: 0 }
-    const { data: existing, error } = await client
+    const supabaseClient = client
+    if (!supabaseClient) return { inserts: 0, updates: 0, deletes: 0 }
+    const { data: existing, error } = await supabaseClient
       .from('board_items')
       .select(
         'id,session_id,user_id,text,label,matrix_row,matrix_col,question_id,question_text_pl,question_text_en,entry_type,prompt_type'
@@ -6240,7 +6241,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
     if (deletes.length) {
       const ids = deletes.map((row) => String(row.id))
-      const { error: delError } = await client
+      const { error: delError } = await supabaseClient
         .from('board_items')
         .delete()
         .in('id', ids)
@@ -6252,7 +6253,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (updates.length) {
       await Promise.all(
         updates.map((item) =>
-          client
+          supabaseClient
             .from('board_items')
             .update({
               text: item.text,
@@ -6287,7 +6288,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         entry_type: item.entry_type ?? null,
         prompt_type: item.prompt_type ?? null,
       }))
-      const { error: insError } = await client.from('board_items').insert(payload)
+      const { error: insError } = await supabaseClient.from('board_items').insert(payload)
       if (insError) throw insError
     }
 
