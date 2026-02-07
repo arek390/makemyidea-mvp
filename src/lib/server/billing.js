@@ -76,9 +76,22 @@ export const chargeUserBalance = async (
     throw createBillingError(error.code || 'BILLING_FAILED', error.message || 'Billing failed.')
   }
   const row = Array.isArray(data) ? data[0] : data
+  const balanceAfterPln = Number(row?.balance_after_pln)
+  const balanceBeforePln = Number(row?.balance_before_pln)
+  const amountPln = Number(row?.amount_pln)
+  const amountGrosze = toInt(row?.amount_grosze)
+  const fallbackAfter =
+    Number.isFinite(balanceAfterPln) ? Math.round(balanceAfterPln * 100) : NaN
   return {
-    balanceBeforeGrosze: toInt(row?.balance_before_grosze),
-    balanceAfterGrosze: toInt(row?.balance_after_grosze),
-    amountGrosze: toInt(row?.amount_grosze),
+    balanceBeforeGrosze: Number.isFinite(balanceBeforePln)
+      ? Math.round(balanceBeforePln * 100)
+      : toInt(row?.balance_before_grosze),
+    balanceAfterGrosze: Number.isFinite(balanceAfterPln)
+      ? Math.round(balanceAfterPln * 100)
+      : toInt(row?.balance_after_grosze) || fallbackAfter,
+    balanceBeforePln: Number.isFinite(balanceBeforePln) ? balanceBeforePln : null,
+    balanceAfterPln: Number.isFinite(balanceAfterPln) ? balanceAfterPln : null,
+    amountPln: Number.isFinite(amountPln) ? amountPln : null,
+    amountGrosze: Number.isFinite(amountGrosze) ? amountGrosze : null,
   }
 }

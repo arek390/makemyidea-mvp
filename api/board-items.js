@@ -106,7 +106,8 @@ export default async function handler(req, res) {
         ok: true,
         item: data,
         balance_after_grosze: charge.balanceAfterGrosze,
-        balance_after_pln: charge.balanceAfterGrosze / 100,
+        balance_after_pln:
+          charge.balanceAfterPln ?? (charge.balanceAfterGrosze != null ? charge.balanceAfterGrosze / 100 : null),
       })
       return
     }
@@ -143,7 +144,8 @@ export default async function handler(req, res) {
       ok: true,
       item: data,
       balance_after_grosze: charge.balanceAfterGrosze,
-      balance_after_pln: charge.balanceAfterGrosze / 100,
+      balance_after_pln:
+        charge.balanceAfterPln ?? (charge.balanceAfterGrosze != null ? charge.balanceAfterGrosze / 100 : null),
     })
   } catch (error) {
     if (handleBillingError(res, error)) return
