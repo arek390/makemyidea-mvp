@@ -2814,12 +2814,13 @@ const isAuthFlowInProgress = () => {
   ])
 
   useEffect(() => {
-    if (!client || !isEnginePreview) return
+    const supabaseClient = client
+    if (!supabaseClient || !isEnginePreview) return
     let cancelled = false
     const loadPrice = async () => {
       setReportCreatePriceLoading(true)
       try {
-        const { data, error } = await client
+        const { data, error } = await supabaseClient
           .from('pricing_rules')
           .select('price_grosze')
           .eq('action_key', 'report_generate')
