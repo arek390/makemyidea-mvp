@@ -1844,6 +1844,15 @@
   line-height: 1.1;
 }
 
+.report-ai-text--stack {
+  display: block;
+  text-align: center;
+}
+
+.report-ai-text-line {
+  display: block;
+}
+
 .report-ai-icon {
   font-size: 1.6rem;
 }

@@ -759,16 +759,32 @@ export const ReportPage = ({
             <button type="button" className="primary report-update-btn" onClick={handleUpdateReport}>
               <span>{t.reportUpdate}</span>
               <span className="report-ai-inline">
-                <span className="report-ai-text">
-                  {language === 'pl' ? 'wspierane przez AI · koszt ' : 'AI-assisted · cost '}
-                  {(() => {
-                    if (priceLoading || priceGrosze == null) return '—'
-                    const pln = priceGrosze / 100
-                    if (language === 'pl') return formatPlnCurrency(pln)
-                    if (!fxUsdPlnRate || fxUsdPlnRate <= 0) return '—'
-                    return formatUsdCurrency(pln / fxUsdPlnRate)
-                  })()}
-                </span>
+                {language === 'pl' ? (
+                  <span className="report-ai-text report-ai-text--stack">
+                    <span className="report-ai-text-line">wspierane przez AI ·</span>
+                    <span className="report-ai-text-line">
+                      koszt{' '}
+                      {(() => {
+                        if (priceLoading || priceGrosze == null) return '—'
+                        const pln = priceGrosze / 100
+                        return formatPlnCurrency(pln)
+                      })()}
+                    </span>
+                  </span>
+                ) : (
+                  <span className="report-ai-text report-ai-text--stack">
+                    <span className="report-ai-text-line">AI-assisted ·</span>
+                    <span className="report-ai-text-line">
+                      cost{' '}
+                      {(() => {
+                        if (priceLoading || priceGrosze == null) return '—'
+                        const pln = priceGrosze / 100
+                        if (!fxUsdPlnRate || fxUsdPlnRate <= 0) return '—'
+                        return formatUsdCurrency(pln / fxUsdPlnRate)
+                      })()}
+                    </span>
+                  </span>
+                )}
                 <span className="report-ai-icon" aria-hidden="true">
                   ✨
                 </span>
