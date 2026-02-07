@@ -574,6 +574,17 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
             <button type="button" className="ghost" onClick={handleDebugAccess}>
               {t.adminDebugAccess}
             </button>
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/engine'
+                }
+              }}
+            >
+              {t.adminBackToEngine}
+            </button>
             <input
               type="search"
               placeholder={t.billingEmailSearchPlaceholder}
@@ -647,23 +658,12 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
           )}
         </div>
 
-        <header className="admin-header">
+        <header className="admin-header admin-header--sessions">
           <div>
           <h1>{t.usersSessionsTitle}</h1>
           <p className="muted">{t.adminOnlyReport}</p>
           </div>
           <div className="admin-controls">
-            <button
-              type="button"
-              className="ghost"
-              onClick={() => {
-                if (typeof window !== 'undefined') {
-                  window.location.href = '/engine'
-                }
-              }}
-            >
-              {t.adminBackToEngine}
-            </button>
             <input
               type="search"
               placeholder={t.billingSearchPlaceholder}

@@ -3759,6 +3759,10 @@ button.ghost.danger:hover {
   margin-bottom: 18px;
 }
 
+.admin-header--sessions {
+  margin-top: 50px;
+}
+
 .admin-header h1 {
   margin: 0 0 6px;
   font-size: 1.6rem;
