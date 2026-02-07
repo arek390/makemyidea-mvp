@@ -275,12 +275,13 @@ export const ReportPage = ({
   }, [])
 
   useEffect(() => {
-    if (!client) return
+    const supabaseClient = client
+    if (!supabaseClient) return
     let cancelled = false
     const loadPrice = async () => {
       setPriceLoading(true)
       try {
-        const { data, error } = await client
+        const { data, error } = await supabaseClient
           .from('pricing_rules')
           .select('price_grosze')
           .eq('action_key', 'report_update')
@@ -289,7 +290,8 @@ export const ReportPage = ({
           if (error) {
             setPriceGrosze(null)
           } else {
-            const value = Number(data?.price_grosze)
+            const row = data as { price_grosze?: number | string | null } | null
+            const value = Number(row?.price_grosze)
             setPriceGrosze(Number.isFinite(value) ? value : null)
           }
         }

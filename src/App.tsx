@@ -2348,7 +2348,7 @@ function App() {
   useEffect(() => {
     setBalanceCurrency(uiLanguage === 'Polish' ? 'PLN' : 'USD')
   }, [uiLanguage])
-  const reportLanguage: 'pl' | 'en' = uiLanguage === 'Polish' ? 'pl' : 'en'
+  const reportLanguage = uiLanguage
   const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
   const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
   const [enginePreviewSessionName, setEnginePreviewSessionName] = useState('')
@@ -7718,7 +7718,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return withDevOverlay(
       <ReportPage
         snapshot={snapshot}
-        language={reportLanguage}
+        language={uiLanguage === 'Polish' ? 'pl' : 'en'}
         userId={authSession?.user?.id ?? null}
         onBack={handleReportBack}
         onLogout={handleReportLogout}
