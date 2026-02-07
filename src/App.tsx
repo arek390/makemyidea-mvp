@@ -636,6 +636,7 @@ type Translations = {
   llmCostTotalPlnFallback: string
   llmCostModelRow: (model: string, input: string, output: string, usd: string) => string
   diagnosticsAuthLabel: string
+  adminNavLabel: string
   llmStatusOnline: string
   llmStatusOffline: string
   llmStatusUnknown: string
@@ -1054,6 +1055,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     llmCostModelRow: (model, input, output, usd) =>
       `${model}: ${input} in / ${output} out · $${usd}`,
     diagnosticsAuthLabel: 'auth',
+    adminNavLabel: 'Admin',
     llmStatusOnline: 'Server status: online',
     llmStatusOffline: 'Server status: offline',
     llmStatusUnknown: 'Server status: unknown',
@@ -1534,6 +1536,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     llmCostModelRow: (model, input, output, usd) =>
       `${model}: ${input} wej. / ${output} wyj. · $${usd}`,
     diagnosticsAuthLabel: 'auth',
+    adminNavLabel: 'Panel admina',
     llmStatusOnline: 'Status serwera: online',
     llmStatusOffline: 'Status serwera: offline',
     llmStatusUnknown: 'Status serwera: nieznany',
@@ -7988,6 +7991,19 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 }}
               >
                 {copy.engine.newSession}
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                className="ghost"
+                type="button"
+                onClick={() => {
+                  if (typeof window !== 'undefined') {
+                    window.location.hash = '#/admin'
+                  }
+                }}
+              >
+                {copy.adminNavLabel}
               </button>
             )}
             <button className="ghost" type="button" onClick={handleLogout}>

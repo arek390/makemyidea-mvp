@@ -66,6 +66,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         ? `User ID: ${userId || '—'} | Email: ${email || '—'}`
         : `User ID: ${userId || '—'} | Email: ${email || '—'}`,
     adminCopyUserId: isPl ? 'Skopiuj User ID' : 'Copy User ID',
+    adminBackToEngine: isPl ? 'Wróć do engine' : 'Back to engine',
     adminAccessDeniedTitle: isPl ? 'Brak dostępu' : 'Access denied',
     adminAccessDeniedBody: isPl
       ? 'Nie masz dostępu do panelu admina. Skopiuj swój User ID i dodaj go do tabeli admin_users.'
@@ -551,6 +552,17 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
           <p className="muted">{t.adminOnlyReport}</p>
           </div>
           <div className="admin-controls">
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  window.location.href = '/engine'
+                }
+              }}
+            >
+              {t.adminBackToEngine}
+            </button>
             <input
               type="search"
               placeholder={t.billingSearchPlaceholder}
@@ -581,62 +593,6 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
             </div>
           </div>
         </header>
-
-        {error && <p className="admin-error">{error}</p>}
-        {loading && <p className="muted">{t.loadingReport}</p>}
-
-        {!loading && (
-          <div className="admin-table-wrap">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>{t.tableUserEmail}</th>
-                  <th>{t.tableSession}</th>
-                  <th>{t.tableCreated}</th>
-                  <th>{t.tableBoardItems}</th>
-                  <th>{t.tableReportCreated}</th>
-                  <th>{t.tableReportUpdated}</th>
-                  <th>{t.tableTokens}</th>
-                  <th>{t.tableCostPln}</th>
-                  <th>{t.tableCostUsd}</th>
-                  <th>{t.tableBalancePln}</th>
-                  <th>{t.tableTotalPaidPln}</th>
-                </tr>
-              </thead>
-              <tbody>
-                  {sortedRows.length === 0 && (
-                    <tr>
-                      <td colSpan={11} className="admin-empty">
-                      {t.tableEmpty}
-                      </td>
-                    </tr>
-                  )}
-                {sortedRows.map((row) => (
-                  <tr key={`${row.user_id || 'user'}-${row.session_id || 'session'}`}>
-                    <td>{row.user_email || '—'}</td>
-                    <td>
-                      <div className="admin-session">
-                        <div className="admin-session-name">
-                          {row.session_name || '—'}
-                        </div>
-                        <div className="admin-session-id">{row.session_id || '—'}</div>
-                      </div>
-                    </td>
-                    <td>{formatDateTime(row.session_created_at)}</td>
-                    <td>{formatNumber(row.board_items_count)}</td>
-                    <td>{row.report_created ? t.tableYes : t.tableNo}</td>
-                    <td>{row.report_updated ? t.tableYes : t.tableNo}</td>
-                    <td>{formatNumber(row.tokens_total)}</td>
-                    <td>{formatMoney(row.cost_pln, 'PLN')}</td>
-                    <td>{formatMoney(row.cost_usd, 'USD')}</td>
-                    <td>{formatMoney(row.balance_pln, 'PLN')}</td>
-                    <td>{formatMoney(row.total_paid_pln, 'PLN')}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
 
         <div className="admin-section">
           <header className="admin-header">
@@ -738,6 +694,62 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
             </div>
           )}
         </div>
+
+        {error && <p className="admin-error">{error}</p>}
+        {loading && <p className="muted">{t.loadingReport}</p>}
+
+        {!loading && (
+          <div className="admin-table-wrap">
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>{t.tableUserEmail}</th>
+                  <th>{t.tableSession}</th>
+                  <th>{t.tableCreated}</th>
+                  <th>{t.tableBoardItems}</th>
+                  <th>{t.tableReportCreated}</th>
+                  <th>{t.tableReportUpdated}</th>
+                  <th>{t.tableTokens}</th>
+                  <th>{t.tableCostPln}</th>
+                  <th>{t.tableCostUsd}</th>
+                  <th>{t.tableBalancePln}</th>
+                  <th>{t.tableTotalPaidPln}</th>
+                </tr>
+              </thead>
+              <tbody>
+                  {sortedRows.length === 0 && (
+                    <tr>
+                      <td colSpan={11} className="admin-empty">
+                      {t.tableEmpty}
+                      </td>
+                    </tr>
+                  )}
+                {sortedRows.map((row) => (
+                  <tr key={`${row.user_id || 'user'}-${row.session_id || 'session'}`}>
+                    <td>{row.user_email || '—'}</td>
+                    <td>
+                      <div className="admin-session">
+                        <div className="admin-session-name">
+                          {row.session_name || '—'}
+                        </div>
+                        <div className="admin-session-id">{row.session_id || '—'}</div>
+                      </div>
+                    </td>
+                    <td>{formatDateTime(row.session_created_at)}</td>
+                    <td>{formatNumber(row.board_items_count)}</td>
+                    <td>{row.report_created ? t.tableYes : t.tableNo}</td>
+                    <td>{row.report_updated ? t.tableYes : t.tableNo}</td>
+                    <td>{formatNumber(row.tokens_total)}</td>
+                    <td>{formatMoney(row.cost_pln, 'PLN')}</td>
+                    <td>{formatMoney(row.cost_usd, 'USD')}</td>
+                    <td>{formatMoney(row.balance_pln, 'PLN')}</td>
+                    <td>{formatMoney(row.total_paid_pln, 'PLN')}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
 
         {/* Manual test checklist:
             1) Zaloguj jako arektest8@gmail.com → widzisz tabelę Billing.
