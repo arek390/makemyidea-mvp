@@ -22,6 +22,21 @@ const handleBillingError = (res, error) => {
   return true
 }
 
+const shouldIncludeDiagnostics = (req) => {
+  const header =
+    req?.headers?.['x-diagnostics'] ||
+    req?.headers?.['X-Diagnostics'] ||
+    (typeof req?.headers?.get === 'function' ? req.headers.get('x-diagnostics') : '') ||
+    ''
+  return String(header).trim() === '1'
+}
+
+const safeErrorDetails = (error) => ({
+  message: error?.message ?? null,
+  pgcode: error?.code ?? null,
+  hint: error?.hint ?? null,
+})
+
 export default async function handler(req, res) {
   const body = req.method === 'GET' ? null : await readJsonBody(req)
   if (req.method !== 'GET' && body === null) {
@@ -148,7 +163,17 @@ export default async function handler(req, res) {
         charge.balanceAfterPln ?? (charge.balanceAfterGrosze != null ? charge.balanceAfterGrosze / 100 : null),
     })
   } catch (error) {
+    console.error('[board-items][billing] charge failed', {
+      message: error?.message ?? null,
+      code: error?.code ?? null,
+      details: error?.details ?? null,
+      hint: error?.hint ?? null,
+    })
     if (handleBillingError(res, error)) return
-    sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
+    const payload = { ok: false, error: 'BILLING_FAILED' }
+    if (shouldIncludeDiagnostics(req)) {
+      payload.details = safeErrorDetails(error)
+    }
+    sendJson(res, 500, payload)
   }
 }

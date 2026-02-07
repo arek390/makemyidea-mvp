@@ -73,6 +73,12 @@ export const chargeUserBalance = async (
     p_reference_id: referenceId ? String(referenceId) : null,
   })
   if (error) {
+    console.error('[billing][charge_user_balance] rpc failed', {
+      code: error.code ?? null,
+      message: error.message ?? null,
+      details: error.details ?? null,
+      hint: error.hint ?? null,
+    })
     throw createBillingError(error.code || 'BILLING_FAILED', error.message || 'Billing failed.')
   }
   const row = Array.isArray(data) ? data[0] : data
