@@ -42,6 +42,8 @@ type ReportPageProps = {
   billingLoading?: boolean
   billingError?: string | null
   usdPlnRate?: number | null
+  showInsufficientBalance?: boolean
+  insufficientBalanceNotice?: string
 }
 
 type AiSummary = { today: string; change: string; product: string }
@@ -224,6 +226,8 @@ export const ReportPage = ({
   billingLoading = false,
   billingError = null,
   usdPlnRate = null,
+  showInsufficientBalance = false,
+  insufficientBalanceNotice = 'Insufficient funds. Top up your account.',
 }: ReportPageProps) => {
   const t = reportCopy[language]
   const reportLogoUrl = new URL('../../logo/logo_makemyideawork.png', import.meta.url).href
@@ -681,35 +685,42 @@ export const ReportPage = ({
           </div>
         </div>
         <div className="engine-header-balance" aria-live="polite">
-          <div
-            className={`engine-balance${
-              billingLoading || billingError ? ' engine-balance--loading' : ''
-            }`}
-            role="button"
-            tabIndex={0}
-            title="Toggle currency"
-            onClick={() => {
-              onToggleBalanceCurrency?.()
-            }}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
+          <div className="engine-balance-row">
+            <div
+              className={`engine-balance${
+                billingLoading || billingError ? ' engine-balance--loading' : ''
+              }`}
+              role="button"
+              tabIndex={0}
+              title="Toggle currency"
+              onClick={() => {
                 onToggleBalanceCurrency?.()
-              }
-            }}
-          >
-            <span className="engine-balance-icon" aria-hidden="true">
-              💰
-            </span>
-            <span className="engine-balance-value">
-              {billingLoading || billingError
-                ? '—'
-                : balanceCurrency === 'USD'
-                  ? usdPlnRate
-                    ? `${formatUsdBalance(balancePLN / usdPlnRate)} USD`
-                    : 'USD: …'
-                  : `${formatPlnBalance(balancePLN)} PLN`}
-            </span>
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onToggleBalanceCurrency?.()
+                }
+              }}
+            >
+              <span className="engine-balance-icon" aria-hidden="true">
+                💰
+              </span>
+              <span className="engine-balance-value">
+                {billingLoading || billingError
+                  ? '—'
+                  : balanceCurrency === 'USD'
+                    ? usdPlnRate
+                      ? `${formatUsdBalance(balancePLN / usdPlnRate)} USD`
+                      : 'USD: …'
+                    : `${formatPlnBalance(balancePLN)} PLN`}
+              </span>
+            </div>
+            {showInsufficientBalance && (
+              <span className="engine-balance-warning">
+                {insufficientBalanceNotice}
+              </span>
+            )}
           </div>
         </div>
         <div className="engine-header-actions">

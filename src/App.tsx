@@ -671,7 +671,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingIntroSubtextEmphasis: 'you',
     landingCta: '▶ Start for free',
     landingCtaNote: 'Sign up in 30 seconds • No credit card required',
-    landingThreeStepsCta: 'Get started in 3 steps',
+    landingThreeStepsCta: 'Zacznij w 3 krokach',
     landingThreeStepsTitle: '3 steps',
     landingBackToFull: '← Back to full page',
     landingBeforeLead: 'If any of this sounds familiar — you are in the right place.',
@@ -1042,7 +1042,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       `${model}: ${input} in / ${output} out · $${usd}`,
     diagnosticsAuthLabel: 'auth',
     adminNavLabel: 'Admin',
-    insufficientBalanceNotice: 'Insufficient funds. Top up your account.',
+    insufficientBalanceNotice: 'Your balance is too low. Top up to continue.',
     llmStatusOnline: 'Server status: online',
     llmStatusOffline: 'Server status: offline',
     llmStatusUnknown: 'Server status: unknown',
@@ -1524,7 +1524,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       `${model}: ${input} wej. / ${output} wyj. · $${usd}`,
     diagnosticsAuthLabel: 'auth',
     adminNavLabel: 'Panel admina',
-    insufficientBalanceNotice: 'Brak środków, zasil konto.',
+    insufficientBalanceNotice: 'Saldo jest zbyt niskie. Doładuj konto, aby kontynuować.',
     llmStatusOnline: 'Status serwera: online',
     llmStatusOffline: 'Status serwera: offline',
     llmStatusUnknown: 'Status serwera: nieznany',
@@ -7731,6 +7731,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
           void saveCurrentSessionToCloud()
         }}
         saveSessionLabel={copy.engine.saveSession}
+        showInsufficientBalance={insufficientBalanceState.active}
+        insufficientBalanceNotice={copy.insufficientBalanceNotice}
         balanceCurrency={balanceCurrency}
         onToggleBalanceCurrency={() => {
           setBalanceCurrency((prev) => (prev === 'PLN' ? 'USD' : 'PLN'))

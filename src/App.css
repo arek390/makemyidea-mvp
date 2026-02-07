@@ -1795,6 +1795,8 @@
   border: 4px solid #d9d2c6;
   border-top-color: #7d6c55;
   display: inline-block;
+  aspect-ratio: 1 / 1;
+  flex: 0 0 28px;
   animation: report-spin 0.9s linear infinite;
 }
 
