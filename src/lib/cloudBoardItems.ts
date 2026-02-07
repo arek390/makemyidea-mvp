@@ -86,51 +86,62 @@ export const insertBoardItem = async (input: {
   if (!supabase) {
     throw new Error('Missing Supabase client.')
   }
-  const payload = {
-    user_id: input.user_id,
-    session_id: input.session_id,
-    text: input.text,
-    label: input.label ?? null,
-    matrix_row: input.matrix_row ?? null,
-    matrix_col: input.matrix_col ?? null,
-    question_id: input.question_id ?? null,
-    question_text_pl: input.question_text_pl ?? null,
-    question_text_en: input.question_text_en ?? null,
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token || ''
+  if (!token) {
+    throw new Error('AUTH_REQUIRED')
   }
-  const { data, error } = await typedSupabase
-    .from('board_items')
-    .insert(payload)
-    .select(
-      'id,user_id,session_id,type,text,label,question_id,question_text_pl,question_text_en,created_at,entry_type,prompt_type,matrix_row,matrix_col,last_classified_text,classification_dirty'
-    )
-    .single()
-  if (error) throw error
-  return normalizeRow(data as BoardItemRow)
+  const response = await fetch('/api/board-items?action=upsert', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      sessionId: input.session_id,
+      text: input.text,
+      label: input.label ?? null,
+      matrixRow: input.matrix_row ?? null,
+      matrixCol: input.matrix_col ?? null,
+      questionId: input.question_id ?? null,
+      questionTextPl: input.question_text_pl ?? null,
+      questionTextEn: input.question_text_en ?? null,
+    }),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || !payload?.ok) {
+    throw new Error(payload?.error || 'UPSERT_FAILED')
+  }
+  return normalizeRow(payload.item as BoardItemRow)
 }
 
 export const updateBoardItemLabel = async (
   sessionId: string,
   itemId: string,
   label: string | null
-): Promise<void> => {
+): Promise<number | null> => {
   if (!supabase) {
     throw new Error('Missing Supabase client.')
   }
-  const { error } = await typedSupabase
-    .from('board_items')
-    .update({ label })
-    .eq('session_id', sessionId)
-    .eq('id', itemId)
-  if (error) {
-    console.error('[board_items] query failed', {
-      status: (error as { status?: number | null })?.status,
-      code: (error as { code?: string | null })?.code,
-      message: (error as { message?: string | null })?.message,
-      details: (error as { details?: string | null })?.details,
-      hint: (error as { hint?: string | null })?.hint,
-    })
-    throw error
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token || ''
+  if (!token) {
+    throw new Error('AUTH_REQUIRED')
   }
+  const response = await fetch('/api/board-items?action=upsert', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ sessionId, itemId, label }),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || !payload?.ok) {
+    throw new Error(payload?.error || 'UPDATE_FAILED')
+  }
+  const balanceAfter = Number(payload?.balance_after_pln ?? 0)
+  return Number.isFinite(balanceAfter) ? balanceAfter : null
 }
 
 export const updateBoardItemMatrix = async (
@@ -142,19 +153,21 @@ export const updateBoardItemMatrix = async (
   if (!supabase) {
     throw new Error('Missing Supabase client.')
   }
-  const { error } = await typedSupabase
-    .from('board_items')
-    .update({ matrix_row: matrixRow, matrix_col: matrixCol })
-    .eq('session_id', sessionId)
-    .eq('id', itemId)
-  if (error) {
-    console.error('[board_items] matrix update failed', {
-      status: (error as { status?: number | null })?.status,
-      code: (error as { code?: string | null })?.code,
-      message: (error as { message?: string | null })?.message,
-      details: (error as { details?: string | null })?.details,
-      hint: (error as { hint?: string | null })?.hint,
-    })
-    throw error
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token || ''
+  if (!token) {
+    throw new Error('AUTH_REQUIRED')
+  }
+  const response = await fetch('/api/board-items?action=upsert', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ sessionId, itemId, matrixRow, matrixCol }),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || !payload?.ok) {
+    throw new Error(payload?.error || 'UPDATE_FAILED')
   }
 }

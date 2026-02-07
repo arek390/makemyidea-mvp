@@ -2791,6 +2791,14 @@ const isAuthFlowInProgress = () => {
   const billingAccount = useBillingAccount(authSession?.user?.id ?? null, {
     enabled: isEnginePreview,
   })
+  const [billingBalanceOverride, setBillingBalanceOverride] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (billingBalanceOverride == null) return
+    if (Math.abs(billingAccount.balancePLN - billingBalanceOverride) < 0.005) {
+      setBillingBalanceOverride(null)
+    }
+  }, [billingAccount.balancePLN, billingBalanceOverride])
 
   useEffect(() => {
     if (!isEnginePreview) return
@@ -5674,13 +5682,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
         showEngineNotice(notices.authSessionExpired, 'error')
         return
       }
-      const { data: userData, error: userErr } = await client.auth.getUser()
-      const authedUserId = userData?.user?.id ?? null
+      const { data: sessionData } = await client.auth.getSession()
+      const accessToken = sessionData.session?.access_token || ''
+      const authedUserId = sessionData.session?.user?.id ?? null
       console.log('[board_items] authed user', {
         authedUserId,
         hasAuthSession: Boolean(authSession?.user),
       })
-      if (userErr || !authedUserId) {
+      if (!accessToken || !authedUserId) {
         showEngineNotice(notices.authSessionExpired, 'error')
         return
       }
@@ -5720,63 +5729,49 @@ const isMissingLabel = (item: EngineBoardItem) => {
         classificationDirty: mappedRow && mappedCol ? false : true,
       }
       let persistedItem = newItem
-      const payload: Pick<
-        Database['public']['Tables']['board_items']['Insert'],
-        | 'user_id'
-        | 'session_id'
-        | 'text'
-        | 'label'
-        | 'matrix_row'
-        | 'matrix_col'
-        | 'question_id'
-        | 'question_text_pl'
-        | 'question_text_en'
-      > = {
-        user_id: authedUserId,
-        session_id: sessionId,
+      const payload = {
+        sessionId,
         text: text.trim(),
         label: null,
-        matrix_row: mappedRow ?? null,
-        matrix_col: mappedCol ?? null,
-        question_id: newItem.question_id ?? null,
-        question_text_pl: isPolish ? questionText : null,
-        question_text_en: !isPolish ? questionText : null,
+        matrixRow: mappedRow ?? null,
+        matrixCol: mappedCol ?? null,
+        questionId: newItem.question_id ?? null,
+        questionTextPl: isPolish ? questionText : null,
+        questionTextEn: !isPolish ? questionText : null,
+        entryType,
+        promptType: engineActivePrompt?.type || null,
+        createdAt: now,
       }
-      const { data: inserted, error } = await client
-        .from('board_items')
-        .insert(payload)
-        .select('*')
-        .single()
-      if (error) {
-        console.error('[board_items] insert failed', {
-          status: (error as { status?: number | null })?.status,
-          code: (error as { code?: string | null })?.code,
-          message: (error as { message?: string | null })?.message,
-          details: (error as { details?: string | null })?.details,
-          hint: (error as { hint?: string | null })?.hint,
-          sessionId,
-          payloadKeys: Object.keys(payload),
-        })
-        const statusLabel = (error as { status?: number | null })?.status ?? 'n/a'
-        const codeLabel = (error as { code?: string | null })?.code ?? 'n/a'
-        const message = ((error as { message?: string | null })?.message || '').slice(0, 120)
+      const response = await fetch('/api/board-items?action=upsert', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      })
+      const apiPayload = await response.json().catch(() => null)
+      if (!response.ok || !apiPayload?.ok) {
+        const statusLabel = response.status || 'n/a'
+        const codeLabel = apiPayload?.error || 'n/a'
+        const message = String(apiPayload?.message || '').slice(0, 120)
         showEngineNotice(
           notices.addEntryFailedDetail(String(statusLabel), String(codeLabel), message || null),
           'error'
         )
         return
       }
-      if (!inserted) {
-        showEngineNotice(notices.addEntryFailed, 'error')
-        return
-      }
-      const insertedRow = inserted as Database['public']['Tables']['board_items']['Row']
+      const insertedRow = apiPayload.item as Database['public']['Tables']['board_items']['Row']
       console.log('[board_items] inserted', {
         id: insertedRow.id,
         sessionId,
         hasQuestion: Boolean(insertedRow.question_text_pl || insertedRow.question_text_en),
         questionId: insertedRow.question_id ?? null,
       })
+      const balanceAfter = Number(apiPayload?.balance_after_pln ?? 0)
+      if (Number.isFinite(balanceAfter)) {
+        setBillingBalanceOverride(balanceAfter)
+      }
       const insertedCreatedAt =
         typeof insertedRow.created_at === 'number'
           ? insertedRow.created_at
@@ -6760,7 +6755,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id
       if (!sessionId) return false
       if (authSession?.user?.id && client) {
-        await updateBoardItemLabel(sessionId, entryId, label ?? null)
+        const balanceAfter = await updateBoardItemLabel(sessionId, entryId, label ?? null)
+        if (typeof balanceAfter === 'number' && Number.isFinite(balanceAfter)) {
+          setBillingBalanceOverride(balanceAfter)
+        }
       }
       const detail = await getSession(sessionId)
       if (!detail?.session) return false
@@ -7975,9 +7973,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     ? '—'
                     : balanceCurrency === 'USD'
                       ? usdPlnRate
-                        ? `${formatUsdBalance(billingAccount.balancePLN / usdPlnRate)} USD`
+                        ? `${formatUsdBalance((billingBalanceOverride ?? billingAccount.balancePLN) / usdPlnRate)} USD`
                         : 'USD: …'
-                      : `${formatPlnBalance(billingAccount.balancePLN)} PLN`}
+                      : `${formatPlnBalance(billingBalanceOverride ?? billingAccount.balancePLN)} PLN`}
                 </span>
               </div>
             </div>

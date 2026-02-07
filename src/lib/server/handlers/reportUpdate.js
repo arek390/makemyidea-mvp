@@ -1,5 +1,4 @@
 import { getSupabaseAdmin } from '../supabaseAdmin.js'
-import { createSupabaseServerClient } from '../supabaseServer.js'
 import { chargeUserBalance, normalizeBillingError } from '../billing.js'
 import { runLlmTask, createRateLimiter } from '../../../llm/llmRouter.mjs'
 
@@ -290,15 +289,25 @@ export const handleReportUpdate = async (req, res) => {
       res.status(400).json({ ok: false, error: 'SESSION_ID_REQUIRED' })
       return
     }
-    const supabaseAuth = createSupabaseServerClient(req, res)
-    const authRes = await supabaseAuth.auth.getUser()
-    const userId = authRes?.data?.user?.id || null
-    if (!userId) {
+    const authHeader =
+      req?.headers?.authorization ||
+      req?.headers?.Authorization ||
+      (typeof req?.headers?.get === 'function' ? req.headers.get('authorization') : '') ||
+      ''
+    const hasBearer = typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
+    const token = hasBearer ? authHeader.slice(7).trim() : ''
+    if (!token) {
       res.status(401).json({ ok: false, error: 'AUTH_REQUIRED' })
       return
     }
     const requestedLang = normalizeReportLang(body.lang || body.language || body.reportLanguage)
     const supabaseAdmin = getSupabaseAdmin()
+    const authRes = await supabaseAdmin.auth.getUser(token)
+    const userId = authRes?.data?.user?.id || null
+    if (authRes?.error || !userId) {
+      res.status(401).json({ ok: false, error: 'AUTH_REQUIRED' })
+      return
+    }
     const reportRes = await supabaseAdmin
       .schema('public')
       .from('reports')
@@ -697,7 +706,7 @@ export const handleReportUpdate = async (req, res) => {
       return
     } catch (error) {
       console.log('[report:update][step3] phaseB failed', error?.message ?? 'unknown error')
-      res.status(200).json({ ok: true })
+      res.status(200).json({ ok: false })
       return
     }
   } catch (error) {

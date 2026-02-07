@@ -377,9 +377,14 @@ export const ReportPage = ({
     console.log('[report:update] no-llm step1')
     setIsReportUpdating(true)
     try {
+      const sessionRes = await client.auth.getSession()
+      const token = sessionRes.data?.session?.access_token || ''
       await fetch('/api/report?action=update', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({ sessionId: reportSessionId, lang: language }),
       })
     } catch {
