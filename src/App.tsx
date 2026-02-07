@@ -2762,6 +2762,7 @@ const isAuthFlowInProgress = () => {
     }
     return window.location.pathname || ''
   }
+  const [hashPath, setHashPath] = useState(() => getAppPath())
   const idleThresholdMs = isE2EEnabled()
     ? 800
     : isDebugEnabled()
@@ -2771,7 +2772,7 @@ const isAuthFlowInProgress = () => {
   // Routing is handled manually using window.location.pathname (no router library).
   const rawPath = typeof window !== 'undefined' ? window.location.pathname : ''
   const normalizedPath = rawPath.replace(/\/+$/, '')
-  const appPath = getAppPath()
+  const appPath = hashPath
   const isEnginePreview = normalizedPath === '/engine'
   const isReportPath = normalizedPath === '/report' || normalizedPath.endsWith('/report')
   const isReport = isReportPath || reportViewOpen
@@ -2798,9 +2799,14 @@ const isAuthFlowInProgress = () => {
       const nextPath = window.location.pathname.replace(/\/+$/, '')
       setReportViewOpen(nextPath === '/report' || nextPath.endsWith('/report'))
     }
+    const handleHashChange = () => {
+      setHashPath(getAppPath())
+    }
     window.addEventListener('popstate', handlePopState)
+    window.addEventListener('hashchange', handleHashChange)
     return () => {
       window.removeEventListener('popstate', handlePopState)
+      window.removeEventListener('hashchange', handleHashChange)
     }
   }, [])
 
