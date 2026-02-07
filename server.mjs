@@ -35,6 +35,8 @@ import {
 import coachHandler from './api/coach.js'
 import coreHandler from './api/core.js'
 import devHandler from './api/dev.js'
+import { createSupabaseServerClient } from './src/lib/server/supabaseServer.js'
+import { chargeUserBalance, normalizeBillingError } from './src/lib/server/billing.js'
 import {
   buildContextPrompt,
   buildQuestionPrompt,
@@ -131,6 +133,24 @@ const createResShim = (res) => {
     setHeader: (...args) => res.setHeader(...args),
   }
   return api
+}
+
+const getAuthUserId = async (req, res) => {
+  try {
+    const supabase = createSupabaseServerClient(req, res)
+    const { data, error } = await supabase.auth.getUser()
+    if (error) return null
+    return data?.user?.id || null
+  } catch {
+    return null
+  }
+}
+
+const handleBillingError = (res, error) => {
+  const normalized = normalizeBillingError(error)
+  if (!normalized) return false
+  sendJson(res, normalized.status, { ok: false, error: normalized.code })
+  return true
 }
 
 const buildIdeaFallbacks = (cells, ideasPerCell = 3) => {
@@ -390,6 +410,18 @@ const server = http.createServer(async (req, res) => {
     warnLowQuestionCount()
     const body = await readJsonBody(req)
     const name = body?.name ? String(body.name).trim() : ''
+    const userId = await getAuthUserId(req, res)
+    if (!userId) {
+      sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
+      return
+    }
+    try {
+      await chargeUserBalance(userId, 'session_create')
+    } catch (error) {
+      if (handleBillingError(res, error)) return
+      sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
+      return
+    }
     const created = createSession({ name: name || null })
     const session = created?.sessionId ? getSession(created.sessionId) : null
     sendJson(res, 201, { sessionId: created.sessionId, session })
@@ -442,12 +474,25 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 400, { error: 'Missing sessionId or text.' })
       return
     }
+    const userId = await getAuthUserId(req, res)
+    if (!userId) {
+      sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
+      return
+    }
     const sanitizedType = type && ['idea', 'observation', 'doubt', 'question'].includes(type) ? type : 'idea'
     const sanitizedEntryType = entryType === 'facilitated_input' ? 'facilitated_input' : 'free_input'
     const sanitizedLabel =
       label == null ? null : ENTRY_LABELS.includes(String(label)) ? String(label) : null
     if (label != null && sanitizedLabel == null) {
       sendJson(res, 400, { error: 'Invalid label.' })
+      return
+    }
+
+    try {
+      await chargeUserBalance(userId, 'session_item_add_or_edit', sessionId)
+    } catch (error) {
+      if (handleBillingError(res, error)) return
+      sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
       return
     }
 
@@ -502,6 +547,18 @@ const server = http.createServer(async (req, res) => {
       sendJson(res, 400, { error: 'Invalid label.' })
       return
     }
+    const userId = await getAuthUserId(req, res)
+    if (!userId) {
+      sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
+      return
+    }
+    try {
+      await chargeUserBalance(userId, 'session_item_add_or_edit', entryId)
+    } catch (error) {
+      if (handleBillingError(res, error)) return
+      sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
+      return
+    }
     updateBoardItemLabel({ id: entryId, label: sanitizedLabel })
     const entry = getBoardItem(entryId)
     sendJson(res, 200, { entry })
@@ -524,6 +581,18 @@ const server = http.createServer(async (req, res) => {
     const { text } = body
     if (!text) {
       sendJson(res, 400, { error: 'Missing text.' })
+      return
+    }
+    const userId = await getAuthUserId(req, res)
+    if (!userId) {
+      sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
+      return
+    }
+    try {
+      await chargeUserBalance(userId, 'session_item_add_or_edit', itemId)
+    } catch (error) {
+      if (handleBillingError(res, error)) return
+      sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
       return
     }
     const result = updateBoardItem({ id: itemId, text })

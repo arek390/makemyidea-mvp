@@ -2211,6 +2211,10 @@ function App() {
   } | null>(null)
   const isAdmin = useMemo(() => isAdminUser(authSession), [authSession])
   const diagnosticsEnabledForUser = isAdmin && diagnosticsEnabled
+
+  useEffect(() => {
+    setBalanceCurrency(uiLanguage === 'Polish' ? 'PLN' : 'USD')
+  }, [uiLanguage])
   const suggestDiagEnabled =
     import.meta.env.VITE_SUGGEST_DIAG === '1' || diagnosticsEnabledForUser
   const showDiagnostics = diagnosticsEnabledForUser

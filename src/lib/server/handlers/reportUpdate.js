@@ -1,4 +1,6 @@
 import { getSupabaseAdmin } from '../supabaseAdmin.js'
+import { createSupabaseServerClient } from '../supabaseServer.js'
+import { chargeUserBalance, normalizeBillingError } from '../billing.js'
 import { runLlmTask, createRateLimiter } from '../../../llm/llmRouter.mjs'
 
 const limiter = createRateLimiter({ windowMs: 60_000, max: 10 })
@@ -144,6 +146,30 @@ const validateRecommendations = (recommendations) => {
   return { ok: errors.length === 0, errors }
 }
 
+const isReportGenerated = (summaryJson) => {
+  if (!summaryJson || typeof summaryJson !== 'object') return false
+  const normalized = validateAndNormalizeReport(summaryJson)
+  const summary = normalized.summary || {}
+  const hasSummary =
+    Boolean(String(summary.today || '').trim()) ||
+    Boolean(String(summary.change || '').trim()) ||
+    Boolean(String(summary.product || '').trim())
+  const hasIdeas = Array.isArray(normalized.ideas) && normalized.ideas.length > 0
+  const recs = normalized.recommendations || {}
+  const hasRecs =
+    Array.isArray(recs.based_on_user_ideas) && recs.based_on_user_ideas.length > 0 ||
+    Array.isArray(recs.morphological) && recs.morphological.length > 0 ||
+    Array.isArray(recs.market_trends) && recs.market_trends.length > 0
+  return hasSummary || hasIdeas || hasRecs
+}
+
+const handleBillingError = (res, error) => {
+  const normalized = normalizeBillingError(error)
+  if (!normalized) return false
+  res.status(normalized.status).json({ ok: false, error: normalized.code })
+  return true
+}
+
 const logRecommendationCounts = (label, recommendations) => {
   if (!recommendations || typeof recommendations !== 'object') {
     console.log(`[report:update][step3] ${label} recommendations missing`)
@@ -264,6 +290,13 @@ export const handleReportUpdate = async (req, res) => {
       res.status(400).json({ ok: false, error: 'SESSION_ID_REQUIRED' })
       return
     }
+    const supabaseAuth = createSupabaseServerClient(req, res)
+    const authRes = await supabaseAuth.auth.getUser()
+    const userId = authRes?.data?.user?.id || null
+    if (!userId) {
+      res.status(401).json({ ok: false, error: 'AUTH_REQUIRED' })
+      return
+    }
     const requestedLang = normalizeReportLang(body.lang || body.language || body.reportLanguage)
     const supabaseAdmin = getSupabaseAdmin()
     const reportRes = await supabaseAdmin
@@ -274,6 +307,16 @@ export const handleReportUpdate = async (req, res) => {
       .maybeSingle()
     if (reportRes.error) {
       res.status(500).json({ ok: false, error: reportRes.error })
+      return
+    }
+    const actionKey = isReportGenerated(reportRes.data?.summary_json)
+      ? 'report_update'
+      : 'report_generate'
+    try {
+      await chargeUserBalance(userId, actionKey, sessionId, supabaseAdmin)
+    } catch (error) {
+      if (handleBillingError(res, error)) return
+      res.status(500).json({ ok: false, error: 'BILLING_FAILED' })
       return
     }
     const boardRes = await supabaseAdmin
