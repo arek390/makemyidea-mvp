@@ -1,6 +1,126 @@
+import { createHash, randomUUID } from 'crypto'
+import { XMLParser } from 'fast-xml-parser'
 import { createSupabaseServerClient } from '../src/lib/server/supabaseServer.js'
+import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../src/lib/server/http.js'
 import { resolveAction } from '../src/lib/server/router.js'
+
+const readRawBody = async (req) => {
+  let body = ''
+  for await (const chunk of req) {
+    body += chunk
+  }
+  return body
+}
+
+const sha256 = (value) => createHash('sha256').update(value, 'utf8').digest('hex')
+
+const buildConfirmXml = ({ serviceID, orderID, confirmation, sharedKey }) => {
+  const hash = sha256([serviceID, orderID, confirmation, sharedKey].join('|'))
+  return `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<confirmationList>` +
+    `<serviceID>${serviceID}</serviceID>` +
+    `<transactionsConfirmations>` +
+    `<transactionConfirmed>` +
+    `<orderID>${orderID}</orderID>` +
+    `<confirmation>${confirmation}</confirmation>` +
+    `</transactionConfirmed>` +
+    `</transactionsConfirmations>` +
+    `<hash>${hash}</hash>` +
+    `</confirmationList>`
+}
+
+const normalizeAmountPln = (value) => {
+  if (value == null) return null
+  const num = typeof value === 'string' ? Number(value.replace(',', '.')) : Number(value)
+  if (!Number.isFinite(num)) return null
+  return Math.round(num * 100) / 100
+}
+
+const handleCreatePayment = async (req, res) => {
+  if (req.method !== 'POST') {
+    methodNotAllowed(res, ['POST'])
+    return
+  }
+
+  const body = req.body && typeof req.body === 'object' ? req.body : {}
+  const amountPlnRaw = body.amountPln
+  const packageId = body.packageId
+
+  let amountPln = normalizeAmountPln(amountPlnRaw)
+  if (amountPln == null && packageId != null) {
+    sendJson(res, 400, { ok: false, error: 'UNKNOWN_PACKAGE' })
+    return
+  }
+  if (amountPln == null) {
+    sendJson(res, 400, { ok: false, error: 'INVALID_AMOUNT' })
+    return
+  }
+  if (amountPln < 0.1 || amountPln > 100000) {
+    sendJson(res, 400, { ok: false, error: 'AMOUNT_OUT_OF_RANGE' })
+    return
+  }
+
+  const serviceId = process.env.AUTOPAY_SERVICE_ID || ''
+  const sharedKey = process.env.AUTOPAY_SHARED_KEY || ''
+  const gatewayUrl = process.env.AUTOPAY_GATEWAY_URL || ''
+  if (!serviceId || !sharedKey || !gatewayUrl) {
+    sendJson(res, 500, { ok: false, error: 'MISSING_AUTOPAY_ENV' })
+    return
+  }
+
+  const supabase = createSupabaseServerClient(req, res)
+  const { data, error } = await supabase.auth.getUser()
+  if (error || !data?.user?.id) {
+    res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
+    return
+  }
+
+  const orderId = randomUUID()
+  const amountStr = amountPln.toFixed(2)
+  const amountGrosze = Math.round(amountPln * 100)
+
+  const supabaseAdmin = getSupabaseAdmin()
+  const insertRes = await supabaseAdmin
+    .from('payments')
+    .insert({
+      user_id: data.user.id,
+      provider: 'autopay',
+      order_id: orderId,
+      amount_pln: amountStr,
+      amount_pln_grosze: amountGrosze,
+      status: 'pending',
+    })
+  if (insertRes.error) {
+    res.status(500).json({ ok: false, error: 'PAYMENT_CREATE_FAILED' })
+    return
+  }
+
+  const hash = sha256([serviceId, orderId, amountStr, sharedKey].join('|'))
+
+  const html = `<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <title>Autopay</title>
+  </head>
+  <body onload="document.forms[0].submit()">
+    <form method="POST" action="${gatewayUrl}">
+      <input type="hidden" name="ServiceID" value="${serviceId}" />
+      <input type="hidden" name="OrderID" value="${orderId}" />
+      <input type="hidden" name="Amount" value="${amountStr}" />
+      <input type="hidden" name="Hash" value="${hash}" />
+      <noscript>
+        <button type="submit">Kontynuuj</button>
+      </noscript>
+    </form>
+  </body>
+</html>`
+
+  res.status(200)
+  res.setHeader('Content-Type', 'text/html; charset=utf-8')
+  res.send(html)
+}
 
 const handleBalance = async (req, res) => {
   if (req.method !== 'GET') {
@@ -39,7 +159,128 @@ const handleBalance = async (req, res) => {
   }
 }
 
+const handleAutopayItn = async (req, res) => {
+  if (req.method === 'GET') {
+    sendJson(res, 200, { ok: true, endpoint: 'billing', action: 'itn', method: 'GET' })
+    return
+  }
+  if (req.method !== 'POST') {
+    methodNotAllowed(res, ['GET', 'POST'])
+    return
+  }
+
+  console.log('[AUTOPAY ITN] received')
+
+  const rawBody = await readRawBody(req)
+  let transactions = null
+  if (rawBody) {
+    const params = new URLSearchParams(rawBody)
+    transactions = params.get('transactions')
+  }
+  if (!transactions && req.body && typeof req.body === 'object') {
+    transactions = req.body.transactions
+  }
+  if (!transactions) {
+    sendJson(res, 400, { ok: false, error: 'MISSING_TRANSACTIONS' })
+    return
+  }
+
+  let xml = ''
+  try {
+    xml = Buffer.from(String(transactions), 'base64').toString('utf8')
+  } catch {
+    sendJson(res, 400, { ok: false, error: 'INVALID_BASE64' })
+    return
+  }
+  if (!xml || !xml.includes('<')) {
+    sendJson(res, 400, { ok: false, error: 'INVALID_XML' })
+    return
+  }
+
+  let parsed
+  try {
+    const parser = new XMLParser({ ignoreAttributes: false })
+    parsed = parser.parse(xml)
+  } catch {
+    sendJson(res, 400, { ok: false, error: 'INVALID_XML' })
+    return
+  }
+
+  const transactionList = parsed?.transactionList || parsed?.transactionlist
+  const serviceID = String(transactionList?.serviceID || '')
+  const transactionNode = transactionList?.transactions?.transaction
+  const transaction = Array.isArray(transactionNode) ? transactionNode[0] : transactionNode
+  if (!serviceID || !transaction) {
+    sendJson(res, 400, { ok: false, error: 'INVALID_PAYLOAD' })
+    return
+  }
+
+  const orderID = String(transaction?.orderID || '')
+  const remoteID = String(transaction?.remoteID || '')
+  const amount = String(transaction?.amount || '')
+  const currency = String(transaction?.currency || '')
+  const gatewayID = String(transaction?.gatewayID || '')
+  const paymentDate = String(transaction?.paymentDate || '')
+  const paymentStatus = String(transaction?.paymentStatus || '')
+  const paymentStatusDetails = String(transaction?.paymentStatusDetails || '')
+  const receivedHash = String(transactionList?.hash || transaction?.hash || '')
+
+  const sharedKey = process.env.AUTOPAY_SHARED_KEY || ''
+  if (!sharedKey) {
+    sendJson(res, 500, { ok: false, error: 'MISSING_SHARED_KEY' })
+    return
+  }
+
+  const expectedHash = sha256(
+    [
+      serviceID,
+      orderID,
+      remoteID,
+      amount,
+      currency,
+      gatewayID,
+      paymentDate,
+      paymentStatus,
+      paymentStatusDetails,
+      sharedKey,
+    ].join('|')
+  )
+
+  let confirmation = 'NOTCONFIRMED'
+  if (receivedHash && receivedHash.toLowerCase() === expectedHash.toLowerCase()) {
+    if (paymentStatus === 'SUCCESS') {
+      try {
+        const supabaseAdmin = getSupabaseAdmin()
+        await supabaseAdmin.rpc('apply_payment', { order_id_in: orderID })
+        console.log('[AUTOPAY ITN] applied orderID=%s', orderID)
+        confirmation = 'CONFIRMED'
+      } catch (error) {
+        console.error('[AUTOPAY ITN] apply_failed', { orderID, message: error?.message })
+        confirmation = 'NOTCONFIRMED'
+      }
+    }
+  } else {
+    console.log('[AUTOPAY ITN] hash_mismatch orderID=%s', orderID)
+  }
+
+  const responseXml = buildConfirmXml({
+    serviceID,
+    orderID,
+    confirmation,
+    sharedKey,
+  })
+  res.status(200)
+  res.setHeader('Content-Type', 'application/xml; charset=utf-8')
+  res.send(responseXml)
+}
+
 export default async function handler(req, res) {
+  const actionFromQuery = resolveAction(req, null)
+  if (actionFromQuery === 'itn') {
+    await handleAutopayItn(req, res)
+    return
+  }
+
   const body = req.method === 'GET' ? null : await readJsonBody(req)
   if (req.method !== 'GET' && body === null) {
     sendJson(res, 400, { ok: false, error: 'INVALID_JSON' })
@@ -48,6 +289,10 @@ export default async function handler(req, res) {
   if (body) req.body = body
 
   const action = resolveAction(req, body)
+  if (action === 'create_payment') {
+    await handleCreatePayment(req, res)
+    return
+  }
   if (action === 'balance') {
     await handleBalance(req, res)
     return

@@ -699,9 +699,20 @@ export const ReportPage = ({
                 }
               }}
             >
-              <span className="engine-balance-icon" aria-hidden="true">
+              <button
+                type="button"
+                className="engine-balance-icon"
+                aria-label="Top up"
+                onClick={(event) => {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  if (typeof window !== 'undefined') {
+                    window.location.hash = '#/topup'
+                  }
+                }}
+              >
                 💰
-              </span>
+              </button>
               <span className="engine-balance-value">
                 {billingLoading || billingError
                   ? '—'

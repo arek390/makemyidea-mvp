@@ -349,6 +349,8 @@ type Translations = {
   }
   loginTitle: string
   loginSubtitle: string
+  topupTitle: string
+  topupSubtitle: string
   loginContinue: string
   loginGoogleLabel: string
   loginGoogleCta: string
@@ -750,6 +752,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     },
     loginTitle: 'Login',
     loginSubtitle: 'Sign in to continue.',
+    topupTitle: 'Top up your account',
+    topupSubtitle: '',
     loginContinue: 'Continue',
     loginGoogleLabel: 'Google',
     loginGoogleCta: 'Continue with Google',
@@ -1231,6 +1235,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     },
     loginTitle: 'Logowanie',
     loginSubtitle: 'Zaloguj się, aby kontynuować.',
+    topupTitle: 'Doładuj konto',
+    topupSubtitle: '',
     loginContinue: 'Kontynuuj',
     loginGoogleLabel: 'Google',
     loginGoogleCta: 'Kontynuuj z Google',
@@ -2779,6 +2785,10 @@ const isAuthFlowInProgress = () => {
   const isWorkInProgress = normalizedPath === '/wip'
   const isIdeaGrid = normalizedPath === '/grid'
   const isLogin = normalizedPath === '/login'
+  const isTopup =
+    normalizedPath === '/topup' ||
+    appPath === '/topup' ||
+    (typeof window !== 'undefined' && window.location.hash.startsWith('#/topup'))
   const isAuthCallback = normalizedPath === '/auth/callback'
   const isAdminRoute = appPath === '/admin' || appPath.startsWith('/admin/')
   const isProtectedRoute = normalizedPath.startsWith('/app')
@@ -7850,6 +7860,107 @@ const isMissingLabel = (item: EngineBoardItem) => {
     )
   }
 
+  if (isTopup) {
+    if (showSupabaseConfigError) {
+      return withDevOverlay(
+        <div className="app auth-screen">
+          <section className="panel auth-panel">
+            <h1>{notices.supabaseConfigTitle}</h1>
+            <p className="muted">{notices.supabaseConfigBody}</p>
+            {isDiagEnabled() && (
+              <div className="muted">
+                <div>hasUrl: {supabaseEnvDiag.hasUrl ? 'true' : 'false'}</div>
+                <div>hasAnon: {supabaseEnvDiag.hasAnon ? 'true' : 'false'}</div>
+                <div>urlLen: {supabaseEnvDiag.urlLen}</div>
+                <div>anonLen: {supabaseEnvDiag.anonLen}</div>
+                <div>supabaseInitError: {supabaseInitError}</div>
+              </div>
+            )}
+          </section>
+        </div>
+      )
+    }
+    return withDevOverlay(
+      <div className="app auth-screen">
+        <div className="topup-stack">
+          <h1 className="topup-title">{copy.topupTitle}</h1>
+          <div className="topup-row">
+            <section
+              className="panel auth-panel auth-panel--topup"
+              style={{ width: '240px', height: '480px', maxWidth: '90vw', maxHeight: '90vh' }}
+            >
+              <div className="topup-inner">
+                <div className="topup-amount">
+                  <span className="topup-amount-value">20</span>
+                  <span className="topup-amount-currency">PLN</span>
+                </div>
+                <p className="topup-caption">
+                  1 raport
+                  <br />
+                  + iteracje
+                </p>
+                <div className="topup-letter-wrap">
+                  <div className="topup-letter">S</div>
+                </div>
+                {copy.topupSubtitle ? (
+                  <p className="muted auth-subtitle">{copy.topupSubtitle}</p>
+                ) : null}
+              </div>
+            </section>
+            <section
+              className="panel auth-panel auth-panel--topup auth-panel--topup-m"
+              style={{ width: '240px', height: '480px', maxWidth: '90vw', maxHeight: '90vh' }}
+            >
+              <div className="topup-inner">
+                <div className="topup-amount">
+                  <span className="topup-amount-value">50</span>
+                  <span className="topup-amount-currency">PLN</span>
+                </div>
+                <p className="topup-caption">
+                  pełna sesja nad
+                  <br />
+                  jednym produktem
+                </p>
+                <div className="topup-letter-wrap">
+                  <div className="topup-letter">M</div>
+                </div>
+                {copy.topupSubtitle ? (
+                  <p className="muted auth-subtitle">{copy.topupSubtitle}</p>
+                ) : null}
+              </div>
+            </section>
+            <section
+              className="panel auth-panel auth-panel--topup"
+              style={{ width: '240px', height: '480px', maxWidth: '90vw', maxHeight: '90vh' }}
+            >
+              <div className="topup-inner">
+                <div className="topup-amount">
+                  <span className="topup-amount-value">100</span>
+                  <span className="topup-amount-currency">PLN</span>
+                </div>
+                <p className="topup-caption">
+                  kilka koncepcji lub
+                  <br />
+                  praca zespołowa
+                </p>
+                <div className="topup-letter-wrap">
+                  <div className="topup-letter">L</div>
+                </div>
+                {copy.topupSubtitle ? (
+                  <p className="muted auth-subtitle">{copy.topupSubtitle}</p>
+                ) : null}
+              </div>
+            </section>
+          </div>
+          <p className="topup-footer">
+            Środki wykorzystujesz elastycznie — płacisz tylko za generowanie i aktualizacje
+            raportu.
+          </p>
+        </div>
+      </div>
+    )
+  }
+
   if (isLogin) {
     if (showSupabaseConfigError) {
       return withDevOverlay(
@@ -7895,7 +8006,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           {!hasSupabaseEnv && (
             <p className="engine-error">{missingSupabaseEnvMessage}</p>
           )}
-          <p className="muted">{copy.loginSubtitle}</p>
+          <p className="muted auth-subtitle">{copy.loginSubtitle}</p>
           <div className="auth-options auth-options--actions">
             <div className="auth-option auth-option--align-actions">
               <p className="auth-option-title">{copy.loginGoogleLabel}</p>
@@ -8172,9 +8283,21 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     }
                   }}
                 >
-                  <span className="engine-balance-icon" aria-hidden="true">
+                  <button
+                    type="button"
+                    className="engine-balance-icon"
+                    aria-label="Top up"
+                    onClick={(event) => {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      if (typeof window !== 'undefined') {
+                        window.location.hash = '#/topup'
+                        setHashPath('/topup')
+                      }
+                    }}
+                  >
                     💰
-                  </span>
+                  </button>
                   <span className="engine-balance-value">
                     {billingAccount.loading || billingAccount.error
                       ? '—'
