@@ -55,6 +55,7 @@ import {
 } from './lib/guest'
 import { DIAGNOSTICS_STORAGE_KEY, isAdminUser } from './lib/diagnostics'
 import { ReportPage } from './report/ReportPage'
+import { apiFetch } from './lib/apiFetch'
 import type { ReportSnapshot } from './report/exportCsv'
 import { AdminPage } from './admin/AdminPage'
 import { useAuthState } from './lib/authState'
@@ -2787,6 +2788,20 @@ const isAuthFlowInProgress = () => {
     enabled: isEnginePreview || isReport,
   })
   const [billingBalanceOverride, setBillingBalanceOverride] = useState<number | null>(null)
+  const refreshBillingBalance = async () => {
+    if (!authSession?.user?.id) return
+    try {
+      const response = await apiFetch('/api/billing?action=balance', { method: 'GET' })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.ok) return
+      const balance = Number(payload?.balancePLN ?? 0)
+      if (Number.isFinite(balance)) {
+        setBillingBalanceOverride(balance)
+      }
+    } catch {
+      // ignore refresh failures
+    }
+  }
   const [insufficientBalanceState, setInsufficientBalanceState] = useState<{
     active: boolean
     atBalance: number | null
@@ -6126,6 +6141,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
           const reportLang: 'pl' | 'en' = uiLanguage === 'Polish' ? 'pl' : 'en'
           const ensured = await ensureReportExists(sessionId, sourceUpdatedAt, reportLang)
           setReportRecords((prev) => ({ ...prev, [sessionId]: ensured }))
+          if (!hasDbReport && ensured?.id) {
+            void refreshBillingBalance()
+          }
           const existedAfterEnsure = Boolean(hasDbReport || ensured?.id)
           window.history.pushState({ newlyCreated: !existedAfterEnsure }, '', '/report')
           setReportViewOpen(true)
