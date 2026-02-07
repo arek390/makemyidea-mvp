@@ -2212,9 +2212,6 @@ function App() {
   const isAdmin = useMemo(() => isAdminUser(authSession), [authSession])
   const diagnosticsEnabledForUser = isAdmin && diagnosticsEnabled
 
-  useEffect(() => {
-    setBalanceCurrency(uiLanguage === 'Polish' ? 'PLN' : 'USD')
-  }, [uiLanguage])
   const suggestDiagEnabled =
     import.meta.env.VITE_SUGGEST_DIAG === '1' || diagnosticsEnabledForUser
   const showDiagnostics = diagnosticsEnabledForUser
@@ -2356,6 +2353,9 @@ function App() {
     window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, defaultLanguage)
     return defaultLanguage
   })
+  useEffect(() => {
+    setBalanceCurrency(uiLanguage === 'Polish' ? 'PLN' : 'USD')
+  }, [uiLanguage])
   const reportLanguage = uiLanguage
   const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
   const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
