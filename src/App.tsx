@@ -2386,7 +2386,6 @@ function App() {
     window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, defaultLanguage)
     return defaultLanguage
   })
-  const balanceCurrency: 'PLN' | 'USD' = billingAccount.currency || 'PLN'
   const reportLanguage = uiLanguage
   const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
   const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
@@ -2848,6 +2847,7 @@ const isAuthFlowInProgress = () => {
     enabled: isEnginePreview || isReport,
     uiLanguage,
   })
+  const balanceCurrency: 'PLN' | 'USD' = billingAccount.currency || 'PLN'
   const [billingBalanceOverrideMinor, setBillingBalanceOverrideMinor] = useState<number | null>(
     null
   )
