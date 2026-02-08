@@ -195,6 +195,7 @@ const AUTH_OAUTH_ORIGIN_KEY = 'auth_oauth_origin'
 const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
 const POST_AUTH_NEXT_KEY = 'post-auth-next'
 const POST_AUTH_LANG_KEY = 'post-auth-lang'
+const TOPUP_RETURN_TO_KEY = 'topup-return-to'
 const FX_FALLBACK_RATE = 3.55
 const MODEL_PRICING_USD: Record<string, ModelPricing> = {
   'gpt-4.1-mini': { input: 0.4, output: 1.6 },
@@ -351,6 +352,12 @@ type Translations = {
   loginSubtitle: string
   topupTitle: string
   topupSubtitle: string
+  topupConfig: {
+    amounts: [string, string, string]
+    currency: string
+    captions: [[string, string], [string, string], [string, string]]
+    footer: string
+  }
   loginContinue: string
   loginGoogleLabel: string
   loginGoogleCta: string
@@ -754,6 +761,16 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     loginSubtitle: 'Sign in to continue.',
     topupTitle: 'Top up your account',
     topupSubtitle: '',
+    topupConfig: {
+      amounts: ['5', '15', '30'],
+      currency: 'USD',
+      captions: [
+        ['1 report', '+ iterations'],
+        ['full session on', 'a single product'],
+        ['multiple concepts', 'or team work'],
+      ],
+      footer: 'Credits are used flexibly — you only pay for report generation and updates.',
+    },
     loginContinue: 'Continue',
     loginGoogleLabel: 'Google',
     loginGoogleCta: 'Continue with Google',
@@ -1237,6 +1254,17 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     loginSubtitle: 'Zaloguj się, aby kontynuować.',
     topupTitle: 'Doładuj konto',
     topupSubtitle: '',
+    topupConfig: {
+      amounts: ['20', '50', '100'],
+      currency: 'PLN',
+      captions: [
+        ['1 raport', '+ iteracje'],
+        ['pełna sesja nad', 'jednym produktem'],
+        ['kilka koncepcji lub', 'praca zespołowa'],
+      ],
+      footer:
+        'Środki wykorzystujesz elastycznie — płacisz tylko za generowanie i aktualizacje raportu.',
+    },
     loginContinue: 'Kontynuuj',
     loginGoogleLabel: 'Google',
     loginGoogleCta: 'Kontynuuj z Google',
@@ -2192,7 +2220,6 @@ function App() {
   const [usdPlnRate, setUsdPlnRate] = useState<number | null>(() => {
     return getFreshFxRate()
   })
-  const [balanceCurrency, setBalanceCurrency] = useState<'PLN' | 'USD'>('PLN')
   const [lastLlmSource, setLastLlmSource] = useState<'llm' | 'fallback' | null>(null)
   const [lastLlmWhy, setLastLlmWhy] = useState<string | null>(null)
   const [llmPingResult, setLlmPingResult] = useState<{
@@ -2206,6 +2233,7 @@ function App() {
   const diagnosticsEnabledForUser = isAdmin && diagnosticsEnabled
   const [reportCreatePriceGrosze, setReportCreatePriceGrosze] = useState<number | null>(null)
   const [reportCreatePriceLoading, setReportCreatePriceLoading] = useState(false)
+  const [topupLoadingTier, setTopupLoadingTier] = useState<'S' | 'M' | 'L' | null>(null)
 
   const suggestDiagEnabled =
     import.meta.env.VITE_SUGGEST_DIAG === '1' || diagnosticsEnabledForUser
@@ -2355,9 +2383,7 @@ function App() {
     window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, defaultLanguage)
     return defaultLanguage
   })
-  useEffect(() => {
-    setBalanceCurrency(uiLanguage === 'Polish' ? 'PLN' : 'USD')
-  }, [uiLanguage])
+  const balanceCurrency: 'PLN' | 'USD' = uiLanguage === 'Polish' ? 'PLN' : 'USD'
   const reportLanguage = uiLanguage
   const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
   const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
@@ -2768,6 +2794,11 @@ const isAuthFlowInProgress = () => {
     }
     return window.location.pathname || ''
   }
+  const storeTopupReturnTo = () => {
+    if (typeof window === 'undefined') return
+    const returnTo = getAppPath() || window.location.pathname || '/'
+    window.sessionStorage.setItem(TOPUP_RETURN_TO_KEY, returnTo)
+  }
   const [hashPath, setHashPath] = useState(() => getAppPath())
   const idleThresholdMs = isE2EEnabled()
     ? 800
@@ -2810,6 +2841,82 @@ const isAuthFlowInProgress = () => {
       }
     } catch {
       // ignore refresh failures
+    }
+  }
+  const formatTopupAmount = (currency: 'PLN' | 'USD', amountMinor: number) => {
+    const amount = amountMinor / 100
+    const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
+    const formatted = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount)
+    return `${formatted} ${currency}`
+  }
+  const resolveTopupMinor = (tier: 'S' | 'M' | 'L') => {
+    if (uiLanguage === 'Polish') {
+      return { currency: 'PLN' as const, amountMinor: tier === 'S' ? 2000 : tier === 'M' ? 5000 : 10000 }
+    }
+    return { currency: 'USD' as const, amountMinor: tier === 'S' ? 500 : tier === 'M' ? 1500 : 3000 }
+  }
+  const handleTestTopup = async (tier: 'S' | 'M' | 'L') => {
+    if (topupLoadingTier) return
+    if (!authSession?.user?.id) {
+      showEngineNotice(notices.topupUnauthorized, 'error')
+      return
+    }
+    setTopupLoadingTier(tier)
+    try {
+      const response = await apiFetch('/api/billing?action=test_topup', {
+        method: 'POST',
+        body: JSON.stringify({ tier, language: uiLanguage }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.ok) {
+        if (response.status === 401 || payload?.error === 'UNAUTHORIZED') {
+          showEngineNotice(notices.topupUnauthorized, 'error')
+        } else if (response.status === 400 || payload?.error === 'INVALID_TIER') {
+          showEngineNotice(notices.topupInvalidTier, 'error')
+        } else {
+          showEngineNotice(notices.topupTestFailed, 'error')
+        }
+        return
+      }
+      const balancePln = Number(payload?.balancePLN ?? NaN)
+      if (Number.isFinite(balancePln)) {
+        setBillingBalanceOverride(balancePln)
+      } else {
+        await refreshBillingBalance()
+      }
+      const added = payload?.added
+      const fallback = resolveTopupMinor(tier)
+      const label = formatTopupAmount(
+        added?.currency || fallback.currency,
+        typeof added?.amountMinor === 'number' ? added.amountMinor : fallback.amountMinor
+      )
+      showEngineNotice(notices.topupTestSuccess(label), 'success')
+      if (typeof window !== 'undefined') {
+        const stored = window.sessionStorage.getItem(TOPUP_RETURN_TO_KEY)
+        if (stored) {
+          window.sessionStorage.removeItem(TOPUP_RETURN_TO_KEY)
+          const normalized = stored.startsWith('#') ? stored.slice(1) : stored
+          if (normalized === normalizedPath) {
+            window.location.hash = ''
+            setHashPath(normalized)
+          } else if (normalized.startsWith('/')) {
+            window.location.hash = `#${normalized}`
+            setHashPath(normalized)
+          } else {
+            window.location.hash = stored
+            setHashPath(getAppPath())
+          }
+        } else if (window.history.length > 1) {
+          window.history.back()
+        }
+      }
+    } catch {
+      showEngineNotice(notices.topupTestFailed, 'error')
+    } finally {
+      setTopupLoadingTier(null)
     }
   }
   const [insufficientBalanceState, setInsufficientBalanceState] = useState<{
@@ -3150,12 +3257,6 @@ const isAuthFlowInProgress = () => {
       clearGuestSessions()
     }
   }, [authSession])
-
-  useEffect(() => {
-    if (!authSession?.user?.id) {
-      setBalanceCurrency('PLN')
-    }
-  }, [authSession?.user?.id])
 
   const handleGoogleLogin = async () => {
     if (!client) {
@@ -4174,6 +4275,15 @@ const isAuthFlowInProgress = () => {
       assignNaLoading: isPl ? 'Uzupełniam…' : 'Filling…',
       noAssignments: isPl ? 'Brak przypisań z AI.' : 'No assignments from AI.',
       naFilled: isPl ? 'Uzupełniono wpisy N/A.' : 'N/A entries filled.',
+      topupTestSuccess: (amount: string) =>
+        isPl
+          ? `Saldo +${amount} dodane do konta (tryb testowy).`
+          : `Balance +${amount} added to your account (test mode).`,
+      topupTestFailed: isPl
+        ? 'Nie udało się doładować konta. Spróbuj ponownie.'
+        : 'Unable to top up the account. Please try again.',
+      topupUnauthorized: isPl ? 'Zaloguj się, aby doładować konto.' : 'Sign in to top up.',
+      topupInvalidTier: isPl ? 'Nieprawidłowy pakiet doładowania.' : 'Invalid top up tier.',
       saveToCloudRequiresAuth: isPl
         ? 'Zaloguj się, aby zapisać w chmurze'
         : 'Sign in to save to the cloud.',
@@ -7797,10 +7907,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
         saveSessionLabel={copy.engine.saveSession}
         showInsufficientBalance={insufficientBalanceState.active}
         insufficientBalanceNotice={copy.insufficientBalanceNotice}
-        balanceCurrency={balanceCurrency}
-        onToggleBalanceCurrency={() => {
-          setBalanceCurrency((prev) => (prev === 'PLN' ? 'USD' : 'PLN'))
-        }}
         balancePLN={billingBalanceOverride ?? billingAccount.balancePLN}
         billingLoading={billingAccount.loading}
         billingError={billingAccount.error}
@@ -7880,24 +7986,46 @@ const isMissingLabel = (item: EngineBoardItem) => {
         </div>
       )
     }
+    const topupCopy = copy.topupConfig
+    const isTopupBusy = topupLoadingTier !== null
     return withDevOverlay(
       <div className="app auth-screen">
         <div className="topup-stack">
+          <img
+            className="topup-logo"
+            src={new URL('/logo/logo_makemyideawork_transp.png', import.meta.url).href}
+            alt="MakeMyIdea.work"
+          />
           <h1 className="topup-title">{copy.topupTitle}</h1>
           <div className="topup-row">
             <section
-              className="panel auth-panel auth-panel--topup"
+              className={`panel auth-panel auth-panel--topup topup-panel${
+                isTopupBusy ? ' topup-panel--disabled' : ''
+              }${topupLoadingTier === 'S' ? ' topup-panel--loading' : ''}`}
               style={{ width: '240px', height: '480px', maxWidth: '90vw', maxHeight: '90vh' }}
+              role="button"
+              tabIndex={0}
+              aria-disabled={isTopupBusy}
+              aria-busy={topupLoadingTier === 'S'}
+              onClick={() => handleTestTopup('S')}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  handleTestTopup('S')
+                }
+              }}
             >
               <div className="topup-inner">
                 <div className="topup-amount">
-                  <span className="topup-amount-value">20</span>
-                  <span className="topup-amount-currency">PLN</span>
+                  <span className="topup-amount-value">
+                    {topupLoadingTier === 'S' ? '...' : topupCopy.amounts[0]}
+                  </span>
+                  <span className="topup-amount-currency">{topupCopy.currency}</span>
                 </div>
                 <p className="topup-caption">
-                  1 raport
+                  {topupCopy.captions[0][0]}
                   <br />
-                  + iteracje
+                  {topupCopy.captions[0][1]}
                 </p>
                 <div className="topup-letter-wrap">
                   <div className="topup-letter">S</div>
@@ -7908,18 +8036,33 @@ const isMissingLabel = (item: EngineBoardItem) => {
               </div>
             </section>
             <section
-              className="panel auth-panel auth-panel--topup auth-panel--topup-m"
+              className={`panel auth-panel auth-panel--topup auth-panel--topup-m topup-panel${
+                isTopupBusy ? ' topup-panel--disabled' : ''
+              }${topupLoadingTier === 'M' ? ' topup-panel--loading' : ''}`}
               style={{ width: '240px', height: '480px', maxWidth: '90vw', maxHeight: '90vh' }}
+              role="button"
+              tabIndex={0}
+              aria-disabled={isTopupBusy}
+              aria-busy={topupLoadingTier === 'M'}
+              onClick={() => handleTestTopup('M')}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  handleTestTopup('M')
+                }
+              }}
             >
               <div className="topup-inner">
                 <div className="topup-amount">
-                  <span className="topup-amount-value">50</span>
-                  <span className="topup-amount-currency">PLN</span>
+                  <span className="topup-amount-value">
+                    {topupLoadingTier === 'M' ? '...' : topupCopy.amounts[1]}
+                  </span>
+                  <span className="topup-amount-currency">{topupCopy.currency}</span>
                 </div>
                 <p className="topup-caption">
-                  pełna sesja nad
+                  {topupCopy.captions[1][0]}
                   <br />
-                  jednym produktem
+                  {topupCopy.captions[1][1]}
                 </p>
                 <div className="topup-letter-wrap">
                   <div className="topup-letter">M</div>
@@ -7930,18 +8073,33 @@ const isMissingLabel = (item: EngineBoardItem) => {
               </div>
             </section>
             <section
-              className="panel auth-panel auth-panel--topup"
+              className={`panel auth-panel auth-panel--topup topup-panel${
+                isTopupBusy ? ' topup-panel--disabled' : ''
+              }${topupLoadingTier === 'L' ? ' topup-panel--loading' : ''}`}
               style={{ width: '240px', height: '480px', maxWidth: '90vw', maxHeight: '90vh' }}
+              role="button"
+              tabIndex={0}
+              aria-disabled={isTopupBusy}
+              aria-busy={topupLoadingTier === 'L'}
+              onClick={() => handleTestTopup('L')}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  handleTestTopup('L')
+                }
+              }}
             >
               <div className="topup-inner">
                 <div className="topup-amount">
-                  <span className="topup-amount-value">100</span>
-                  <span className="topup-amount-currency">PLN</span>
+                  <span className="topup-amount-value">
+                    {topupLoadingTier === 'L' ? '...' : topupCopy.amounts[2]}
+                  </span>
+                  <span className="topup-amount-currency">{topupCopy.currency}</span>
                 </div>
                 <p className="topup-caption">
-                  kilka koncepcji lub
+                  {topupCopy.captions[2][0]}
                   <br />
-                  praca zespołowa
+                  {topupCopy.captions[2][1]}
                 </p>
                 <div className="topup-letter-wrap">
                   <div className="topup-letter">L</div>
@@ -7953,8 +8111,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             </section>
           </div>
           <p className="topup-footer">
-            Środki wykorzystujesz elastycznie — płacisz tylko za generowanie i aktualizacje
-            raportu.
+            {topupCopy.footer}
           </p>
         </div>
       </div>
@@ -8270,18 +8427,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   className={`engine-balance${
                     billingAccount.loading || billingAccount.error ? ' engine-balance--loading' : ''
                   }`}
-                  role="button"
-                  tabIndex={0}
-                  title="Toggle currency"
-                  onClick={() => {
-                    setBalanceCurrency((prev) => (prev === 'PLN' ? 'USD' : 'PLN'))
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      setBalanceCurrency((prev) => (prev === 'PLN' ? 'USD' : 'PLN'))
-                    }
-                  }}
                 >
                   <button
                     type="button"
@@ -8291,6 +8436,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       event.preventDefault()
                       event.stopPropagation()
                       if (typeof window !== 'undefined') {
+                        storeTopupReturnTo()
                         window.location.hash = '#/topup'
                         setHashPath('/topup')
                       }

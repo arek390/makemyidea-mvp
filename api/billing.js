@@ -37,6 +37,89 @@ const normalizeAmountPln = (value) => {
   return Math.round(num * 100) / 100
 }
 
+const normalizeLang = (value, req) => {
+  const raw = String(value || '').toLowerCase()
+  if (raw.startsWith('pl')) return 'pl'
+  if (raw.includes('polish')) return 'pl'
+  if (raw.startsWith('en')) return 'en'
+  if (raw.includes('english')) return 'en'
+  const header = String(req?.headers?.['accept-language'] || '').toLowerCase()
+  if (header.startsWith('pl')) return 'pl'
+  return 'en'
+}
+
+const resolveFxUsdPln = () => {
+  const raw = Number(process.env.FX_USD_PLN || 0)
+  return Number.isFinite(raw) && raw > 0 ? raw : 4.0
+}
+
+const resolveTestTopup = (tier, lang) => {
+  const safeTier = String(tier || '').trim().toUpperCase()
+  const isPl = lang === 'pl'
+  const currency = isPl ? 'PLN' : 'USD'
+  const amountMinorMap = isPl
+    ? { S: 2000, M: 5000, L: 10000 }
+    : { S: 500, M: 1500, L: 3000 }
+  const amountMinor = amountMinorMap[safeTier] ?? null
+  return { tier: safeTier, currency, amountMinor }
+}
+
+const handleTestTopup = async (req, res) => {
+  if (req.method !== 'POST') {
+    methodNotAllowed(res, ['POST'])
+    return
+  }
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : {}
+    const lang = normalizeLang(body.language || body.lang || body.locale, req)
+    const { tier, currency, amountMinor } = resolveTestTopup(body.tier, lang)
+    if (!tier || amountMinor == null) {
+      sendJson(res, 400, { ok: false, error: 'INVALID_TIER' })
+      return
+    }
+
+    const supabase = createSupabaseServerClient(req, res)
+    const { data, error } = await supabase.auth.getUser()
+    if (error || !data?.user?.id) {
+      res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
+      return
+    }
+
+    const amount = amountMinor / 100
+    const fx = resolveFxUsdPln()
+    const deltaPln = currency === 'PLN' ? amount : amount * fx
+    const supabaseAdmin = getSupabaseAdmin()
+    const requestId = randomUUID()
+    const rpcRes = await supabaseAdmin.rpc('admin_increment_balance', {
+      admin_user: data.user.id,
+      target_user: data.user.id,
+      delta_pln: deltaPln,
+      request_id: requestId,
+    })
+
+    if (rpcRes.error) {
+      res.status(500).json({ ok: false, error: rpcRes.error.message || 'RPC_FAILED' })
+      return
+    }
+
+    const payload = Array.isArray(rpcRes.data) ? rpcRes.data[0] : rpcRes.data
+    const balanceAfterPln = Number(payload?.balance_after ?? 0)
+    const balanceMinor =
+      currency === 'PLN'
+        ? Math.round(balanceAfterPln * 100)
+        : Math.round((balanceAfterPln / fx) * 100)
+
+    res.status(200).json({
+      ok: true,
+      added: { currency, amountMinor },
+      newBalance: { currency, amountMinor: balanceMinor },
+      balancePLN: Number.isFinite(balanceAfterPln) ? balanceAfterPln : 0,
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
+  }
+}
+
 const handleCreatePayment = async (req, res) => {
   if (req.method !== 'POST') {
     methodNotAllowed(res, ['POST'])
@@ -295,6 +378,11 @@ export default async function handler(req, res) {
   }
   if (action === 'balance') {
     await handleBalance(req, res)
+    return
+  }
+  if (action === 'test_topup') {
+    // TEMP: free topup for testers – remove when Autopay live.
+    await handleTestTopup(req, res)
     return
   }
   notFound(res)

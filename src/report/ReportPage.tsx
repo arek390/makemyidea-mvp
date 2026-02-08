@@ -15,6 +15,7 @@ import { supabase as client } from '../lib/supabase/client'
 import { fetchFxUsdPlnRate, getFreshFxRate } from '../lib/fx'
 import { AiCostButton } from '../components/AiCostButton'
  
+const TOPUP_RETURN_TO_KEY = 'topup-return-to'
 
 type ReportPageProps = {
   snapshot: ReportSnapshot
@@ -37,8 +38,6 @@ type ReportPageProps = {
   }) => void
   onUpdateLabel?: (itemId: string, label: string | null) => Promise<boolean>
   onBillingInsufficient?: () => void
-  balanceCurrency?: 'PLN' | 'USD'
-  onToggleBalanceCurrency?: () => void
   balancePLN?: number
   billingLoading?: boolean
   billingError?: string | null
@@ -221,8 +220,6 @@ export const ReportPage = ({
   onBillingInsufficient,
   onSaveSession,
   saveSessionLabel,
-  balanceCurrency = 'PLN',
-  onToggleBalanceCurrency,
   balancePLN = 0,
   billingLoading = false,
   billingError = null,
@@ -254,6 +251,7 @@ export const ReportPage = ({
   const [fxUsdPlnRate, setFxUsdPlnRate] = useState<number | null>(() => getFreshFxRate())
   const [priceGrosze, setPriceGrosze] = useState<number | null>(null)
   const [priceLoading, setPriceLoading] = useState(false)
+  const balanceCurrency: 'PLN' | 'USD' = language === 'pl' ? 'PLN' : 'USD'
   const formatUsdBalance = (value: number) =>
     new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
       Math.max(0, value || 0)
@@ -686,18 +684,6 @@ export const ReportPage = ({
               className={`engine-balance${
                 billingLoading || billingError ? ' engine-balance--loading' : ''
               }`}
-              role="button"
-              tabIndex={0}
-              title="Toggle currency"
-              onClick={() => {
-                onToggleBalanceCurrency?.()
-              }}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  onToggleBalanceCurrency?.()
-                }
-              }}
             >
               <button
                 type="button"
@@ -707,6 +693,11 @@ export const ReportPage = ({
                   event.preventDefault()
                   event.stopPropagation()
                   if (typeof window !== 'undefined') {
+                    const returnTo =
+                      window.location.hash?.startsWith('#/')
+                        ? window.location.hash.slice(1)
+                        : window.location.pathname || '/'
+                    window.sessionStorage.setItem(TOPUP_RETURN_TO_KEY, returnTo)
                     window.location.hash = '#/topup'
                   }
                 }}

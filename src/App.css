@@ -1200,12 +1200,28 @@
   gap: 50px;
 }
 
+.topup-panel {
+  cursor: pointer;
+}
+
+.topup-panel--disabled {
+  pointer-events: none;
+  opacity: 0.65;
+}
+
 .topup-title {
   margin: 0;
   font-size: 1.6rem;
   font-weight: 700;
   text-align: center;
   white-space: nowrap;
+}
+
+.topup-logo {
+  display: block;
+  height: 117px;
+  margin: 0 auto 0.75rem;
+  width: auto;
 }
 
 .topup-footer {
@@ -1267,7 +1283,22 @@
 .topup-letter {
   font-size: 9rem;
   font-weight: 700;
-  color: var(--navy);
+  color: transparent;
+  -webkit-text-fill-color: transparent;
+  -webkit-text-stroke: 1.125px var(--navy);
+  text-stroke: 1.125px var(--navy);
+  paint-order: stroke fill;
+  text-shadow:
+    0 0 4px rgba(245, 234, 222, 1),
+    0 0 4px rgba(245, 234, 222, 1),
+    0 0 4px rgba(245, 234, 222, 1),
+    0 0 4px rgba(245, 234, 222, 1),
+    0 0 4px rgba(245, 234, 222, 1),
+    0 0 8px rgba(245, 234, 222, 0.9),
+    0 0 8px rgba(245, 234, 222, 0.9),
+    0 0 8px rgba(245, 234, 222, 0.9),
+    0 0 8px rgba(245, 234, 222, 0.9),
+    0 0 8px rgba(245, 234, 222, 0.9);
   line-height: 1;
   transform: translateY(-35px);
 }
