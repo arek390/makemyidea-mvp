@@ -117,34 +117,30 @@ export const ensureReportExists = async (
   if (!supabase) {
     throw new Error('Missing Supabase client.')
   }
+  if (!sessionId) {
+    throw new Error('Missing session id.')
+  }
   const existing = await fetchReportBySessionId(sessionId)
   if (existing) return existing
-  const { data, error } = await typedSupabase
-    .from('reports')
-    .insert({
-      session_id: sessionId,
-      source_updated_at: sourceUpdatedAt,
-      summary_json: lang ? { lang } : undefined,
-      updated_at: new Date().toISOString(),
-    })
-    .select(
-      'id,session_id,created_at,updated_at,summary_json,last_summary_text_hash,source_updated_at'
-    )
-    .single()
-  if (error) {
-    console.error('[report] ensure failed', {
-      sessionId,
-      status: (error as { status?: number | null })?.status,
-      code: (error as { code?: string | null })?.code,
-      message: error.message,
-      details: (error as { details?: string | null })?.details,
-      hint: (error as { hint?: string | null })?.hint,
-    })
+  const sessionRes = await supabase.auth.getSession()
+  const token = sessionRes?.data?.session?.access_token || ''
+  const response = await fetch('/api/report?action=generate', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ sessionId }),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || !payload?.ok || !payload?.report) {
+    const message = payload?.error || 'REPORT_GENERATE_FAILED'
+    console.error('[report] ensure failed', { sessionId, message })
     const retry = await fetchReportBySessionId(sessionId)
     if (retry) return retry
-    throw error
+    throw new Error(message)
   }
-  return normalizeReportRow(data as ReportRow)
+  return normalizeReportRow(payload.report as ReportRow)
 }
 
 export const updateReportBySessionId = async (
