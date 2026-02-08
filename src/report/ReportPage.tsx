@@ -789,8 +789,10 @@ export const ReportPage = ({
         </div>
       </header>
       {reportIsOutdated && (
-        <div className="report-outdated report-outdated--ui" role="status">
-          {t.reportOutdatedNotice}
+        <div className="report-outdated-wrap">
+          <div className="report-outdated report-outdated--ui" role="status">
+            {t.reportOutdatedNotice}
+          </div>
         </div>
       )}
       {reportIsOutdated && (
