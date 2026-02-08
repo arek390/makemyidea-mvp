@@ -111,8 +111,8 @@ export const fetchReportBySessionId = async (
 
 export const ensureReportExists = async (
   sessionId: string,
-  sourceUpdatedAt: number,
-  lang?: 'pl' | 'en' | null
+  _sourceUpdatedAt: number,
+  _lang?: 'pl' | 'en' | null
 ): Promise<ReportRecord> => {
   if (!supabase) {
     throw new Error('Missing Supabase client.')
