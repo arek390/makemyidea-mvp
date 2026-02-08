@@ -1970,6 +1970,7 @@
 }
 
 .report-outdated {
+  transform: translateX(70px);
   margin: 0.75rem 0 1rem;
   padding: 0.85rem 1rem;
   border-radius: 12px;
@@ -1977,6 +1978,7 @@
   background: #fff6e6;
   color: #7a4e00;
   font-weight: 600;
+  text-align: center;
   line-height: 1.35;
 }
 
@@ -1987,7 +1989,7 @@
 }
 
 .report-outdated--ui {
-  font-size: 0.5em;
+  font-size: 0.625em;
   width: 60%;
   margin: 0;
 }
