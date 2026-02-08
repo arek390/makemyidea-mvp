@@ -2693,7 +2693,7 @@ const isAuthFlowInProgress = () => {
     }
     engineNoticeTimer.current = window.setTimeout(() => {
       setEngineNotice(null)
-    }, 2400)
+    }, 5000)
   }
 
   const resetAuthDev = async () => {
@@ -8459,6 +8459,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     {copy.insufficientBalanceNotice}
                   </span>
                 )}
+                {engineNotice && (
+                  <span className={`engine-notice engine-notice--${engineNotice.variant} engine-notice--inline`}>
+                    {engineNotice.message}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -8499,11 +8504,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
             <button className="ghost" type="button" onClick={handleLogout}>
               {copy.auth.logout}
             </button>
-            {engineNotice && (
-              <span className={`engine-notice engine-notice--${engineNotice.variant}`}>
-                {engineNotice.message}
-              </span>
-            )}
             {isDiagEnabled() && (
               <span className="muted">
                 {copy.diagnosticsAuthLabel}: {authSession?.user?.email ?? '—'}
