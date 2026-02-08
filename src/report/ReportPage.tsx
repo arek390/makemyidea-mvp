@@ -684,14 +684,21 @@ export const ReportPage = ({
               className={`engine-balance${
                 billingLoading || billingError ? ' engine-balance--loading' : ''
               }`}
-            >
-              <button
-                type="button"
-                className="engine-balance-icon"
-                aria-label="Top up"
-                onClick={(event) => {
+              role="button"
+              tabIndex={0}
+              onClick={() => {
+                if (typeof window !== 'undefined') {
+                  const returnTo =
+                    window.location.hash?.startsWith('#/')
+                      ? window.location.hash.slice(1)
+                      : window.location.pathname || '/'
+                  window.sessionStorage.setItem(TOPUP_RETURN_TO_KEY, returnTo)
+                  window.location.hash = '#/topup'
+                }
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
-                  event.stopPropagation()
                   if (typeof window !== 'undefined') {
                     const returnTo =
                       window.location.hash?.startsWith('#/')
@@ -700,7 +707,13 @@ export const ReportPage = ({
                     window.sessionStorage.setItem(TOPUP_RETURN_TO_KEY, returnTo)
                     window.location.hash = '#/topup'
                   }
-                }}
+                }
+              }}
+            >
+              <button
+                type="button"
+                className="engine-balance-icon"
+                aria-label="Top up"
               >
                 💰
               </button>

@@ -554,6 +554,80 @@ export const handleAdminBillingTopup = async (req, res) => {
   }
 }
 
+export const handleAdminBillingReset = async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.status(204).end()
+    return
+  }
+  if (req.method !== 'POST') {
+    res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['POST'] })
+    return
+  }
+  try {
+    const adminUser = await requireAdmin(req, res)
+    if (!adminUser) return
+
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {}
+    const targetUserId = String(body?.userId || '').trim()
+    if (!targetUserId) {
+      res.status(400).json({ ok: false, error: 'MISSING_TARGET_USER' })
+      return
+    }
+
+    const supabaseAdmin = getSupabaseAdmin()
+    const { data: account, error: accountError } = await supabaseAdmin
+      .from('billing_accounts')
+      .select('balance_pln')
+      .eq('user_id', targetUserId)
+      .maybeSingle()
+    if (accountError) {
+      res.status(500).json({ ok: false, error: accountError.message || 'QUERY_FAILED' })
+      return
+    }
+    const currentBalance = Number(account?.balance_pln ?? 0)
+
+    if (!account) {
+      const insertRes = await supabaseAdmin
+        .from('billing_accounts')
+        .insert({
+          user_id: targetUserId,
+          balance_pln: 0,
+          total_paid_pln: 0,
+          updated_at: new Date().toISOString(),
+        })
+      if (insertRes.error) {
+        res.status(500).json({ ok: false, error: insertRes.error.message || 'INSERT_FAILED' })
+        return
+      }
+    } else {
+      const updateRes = await supabaseAdmin
+        .from('billing_accounts')
+        .update({ balance_pln: 0, updated_at: new Date().toISOString() })
+        .eq('user_id', targetUserId)
+      if (updateRes.error) {
+        res.status(500).json({ ok: false, error: updateRes.error.message || 'UPDATE_FAILED' })
+        return
+      }
+    }
+
+    const requestId = crypto.randomUUID()
+    const deltaPln = Number.isFinite(currentBalance) ? -currentBalance : 0
+    await supabaseAdmin.from('billing_balance_adjustments').insert({
+      admin_user_id: adminUser.id,
+      target_user_id: targetUserId,
+      delta_pln: deltaPln,
+      balance_before: Number.isFinite(currentBalance) ? currentBalance : 0,
+      balance_after: 0,
+      note: 'admin_reset_to_zero',
+      request_id: requestId,
+    })
+
+    res.status(200).json({ ok: true, userId: targetUserId, newBalanceMinor: 0 })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
+  }
+}
+
 const MODEL_PRICING_USD = {
   'gpt-4.1-mini': { input: 0.4, output: 1.6 },
   'gpt-5-mini': { input: 0.25, output: 2.0 },

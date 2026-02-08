@@ -358,6 +358,7 @@ type Translations = {
     captions: [[string, string], [string, string], [string, string]]
     footer: string
   }
+  topupReturnLabel: string
   loginContinue: string
   loginGoogleLabel: string
   loginGoogleCta: string
@@ -771,6 +772,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       ],
       footer: 'Credits are used flexibly — you only pay for report generation and updates.',
     },
+    topupReturnLabel: 'Return to the previous page',
     loginContinue: 'Continue',
     loginGoogleLabel: 'Google',
     loginGoogleCta: 'Continue with Google',
@@ -1265,6 +1267,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       footer:
         'Środki wykorzystujesz elastycznie — płacisz tylko za generowanie i aktualizacje raportu.',
     },
+    topupReturnLabel: 'Wróć na poprzednią stronę',
     loginContinue: 'Kontynuuj',
     loginGoogleLabel: 'Google',
     loginGoogleCta: 'Kontynuuj z Google',
@@ -2798,6 +2801,22 @@ const isAuthFlowInProgress = () => {
     if (typeof window === 'undefined') return
     const returnTo = getAppPath() || window.location.pathname || '/'
     window.sessionStorage.setItem(TOPUP_RETURN_TO_KEY, returnTo)
+  }
+  const handleTopupReturn = () => {
+    if (typeof window === 'undefined') return
+    const stored = window.sessionStorage.getItem(TOPUP_RETURN_TO_KEY)
+    if (stored) {
+      window.sessionStorage.removeItem(TOPUP_RETURN_TO_KEY)
+      const normalized = stored.startsWith('#') ? stored.slice(1) : stored
+      if (normalized.startsWith('/')) {
+        window.location.hash = `#${normalized}`
+        setHashPath(normalized)
+        return
+      }
+    }
+    if (window.history.length > 1) {
+      window.history.back()
+    }
   }
   const [hashPath, setHashPath] = useState(() => getAppPath())
   const idleThresholdMs = isE2EEnabled()
@@ -7846,7 +7865,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     )
   }
 
-  if (isReport) {
+  if (isReport && !isTopup) {
     const snapshot = getReportSessionSnapshot()
     const reportLanguage =
       snapshot.reportMeta?.lang === 'pl' || snapshot.reportMeta?.lang === 'en'
@@ -7991,6 +8010,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return withDevOverlay(
       <div className="app auth-screen">
         <div className="topup-stack">
+          <button
+            type="button"
+            className="topup-return-button"
+            onClick={handleTopupReturn}
+          >
+            {copy.topupReturnLabel}
+          </button>
           <img
             className="topup-logo"
             src={new URL('/logo/logo_makemyideawork_transp.png', import.meta.url).href}
@@ -8427,20 +8453,30 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   className={`engine-balance${
                     billingAccount.loading || billingAccount.error ? ' engine-balance--loading' : ''
                   }`}
-                >
-                  <button
-                    type="button"
-                    className="engine-balance-icon"
-                    aria-label="Top up"
-                    onClick={(event) => {
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    if (typeof window !== 'undefined') {
+                      storeTopupReturnTo()
+                      window.location.hash = '#/topup'
+                      setHashPath('/topup')
+                    }
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
-                      event.stopPropagation()
                       if (typeof window !== 'undefined') {
                         storeTopupReturnTo()
                         window.location.hash = '#/topup'
                         setHashPath('/topup')
                       }
-                    }}
+                    }
+                  }}
+                >
+                  <button
+                    type="button"
+                    className="engine-balance-icon"
+                    aria-label="Top up"
                   >
                     💰
                   </button>

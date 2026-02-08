@@ -1194,6 +1194,31 @@
   gap: 1rem;
 }
 
+.topup-return-button {
+  border: none;
+  background: #0b2f5f;
+  color: #ffffff;
+  padding: 0.6rem 1.4rem;
+  border-radius: 999px;
+  font-size: 0.9rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 6px 14px rgba(8, 26, 56, 0.25);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  transform: translateY(-100px);
+}
+
+.topup-return-button:hover {
+  transform: translateY(-101px);
+  box-shadow: 0 8px 18px rgba(8, 26, 56, 0.28);
+}
+
+.topup-return-button:active {
+  transform: translateY(-100px);
+  box-shadow: 0 4px 10px rgba(8, 26, 56, 0.2);
+}
+
 .topup-row {
   display: flex;
   align-items: center;

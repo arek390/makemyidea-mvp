@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase/client'
 import { useAuthState } from '../lib/authState'
 
@@ -115,8 +115,18 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     billingTableEmail: isPl ? 'Email' : 'Email',
     billingTableBalance: isPl ? 'Saldo PLN' : 'Balance PLN',
     billingTableAction: isPl ? 'Zasil' : 'Top up',
+    billingTableReset: isPl ? 'Reset' : 'Reset',
     billingEmailSearchPlaceholder: isPl ? 'Szukaj po emailu' : 'Search by email',
     billingAmountPlaceholder: isPl ? 'Kwota PLN' : 'Amount PLN',
+    billingResetLabel: isPl ? 'Reset do 0' : 'Reset to 0',
+    billingResetConfirm: (email: string | null, userId: string) =>
+      isPl
+        ? `Na pewno zresetować saldo użytkownika ${email || userId} do 0?`
+        : `Reset balance for ${email || userId} to 0?`,
+    billingResetNotice: isPl ? 'Saldo zresetowane do 0.' : 'Balance reset to 0.',
+    billingResetFailed: isPl
+      ? 'Nie udało się zresetować salda.'
+      : 'Unable to reset the balance.',
   }
   const { user, authReady } = useAuthState()
   const authUserId = user?.id ?? null
@@ -134,6 +144,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
   const [billingNotice, setBillingNotice] = useState<string | null>(null)
   const [billingInputs, setBillingInputs] = useState<Record<string, string>>({})
   const [billingBusy, setBillingBusy] = useState<Record<string, boolean>>({})
+  const [billingResetBusy, setBillingResetBusy] = useState<Record<string, boolean>>({})
   const [debugPayload, setDebugPayload] = useState<string | null>(null)
   const [sessionDebugPayload, setSessionDebugPayload] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<'session_created_at' | 'cost_pln' | 'tokens_total'>(
@@ -279,12 +290,14 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     }
   }, [authReady, authUserId, adminAllowed])
 
-  useEffect(() => {
-    if (!authReady || !authUserId) return
-    if (adminAllowed === 'no') return
-    let cancelled = false
-    const load = async () => {
-      setBillingLoading(true)
+  const fetchBillingRows = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!authReady || !authUserId) return
+      if (adminAllowed === 'no') return
+      let cancelled = false
+      if (!options?.silent) {
+        setBillingLoading(true)
+      }
       setBillingError(null)
       try {
         if (!supabase) throw new Error('AUTH_REQUIRED')
@@ -317,14 +330,15 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
           setBillingError(message === 'AUTH_REQUIRED' ? t.authRequired : message)
         }
       } finally {
-        if (!cancelled) setBillingLoading(false)
+        if (!cancelled && !options?.silent) setBillingLoading(false)
       }
-    }
-    void load()
-    return () => {
-      cancelled = true
-    }
-  }, [authReady, authUserId, adminAllowed])
+    },
+    [adminAllowed, authReady, authUserId, t.authRequired, t.noAccess]
+  )
+
+  useEffect(() => {
+    void fetchBillingRows()
+  }, [fetchBillingRows])
 
   const filteredRows = useMemo(() => {
     const query = search.trim().toLowerCase()
@@ -409,6 +423,46 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       setBillingError(message === 'AUTH_REQUIRED' ? t.authRequired : message)
     } finally {
       setBillingBusy((prev) => ({ ...prev, [row.userId]: false }))
+    }
+  }
+
+  const handleResetBalance = async (row: BillingRow) => {
+    setBillingNotice(null)
+    setBillingError(null)
+    if (!supabase) {
+      setBillingError(t.authRequired)
+      return
+    }
+    const confirmed = window.confirm(t.billingResetConfirm(row.email, row.userId))
+    if (!confirmed) return
+    setBillingResetBusy((prev) => ({ ...prev, [row.userId]: true }))
+    try {
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token || ''
+      if (!token) throw new Error('AUTH_REQUIRED')
+      const response = await fetch('/api/admin?action=admin.billing.reset', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: row.userId }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.ok) {
+        if (response.status === 403 || payload?.error === 'FORBIDDEN') {
+          throw new Error(t.noAccess)
+        }
+        const errorMessage = payload?.error || t.billingResetFailed
+        throw new Error(errorMessage)
+      }
+      setBillingNotice(t.billingResetNotice)
+      await fetchBillingRows({ silent: true })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t.billingResetFailed
+      setBillingError(message === 'AUTH_REQUIRED' ? t.authRequired : message)
+    } finally {
+      setBillingResetBusy((prev) => ({ ...prev, [row.userId]: false }))
     }
   }
 
@@ -610,12 +664,13 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                     <th>{t.billingTableEmail}</th>
                     <th>{t.billingTableBalance}</th>
                     <th>{t.billingTableAction}</th>
+                    <th>{t.billingTableReset}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredBillingRows.length === 0 && (
                     <tr>
-                      <td colSpan={3} className="admin-empty">
+                      <td colSpan={4} className="admin-empty">
                         {t.tableEmpty}
                       </td>
                     </tr>
@@ -649,6 +704,16 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                             {billingBusy[row.userId] ? '...' : t.topupAction}
                           </button>
                         </div>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="ghost danger"
+                          disabled={billingResetBusy[row.userId] === true}
+                          onClick={() => handleResetBalance(row)}
+                        >
+                          {billingResetBusy[row.userId] ? '...' : t.billingResetLabel}
+                        </button>
                       </td>
                     </tr>
                   ))}
