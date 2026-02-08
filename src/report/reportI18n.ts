@@ -108,9 +108,9 @@ export const reportCopy: Record<
     recommendationsTrendsTitle: 'Market trends',
     updatingAria: 'Updating…',
     reportOutdatedNotice:
-      'Due to new board entries, the Executive Summary, Perspective / Questions Map, and Recommendations / Next Steps sections require an update.',
+      'Due to new board entries, the Executive summary, Perspective / questions map, and Recommendations / next steps sections require an update.',
     reportOutdatedPrint:
-      'The report does not yet reflect the latest board entries. This applies to the Executive Summary, Perspective / Questions Map, and Recommendations / Next Steps sections.',
+      'The report does not yet reflect the latest board entries. This applies to the Executive summary, Perspective / questions map, and Recommendations / next steps sections.',
   },
   pl: {
     title: 'Raport',
@@ -164,8 +164,8 @@ export const reportCopy: Record<
     recommendationsTrendsTitle: 'Trendy rynkowe',
     updatingAria: 'Aktualizowanie…',
     reportOutdatedNotice:
-      'Ze względu na nowe wpisy na tablicy, rozdziały Executive Summary, Mapa perspektyw / pytań oraz Rekomendacje / kolejne kroki wymagają aktualizacji.',
+      'Ze względu na nowe wpisy na tablicy, rozdziały Podsumowanie, Mapa perspektyw / pytań oraz Rekomendacje / następne kroki wymagają aktualizacji.',
     reportOutdatedPrint:
-      'Raport nie odzwierciedla jeszcze najnowszych wpisów na tablicy. Dotyczy to rozdziałów Executive Summary, Mapa perspektyw / pytań oraz Rekomendacje / kolejne kroki.',
+      'Raport nie odzwierciedla jeszcze najnowszych wpisów na tablicy. Dotyczy to rozdziałów Podsumowanie, Mapa perspektyw / pytań oraz Rekomendacje / następne kroki.',
   },
 }

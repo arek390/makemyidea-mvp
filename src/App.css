@@ -1970,12 +1970,12 @@
 }
 
 .report-outdated {
-  transform: translateX(70px);
+  transform: translateX(120px);
   margin: 0.75rem 0 1rem;
   padding: 0.85rem 1rem;
   border-radius: 12px;
   border: 1px solid #f4d199;
-  background: #fff6e6;
+  background: transparent;
   color: #7a4e00;
   font-weight: 600;
   text-align: center;
