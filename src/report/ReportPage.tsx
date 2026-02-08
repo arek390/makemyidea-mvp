@@ -774,6 +774,13 @@ export const ReportPage = ({
             </span>
           </div>
         </div>
+        <div className="report-outdated-slot">
+          {reportIsOutdated && (
+            <div className="report-outdated report-outdated--ui" role="status">
+              {t.reportOutdatedNotice}
+            </div>
+          )}
+        </div>
         <div className="report-actions">
           {showUpdate && (
             <AiCostButton
@@ -788,13 +795,6 @@ export const ReportPage = ({
           {naFillStatus === 'error' && <span className="muted">{t.naAssigningError}</span>}
         </div>
       </header>
-      {reportIsOutdated && (
-        <div className="report-outdated-wrap">
-          <div className="report-outdated report-outdated--ui" role="status">
-            {t.reportOutdatedNotice}
-          </div>
-        </div>
-      )}
       {reportIsOutdated && (
         <div className="report-outdated report-outdated--print" role="note">
           {t.reportOutdatedPrint}

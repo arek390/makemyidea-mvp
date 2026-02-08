@@ -1943,12 +1943,18 @@
 }
 
 .report-header {
-  display: flex;
+  display: grid;
   align-items: center;
-  justify-content: space-between;
-  gap: 1.5rem;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  column-gap: 1.5rem;
   margin: 2.5rem 0 2rem;
   width: min(900px, 100%);
+}
+
+.report-outdated-slot {
+  display: flex;
+  justify-content: flex-start;
+  min-width: 0;
 }
 
 .report-outdated {
