@@ -1951,6 +1951,21 @@
   width: min(900px, 100%);
 }
 
+.report-outdated {
+  margin: 0.75rem 0 1rem;
+  padding: 0.85rem 1rem;
+  border-radius: 12px;
+  border: 1px solid #f4d199;
+  background: #fff6e6;
+  color: #7a4e00;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.report-outdated--print {
+  display: none;
+}
+
 .report-header h1 {
   font-size: 2.2rem;
   margin: 0;
@@ -2242,6 +2257,15 @@
     box-shadow: none;
     border: 1px solid #ddd;
     page-break-inside: avoid;
+  }
+  .report-outdated--ui {
+    display: none !important;
+  }
+  .report-outdated--print {
+    display: block !important;
+    border-color: #ddd;
+    background: #fff;
+    color: #333;
   }
 }
 

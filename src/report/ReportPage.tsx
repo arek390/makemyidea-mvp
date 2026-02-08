@@ -249,6 +249,11 @@ export const ReportPage = ({
   const [reportRecommendations, setReportRecommendations] = useState<ReportRecommendations>(
     normalizeRecommendations(sanitizeReportPayload(initialReport.recommendations))
   )
+  const lastBoardChangeAt = Number(snapshot.sourceUpdatedAt || 0) || null
+  const lastReportUpdateAt =
+    snapshot.reportMeta?.updatedAt ?? snapshot.reportMeta?.createdAt ?? null
+  const reportIsOutdated =
+    Boolean(lastBoardChangeAt && lastReportUpdateAt && lastBoardChangeAt > lastReportUpdateAt)
   const [priceMinor, setPriceMinor] = useState<number | null>(null)
   const [priceLoading, setPriceLoading] = useState(false)
   const balanceCurrency: 'PLN' | 'USD' = billingCurrency
@@ -773,6 +778,16 @@ export const ReportPage = ({
           {naFillStatus === 'error' && <span className="muted">{t.naAssigningError}</span>}
         </div>
       </header>
+      {reportIsOutdated && (
+        <div className="report-outdated report-outdated--ui" role="status">
+          {t.reportOutdatedNotice}
+        </div>
+      )}
+      {reportIsOutdated && (
+        <div className="report-outdated report-outdated--print" role="note">
+          {t.reportOutdatedPrint}
+        </div>
+      )}
 
       <main className="report-body">
         <section id="cover" className="report-section">

@@ -52,6 +52,8 @@ export const reportCopy: Record<
     recommendationsMorphTitle: string
     recommendationsTrendsTitle: string
     updatingAria: string
+    reportOutdatedNotice: string
+    reportOutdatedPrint: string
   }
 > = {
   en: {
@@ -105,6 +107,10 @@ export const reportCopy: Record<
     recommendationsMorphTitle: 'Morphological alternatives',
     recommendationsTrendsTitle: 'Market trends',
     updatingAria: 'Updating…',
+    reportOutdatedNotice:
+      'Due to new board entries, the Executive Summary, Perspective / Questions Map, and Recommendations / Next Steps sections require an update.',
+    reportOutdatedPrint:
+      'The report does not yet reflect the latest board entries. This applies to the Executive Summary, Perspective / Questions Map, and Recommendations / Next Steps sections.',
   },
   pl: {
     title: 'Raport',
@@ -157,5 +163,9 @@ export const reportCopy: Record<
     recommendationsMorphTitle: 'Alternatywy morfologiczne',
     recommendationsTrendsTitle: 'Trendy rynkowe',
     updatingAria: 'Aktualizowanie…',
+    reportOutdatedNotice:
+      'Ze względu na nowe wpisy na tablicy, rozdziały Executive Summary, Mapa perspektyw / pytań oraz Rekomendacje / kolejne kroki wymagają aktualizacji.',
+    reportOutdatedPrint:
+      'Raport nie odzwierciedla jeszcze najnowszych wpisów na tablicy. Dotyczy to rozdziałów Executive Summary, Mapa perspektyw / pytań oraz Rekomendacje / kolejne kroki.',
   },
 }

@@ -4095,15 +4095,16 @@ const isAuthFlowInProgress = () => {
       id,
       text,
     }))
-    const sourceUpdatedAt = reportIdeas.reduce(
-      (max, item) => Math.max(max, Number(item.created_at || 0)),
-      0
-    )
+    const sourceUpdatedAt = reportIdeas.reduce((max, item) => {
+      const updatedAt = Number(item.updated_at || item.created_at || 0)
+      return Math.max(max, updatedAt)
+    }, 0)
     const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id || null
     const reportMeta = getReportMetaForSession(sessionId)
     const reportSnapshotMeta = reportMeta
       ? {
           createdAt: reportMeta.created_at ?? null,
+          updatedAt: reportMeta.updated_at ?? null,
           lastSummaryTextHash: reportMeta.lastSummaryTextHash ?? null,
           summary: reportMeta.summary ?? null,
           ideas: reportMeta.ideas ?? null,
