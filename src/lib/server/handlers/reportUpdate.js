@@ -1,8 +1,22 @@
+import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '../supabaseAdmin.js'
 import { chargeUserBalance, normalizeBillingError } from '../billing.js'
+import { sendJson } from '../http.js'
 import { runLlmTask, createRateLimiter } from '../../../llm/llmRouter.mjs'
 
 const limiter = createRateLimiter({ windowMs: 60_000, max: 10 })
+
+const getBearerToken = (req) => {
+  const authHeader =
+    req?.headers?.authorization ||
+    req?.headers?.Authorization ||
+    (typeof req?.headers?.get === 'function' ? req.headers.get('authorization') : '') ||
+    ''
+  if (typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')) {
+    return authHeader.slice(7).trim()
+  }
+  return ''
+}
 
 const sanitizeReportText = (input) => {
   let value = String(input ?? '')
@@ -165,7 +179,14 @@ const isReportGenerated = (summaryJson) => {
 const handleBillingError = (res, error) => {
   const normalized = normalizeBillingError(error)
   if (!normalized) return false
-  res.status(normalized.status).json({ ok: false, error: normalized.code })
+  if (normalized.code === 'INSUFFICIENT_BALANCE') {
+    sendJson(res, 402, { ok: false, error: 'INSUFFICIENT_BALANCE' })
+    return true
+  }
+  sendJson(res, normalized.status || 500, {
+    ok: false,
+    error: normalized.code || 'BILLING_FAILED',
+  })
   return true
 }
 
@@ -289,13 +310,7 @@ export const handleReportUpdate = async (req, res) => {
       res.status(400).json({ ok: false, error: 'SESSION_ID_REQUIRED' })
       return
     }
-    const authHeader =
-      req?.headers?.authorization ||
-      req?.headers?.Authorization ||
-      (typeof req?.headers?.get === 'function' ? req.headers.get('authorization') : '') ||
-      ''
-    const hasBearer = typeof authHeader === 'string' && authHeader.toLowerCase().startsWith('bearer ')
-    const token = hasBearer ? authHeader.slice(7).trim() : ''
+    const token = getBearerToken(req)
     if (!token) {
       res.status(401).json({ ok: false, error: 'AUTH_REQUIRED' })
       return
@@ -318,14 +333,12 @@ export const handleReportUpdate = async (req, res) => {
       res.status(500).json({ ok: false, error: reportRes.error })
       return
     }
-    const actionKey = isReportGenerated(reportRes.data?.summary_json)
-      ? 'report_update'
-      : 'report_generate'
     try {
-      await chargeUserBalance(userId, actionKey, sessionId, supabaseAdmin)
+      const requestId = randomUUID()
+      await chargeUserBalance(userId, 'report_update', requestId, supabaseAdmin)
     } catch (error) {
       if (handleBillingError(res, error)) return
-      res.status(500).json({ ok: false, error: 'BILLING_FAILED' })
+      sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
       return
     }
     const boardRes = await supabaseAdmin

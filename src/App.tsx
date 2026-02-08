@@ -2957,6 +2957,9 @@ const isAuthFlowInProgress = () => {
     active: boolean
     atBalance: number | null
   }>({ active: false, atBalance: null })
+  const clearInsufficientBalance = () => {
+    setInsufficientBalanceState({ active: false, atBalance: null })
+  }
 
   useEffect(() => {
     if (billingBalanceOverrideMinor == null) return
@@ -2978,6 +2981,11 @@ const isAuthFlowInProgress = () => {
     insufficientBalanceState.active,
     insufficientBalanceState.atBalance,
   ])
+
+  useEffect(() => {
+    if (!insufficientBalanceState.active) return
+    clearInsufficientBalance()
+  }, [normalizedPath, appPath])
 
   useEffect(() => {
     const supabaseClient = client
@@ -5972,6 +5980,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         )
         return
       }
+      clearInsufficientBalance()
       const insertedRow = apiPayload.item as Database['public']['Tables']['board_items']['Row']
       console.log('[board_items] inserted', {
         id: insertedRow.id,
@@ -6303,6 +6312,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           if (!hasDbReport && ensured?.id) {
             void refreshBillingBalance()
           }
+          clearInsufficientBalance()
           const existedAfterEnsure = Boolean(hasDbReport || ensured?.id)
           window.history.pushState({ newlyCreated: !existedAfterEnsure }, '', '/report')
           setReportViewOpen(true)
@@ -6312,7 +6322,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
           console.error('[report] ensure failed', { sessionId, message })
           if (message === 'INSUFFICIENT_BALANCE') {
             triggerInsufficientBalance()
-            showEngineNotice(copy.insufficientBalanceNotice, 'error')
           } else {
             showEngineNotice(notices.reportOpenFailed, 'error')
           }
@@ -6987,12 +6996,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
       try {
         const ensured = await ensureReportExists(sessionId, sourceUpdatedAt, reportLang)
         setReportRecords((prev) => ({ ...prev, [sessionId]: ensured }))
+        clearInsufficientBalance()
       } catch (error) {
         const message = error instanceof Error ? error.message : 'unknown'
         console.error('[report] ensure failed', { sessionId, message })
         if (message === 'INSUFFICIENT_BALANCE') {
           triggerInsufficientBalance()
-          showEngineNotice(copy.insufficientBalanceNotice, 'error')
         }
       }
     }
@@ -7100,6 +7109,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           setBillingBalanceOverrideMinor(balanceAfter)
         }
       }
+      clearInsufficientBalance()
       const detail = await getSession(sessionId)
       if (!detail?.session) return false
       const updated: EngineSessionDetail = {
@@ -7951,6 +7961,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         onBillingInsufficient={triggerInsufficientBalance}
         onBillingRefresh={() => {
           void refreshBillingBalance()
+          clearInsufficientBalance()
         }}
         onSaveSession={() => {
           void saveCurrentSessionToCloud()
