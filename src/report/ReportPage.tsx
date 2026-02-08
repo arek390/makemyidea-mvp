@@ -218,6 +218,7 @@ export const ReportPage = ({
   diagnosticsEnabled,
   naFillStatus,
   onUpdateLabel,
+  onReportMetaChange,
   onBillingInsufficient,
   onBillingRefresh,
   onSaveSession,
