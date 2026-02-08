@@ -6310,7 +6310,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
         } catch (error) {
           const message = error instanceof Error ? error.message : 'unknown'
           console.error('[report] ensure failed', { sessionId, message })
-          showEngineNotice(notices.reportOpenFailed, 'error')
+          if (message === 'INSUFFICIENT_BALANCE') {
+            triggerInsufficientBalance()
+            showEngineNotice(copy.insufficientBalanceNotice, 'error')
+          } else {
+            showEngineNotice(notices.reportOpenFailed, 'error')
+          }
           return
         }
       } else if (isGuestMode()) {
@@ -6985,6 +6990,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
       } catch (error) {
         const message = error instanceof Error ? error.message : 'unknown'
         console.error('[report] ensure failed', { sessionId, message })
+        if (message === 'INSUFFICIENT_BALANCE') {
+          triggerInsufficientBalance()
+          showEngineNotice(copy.insufficientBalanceNotice, 'error')
+        }
       }
     }
     const existing = detail.report || null

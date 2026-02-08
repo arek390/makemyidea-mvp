@@ -30,7 +30,7 @@ export const normalizeBillingError = (error) => {
   if (combined.includes('BILLING_CURRENCY_MISSING')) {
     return { code: 'BILLING_CURRENCY_MISSING', status: 400 }
   }
-  if (combined.includes('INSUFFICIENT_BALANCE')) {
+  if (combined.includes('INSUFFICIENT_BALANCE') || combined.includes('INSUFFICIENT_FUNDS')) {
     return { code: 'INSUFFICIENT_BALANCE', status: 402 }
   }
   if (combined.includes('AUTH_REQUIRED')) {

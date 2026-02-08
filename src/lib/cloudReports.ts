@@ -133,6 +133,9 @@ export const ensureReportExists = async (
     body: JSON.stringify({ sessionId }),
   })
   const payload = await response.json().catch(() => null)
+  if (response.status === 402 || payload?.error === 'INSUFFICIENT_BALANCE') {
+    throw new Error('INSUFFICIENT_BALANCE')
+  }
   if (!response.ok || !payload?.ok || !payload?.report) {
     const message = payload?.error || 'REPORT_GENERATE_FAILED'
     console.error('[report] ensure failed', { sessionId, message })
