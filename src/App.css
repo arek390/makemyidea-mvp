@@ -1951,6 +1951,13 @@
   width: min(900px, 100%);
 }
 
+.report-header-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
 .report-outdated {
   margin: 0.75rem 0 1rem;
   padding: 0.85rem 1rem;
@@ -1960,6 +1967,12 @@
   color: #7a4e00;
   font-weight: 600;
   line-height: 1.35;
+}
+
+.report-outdated--ui {
+  font-size: 0.5em;
+  width: 60%;
+  margin: 0.25rem 0 0;
 }
 
 .report-outdated--print {

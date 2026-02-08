@@ -32,6 +32,7 @@ type ReportPageProps = {
     summary?: AiSummary | null
     lastSummaryTextHash?: string | null
     createdAt?: number | null
+    updatedAt?: number | null
     ideas?: ReportSnapshot['ideas'] | null
     recommendations?: ReportRecommendations | null
   }) => void
@@ -495,6 +496,14 @@ export const ReportPage = ({
           setReportRecommendations(sanitized.recommendations)
           setAiSummary(sanitized.summary)
           setLastSummaryTextHash(record.lastSummaryTextHash ?? null)
+          onReportMetaChange?.({
+            summary: sanitized.summary,
+            ideas: sanitized.ideas,
+            recommendations: sanitized.recommendations,
+            lastSummaryTextHash: record.lastSummaryTextHash ?? null,
+            createdAt: record.createdAt ?? null,
+            updatedAt: record.updatedAt ?? null,
+          })
           setSummaryStatus('done')
         }
       } catch {
@@ -749,7 +758,7 @@ export const ReportPage = ({
         </div>
       </header>
       <header className="report-header">
-        <div>
+        <div className="report-header-main">
           <div className="report-title-row">
             <h1>{t.title}</h1>
             <span className="report-updating-slot" aria-hidden={!isReportUpdating}>
@@ -763,6 +772,11 @@ export const ReportPage = ({
               )}
             </span>
           </div>
+          {reportIsOutdated && (
+            <div className="report-outdated report-outdated--ui" role="status">
+              {t.reportOutdatedNotice}
+            </div>
+          )}
         </div>
         <div className="report-actions">
           {showUpdate && (
@@ -778,11 +792,6 @@ export const ReportPage = ({
           {naFillStatus === 'error' && <span className="muted">{t.naAssigningError}</span>}
         </div>
       </header>
-      {reportIsOutdated && (
-        <div className="report-outdated report-outdated--ui" role="status">
-          {t.reportOutdatedNotice}
-        </div>
-      )}
       {reportIsOutdated && (
         <div className="report-outdated report-outdated--print" role="note">
           {t.reportOutdatedPrint}

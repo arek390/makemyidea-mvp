@@ -31,3 +31,5 @@ data/*.sqlite
 data/*.sqlite-*
 moje/
 *.rtf
+.vercel
+.env*.local

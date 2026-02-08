@@ -8012,7 +8012,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             lastSummaryTextHash:
               meta.lastSummaryTextHash ?? existing?.lastSummaryTextHash ?? null,
             created_at: meta.createdAt ?? existing?.created_at ?? Date.now(),
-            updated_at: Date.now(),
+            updated_at: meta.updatedAt ?? Date.now(),
             ideas: meta.ideas ?? existing?.ideas ?? null,
             recommendations: meta.recommendations ?? existing?.recommendations ?? null,
           }
@@ -8039,7 +8039,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   recommendations: meta.recommendations ?? existingRecord.recommendations,
                   lastSummaryTextHash:
                     meta.lastSummaryTextHash ?? existingRecord.lastSummaryTextHash,
-                  updatedAt: Date.now(),
+                  updatedAt: meta.updatedAt ?? Date.now(),
                 },
               }
             })
