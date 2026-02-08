@@ -7,6 +7,7 @@ export type EngineBoardItem = {
   question_text_pl?: string | null
   question_text_en?: string | null
   created_at?: number
+  updated_at?: number
   entry_type?: 'free_input' | 'facilitated_input'
   prompt_type?: 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET' | null
   matrix_row?: string | null

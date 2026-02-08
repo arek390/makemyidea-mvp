@@ -4592,11 +4592,27 @@ const normalizeBoardItem = (item: EngineBoardItem) => {
       matrixCol = mapped.matrix_col
     }
   }
+  const createdAtRaw = item.created_at ?? null
+  const updatedAtRaw = (item as { updated_at?: unknown }).updated_at ?? null
+  const createdAt =
+    typeof createdAtRaw === 'number'
+      ? createdAtRaw
+      : typeof createdAtRaw === 'string' && !Number.isNaN(Date.parse(createdAtRaw))
+        ? Date.parse(createdAtRaw)
+        : undefined
+  const updatedAt =
+    typeof updatedAtRaw === 'number'
+      ? updatedAtRaw
+      : typeof updatedAtRaw === 'string' && !Number.isNaN(Date.parse(updatedAtRaw))
+        ? Date.parse(updatedAtRaw)
+        : undefined
   return {
     ...item,
     label: item.label ?? null,
     matrix_row: matrixRow ?? null,
     matrix_col: matrixCol ?? null,
+    created_at: createdAt ?? item.created_at,
+    updated_at: updatedAt ?? item.updated_at,
   }
 }
 
@@ -5931,6 +5947,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         question_text_pl: questionText && isPolish ? questionText : null,
         question_text_en: questionText && !isPolish ? questionText : null,
         created_at: now,
+        updated_at: now,
         entry_type: entryType,
         prompt_type: engineActivePrompt?.type || null,
         matrix_row: mappedRow,
@@ -5999,6 +6016,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
           : Number.isNaN(Date.parse(String(insertedRow.created_at)))
             ? (newItem.created_at ?? now)
             : Date.parse(String(insertedRow.created_at))
+      const insertedUpdatedAt =
+        typeof insertedRow.updated_at === 'number'
+          ? insertedRow.updated_at
+          : Number.isNaN(Date.parse(String(insertedRow.updated_at)))
+            ? insertedCreatedAt ?? now
+            : Date.parse(String(insertedRow.updated_at))
       persistedItem = normalizeBoardItem({
         ...newItem,
         id: insertedRow.id,
@@ -6008,6 +6031,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         question_text_pl: insertedRow.question_text_pl ?? null,
         question_text_en: insertedRow.question_text_en ?? null,
         created_at: insertedCreatedAt,
+        updated_at: insertedUpdatedAt,
         entry_type: (insertedRow.entry_type as EngineBoardItem['entry_type']) ?? newItem.entry_type ?? undefined,
         prompt_type: (insertedRow.prompt_type as EngineBoardItem['prompt_type']) ?? newItem.prompt_type ?? null,
         matrix_row: insertedRow.matrix_row ?? newItem.matrix_row ?? null,
@@ -6303,10 +6327,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
       if (authSession?.user?.id) {
         try {
           const sourceUpdatedAt =
-            enginePreviewItems.reduce(
-              (max, item) => Math.max(max, Number(item.created_at || 0)),
-              0
-            ) || 0
+            enginePreviewItems.reduce((max, item) => {
+              const updatedAt = Number(item.updated_at || item.created_at || 0)
+              return Math.max(max, updatedAt)
+            }, 0) || 0
           const reportLang: 'pl' | 'en' = uiLanguage === 'Polish' ? 'pl' : 'en'
           const ensured = await ensureReportExists(sessionId, sourceUpdatedAt, reportLang)
           setReportRecords((prev) => ({ ...prev, [sessionId]: ensured }))
@@ -6331,10 +6355,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
       } else if (isGuestMode()) {
         window.sessionStorage.setItem(`report_exists::${sessionId}`, 'true')
         const sourceUpdatedAt =
-          enginePreviewItems.reduce(
-            (max, item) => Math.max(max, Number(item.created_at || 0)),
-            0
-          ) || 0
+          enginePreviewItems.reduce((max, item) => {
+            const updatedAt = Number(item.updated_at || item.created_at || 0)
+            return Math.max(max, updatedAt)
+          }, 0) || 0
         window.sessionStorage.setItem(
           `report_source_updated_at::${sessionId}`,
           String(sourceUpdatedAt)
@@ -6990,10 +7014,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (!detail?.session) return
     if (authSession?.user?.id && client) {
       const sourceUpdatedAt =
-        (detail.boardItems || []).reduce(
-          (max, item) => Math.max(max, Number(item.created_at || 0)),
-          0
-        ) || 0
+        (detail.boardItems || []).reduce((max, item) => {
+          const updatedAt = Number(item.updated_at || item.created_at || 0)
+          return Math.max(max, updatedAt)
+        }, 0) || 0
       try {
         const ensured = await ensureReportExists(sessionId, sourceUpdatedAt, reportLang)
         setReportRecords((prev) => ({ ...prev, [sessionId]: ensured }))
@@ -7370,7 +7394,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         }
         const biRes = await client
           .from('board_items')
-          .select('id,session_id,user_id,text,label,matrix_row,matrix_col,question_id,question_text_pl,question_text_en,created_at')
+          .select('id,session_id,user_id,text,label,matrix_row,matrix_col,question_id,question_text_pl,question_text_en,created_at,updated_at')
           .eq('user_id', userId)
           .eq('session_id', sessionId)
           .order('created_at', { ascending: true })

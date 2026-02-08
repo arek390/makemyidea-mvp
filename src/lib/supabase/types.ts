@@ -154,6 +154,7 @@ export type Database = {
           question_text_pl: string | null
           question_text_en: string | null
           created_at: number | string
+          updated_at: number | string | null
           entry_type: string | null
           prompt_type: string | null
           matrix_row: string | null
@@ -172,6 +173,7 @@ export type Database = {
           question_text_pl?: string | null
           question_text_en?: string | null
           created_at?: number | string
+          updated_at?: number | string | null
           entry_type?: string | null
           prompt_type?: string | null
           matrix_row?: string | null
@@ -190,6 +192,7 @@ export type Database = {
           question_text_pl?: string | null
           question_text_en?: string | null
           created_at?: number | string
+          updated_at?: number | string | null
           entry_type?: string | null
           prompt_type?: string | null
           matrix_row?: string | null

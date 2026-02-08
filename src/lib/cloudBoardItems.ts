@@ -27,6 +27,7 @@ const normalizeRow = (row: BoardItemRow): EngineBoardItem => ({
   question_text_pl: row.question_text_pl ?? null,
   question_text_en: row.question_text_en ?? null,
   created_at: toNumber(row.created_at, Date.now()),
+  updated_at: toNumber(row.updated_at, toNumber(row.created_at, Date.now())),
   entry_type: (row.entry_type as EngineBoardItem['entry_type']) ?? undefined,
   prompt_type: (row.prompt_type as EngineBoardItem['prompt_type']) ?? null,
   matrix_row: row.matrix_row ?? null,
@@ -46,7 +47,7 @@ export const fetchBoardItems = async (
   const { data, error } = await typedSupabase
     .from('board_items')
     .select(
-      'id,session_id,user_id,text,label,matrix_row,matrix_col,question_id,question_text_pl,question_text_en,created_at'
+      'id,session_id,user_id,text,label,matrix_row,matrix_col,question_id,question_text_pl,question_text_en,created_at,updated_at'
     )
     .eq('session_id', sessionId)
     .order('created_at', { ascending: false })
