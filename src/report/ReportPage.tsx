@@ -38,6 +38,7 @@ type ReportPageProps = {
   }) => void
   onUpdateLabel?: (itemId: string, label: string | null) => Promise<boolean>
   onBillingInsufficient?: () => void
+  onBillingRefresh?: () => void
   balancePLN?: number
   billingLoading?: boolean
   billingError?: string | null
@@ -218,6 +219,7 @@ export const ReportPage = ({
   naFillStatus,
   onUpdateLabel,
   onBillingInsufficient,
+  onBillingRefresh,
   onSaveSession,
   saveSessionLabel,
   balancePLN = 0,
@@ -473,6 +475,9 @@ export const ReportPage = ({
           }
           return
         }
+      }
+      if (response.ok && payload?.ok) {
+        onBillingRefresh?.()
       }
     } catch {
       // ignore

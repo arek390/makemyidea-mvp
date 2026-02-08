@@ -7920,6 +7920,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
         naFillStatus={naFillStatus}
         onUpdateLabel={updateEngineEntryLabel}
         onBillingInsufficient={triggerInsufficientBalance}
+        onBillingRefresh={() => {
+          void refreshBillingBalance()
+        }}
         onSaveSession={() => {
           void saveCurrentSessionToCloud()
         }}
