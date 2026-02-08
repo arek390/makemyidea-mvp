@@ -12,7 +12,6 @@ import { UsageBadge } from '../components/UsageBadge'
 import { buildSessionGoalText, extractProductNameFromSessionName } from './sessionGoal'
 import { fetchReportBySessionId } from '../lib/cloudReports'
 import { supabase as client } from '../lib/supabase/client'
-import { fetchFxUsdPlnRate, getFreshFxRate } from '../lib/fx'
 import { AiCostButton } from '../components/AiCostButton'
  
 const TOPUP_RETURN_TO_KEY = 'topup-return-to'
@@ -39,10 +38,10 @@ type ReportPageProps = {
   onUpdateLabel?: (itemId: string, label: string | null) => Promise<boolean>
   onBillingInsufficient?: () => void
   onBillingRefresh?: () => void
-  balancePLN?: number
+  billingCurrency?: 'PLN' | 'USD'
+  balanceMinor?: number
   billingLoading?: boolean
   billingError?: string | null
-  usdPlnRate?: number | null
   showInsufficientBalance?: boolean
   insufficientBalanceNotice?: string
 }
@@ -222,10 +221,10 @@ export const ReportPage = ({
   onBillingRefresh,
   onSaveSession,
   saveSessionLabel,
-  balancePLN = 0,
+  billingCurrency = 'PLN',
+  balanceMinor = 0,
   billingLoading = false,
   billingError = null,
-  usdPlnRate = null,
   showInsufficientBalance = false,
   insufficientBalanceNotice = 'Insufficient funds. Top up your account.',
 }: ReportPageProps) => {
@@ -250,29 +249,18 @@ export const ReportPage = ({
   const [reportRecommendations, setReportRecommendations] = useState<ReportRecommendations>(
     normalizeRecommendations(sanitizeReportPayload(initialReport.recommendations))
   )
-  const [fxUsdPlnRate, setFxUsdPlnRate] = useState<number | null>(() => getFreshFxRate())
-  const [priceGrosze, setPriceGrosze] = useState<number | null>(null)
+  const [priceMinor, setPriceMinor] = useState<number | null>(null)
   const [priceLoading, setPriceLoading] = useState(false)
-  const balanceCurrency: 'PLN' | 'USD' = language === 'pl' ? 'PLN' : 'USD'
-  const formatUsdBalance = (value: number) =>
-    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
-      Math.max(0, value || 0)
-    )
-  const formatPlnBalance = (value: number) =>
-    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
-      Math.max(0, value || 0)
-    )
-  useEffect(() => {
-    let cancelled = false
-    const loadFx = async () => {
-      const rate = await fetchFxUsdPlnRate()
-      if (!cancelled) setFxUsdPlnRate(rate)
-    }
-    void loadFx()
-    return () => {
-      cancelled = true
-    }
-  }, [])
+  const balanceCurrency: 'PLN' | 'USD' = billingCurrency
+  const formatBalanceMinor = (currency: 'PLN' | 'USD', minor: number) => {
+    const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Math.max(0, minor || 0) / 100)
+  }
 
   useEffect(() => {
     const supabaseClient = client
@@ -283,20 +271,25 @@ export const ReportPage = ({
       try {
         const { data, error } = await supabaseClient
           .from('pricing_rules')
-          .select('price_grosze')
+          .select('price_grosze,price_cents')
           .eq('action_key', 'report_update')
           .maybeSingle()
         if (!cancelled) {
           if (error) {
-            setPriceGrosze(null)
+            setPriceMinor(null)
           } else {
-            const row = data as { price_grosze?: number | string | null } | null
-            const value = Number(row?.price_grosze)
-            setPriceGrosze(Number.isFinite(value) ? value : null)
+            const row = data as {
+              price_grosze?: number | string | null
+              price_cents?: number | string | null
+            } | null
+            const raw =
+              billingCurrency === 'USD' ? row?.price_cents : row?.price_grosze
+            const value = Number(raw)
+            setPriceMinor(Number.isFinite(value) ? value : null)
           }
         }
       } catch {
-        if (!cancelled) setPriceGrosze(null)
+        if (!cancelled) setPriceMinor(null)
       } finally {
         if (!cancelled) setPriceLoading(false)
       }
@@ -305,7 +298,7 @@ export const ReportPage = ({
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [billingCurrency])
   const [isReportUpdating, setIsReportUpdating] = useState(false)
   const [labelUpdating, setLabelUpdating] = useState<Record<string, boolean>>({})
   const [summaryUsage] = useState<SummaryUsage | null>(null)
@@ -725,11 +718,7 @@ export const ReportPage = ({
               <span className="engine-balance-value">
                 {billingLoading || billingError
                   ? '—'
-                  : balanceCurrency === 'USD'
-                    ? usdPlnRate
-                      ? `${formatUsdBalance(balancePLN / usdPlnRate)} USD`
-                      : 'USD: …'
-                    : `${formatPlnBalance(balancePLN)} PLN`}
+                  : formatBalanceMinor(balanceCurrency, balanceMinor)}
               </span>
             </div>
             {showInsufficientBalance && (
@@ -775,9 +764,9 @@ export const ReportPage = ({
             <AiCostButton
               label={t.reportUpdate}
               lang={language}
-              priceGrosze={priceGrosze}
+              priceMinor={priceMinor}
+              currency={billingCurrency}
               priceLoading={priceLoading}
-              fxUsdPln={fxUsdPlnRate}
               onClick={handleUpdateReport}
             />
           )}

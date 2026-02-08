@@ -4,6 +4,7 @@ import { createSupabaseServerClient } from '../src/lib/server/supabaseServer.js'
 import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../src/lib/server/http.js'
 import { resolveAction } from '../src/lib/server/router.js'
+import { resolveBillingCurrency, ensureBillingAccount } from '../src/lib/server/billing.js'
 
 const readRawBody = async (req) => {
   let body = ''
@@ -48,20 +49,16 @@ const normalizeLang = (value, req) => {
   return 'en'
 }
 
-const resolveFxUsdPln = () => {
-  const raw = Number(process.env.FX_USD_PLN || 0)
-  return Number.isFinite(raw) && raw > 0 ? raw : 4.0
-}
+const resolveCurrencyFromLang = (lang) => (lang === 'pl' ? 'PLN' : 'USD')
 
-const resolveTestTopup = (tier, lang) => {
+const resolveTestTopup = (tier, currency) => {
   const safeTier = String(tier || '').trim().toUpperCase()
-  const isPl = lang === 'pl'
-  const currency = isPl ? 'PLN' : 'USD'
-  const amountMinorMap = isPl
+  const safeCurrency = currency === 'USD' ? 'USD' : 'PLN'
+  const amountMinorMap = safeCurrency === 'PLN'
     ? { S: 2000, M: 5000, L: 10000 }
     : { S: 500, M: 1500, L: 3000 }
   const amountMinor = amountMinorMap[safeTier] ?? null
-  return { tier: safeTier, currency, amountMinor }
+  return { tier: safeTier, currency: safeCurrency, amountMinor }
 }
 
 const handleTestTopup = async (req, res) => {
@@ -71,12 +68,6 @@ const handleTestTopup = async (req, res) => {
   }
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : {}
-    const lang = normalizeLang(body.language || body.lang || body.locale, req)
-    const { tier, currency, amountMinor } = resolveTestTopup(body.tier, lang)
-    if (!tier || amountMinor == null) {
-      sendJson(res, 400, { ok: false, error: 'INVALID_TIER' })
-      return
-    }
 
     const supabase = createSupabaseServerClient(req, res)
     const { data, error } = await supabase.auth.getUser()
@@ -85,35 +76,63 @@ const handleTestTopup = async (req, res) => {
       return
     }
 
-    const amount = amountMinor / 100
-    const fx = resolveFxUsdPln()
-    const deltaPln = currency === 'PLN' ? amount : amount * fx
     const supabaseAdmin = getSupabaseAdmin()
-    const requestId = randomUUID()
-    const rpcRes = await supabaseAdmin.rpc('admin_increment_balance', {
-      admin_user: data.user.id,
-      target_user: data.user.id,
-      delta_pln: deltaPln,
-      request_id: requestId,
-    })
-
-    if (rpcRes.error) {
-      res.status(500).json({ ok: false, error: rpcRes.error.message || 'RPC_FAILED' })
+    const lang = normalizeLang(body.language || body.lang || body.locale, req)
+    const preferredCurrency = resolveCurrencyFromLang(lang)
+    const billingCurrency = await resolveBillingCurrency(
+      data.user.id,
+      preferredCurrency,
+      supabaseAdmin
+    )
+    await ensureBillingAccount(data.user.id, supabaseAdmin)
+    const { tier, currency, amountMinor } = resolveTestTopup(body.tier, billingCurrency)
+    if (!tier || amountMinor == null) {
+      sendJson(res, 400, { ok: false, error: 'INVALID_TIER' })
       return
     }
 
-    const payload = Array.isArray(rpcRes.data) ? rpcRes.data[0] : rpcRes.data
-    const balanceAfterPln = Number(payload?.balance_after ?? 0)
-    const balanceMinor =
-      currency === 'PLN'
-        ? Math.round(balanceAfterPln * 100)
-        : Math.round((balanceAfterPln / fx) * 100)
+    const balanceColumn =
+      currency === 'USD' ? 'balance_usd_cents' : 'balance_pln_grosze'
+    const { data: account, error: accountError } = await supabaseAdmin
+      .from('billing_accounts')
+      .select(`${balanceColumn}`)
+      .eq('user_id', data.user.id)
+      .maybeSingle()
+    if (accountError) {
+      res.status(500).json({ ok: false, error: accountError.message || 'QUERY_FAILED' })
+      return
+    }
+    const currentMinor = Number(account?.[balanceColumn] ?? 0)
+    const nextMinor = currentMinor + amountMinor
+    const updateRes = await supabaseAdmin
+      .from('billing_accounts')
+      .update({ [balanceColumn]: nextMinor, updated_at: new Date().toISOString() })
+      .eq('user_id', data.user.id)
+    if (updateRes.error) {
+      res.status(500).json({ ok: false, error: updateRes.error.message || 'UPDATE_FAILED' })
+      return
+    }
+
+    const requestId = randomUUID()
+    await supabaseAdmin.from('billing_balance_adjustments').insert({
+      admin_user_id: data.user.id,
+      target_user_id: data.user.id,
+      delta_pln: currency === 'PLN' ? amountMinor / 100 : 0,
+      balance_before: currency === 'PLN' ? currentMinor / 100 : 0,
+      balance_after: currency === 'PLN' ? nextMinor / 100 : 0,
+      delta_minor: amountMinor,
+      balance_before_minor: currentMinor,
+      balance_after_minor: nextMinor,
+      currency,
+      note: 'test_topup',
+      request_id: requestId,
+    })
 
     res.status(200).json({
       ok: true,
       added: { currency, amountMinor },
-      newBalance: { currency, amountMinor: balanceMinor },
-      balancePLN: Number.isFinite(balanceAfterPln) ? balanceAfterPln : 0,
+      newBalance: { currency, amountMinor: nextMinor },
+      balance: { currency, amountMinor: nextMinor },
     })
   } catch (error) {
     res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
@@ -222,9 +241,18 @@ const handleBalance = async (req, res) => {
       return
     }
     const userId = data.user.id
-    const { data: account, error: accountError } = await supabase
+    const lang = normalizeLang(req.query?.lang || req.query?.language, req)
+    const preferredCurrency = resolveCurrencyFromLang(lang)
+    const supabaseAdmin = getSupabaseAdmin()
+    const billingCurrency = await resolveBillingCurrency(
+      userId,
+      preferredCurrency,
+      supabaseAdmin
+    )
+    await ensureBillingAccount(userId, supabaseAdmin)
+    const { data: account, error: accountError } = await supabaseAdmin
       .from('billing_accounts')
-      .select('balance_pln')
+      .select('balance_pln_grosze,balance_usd_cents')
       .eq('user_id', userId)
       .limit(1)
       .maybeSingle()
@@ -232,10 +260,16 @@ const handleBalance = async (req, res) => {
       res.status(500).json({ ok: false, error: accountError.message || 'QUERY_FAILED' })
       return
     }
-    const balance = Number(account?.balance_pln ?? 0)
+    const balanceMinor =
+      billingCurrency === 'USD'
+        ? Number(account?.balance_usd_cents ?? 0)
+        : Number(account?.balance_pln_grosze ?? 0)
     res.status(200).json({
       ok: true,
-      balancePLN: Number.isFinite(balance) ? balance : 0,
+      currency: billingCurrency,
+      balanceMinor: Number.isFinite(balanceMinor) ? balanceMinor : 0,
+      balance_pln_grosze: Number(account?.balance_pln_grosze ?? 0),
+      balance_usd_cents: Number(account?.balance_usd_cents ?? 0),
     })
   } catch (error) {
     res.status(500).json({ ok: false, error: 'SERVER_ERROR' })

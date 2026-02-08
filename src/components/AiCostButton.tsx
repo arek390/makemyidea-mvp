@@ -3,34 +3,31 @@ import type { MouseEventHandler } from 'react'
 type AiCostButtonProps = {
   label: string
   lang: 'pl' | 'en'
-  priceGrosze: number | null
+  priceMinor: number | null
+  currency: 'PLN' | 'USD'
   priceLoading?: boolean
-  fxUsdPln?: number | null
   onClick?: MouseEventHandler<HTMLButtonElement>
   className?: string
 }
 
-const formatPlnCurrency = (value: number) =>
-  new Intl.NumberFormat('pl-PL', { style: 'currency', currency: 'PLN' }).format(value)
-
-const formatUsdCurrency = (value: number) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(value)
+const formatCurrency = (value: number, currency: 'PLN' | 'USD') => {
+  const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
+  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value)
+}
 
 export const AiCostButton = ({
   label,
   lang,
-  priceGrosze,
+  priceMinor,
+  currency,
   priceLoading = false,
-  fxUsdPln = null,
   onClick,
   className,
 }: AiCostButtonProps) => {
   const amountText = (() => {
-    if (priceLoading || priceGrosze == null) return '—'
-    const pln = priceGrosze / 100
-    if (lang === 'pl') return formatPlnCurrency(pln)
-    if (!fxUsdPln || fxUsdPln <= 0) return '—'
-    return formatUsdCurrency(pln / fxUsdPln)
+    if (priceLoading || priceMinor == null) return '—'
+    const amount = priceMinor / 100
+    return formatCurrency(amount, currency)
   })()
   return (
     <button

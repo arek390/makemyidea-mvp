@@ -4,21 +4,24 @@ export type Database = {
       billing_accounts: {
         Row: {
           user_id: string
-          balance_pln: number | string | null
+          balance_pln_grosze: number | string | null
+          balance_usd_cents: number | string | null
           total_paid_pln: number | string | null
           created_at: string | null
           updated_at: string | null
         }
         Insert: {
           user_id: string
-          balance_pln?: number | string | null
+          balance_pln_grosze?: number | string | null
+          balance_usd_cents?: number | string | null
           total_paid_pln?: number | string | null
           created_at?: string | null
           updated_at?: string | null
         }
         Update: {
           user_id?: string
-          balance_pln?: number | string | null
+          balance_pln_grosze?: number | string | null
+          balance_usd_cents?: number | string | null
           total_paid_pln?: number | string | null
           created_at?: string | null
           updated_at?: string | null
@@ -33,6 +36,10 @@ export type Database = {
           delta_pln: number | string
           balance_before: number | string
           balance_after: number | string
+          delta_minor: number | string | null
+          balance_before_minor: number | string | null
+          balance_after_minor: number | string | null
+          currency: string | null
           created_at: string
           note: string | null
           request_id: string | null
@@ -44,6 +51,10 @@ export type Database = {
           delta_pln: number | string
           balance_before: number | string
           balance_after: number | string
+          delta_minor?: number | string | null
+          balance_before_minor?: number | string | null
+          balance_after_minor?: number | string | null
+          currency?: string | null
           created_at?: string
           note?: string | null
           request_id?: string | null
@@ -55,9 +66,37 @@ export type Database = {
           delta_pln?: number | string
           balance_before?: number | string
           balance_after?: number | string
+          delta_minor?: number | string | null
+          balance_before_minor?: number | string | null
+          balance_after_minor?: number | string | null
+          currency?: string | null
           created_at?: string
           note?: string | null
           request_id?: string | null
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          id: string
+          billing_currency: string | null
+          locale: string | null
+          created_at: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          id: string
+          billing_currency?: string | null
+          locale?: string | null
+          created_at?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          id?: string
+          billing_currency?: string | null
+          locale?: string | null
+          created_at?: string | null
+          updated_at?: string | null
         }
         Relationships: []
       }

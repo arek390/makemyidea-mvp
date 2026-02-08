@@ -140,7 +140,7 @@ export const updateBoardItemLabel = async (
   if (!response.ok || !payload?.ok) {
     throw new Error(payload?.error || 'UPDATE_FAILED')
   }
-  const balanceAfter = Number(payload?.balance_after_pln ?? 0)
+  const balanceAfter = Number(payload?.balance_after_minor ?? NaN)
   return Number.isFinite(balanceAfter) ? balanceAfter : null
 }
 

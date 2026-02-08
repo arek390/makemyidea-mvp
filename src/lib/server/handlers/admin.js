@@ -462,11 +462,12 @@ export const handleAdminBillingList = async (req, res) => {
     const pagedUsers = offsetRemainder ? users.slice(offsetRemainder) : users
     const userIds = pagedUsers.map((row) => row.id).filter(Boolean)
     let balances = []
+    let profiles = []
 
     if (userIds.length) {
       const balanceRes = await supabaseAdmin
         .from('billing_accounts')
-        .select('user_id, balance_pln')
+        .select('user_id, balance_pln_grosze, balance_usd_cents')
         .in('user_id', userIds)
       if (balanceRes.error) {
         console.error('[admin][billing_list] billing_accounts failed', balanceRes.error)
@@ -474,16 +475,39 @@ export const handleAdminBillingList = async (req, res) => {
         return
       }
       balances = balanceRes.data || []
+      const profilesRes = await supabaseAdmin
+        .from('profiles')
+        .select('id, billing_currency')
+        .in('id', userIds)
+      if (profilesRes.error) {
+        console.error('[admin][billing_list] profiles failed', profilesRes.error)
+        res.status(500).json({ ok: false, error: profilesRes.error.message || 'QUERY_FAILED' })
+        return
+      }
+      profiles = profilesRes.data || []
     }
 
     const balanceByUser = new Map(
-      balances.map((row) => [String(row.user_id), Number(row.balance_pln ?? 0)])
+      balances.map((row) => [
+        String(row.user_id),
+        {
+          pln: Number(row.balance_pln_grosze ?? 0),
+          usd: Number(row.balance_usd_cents ?? 0),
+        },
+      ])
+    )
+    const currencyByUser = new Map(
+      profiles.map((row) => [String(row.id), String(row.billing_currency || '').toUpperCase()])
     )
 
     const items = pagedUsers.slice(0, limit).map((row) => ({
       userId: row.id,
       email: row.email || null,
-      balancePLN: balanceByUser.get(String(row.id)) ?? 0,
+      currency: currencyByUser.get(String(row.id)) === 'USD' ? 'USD' : 'PLN',
+      balanceMinor:
+        (currencyByUser.get(String(row.id)) === 'USD'
+          ? balanceByUser.get(String(row.id))?.usd
+          : balanceByUser.get(String(row.id))?.pln) ?? 0,
     }))
 
     res.status(200).json({ ok: true, items })
@@ -511,43 +535,88 @@ export const handleAdminBillingTopup = async (req, res) => {
 
     const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {}
     const targetUserId = String(body?.targetUserId || '').trim()
+    const currencyRaw = String(body?.currency || '').toUpperCase()
+    const currency = currencyRaw === 'USD' ? 'USD' : 'PLN'
+    const deltaMinor = Number(body?.amountMinor)
     const deltaRaw = Number(body?.deltaPLN)
     if (!targetUserId) {
       res.status(400).json({ ok: false, error: 'MISSING_TARGET_USER' })
       return
     }
-    if (!Number.isFinite(deltaRaw) || deltaRaw <= 0) {
+    const amountMinor = Number.isFinite(deltaMinor)
+      ? deltaMinor
+      : Number.isFinite(deltaRaw)
+        ? Math.round(deltaRaw * 100)
+        : NaN
+    if (!Number.isFinite(amountMinor) || amountMinor <= 0) {
       res.status(400).json({ ok: false, error: 'INVALID_DELTA' })
       return
     }
-    if (deltaRaw > MAX_DELTA) {
+    if (amountMinor / 100 > MAX_DELTA) {
       res.status(400).json({ ok: false, error: 'DELTA_TOO_LARGE' })
       return
     }
 
-    const requestId = crypto.randomUUID()
     const adminUserId = adminUser?.id || null
     const supabaseAdmin = getSupabaseAdmin()
-    const rpcRes = await supabaseAdmin.rpc('admin_increment_balance', {
-      admin_user: adminUserId,
-      target_user: targetUserId,
-      delta_pln: deltaRaw,
+    const balanceColumn =
+      currency === 'USD' ? 'balance_usd_cents' : 'balance_pln_grosze'
+    const { data: account, error: accountError } = await supabaseAdmin
+      .from('billing_accounts')
+      .select(`${balanceColumn}`)
+      .eq('user_id', targetUserId)
+      .maybeSingle()
+    if (accountError) {
+      res.status(500).json({ ok: false, error: accountError.message || 'QUERY_FAILED' })
+      return
+    }
+    const currentMinor = Number(account?.[balanceColumn] ?? 0)
+    if (!account) {
+      const insertRes = await supabaseAdmin
+        .from('billing_accounts')
+        .insert({
+          user_id: targetUserId,
+          balance_pln_grosze: currency === 'PLN' ? amountMinor : 0,
+          balance_usd_cents: currency === 'USD' ? amountMinor : 0,
+          total_paid_pln: 0,
+          updated_at: new Date().toISOString(),
+        })
+      if (insertRes.error) {
+        res.status(500).json({ ok: false, error: insertRes.error.message || 'INSERT_FAILED' })
+        return
+      }
+    } else {
+      const updateRes = await supabaseAdmin
+        .from('billing_accounts')
+        .update({ [balanceColumn]: currentMinor + amountMinor, updated_at: new Date().toISOString() })
+        .eq('user_id', targetUserId)
+      if (updateRes.error) {
+        res.status(500).json({ ok: false, error: updateRes.error.message || 'UPDATE_FAILED' })
+        return
+      }
+    }
+
+    const requestId = crypto.randomUUID()
+    const balanceAfterMinor = currentMinor + amountMinor
+    await supabaseAdmin.from('billing_balance_adjustments').insert({
+      admin_user_id: adminUserId,
+      target_user_id: targetUserId,
+      delta_pln: currency === 'PLN' ? amountMinor / 100 : 0,
+      balance_before: currency === 'PLN' ? currentMinor / 100 : 0,
+      balance_after: currency === 'PLN' ? balanceAfterMinor / 100 : 0,
+      delta_minor: amountMinor,
+      balance_before_minor: currentMinor,
+      balance_after_minor: balanceAfterMinor,
+      currency,
+      note: 'admin_topup',
       request_id: requestId ?? null,
     })
 
-    if (rpcRes.error) {
-      res.status(400).json({ ok: false, error: rpcRes.error.message || 'RPC_FAILED' })
-      return
-    }
-
-    const payload = Array.isArray(rpcRes.data) ? rpcRes.data[0] : rpcRes.data
-    const balanceAfter = Number(payload?.balance_after ?? 0)
-    const balanceBefore = Number(payload?.balance_before ?? 0)
-
     res.status(200).json({
       ok: true,
-      balance_before: balanceBefore,
-      balance_after: balanceAfter,
+      currency,
+      balance_before_minor: currentMinor,
+      balance_after_minor: balanceAfterMinor,
     })
   } catch (error) {
     res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
@@ -575,23 +644,36 @@ export const handleAdminBillingReset = async (req, res) => {
     }
 
     const supabaseAdmin = getSupabaseAdmin()
+    const { data: profile, error: profileError } = await supabaseAdmin
+      .from('profiles')
+      .select('billing_currency')
+      .eq('id', targetUserId)
+      .maybeSingle()
+    if (profileError) {
+      res.status(500).json({ ok: false, error: profileError.message || 'QUERY_FAILED' })
+      return
+    }
+    const currency = String(profile?.billing_currency || '').toUpperCase() === 'USD' ? 'USD' : 'PLN'
+    const balanceColumn =
+      currency === 'USD' ? 'balance_usd_cents' : 'balance_pln_grosze'
     const { data: account, error: accountError } = await supabaseAdmin
       .from('billing_accounts')
-      .select('balance_pln')
+      .select(`${balanceColumn}`)
       .eq('user_id', targetUserId)
       .maybeSingle()
     if (accountError) {
       res.status(500).json({ ok: false, error: accountError.message || 'QUERY_FAILED' })
       return
     }
-    const currentBalance = Number(account?.balance_pln ?? 0)
+    const currentBalance = Number(account?.[balanceColumn] ?? 0)
 
     if (!account) {
       const insertRes = await supabaseAdmin
         .from('billing_accounts')
         .insert({
           user_id: targetUserId,
-          balance_pln: 0,
+          balance_pln_grosze: currency === 'PLN' ? 0 : 0,
+          balance_usd_cents: currency === 'USD' ? 0 : 0,
           total_paid_pln: 0,
           updated_at: new Date().toISOString(),
         })
@@ -602,7 +684,7 @@ export const handleAdminBillingReset = async (req, res) => {
     } else {
       const updateRes = await supabaseAdmin
         .from('billing_accounts')
-        .update({ balance_pln: 0, updated_at: new Date().toISOString() })
+        .update({ [balanceColumn]: 0, updated_at: new Date().toISOString() })
         .eq('user_id', targetUserId)
       if (updateRes.error) {
         res.status(500).json({ ok: false, error: updateRes.error.message || 'UPDATE_FAILED' })
@@ -611,18 +693,22 @@ export const handleAdminBillingReset = async (req, res) => {
     }
 
     const requestId = crypto.randomUUID()
-    const deltaPln = Number.isFinite(currentBalance) ? -currentBalance : 0
+    const deltaMinor = Number.isFinite(currentBalance) ? -currentBalance : 0
     await supabaseAdmin.from('billing_balance_adjustments').insert({
       admin_user_id: adminUser.id,
       target_user_id: targetUserId,
-      delta_pln: deltaPln,
-      balance_before: Number.isFinite(currentBalance) ? currentBalance : 0,
+      delta_pln: currency === 'PLN' ? deltaMinor / 100 : 0,
+      balance_before: currency === 'PLN' ? (Number.isFinite(currentBalance) ? currentBalance / 100 : 0) : 0,
       balance_after: 0,
+      delta_minor: deltaMinor,
+      balance_before_minor: Number.isFinite(currentBalance) ? currentBalance : 0,
+      balance_after_minor: 0,
+      currency,
       note: 'admin_reset_to_zero',
       request_id: requestId,
     })
 
-    res.status(200).json({ ok: true, userId: targetUserId, newBalanceMinor: 0 })
+    res.status(200).json({ ok: true, userId: targetUserId, currency, newBalanceMinor: 0 })
   } catch (error) {
     res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
   }

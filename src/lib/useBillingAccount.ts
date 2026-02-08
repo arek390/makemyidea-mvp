@@ -3,19 +3,22 @@ import { apiFetch } from './apiFetch'
 import { useAuthState } from './authState'
 
 type BillingAccountState = {
-  balancePLN: number
+  balanceMinor: number
+  currency: 'PLN' | 'USD'
   loading: boolean
   error: string | null
 }
 
 const defaultState: BillingAccountState = {
-  balancePLN: 0,
+  balanceMinor: 0,
+  currency: 'PLN',
   loading: false,
   error: null,
 }
 
 type UseBillingAccountOptions = {
   enabled?: boolean
+  uiLanguage?: 'Polish' | 'English'
 }
 
 export const useBillingAccount = (
@@ -24,6 +27,7 @@ export const useBillingAccount = (
 ): BillingAccountState => {
   const { authReady } = useAuthState()
   const enabled = options?.enabled ?? true
+  const uiLanguage = options?.uiLanguage ?? null
   const [state, setState] = useState<BillingAccountState>(defaultState)
 
   useEffect(() => {
@@ -38,23 +42,31 @@ export const useBillingAccount = (
     setState((prev) => ({ ...prev, loading: true, error: null }))
 
     const run = async () => {
-      const response = await apiFetch('/api/billing?action=balance', { method: 'GET' })
+      const lang =
+        uiLanguage === 'Polish' ? 'pl' : uiLanguage === 'English' ? 'en' : null
+      const url = lang
+        ? `/api/billing?action=balance&lang=${encodeURIComponent(lang)}`
+        : '/api/billing?action=balance'
+      const response = await apiFetch(url, { method: 'GET' })
       const payload = await response.json().catch(() => null)
 
       if (cancelled) return
 
       if (!response.ok || !payload?.ok) {
         setState({
-          balancePLN: 0,
+          balanceMinor: 0,
+          currency: 'PLN',
           loading: false,
           error: payload?.error || 'Unable to load billing balance.',
         })
         return
       }
 
-      const balance = Number(payload?.balancePLN ?? 0)
+      const balance = Number(payload?.balanceMinor ?? 0)
+      const currency = payload?.currency === 'USD' ? 'USD' : 'PLN'
       setState({
-        balancePLN: Number.isFinite(balance) ? balance : 0,
+        balanceMinor: Number.isFinite(balance) ? balance : 0,
+        currency,
         loading: false,
         error: null,
       })
@@ -65,7 +77,7 @@ export const useBillingAccount = (
     return () => {
       cancelled = true
     }
-  }, [authReady, enabled, userId])
+  }, [authReady, enabled, userId, uiLanguage])
 
   return state
 }

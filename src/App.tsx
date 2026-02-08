@@ -2234,7 +2234,7 @@ function App() {
   } | null>(null)
   const isAdmin = useMemo(() => isAdminUser(authSession), [authSession])
   const diagnosticsEnabledForUser = isAdmin && diagnosticsEnabled
-  const [reportCreatePriceGrosze, setReportCreatePriceGrosze] = useState<number | null>(null)
+  const [reportCreatePriceMinor, setReportCreatePriceMinor] = useState<number | null>(null)
   const [reportCreatePriceLoading, setReportCreatePriceLoading] = useState(false)
   const [topupLoadingTier, setTopupLoadingTier] = useState<'S' | 'M' | 'L' | null>(null)
 
@@ -2255,7 +2255,7 @@ function App() {
     [aiSupportEnabled, diagnosticsEnabledForUser]
   )
   const triggerInsufficientBalance = () => {
-    const currentBalance = billingBalanceOverride ?? billingAccount.balancePLN
+    const currentBalance = billingBalanceOverrideMinor ?? billingAccount.balanceMinor
     setInsufficientBalanceState({
       active: true,
       atBalance: Number.isFinite(currentBalance) ? currentBalance : null,
@@ -2386,7 +2386,7 @@ function App() {
     window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, defaultLanguage)
     return defaultLanguage
   })
-  const balanceCurrency: 'PLN' | 'USD' = uiLanguage === 'Polish' ? 'PLN' : 'USD'
+  const balanceCurrency: 'PLN' | 'USD' = billingAccount.currency || 'PLN'
   const reportLanguage = uiLanguage
   const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
   const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
@@ -2846,17 +2846,23 @@ const isAuthFlowInProgress = () => {
   const showSupabaseConfigError = Boolean(supabaseInitError)
   const billingAccount = useBillingAccount(authSession?.user?.id ?? null, {
     enabled: isEnginePreview || isReport,
+    uiLanguage,
   })
-  const [billingBalanceOverride, setBillingBalanceOverride] = useState<number | null>(null)
+  const [billingBalanceOverrideMinor, setBillingBalanceOverrideMinor] = useState<number | null>(
+    null
+  )
   const refreshBillingBalance = async () => {
     if (!authSession?.user?.id) return
     try {
-      const response = await apiFetch('/api/billing?action=balance', { method: 'GET' })
+      const lang = uiLanguage === 'Polish' ? 'pl' : 'en'
+      const response = await apiFetch(`/api/billing?action=balance&lang=${lang}`, {
+        method: 'GET',
+      })
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.ok) return
-      const balance = Number(payload?.balancePLN ?? 0)
+      const balance = Number(payload?.balanceMinor ?? 0)
       if (Number.isFinite(balance)) {
-        setBillingBalanceOverride(balance)
+        setBillingBalanceOverrideMinor(balance)
       }
     } catch {
       // ignore refresh failures
@@ -2871,11 +2877,20 @@ const isAuthFlowInProgress = () => {
     }).format(amount)
     return `${formatted} ${currency}`
   }
+  const formatTopupAmountValue = (currency: 'PLN' | 'USD', amountMinor: number) => {
+    const amount = amountMinor / 100
+    const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
+    return new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(amount)
+  }
   const resolveTopupMinor = (tier: 'S' | 'M' | 'L') => {
-    if (uiLanguage === 'Polish') {
-      return { currency: 'PLN' as const, amountMinor: tier === 'S' ? 2000 : tier === 'M' ? 5000 : 10000 }
+    const currency = billingAccount.currency || 'PLN'
+    if (currency === 'USD') {
+      return { currency: 'USD' as const, amountMinor: tier === 'S' ? 500 : tier === 'M' ? 1500 : 3000 }
     }
-    return { currency: 'USD' as const, amountMinor: tier === 'S' ? 500 : tier === 'M' ? 1500 : 3000 }
+    return { currency: 'PLN' as const, amountMinor: tier === 'S' ? 2000 : tier === 'M' ? 5000 : 10000 }
   }
   const handleTestTopup = async (tier: 'S' | 'M' | 'L') => {
     if (topupLoadingTier) return
@@ -2900,9 +2915,9 @@ const isAuthFlowInProgress = () => {
         }
         return
       }
-      const balancePln = Number(payload?.balancePLN ?? NaN)
-      if (Number.isFinite(balancePln)) {
-        setBillingBalanceOverride(balancePln)
+      const balanceMinor = Number(payload?.balance?.amountMinor ?? payload?.newBalance?.amountMinor ?? NaN)
+      if (Number.isFinite(balanceMinor)) {
+        setBillingBalanceOverrideMinor(balanceMinor)
       } else {
         await refreshBillingBalance()
       }
@@ -2944,22 +2959,22 @@ const isAuthFlowInProgress = () => {
   }>({ active: false, atBalance: null })
 
   useEffect(() => {
-    if (billingBalanceOverride == null) return
-    if (Math.abs(billingAccount.balancePLN - billingBalanceOverride) < 0.005) {
-      setBillingBalanceOverride(null)
+    if (billingBalanceOverrideMinor == null) return
+    if (billingAccount.balanceMinor === billingBalanceOverrideMinor) {
+      setBillingBalanceOverrideMinor(null)
     }
-  }, [billingAccount.balancePLN, billingBalanceOverride])
+  }, [billingAccount.balanceMinor, billingBalanceOverrideMinor])
 
   useEffect(() => {
     if (!insufficientBalanceState.active) return
-    const currentBalance = billingBalanceOverride ?? billingAccount.balancePLN
+    const currentBalance = billingBalanceOverrideMinor ?? billingAccount.balanceMinor
     const baseline = insufficientBalanceState.atBalance
-    if (baseline != null && currentBalance > baseline + 0.001) {
+    if (baseline != null && currentBalance > baseline) {
       setInsufficientBalanceState({ active: false, atBalance: null })
     }
   }, [
-    billingAccount.balancePLN,
-    billingBalanceOverride,
+    billingAccount.balanceMinor,
+    billingBalanceOverrideMinor,
     insufficientBalanceState.active,
     insufficientBalanceState.atBalance,
   ])
@@ -2973,20 +2988,25 @@ const isAuthFlowInProgress = () => {
       try {
         const { data, error } = await supabaseClient
           .from('pricing_rules')
-          .select('price_grosze')
+          .select('price_grosze,price_cents')
           .eq('action_key', 'report_generate')
           .maybeSingle()
         if (!cancelled) {
           if (error) {
-            setReportCreatePriceGrosze(null)
+            setReportCreatePriceMinor(null)
           } else {
-            const row = data as { price_grosze?: number | string | null } | null
-            const value = Number(row?.price_grosze)
-            setReportCreatePriceGrosze(Number.isFinite(value) ? value : null)
+            const row = data as {
+              price_grosze?: number | string | null
+              price_cents?: number | string | null
+            } | null
+            const raw =
+              balanceCurrency === 'USD' ? row?.price_cents : row?.price_grosze
+            const value = Number(raw)
+            setReportCreatePriceMinor(Number.isFinite(value) ? value : null)
           }
         }
       } catch {
-        if (!cancelled) setReportCreatePriceGrosze(null)
+        if (!cancelled) setReportCreatePriceMinor(null)
       } finally {
         if (!cancelled) setReportCreatePriceLoading(false)
       }
@@ -2995,7 +3015,7 @@ const isAuthFlowInProgress = () => {
     return () => {
       cancelled = true
     }
-  }, [client, isEnginePreview])
+  }, [client, isEnginePreview, balanceCurrency])
 
   useEffect(() => {
     if (!isEnginePreview) return
@@ -5959,9 +5979,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
         hasQuestion: Boolean(insertedRow.question_text_pl || insertedRow.question_text_en),
         questionId: insertedRow.question_id ?? null,
       })
-      const balanceAfter = Number(apiPayload?.balance_after_pln ?? 0)
+      const balanceAfter = Number(apiPayload?.balance_after_minor ?? NaN)
       if (Number.isFinite(balanceAfter)) {
-        setBillingBalanceOverride(balanceAfter)
+        setBillingBalanceOverrideMinor(balanceAfter)
       }
       const insertedCreatedAt =
         typeof insertedRow.created_at === 'number'
@@ -7068,7 +7088,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       if (authSession?.user?.id && client) {
         const balanceAfter = await updateBoardItemLabel(sessionId, entryId, label ?? null)
         if (typeof balanceAfter === 'number' && Number.isFinite(balanceAfter)) {
-          setBillingBalanceOverride(balanceAfter)
+          setBillingBalanceOverrideMinor(balanceAfter)
         }
       }
       const detail = await getSession(sessionId)
@@ -7929,10 +7949,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
         saveSessionLabel={copy.engine.saveSession}
         showInsufficientBalance={insufficientBalanceState.active}
         insufficientBalanceNotice={copy.insufficientBalanceNotice}
-        balancePLN={billingBalanceOverride ?? billingAccount.balancePLN}
+        billingCurrency={balanceCurrency}
+        balanceMinor={billingBalanceOverrideMinor ?? billingAccount.balanceMinor}
         billingLoading={billingAccount.loading}
         billingError={billingAccount.error}
-        usdPlnRate={usdPlnRate}
         onReportMetaChange={async (meta) => {
           const sessionId = snapshot.sessionId || enginePreviewSessionId
           if (!sessionId) return
@@ -8009,6 +8029,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
       )
     }
     const topupCopy = copy.topupConfig
+    const topupCurrency = balanceCurrency
+    const topupAmountS = resolveTopupMinor('S').amountMinor
+    const topupAmountM = resolveTopupMinor('M').amountMinor
+    const topupAmountL = resolveTopupMinor('L').amountMinor
     const isTopupBusy = topupLoadingTier !== null
     return withDevOverlay(
       <div className="app auth-screen">
@@ -8047,9 +8071,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
               <div className="topup-inner">
                 <div className="topup-amount">
                   <span className="topup-amount-value">
-                    {topupLoadingTier === 'S' ? '...' : topupCopy.amounts[0]}
+                    {topupLoadingTier === 'S'
+                      ? '...'
+                      : formatTopupAmountValue(topupCurrency, topupAmountS)}
                   </span>
-                  <span className="topup-amount-currency">{topupCopy.currency}</span>
+                  <span className="topup-amount-currency">{topupCurrency}</span>
                 </div>
                 <p className="topup-caption">
                   {topupCopy.captions[0][0]}
@@ -8084,9 +8110,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
               <div className="topup-inner">
                 <div className="topup-amount">
                   <span className="topup-amount-value">
-                    {topupLoadingTier === 'M' ? '...' : topupCopy.amounts[1]}
+                    {topupLoadingTier === 'M'
+                      ? '...'
+                      : formatTopupAmountValue(topupCurrency, topupAmountM)}
                   </span>
-                  <span className="topup-amount-currency">{topupCopy.currency}</span>
+                  <span className="topup-amount-currency">{topupCurrency}</span>
                 </div>
                 <p className="topup-caption">
                   {topupCopy.captions[1][0]}
@@ -8121,9 +8149,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
               <div className="topup-inner">
                 <div className="topup-amount">
                   <span className="topup-amount-value">
-                    {topupLoadingTier === 'L' ? '...' : topupCopy.amounts[2]}
+                    {topupLoadingTier === 'L'
+                      ? '...'
+                      : formatTopupAmountValue(topupCurrency, topupAmountL)}
                   </span>
-                  <span className="topup-amount-currency">{topupCopy.currency}</span>
+                  <span className="topup-amount-currency">{topupCurrency}</span>
                 </div>
                 <p className="topup-caption">
                   {topupCopy.captions[2][0]}
@@ -8427,14 +8457,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
     new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
       Math.max(0, value || 0)
     )
-  const formatUsdBalance = (value: number) =>
-    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
-      Math.max(0, value || 0)
-    )
-  const formatPlnBalance = (value: number) =>
-    new Intl.NumberFormat('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
-      Math.max(0, value || 0)
-    )
+  const formatBalanceMinor = (currency: 'PLN' | 'USD', minor: number) => {
+    const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
+    return new Intl.NumberFormat(locale, {
+      style: 'currency',
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Math.max(0, minor || 0) / 100)
+  }
   const totalCostUsd = engineUsage.totalUSD
   const totalCostPln = usdPlnRate ? totalCostUsd * usdPlnRate : null
   const modelUsageEntries = Object.entries(engineUsage.perModel)
@@ -8486,11 +8517,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   <span className="engine-balance-value">
                     {billingAccount.loading || billingAccount.error
                       ? '—'
-                      : balanceCurrency === 'USD'
-                        ? usdPlnRate
-                          ? `${formatUsdBalance((billingBalanceOverride ?? billingAccount.balancePLN) / usdPlnRate)} USD`
-                          : 'USD: …'
-                        : `${formatPlnBalance(billingBalanceOverride ?? billingAccount.balancePLN)} PLN`}
+                      : formatBalanceMinor(
+                          balanceCurrency,
+                          billingBalanceOverrideMinor ?? billingAccount.balanceMinor
+                        )}
                   </span>
                 </div>
                 {insufficientBalanceState.active && (
@@ -8683,9 +8713,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       <AiCostButton
                         label={copy.enginePreviewCreateReport}
                         lang={uiLanguage === 'Polish' ? 'pl' : 'en'}
-                        priceGrosze={reportCreatePriceGrosze}
+                        priceMinor={reportCreatePriceMinor}
+                        currency={balanceCurrency}
                         priceLoading={reportCreatePriceLoading}
-                        fxUsdPln={usdPlnRate}
                         onClick={() => {
                           markUserInitiatedInteraction('pointer')
                           setEngineLastInputActivityAt(Date.now())

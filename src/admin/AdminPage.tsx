@@ -14,14 +14,17 @@ type AdminRow = {
   tokens_total: number | null
   cost_pln: number | null
   cost_usd: number | null
-  balance_pln: number | null
+  balance_pln_grosze: number | null
+  balance_usd_cents: number | null
+  billing_currency: 'PLN' | 'USD' | null
   total_paid_pln: number | null
 }
 
 type BillingRow = {
   userId: string
   email: string | null
-  balancePLN: number | null
+  balanceMinor: number | null
+  currency: 'PLN' | 'USD'
 }
 
 type AdminPageProps = {
@@ -42,6 +45,11 @@ const formatMoney = (value: number | null | undefined, currency: 'PLN' | 'USD') 
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(value)
+}
+
+const formatMoneyMinor = (minor: number | null | undefined, currency: 'PLN' | 'USD') => {
+  if (minor == null || Number.isNaN(minor)) return '—'
+  return formatMoney(minor / 100, currency)
 }
 
 const formatDateTime = (value: string | null | undefined) => {
@@ -82,10 +90,10 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       ? 'Szukaj po session_name lub session_id'
       : 'Search by session_name or session_id',
     topupAction: isPl ? 'Zasil' : 'Top up',
-    topupNotice: (delta: number, balanceAfter: number) =>
+    topupNotice: (deltaLabel: string, balanceLabel: string) =>
       isPl
-        ? `Zasilono: +${delta.toFixed(2)} PLN → saldo ${balanceAfter.toFixed(2)} PLN`
-        : `Topped up: +${delta.toFixed(2)} PLN → balance ${balanceAfter.toFixed(2)} PLN`,
+        ? `Zasilono: +${deltaLabel} → saldo ${balanceLabel}`
+        : `Topped up: +${deltaLabel} → balance ${balanceLabel}`,
     loading: isPl ? 'Ładowanie...' : 'Loading...',
     loadingReport: isPl ? 'Ładowanie raportu...' : 'Loading report...',
     loadingBilling: isPl ? 'Ładowanie billing...' : 'Loading billing...',
@@ -106,18 +114,18 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     tableTokens: isPl ? 'Tokeny' : 'Tokens',
     tableCostPln: isPl ? 'Koszt PLN' : 'Cost PLN',
     tableCostUsd: isPl ? 'Koszt USD' : 'Cost USD',
-    tableBalancePln: isPl ? 'Saldo PLN' : 'Balance PLN',
+    tableBalancePln: isPl ? 'Saldo' : 'Balance',
     tableTotalPaidPln: isPl ? 'Suma wpłat PLN' : 'Total paid PLN',
     tableYes: isPl ? 'Tak' : 'Yes',
     tableNo: isPl ? 'Nie' : 'No',
     tableEmpty: isPl ? 'Brak danych' : 'No data',
     billingHeader: isPl ? 'Billing / Saldo' : 'Billing / Balance',
     billingTableEmail: isPl ? 'Email' : 'Email',
-    billingTableBalance: isPl ? 'Saldo PLN' : 'Balance PLN',
+    billingTableBalance: isPl ? 'Saldo' : 'Balance',
     billingTableAction: isPl ? 'Zasil' : 'Top up',
     billingTableReset: isPl ? 'Reset' : 'Reset',
     billingEmailSearchPlaceholder: isPl ? 'Szukaj po emailu' : 'Search by email',
-    billingAmountPlaceholder: isPl ? 'Kwota PLN' : 'Amount PLN',
+    billingAmountPlaceholder: isPl ? 'Kwota' : 'Amount',
     billingResetLabel: isPl ? 'Reset do 0' : 'Reset to 0',
     billingResetConfirm: (email: string | null, userId: string) =>
       isPl
@@ -390,6 +398,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       const { data } = await supabase.auth.getSession()
       const token = data.session?.access_token || ''
       if (!token) throw new Error('AUTH_REQUIRED')
+      const amountMinor = Math.round(delta * 100)
       const response = await fetch('/api/admin?action=admin.billing.topup', {
         method: 'POST',
         headers: {
@@ -398,7 +407,8 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         },
         body: JSON.stringify({
           targetUserId: row.userId,
-          deltaPLN: delta,
+          amountMinor,
+          currency: row.currency,
         }),
       })
       const payload = await response.json().catch(() => null)
@@ -410,14 +420,14 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
           seenUserId ? `${errorMessage} (seenUserId: ${seenUserId})` : errorMessage
         )
       }
-      const balanceAfter = Number(payload.balance_after ?? 0)
-      setBillingRows((prev) =>
-        prev.map((item) =>
-          item.userId === row.userId ? { ...item, balancePLN: balanceAfter } : item
-        )
-      )
+      const balanceAfterMinor = Number(payload.balance_after_minor ?? NaN)
+      const balanceLabel = Number.isFinite(balanceAfterMinor)
+        ? formatMoneyMinor(balanceAfterMinor, row.currency)
+        : '—'
+      const deltaLabel = formatMoney(delta, row.currency)
       setBillingInputs((prev) => ({ ...prev, [row.userId]: '' }))
-      setBillingNotice(t.topupNotice(delta, balanceAfter))
+      setBillingNotice(t.topupNotice(deltaLabel, balanceLabel))
+      await fetchBillingRows({ silent: true })
     } catch (err) {
       const message = err instanceof Error ? err.message : 'TOPUP_FAILED'
       setBillingError(message === 'AUTH_REQUIRED' ? t.authRequired : message)
@@ -678,7 +688,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                   {filteredBillingRows.map((row) => (
                     <tr key={row.userId}>
                       <td>{row.email || '—'}</td>
-                      <td>{formatMoney(row.balancePLN, 'PLN')}</td>
+                      <td>{formatMoneyMinor(row.balanceMinor, row.currency)}</td>
                       <td>
                         <div className="admin-topup">
                           <input
@@ -807,7 +817,14 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                     <td>{formatNumber(row.tokens_total)}</td>
                     <td>{formatMoney(row.cost_pln, 'PLN')}</td>
                     <td>{formatMoney(row.cost_usd, 'USD')}</td>
-                    <td>{formatMoney(row.balance_pln, 'PLN')}</td>
+                    <td>
+                      {formatMoneyMinor(
+                        row.billing_currency === 'USD'
+                          ? row.balance_usd_cents
+                          : row.balance_pln_grosze,
+                        row.billing_currency === 'USD' ? 'USD' : 'PLN'
+                      )}
+                    </td>
                     <td>{formatMoney(row.total_paid_pln, 'PLN')}</td>
                   </tr>
                 ))}

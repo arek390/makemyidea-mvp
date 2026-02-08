@@ -5,6 +5,12 @@ const toInt = (value) => {
   return Number.isFinite(num) ? Math.trunc(num) : NaN
 }
 
+const normalizeCurrency = (value) => {
+  const raw = String(value || '').toUpperCase()
+  if (raw === 'PLN' || raw === 'USD') return raw
+  return null
+}
+
 export const createBillingError = (code, message) => {
   const err = new Error(message || code)
   err.code = code
@@ -18,6 +24,12 @@ export const normalizeBillingError = (error) => {
   if (combined.includes('PRICING_RULE_MISSING') || combined.includes('PRICING_RULE_INACTIVE')) {
     return { code: 'PRICING_RULE_MISSING', status: 400 }
   }
+  if (combined.includes('PRICE_CENTS_MISSING') || combined.includes('PRICE_GROSZE_MISSING')) {
+    return { code: 'PRICING_RULE_MISSING', status: 400 }
+  }
+  if (combined.includes('BILLING_CURRENCY_MISSING')) {
+    return { code: 'BILLING_CURRENCY_MISSING', status: 400 }
+  }
   if (combined.includes('INSUFFICIENT_BALANCE')) {
     return { code: 'INSUFFICIENT_BALANCE', status: 402 }
   }
@@ -27,16 +39,93 @@ export const normalizeBillingError = (error) => {
   return null
 }
 
-export const getPriceForAction = async (actionKey, supabaseAdmin = null) => {
+export const resolveBillingCurrency = async (
+  userId,
+  preferredCurrency = null,
+  supabaseAdmin = null
+) => {
+  const safeUserId = String(userId || '').trim()
+  if (!safeUserId) {
+    throw createBillingError('AUTH_REQUIRED', 'Missing user id.')
+  }
+  const client = supabaseAdmin || getSupabaseAdmin()
+  const { data: profile, error } = await client
+    .schema('public')
+    .from('profiles')
+    .select('billing_currency')
+    .eq('id', safeUserId)
+    .maybeSingle()
+  if (error) {
+    throw createBillingError('PROFILE_LOOKUP_FAILED', error.message)
+  }
+  const existing = normalizeCurrency(profile?.billing_currency)
+  if (existing) return existing
+
+  const next = normalizeCurrency(preferredCurrency) || null
+  if (!next) {
+    throw createBillingError('BILLING_CURRENCY_MISSING', 'Missing billing currency.')
+  }
+  if (!profile) {
+    const insertRes = await client
+      .schema('public')
+      .from('profiles')
+      .insert({ id: safeUserId, billing_currency: next })
+    if (insertRes.error) {
+      throw createBillingError('PROFILE_UPSERT_FAILED', insertRes.error.message)
+    }
+  } else {
+    const updateRes = await client
+      .schema('public')
+      .from('profiles')
+      .update({ billing_currency: next })
+      .eq('id', safeUserId)
+    if (updateRes.error) {
+      throw createBillingError('PROFILE_UPSERT_FAILED', updateRes.error.message)
+    }
+  }
+  return next
+}
+
+export const ensureBillingAccount = async (userId, supabaseAdmin = null) => {
+  const safeUserId = String(userId || '').trim()
+  if (!safeUserId) return
+  const client = supabaseAdmin || getSupabaseAdmin()
+  const { error } = await client
+    .schema('public')
+    .from('billing_accounts')
+    .upsert(
+      {
+        user_id: safeUserId,
+        balance_pln_grosze: 0,
+        balance_usd_cents: 0,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id', ignoreDuplicates: true }
+    )
+  if (error) {
+    throw createBillingError('BILLING_ACCOUNT_INIT_FAILED', error.message)
+  }
+}
+
+export const getPriceForAction = async (
+  actionKey,
+  currency,
+  supabaseAdmin = null
+) => {
   const safeKey = String(actionKey || '').trim()
   if (!safeKey) {
     throw createBillingError('PRICING_RULE_MISSING', 'Missing action key.')
+  }
+  const safeCurrency = normalizeCurrency(currency)
+  if (!safeCurrency) {
+    throw createBillingError('BILLING_CURRENCY_MISSING', 'Missing billing currency.')
   }
   const client = supabaseAdmin || getSupabaseAdmin()
   const { data, error } = await client
     .schema('public')
     .from('pricing_rules')
-    .select('price_grosze,is_active')
+    .select('price_grosze,price_cents,is_active')
     .eq('action_key', safeKey)
     .maybeSingle()
   if (error) {
@@ -45,9 +134,10 @@ export const getPriceForAction = async (actionKey, supabaseAdmin = null) => {
   if (!data || data.is_active !== true) {
     throw createBillingError('PRICING_RULE_MISSING', 'Pricing rule missing or inactive.')
   }
-  const price = toInt(data.price_grosze)
+  const price = toInt(safeCurrency === 'USD' ? data.price_cents : data.price_grosze)
   if (!Number.isFinite(price) || price < 0) {
-    throw createBillingError('PRICING_RULE_INVALID', 'Invalid pricing rule.')
+    const errCode = safeCurrency === 'USD' ? 'PRICE_CENTS_MISSING' : 'PRICE_GROSZE_MISSING'
+    throw createBillingError(errCode, 'Invalid pricing rule.')
   }
   return price
 }
@@ -56,7 +146,8 @@ export const chargeUserBalance = async (
   userId,
   actionKey,
   referenceId = null,
-  supabaseAdmin = null
+  supabaseAdmin = null,
+  options = {}
 ) => {
   const safeUserId = String(userId || '').trim()
   if (!safeUserId) {
@@ -67,10 +158,14 @@ export const chargeUserBalance = async (
     throw createBillingError('PRICING_RULE_MISSING', 'Missing action key.')
   }
   const client = supabaseAdmin || getSupabaseAdmin()
+  const preferredCurrency = options?.preferredCurrency || null
+  const billingCurrency = await resolveBillingCurrency(safeUserId, preferredCurrency, client)
+  await ensureBillingAccount(safeUserId, client)
   const { data, error } = await client.rpc('charge_user_balance', {
     p_user_id: safeUserId,
     p_action_key: safeActionKey,
     p_reference_id: referenceId ? String(referenceId) : null,
+    p_currency: billingCurrency,
   })
   if (error) {
     console.error('[billing][charge_user_balance] rpc failed', {
@@ -82,22 +177,14 @@ export const chargeUserBalance = async (
     throw createBillingError(error.code || 'BILLING_FAILED', error.message || 'Billing failed.')
   }
   const row = Array.isArray(data) ? data[0] : data
-  const balanceAfterPln = Number(row?.balance_after_pln)
-  const balanceBeforePln = Number(row?.balance_before_pln)
-  const amountPln = Number(row?.amount_pln)
-  const amountGrosze = toInt(row?.amount_grosze)
-  const fallbackAfter =
-    Number.isFinite(balanceAfterPln) ? Math.round(balanceAfterPln * 100) : NaN
+  const balanceBeforeMinor = toInt(row?.balance_before_minor)
+  const balanceAfterMinor = toInt(row?.balance_after_minor)
+  const amountMinor = toInt(row?.amount_minor)
+  const currency = normalizeCurrency(row?.currency) || billingCurrency
   return {
-    balanceBeforeGrosze: Number.isFinite(balanceBeforePln)
-      ? Math.round(balanceBeforePln * 100)
-      : toInt(row?.balance_before_grosze),
-    balanceAfterGrosze: Number.isFinite(balanceAfterPln)
-      ? Math.round(balanceAfterPln * 100)
-      : toInt(row?.balance_after_grosze) || fallbackAfter,
-    balanceBeforePln: Number.isFinite(balanceBeforePln) ? balanceBeforePln : null,
-    balanceAfterPln: Number.isFinite(balanceAfterPln) ? balanceAfterPln : null,
-    amountPln: Number.isFinite(amountPln) ? amountPln : null,
-    amountGrosze: Number.isFinite(amountGrosze) ? amountGrosze : null,
+    currency,
+    balanceBeforeMinor: Number.isFinite(balanceBeforeMinor) ? balanceBeforeMinor : null,
+    balanceAfterMinor: Number.isFinite(balanceAfterMinor) ? balanceAfterMinor : null,
+    amountMinor: Number.isFinite(amountMinor) ? amountMinor : null,
   }
 }

@@ -119,9 +119,8 @@ export default async function handler(req, res) {
       sendJson(res, 200, {
         ok: true,
         item: data,
-        balance_after_grosze: charge.balanceAfterGrosze,
-        balance_after_pln:
-          charge.balanceAfterPln ?? (charge.balanceAfterGrosze != null ? charge.balanceAfterGrosze / 100 : null),
+        balance_after_minor: charge.balanceAfterMinor,
+        balance_currency: charge.currency,
       })
       return
     }
@@ -157,9 +156,8 @@ export default async function handler(req, res) {
     sendJson(res, 200, {
       ok: true,
       item: data,
-      balance_after_grosze: charge.balanceAfterGrosze,
-      balance_after_pln:
-        charge.balanceAfterPln ?? (charge.balanceAfterGrosze != null ? charge.balanceAfterGrosze / 100 : null),
+      balance_after_minor: charge.balanceAfterMinor,
+      balance_currency: charge.currency,
     })
   } catch (error) {
     console.error('[board-items][billing] charge failed', {
