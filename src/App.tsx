@@ -2995,7 +2995,7 @@ const isAuthFlowInProgress = () => {
       setReportCreatePriceLoading(true)
       try {
         const { data, error } = await supabaseClient
-          .from('pricing_rules')
+          .from('pricing_rules_public')
           .select('price_grosze,price_cents')
           .eq('action_key', 'report_generate')
           .maybeSingle()
