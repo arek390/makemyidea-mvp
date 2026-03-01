@@ -32,6 +32,45 @@ const normalizeCurrency = (value) => {
 const selectReportFields =
   'id,session_id,created_at,updated_at,summary_json,last_summary_text_hash,source_updated_at'
 
+const isAdminUser = async (supabaseAdmin, userId) => {
+  const adminRes = await supabaseAdmin
+    .schema('public')
+    .from('admin_users')
+    .select('user_id')
+    .eq('user_id', userId)
+    .limit(1)
+    .maybeSingle()
+  if (adminRes.error) return { ok: false, error: adminRes.error }
+  return { ok: true, isAdmin: Boolean(adminRes.data?.user_id) }
+}
+
+const resolveSessionAccess = async (supabaseAdmin, sessionId, userId) => {
+  const sessionRes = await supabaseAdmin
+    .schema('public')
+    .from('sessions')
+    .select('id,user_id')
+    .eq('id', sessionId)
+    .limit(1)
+    .maybeSingle()
+  if (sessionRes.error) {
+    return { ok: false, error: sessionRes.error, allowed: false, reason: 'SESSION_LOOKUP_FAILED' }
+  }
+  const ownerUserId = String(sessionRes.data?.user_id || '')
+  const isOwner = Boolean(ownerUserId && ownerUserId === String(userId))
+  if (isOwner) return { ok: true, allowed: true, isAdmin: false, ownerUserId }
+
+  const adminCheck = await isAdminUser(supabaseAdmin, userId)
+  if (!adminCheck.ok) {
+    return { ok: false, error: adminCheck.error, allowed: false, reason: 'ADMIN_LOOKUP_FAILED' }
+  }
+  return {
+    ok: true,
+    allowed: Boolean(adminCheck.isAdmin),
+    isAdmin: Boolean(adminCheck.isAdmin),
+    ownerUserId,
+  }
+}
+
 const handleReportGenerate = async (req, res) => {
   if (req.method !== 'POST') {
     methodNotAllowed(res, ['POST'])
@@ -55,6 +94,15 @@ const handleReportGenerate = async (req, res) => {
   const userId = authRes?.data?.user?.id || null
   if (authRes?.error || !userId) {
     sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
+    return
+  }
+  const access = await resolveSessionAccess(supabaseAdmin, sessionId, userId)
+  if (!access.ok) {
+    sendJson(res, 500, { ok: false, error: access.reason || 'ACCESS_CHECK_FAILED' })
+    return
+  }
+  if (!access.allowed) {
+    sendJson(res, 403, { ok: false, error: 'FORBIDDEN' })
     return
   }
 
