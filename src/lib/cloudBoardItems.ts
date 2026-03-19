@@ -32,6 +32,7 @@ const normalizeRow = (row: BoardItemRow): EngineBoardItem => ({
   prompt_type: (row.prompt_type as EngineBoardItem['prompt_type']) ?? null,
   matrix_row: row.matrix_row ?? null,
   matrix_col: row.matrix_col ?? null,
+  sort_order: row.sort_order ?? null,
   lastClassifiedText: row.last_classified_text ?? null,
   classificationDirty: row.classification_dirty ?? null,
 })
@@ -47,10 +48,11 @@ export const fetchBoardItems = async (
   const { data, error } = await typedSupabase
     .from('board_items')
     .select(
-      'id,session_id,user_id,text,label,matrix_row,matrix_col,question_id,question_text_pl,question_text_en,created_at,updated_at'
+      'id,session_id,user_id,text,label,matrix_row,matrix_col,sort_order,question_id,question_text_pl,question_text_en,created_at,updated_at'
     )
     .eq('session_id', sessionId)
-    .order('created_at', { ascending: false })
+    .order('sort_order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true })
   if (error) {
     console.error('[board_items] query failed', {
       status: (error as { status?: number | null })?.status,
@@ -80,6 +82,7 @@ export const insertBoardItem = async (input: {
   label?: string | null
   matrix_row?: string | null
   matrix_col?: string | null
+  sort_order?: number | null
   question_id?: string | null
   question_text_pl?: string | null
   question_text_en?: string | null
@@ -104,6 +107,7 @@ export const insertBoardItem = async (input: {
       label: input.label ?? null,
       matrixRow: input.matrix_row ?? null,
       matrixCol: input.matrix_col ?? null,
+      sortOrder: input.sort_order ?? null,
       questionId: input.question_id ?? null,
       questionTextPl: input.question_text_pl ?? null,
       questionTextEn: input.question_text_en ?? null,
@@ -149,7 +153,8 @@ export const updateBoardItemMatrix = async (
   sessionId: string,
   itemId: string,
   matrixRow: string | null,
-  matrixCol: string | null
+  matrixCol: string | null,
+  sortOrder?: number | null
 ): Promise<void> => {
   if (!supabase) {
     throw new Error('Missing Supabase client.')
@@ -165,7 +170,13 @@ export const updateBoardItemMatrix = async (
       Authorization: `Bearer ${token}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ sessionId, itemId, matrixRow, matrixCol }),
+    body: JSON.stringify({
+      sessionId,
+      itemId,
+      matrixRow,
+      matrixCol,
+      sortOrder: sortOrder ?? null,
+    }),
   })
   const payload = await response.json().catch(() => null)
   if (!response.ok || !payload?.ok) {

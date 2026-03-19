@@ -16,6 +16,11 @@ import { AiCostButton } from '../components/AiCostButton'
  
 const TOPUP_RETURN_TO_KEY = 'topup-return-to'
 
+const withAlpha = (hexColor: string, alphaHex = '66') => {
+  const value = String(hexColor || '').trim()
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? `${value}${alphaHex}` : value
+}
+
 type ReportPageProps = {
   snapshot: ReportSnapshot
   language: ReportLang
@@ -962,7 +967,9 @@ export const ReportPage = ({
                     const isUpdating = Boolean(labelUpdating[idea.id])
                     const labelValue = idea.label ?? ''
                     const hasLabel = Boolean(labelValue)
-                    const labelBg = hasLabel ? ENGINE_ENTRY_LABEL_COLORS[labelValue] : '#ffffff'
+                    const labelBg = hasLabel
+                      ? withAlpha(ENGINE_ENTRY_LABEL_COLORS[labelValue])
+                      : '#ffffff'
                     return (
                       <tr key={idea.id}>
                         <td>{questionText}</td>

@@ -1,4 +1,6 @@
 import http from 'node:http'
+import fs from 'node:fs'
+import path from 'node:path'
 import { URL } from 'node:url'
 import { initEngineDb } from './engine/db.mjs'
 import { getDbHealth } from './engine/dbHealth.mjs'
@@ -35,6 +37,9 @@ import {
 import coachHandler from './api/coach.js'
 import coreHandler from './api/core.js'
 import devHandler from './api/dev.js'
+import adminHandler from './api/admin.js'
+import boardItemsHandler from './api/board-items.js'
+import billingHandler from './api/billing.js'
 import { createSupabaseServerClient } from './src/lib/server/supabaseServer.js'
 import { chargeUserBalance, normalizeBillingError } from './src/lib/server/billing.js'
 import {
@@ -43,6 +48,47 @@ import {
   inferProductName,
   normalizeContextPayload,
 } from './src/lib/llm/contextInterpreter.mjs'
+
+const stripWrappingQuotes = (value) => {
+  const trimmed = String(value || '').trim()
+  if (
+    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
+    (trimmed.startsWith("'") && trimmed.endsWith("'"))
+  ) {
+    return trimmed.slice(1, -1)
+  }
+  return trimmed
+}
+
+const loadEnvFile = (filePath) => {
+  if (!fs.existsSync(filePath)) return
+  const content = fs.readFileSync(filePath, 'utf8')
+  const lines = content.split(/\r?\n/)
+  for (const line of lines) {
+    const raw = line.trim()
+    if (!raw || raw.startsWith('#')) continue
+    const eqIndex = raw.indexOf('=')
+    if (eqIndex <= 0) continue
+    const key = raw.slice(0, eqIndex).trim()
+    if (!key || process.env[key] != null) continue
+    const value = stripWrappingQuotes(raw.slice(eqIndex + 1))
+    process.env[key] = value
+  }
+}
+
+const loadLocalEnv = () => {
+  const cwd = process.cwd()
+  loadEnvFile(path.join(cwd, '.env'))
+  loadEnvFile(path.join(cwd, '.env.local'))
+}
+
+if (!process.env.VERCEL) {
+  loadLocalEnv()
+}
+
+const runtimeCwd = process.cwd()
+const envFilePath = path.join(runtimeCwd, '.env')
+const envLocalFilePath = path.join(runtimeCwd, '.env.local')
 
 const PORT = Number(process.env.PORT || 8787)
 const HOST = process.env.HOST || '127.0.0.1'
@@ -58,6 +104,17 @@ const LLM_MODELS = {
   escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
 }
 const llmRateLimiter = createRateLimiter({ windowMs: 60_000, max: 30 })
+
+if (process.env.NODE_ENV !== 'production') {
+  console.info('[server][env][supabase]', {
+    cwd: runtimeCwd,
+    hasDotEnv: fs.existsSync(envFilePath),
+    hasDotEnvLocal: fs.existsSync(envLocalFilePath),
+    hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+    hasSupabaseAnonKey: Boolean(process.env.SUPABASE_ANON_KEY),
+    hasSupabaseServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+  })
+}
 
 const generateCorrelationId = () =>
   `noq-${Date.now()}-${Math.random().toString(16).slice(2)}`
@@ -376,9 +433,43 @@ const server = http.createServer(async (req, res) => {
     return
   }
 
+  if (url.pathname === '/api/board-items') {
+    const resShim = createResShim(res)
+    try {
+      await boardItemsHandler(req, resShim)
+    } catch (error) {
+      console.error('[server][board-items] unhandled error', {
+        name: error?.name,
+        message: error?.message,
+      })
+      sendJson(res, 500, { ok: false, error: 'SERVER_ERROR', message: 'Server error.' })
+    }
+    return
+  }
+
+  if (url.pathname === '/api/billing') {
+    const resShim = createResShim(res)
+    try {
+      await billingHandler(req, resShim)
+    } catch (error) {
+      console.error('[server][billing] unhandled error', {
+        name: error?.name,
+        message: error?.message,
+      })
+      sendJson(res, 500, { ok: false, error: 'SERVER_ERROR', message: 'Server error.' })
+    }
+    return
+  }
+
   if (url.pathname === '/api/dev') {
     const resShim = createResShim(res)
     await devHandler(req, resShim)
+    return
+  }
+
+  if (url.pathname === '/api/admin') {
+    const resShim = createResShim(res)
+    await adminHandler(req, resShim)
     return
   }
 

@@ -74,6 +74,13 @@ const sanitizeQuestionText = (input) => {
   return value
 }
 
+const sanitizeTranscriptCorrectionText = (input) =>
+  String(input || '')
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/([,.;:!?])(?=[^\s])/g, '$1 ')
+    .trim()
+
 const resolveCsvPath = () =>
   path.join(process.cwd(), 'public', 'questions_enriched_pl_eng.csv')
 
@@ -161,8 +168,31 @@ const CELL_MODES = [1, 2, 3]
 
 const cellKey = (group, mode) => `${group}:${mode}`
 
+const perspectiveToMode = (value) => {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'as_is') return 1
+  if (raw === 'not_working') return 2
+  if (raw === 'should_be') return 3
+  return null
+}
+
 const listAllCells = () =>
   CELL_GROUPS.flatMap((group) => CELL_MODES.map((mode) => ({ group, mode })))
+
+const listCellsForPerspective = (mode, anchorGroup = null) => {
+  if (!Number.isFinite(Number(mode))) return []
+  if (!anchorGroup) {
+    return CELL_GROUPS.map((group) => ({ group, mode: Number(mode) }))
+  }
+  const groupIndex = CELL_GROUPS.indexOf(anchorGroup)
+  if (groupIndex === -1) {
+    return CELL_GROUPS.map((group) => ({ group, mode: Number(mode) }))
+  }
+  return [-1, 0, 1]
+    .map((delta) => CELL_GROUPS[groupIndex + delta])
+    .filter(Boolean)
+    .map((group) => ({ group, mode: Number(mode) }))
+}
 
 const listNeighborCellsChebyshev = (group, mode) => {
   const neighbors = []
@@ -393,12 +423,90 @@ const coerceCellId = (value) => {
   return isValidCellId(raw) ? raw : null
 }
 
-const buildReclassPrompt = ({ locale, sessionName, entries }) => {
+const clampConfidence = (value) => {
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return null
+  if (numeric < 0) return 0
+  if (numeric > 1) return 1
+  return numeric
+}
+
+const normalizeSeedKind = (value) => {
+  const raw = String(value || '').trim().toLowerCase()
+  if (!raw) return 'note'
+  if (raw === 'idea') return 'idea'
+  if (raw === 'observation') return 'observation'
+  if (raw === 'problem') return 'problem'
+  if (raw === 'need') return 'need'
+  if (raw === 'conclusion') return 'conclusion'
+  if (raw === 'question') return 'question'
+  if (raw === 'note') return 'note'
+  return 'note'
+}
+
+const normalizeSeedText = (value) =>
+  String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const seedDedupKey = (value) =>
+  normalizeSeedText(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const normalizeSeedEntries = (items, maxEntries = 16) => {
+  if (!Array.isArray(items)) return []
+  const seen = new Set()
+  const normalized = []
+  for (const item of items) {
+    if (normalized.length >= maxEntries) break
+    const text = normalizeSeedText(item?.text)
+    if (!text) continue
+    const dedupKey = seedDedupKey(text)
+    if (!dedupKey || seen.has(dedupKey)) continue
+    seen.add(dedupKey)
+    normalized.push({
+      text,
+      cellCode: coerceCellId(item?.cellCode),
+      confidence: clampConfidence(item?.confidence),
+      kind: normalizeSeedKind(item?.kind),
+    })
+  }
+  return normalized
+}
+
+const parseSeedEntriesPayload = (payload, maxEntries = 16) => {
+  if (!payload) return null
+  const source = Array.isArray(payload)
+    ? payload
+    : payload?.entries || payload?.items || payload?.data?.entries || payload?.result?.entries
+  const entries = normalizeSeedEntries(source, maxEntries)
+  if (!entries.length) return null
+  return entries
+}
+
+const buildSeedFallbackEntries = (text, maxEntries = 8) => {
+  const chunks = String(text || '')
+    .split(/[\n\r]+|(?<=[.!?])\s+/)
+    .map((item) => normalizeSeedText(item))
+    .filter(Boolean)
+  return normalizeSeedEntries(
+    chunks.map((chunk) => ({ text: chunk, cellCode: null, confidence: null, kind: 'note' })),
+    maxEntries
+  )
+}
+
+const buildReclassPrompt = ({ locale, sessionName, entries, allowedCellIds = null }) => {
   const lines = entries.slice(0, 120).map((entry) => {
     const text = String(entry.text || '').trim().replace(/\s+/g, ' ')
     const current = coerceCellId(entry.currentCellId) || 'B2'
     return `- id:${entry.id} | current:${current} | text:${text}`
   })
+  const allowedCells = Array.isArray(allowedCellIds)
+    ? allowedCellIds.map((entry) => coerceCellId(entry)).filter(Boolean)
+    : []
   const semantics = [
     'Rows: A=world (otoczenie, rynek, kontekst, ograniczenia zewnętrzne),',
     'B=product (produkt/system jako całość, architektura, jak działa),',
@@ -406,6 +514,9 @@ const buildReclassPrompt = ({ locale, sessionName, entries }) => {
     'Cols: 1=as_is (stan obecny), 2=not_working (problemy, tarcia, co zmienić), 3=should_be (pożądany stan / pomysł).',
     'If uncertain or unreadable, keep current cell and set confidence < 0.6 with shouldMove=false.',
     'Do not hallucinate.',
+    allowedCells.length
+      ? `You may use ONLY these cells: ${allowedCells.join(', ')}. Keep the column locked and choose only the best row within that set.`
+      : '',
   ].join(' ')
   const instructions = [
     'You are an R&D facilitator. Classify each entry into the 3x3 matrix using the semantics above.',
@@ -726,6 +837,8 @@ export const handleCoachSuggest = async (req, res) => {
     const currentModeCode = body.currentModeCode || null
     const previousGroupCode = body.previousGroupCode || null
     const previousModeCode = body.previousModeCode || null
+    const requestedPerspective = String(body.requestedPerspective || '').trim().toLowerCase() || null
+    const requestedMode = perspectiveToMode(requestedPerspective)
     const sessionName = String(body.sessionName || '').trim()
     const boardEntriesRaw = Array.isArray(body.boardEntries)
       ? body.boardEntries
@@ -750,6 +863,272 @@ export const handleCoachSuggest = async (req, res) => {
     }
 
     const actionNormalized = String(action || 'NEXT').toUpperCase()
+
+    if (actionNormalized === 'SEED_FROM_BRIEF') {
+      const locale = normalizeLang(body.locale || body.language || body.lang || 'pl')
+      const text = String(body.text || body.brief || '').trim()
+      if (!text) {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          entries: [],
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: {
+            aiSupportEnabled: false,
+            modelUsed: null,
+            escalated: false,
+            tokens: { input: 0, output: 0, total: 0 },
+            errorCategory: 'EMPTY_INPUT',
+          },
+        })
+        return
+      }
+      const fallbackEntries = buildSeedFallbackEntries(text, 8)
+      if (!aiSupportEnabled || killSwitch || !hasOpenAiKey) {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          entries: fallbackEntries,
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: {
+            aiSupportEnabled: false,
+            modelUsed: null,
+            escalated: false,
+            tokens: { input: 0, output: 0, total: 0 },
+            errorCategory: killSwitch
+              ? 'AI_DISABLED'
+              : !hasOpenAiKey
+                ? 'MISSING_OPENAI_KEY'
+                : 'AI_DISABLED',
+          },
+        })
+        return
+      }
+      const instructions = [
+        'You are extracting starter board entries from a user brief.',
+        'Split the text into short, distinct entries suitable for a workshop board.',
+        'Allowed kinds: idea, observation, problem, need, conclusion, question, note.',
+        'Do not add new facts. Do not duplicate entries.',
+        'Each entry should be one concise thought.',
+        'If unsure about matrix placement, use null cellCode and lower confidence.',
+        'Return STRICT JSON ONLY:',
+        '{"entries":[{"text":"...","cellCode":"A1|null","confidence":0.84,"kind":"idea"}]}',
+        'Use cellCode only from A1..C3 when confident.',
+        locale === 'pl' ? 'Write entries in Polish.' : 'Write entries in English.',
+      ].join(' ')
+      const callSeed = async (modelSet) =>
+        runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'seed-from-brief',
+          input: text,
+          sessionId,
+          language: locale === 'pl' ? 'Polish' : 'English',
+          taskInstructions: instructions,
+          parseResponse: (value) => {
+            try {
+              const parsed = JSON.parse(value)
+              return parsed ?? null
+            } catch {
+              return null
+            }
+          },
+          fallbackData: null,
+          models: modelSet,
+          maxOutputTokens: 900,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+      const defaultModels = {
+        default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
+        preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+        escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+      }
+      const escalateModels = {
+        default: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+        preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+        escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+      }
+      try {
+        let result = await callSeed(defaultModels)
+        let entries = result.ok ? parseSeedEntriesPayload(result.data, 16) : null
+        if (!entries || entries.length < 2) {
+          const retry = await callSeed(escalateModels)
+          if (retry.ok) {
+            result = retry
+            entries = parseSeedEntriesPayload(retry.data, 16)
+          }
+        }
+        if (result.ok && entries && entries.length) {
+          const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          const usage = buildUsagePayload(meta)
+          sendJson(res, 200, {
+            ok: true,
+            source: 'llm',
+            entries,
+            usage,
+            meta,
+          })
+          return
+        }
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          entries: fallbackEntries,
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
+        })
+        return
+      } catch {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          entries: fallbackEntries,
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
+        })
+        return
+      }
+    }
+
+    if (actionNormalized === 'INTERPRET_TRANSCRIPT') {
+      const locale = normalizeLang(body.locale || body.language || body.lang || 'pl')
+      const text = sanitizeTranscriptCorrectionText(body.text || body.transcript || '')
+      const boardContext = Array.isArray(body.boardContext)
+        ? body.boardContext.map((entry) => sanitizeTranscriptCorrectionText(entry)).filter(Boolean).slice(0, 8)
+        : []
+      if (!text) {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          text: '',
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: {
+            aiSupportEnabled: false,
+            modelUsed: null,
+            escalated: false,
+            tokens: { input: 0, output: 0, total: 0 },
+            errorCategory: 'EMPTY_INPUT',
+          },
+        })
+        return
+      }
+      if (!aiSupportEnabled || killSwitch || !hasOpenAiKey) {
+        const reasonCategory = killSwitch
+          ? 'AI_DISABLED'
+          : !hasOpenAiKey
+            ? 'MISSING_OPENAI_KEY'
+            : 'AI_DISABLED'
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          text,
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: {
+            aiSupportEnabled: false,
+            modelUsed: null,
+            escalated: false,
+            tokens: { input: 0, output: 0, total: 0 },
+            errorCategory: reasonCategory,
+          },
+        })
+        return
+      }
+      const instructions =
+        locale === 'pl'
+          ? [
+              'Poniższy tekst jest transkryptem z rozpoznawania mowy w aplikacji wspierającej rozwój pomysłów na produkty lub usługi.',
+              'Kontekst domenowy: rozwój pomysłów, produkty, usługi, analiza sytuacji, użytkownik, rynek, rekomendacje, sesja, tablica.',
+              'Ważne słownictwo domenowe: pomysł, użytkownik, produkt, usługa, analiza, kontekst, rekomendacje, sesja, tablica, wpis, raport, perspektywa, obserwacja, problem, rozwiązanie, facylitować, facylitowane, facylitowanie.',
+              'Jeśli dostępny jest kontekst tablicy, zawiera on wcześniejsze wpisy użytkownika dotyczące analizowanego problemu lub pomysłu.',
+              'Transkrypt może zawierać brak interpunkcji, błędy transkrypcji, ucięte słowa i błędne formy gramatyczne.',
+              'Zrekonstruuj najbardziej prawdopodobny sens wypowiedzi.',
+              'Popraw oczywiste błędy transkrypcji.',
+              'Dodaj interpunkcję i wielkie litery.',
+              'Podziel tekst na zdania.',
+              'Zachowaj sens wypowiedzi.',
+              'Uwzględnij kontekst domenowy.',
+              'Jeśli podano wcześniejsze wpisy na tablicy, użyj ich jako kontekstu interpretacyjnego.',
+              'Nie dopisuj nowych informacji.',
+              'Nie skracaj tekstu.',
+              'Zwróć wyłącznie poprawiony tekst.',
+            ].join(' ')
+          : [
+              'The following text is a speech-to-text transcript from an application that helps users develop product or service ideas.',
+              'Domain context: idea development, products, services, market analysis, user insights, recommendations, sessions, board entries.',
+              'Important domain vocabulary: idea, user, product, service, analysis, context, recommendation, session, board, entry, report, perspective, observation, problem, solution, facilitate, facilitated, facilitation.',
+              'If board context is provided, it contains previous notes related to the same idea or problem.',
+              'The transcript may contain missing punctuation, transcription errors, truncated words, and grammar mistakes.',
+              'Reconstruct the most likely intended meaning.',
+              'Correct obvious transcription mistakes.',
+              'Add punctuation and capitalization.',
+              'Split the text into sentences.',
+              'Preserve the original meaning.',
+              'Use the domain context when interpreting ambiguous words.',
+              'If board context is provided, use it to better interpret the transcript.',
+              'Do not add new information.',
+              'Do not summarize.',
+              'Return only the corrected text.',
+            ].join(' ')
+      const promptInput = [
+        `Transcript:\n${text}`,
+        boardContext.length ? `Board context:\n${boardContext.map((entry) => `- ${entry}`).join('\n')}` : 'Board context:\n(none)',
+      ].join('\n\n')
+      try {
+        const result = await runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'speech-transcript-interpret',
+          input: promptInput,
+          sessionId,
+          language: locale === 'pl' ? 'Polish' : 'English',
+          taskInstructions: instructions,
+          parseResponse: (value) => {
+            const correctedText = sanitizeTranscriptCorrectionText(value)
+            if (!correctedText) return null
+            return { text: correctedText }
+          },
+          fallbackData: null,
+          models: {
+            default: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            escalation: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
+          },
+          maxOutputTokens: 220,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+        if (result.ok && result.data?.text) {
+          const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          const usage = buildUsagePayload(meta)
+          sendJson(res, 200, {
+            ok: true,
+            source: 'llm',
+            text: result.data.text,
+            usage,
+            meta,
+          })
+          return
+        }
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          text,
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
+        })
+        return
+      } catch {
+        sendJson(res, 200, {
+          ok: true,
+          source: 'fallback',
+          text,
+          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
+        })
+        return
+      }
+    }
 
     if (actionNormalized === 'ASSIGN_NA') {
       const locale = normalizeLang(body.locale || body.language || 'pl')
@@ -925,6 +1304,9 @@ export const handleCoachSuggest = async (req, res) => {
     if (actionNormalized === 'RECLASSIFY_ENTRIES') {
       const locale = normalizeLang(body.locale || body.language || 'pl')
       const entries = Array.isArray(body.entries) ? body.entries : []
+      const allowedCellIds = Array.isArray(body.allowedCellIds)
+        ? body.allowedCellIds.map((entry) => coerceCellId(entry)).filter(Boolean)
+        : []
       if (!entries.length) {
         sendJson(res, 200, {
           ok: true,
@@ -963,6 +1345,7 @@ export const handleCoachSuggest = async (req, res) => {
         locale,
         sessionName,
         entries,
+        allowedCellIds,
       })
       try {
         const result = await runLlmTask({
@@ -995,6 +1378,7 @@ export const handleCoachSuggest = async (req, res) => {
         })
         if (result.ok && result.data?.classifications) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          const allowedSet = new Set(allowedCellIds)
           const classifications = result.data.classifications
             .map((entry) => ({
               id: String(entry?.id || ''),
@@ -1002,6 +1386,13 @@ export const handleCoachSuggest = async (req, res) => {
               confidence: Number(entry?.confidence ?? 0),
               shouldMove: Boolean(entry?.shouldMove),
               reason: String(entry?.reason || ''),
+            }))
+            .map((entry) => ({
+              ...entry,
+              suggestedCellId:
+                allowedSet.size && !allowedSet.has(entry.suggestedCellId)
+                  ? allowedCellIds[1] || allowedCellIds[0] || 'B2'
+                  : entry.suggestedCellId,
             }))
             .filter((entry) => entry.id)
           sendJson(res, 200, {
@@ -1377,21 +1768,20 @@ export const handleCoachSuggest = async (req, res) => {
       persistMemory()
     }
 
-    const pickPerspectiveCell = () => {
-      const current = resolveCurrentCell()
-      if (!current) return null
-      const neighbors = listNeighborCellsChebyshev(current.group, Number(current.mode))
+    const pickBestCell = (cells, current = null) => {
+      if (!cells.length) return null
       const avoidKey =
         previousGroupCode && Number.isFinite(Number(previousModeCode))
           ? `${previousGroupCode}:${Number(previousModeCode)}`
           : null
       const recentSet = new Set([...memory.recentCells, ...recentCells])
-      const scored = neighbors.map((cell) => {
+      const scored = cells.map((cell) => {
         const key = cellKey(cell.group, cell.mode)
         const visitScore = memory.visitCounts[key] || 0
         let score = -visitScore
         if (!recentSet.has(key)) score += 2
         if (avoidKey && key === avoidKey) score -= 3
+        if (current && cell.group === current.group) score += 1
         return { cell, key, score }
       })
       scored.sort((a, b) => b.score - a.score)
@@ -1401,7 +1791,7 @@ export const handleCoachSuggest = async (req, res) => {
       if (process.env.DEBUG_PERSPECTIVE === '1') {
         console.log('[coach/suggest][perspective]', {
           requestId,
-          prevCell: `${current.group}:${Number(current.mode)}`,
+          prevCell: current ? `${current.group}:${Number(current.mode)}` : null,
           avoidCell: avoidKey,
           recentCells: [...recentSet],
           candidates: scored.map((s) => ({ key: s.key, score: s.score })),
@@ -1411,6 +1801,26 @@ export const handleCoachSuggest = async (req, res) => {
       return pick ? pick.cell : null
     }
 
+    const pickPerspectiveCell = () => {
+      const current = resolveCurrentCell()
+      if (!current) return null
+      const neighbors = listNeighborCellsChebyshev(current.group, Number(current.mode))
+      return pickBestCell(neighbors, current)
+    }
+
+    const pickPerspectiveScopedCell = (targetMode, continuityMode) => {
+      if (!targetMode) return null
+      const current = resolveCurrentCell()
+      if (continuityMode === 'DEEPEN' && current && Number(current.mode) === Number(targetMode)) {
+        return current
+      }
+      const scopedCells = listCellsForPerspective(Number(targetMode), current?.group || null)
+      const pick = pickBestCell(scopedCells, current)
+      if (pick) return pick
+      const fallbackCells = listCellsForPerspective(Number(targetMode))
+      return pickBestCell(fallbackCells, current) || fallbackCells[0] || null
+    }
+
     const pickRandomCell = () => {
       const current = resolveCurrentCell()
       const all = listAllCells()
@@ -1418,6 +1828,12 @@ export const handleCoachSuggest = async (req, res) => {
         ? all.filter((cell) => cell.group !== current.group || cell.mode !== Number(current.mode))
         : all
       return eligible[Math.floor(Math.random() * eligible.length)] || null
+    }
+
+    const pickRandomPerspectiveCell = (targetMode) => {
+      if (!targetMode) return null
+      const cells = listCellsForPerspective(Number(targetMode))
+      return cells[Math.floor(Math.random() * cells.length)] || null
     }
 
     const selectBaseQuestion = (localAskedIds = [], mode) => {
@@ -1439,10 +1855,22 @@ export const handleCoachSuggest = async (req, res) => {
         return { question, cell, pointer: nextPointer }
       }
       if (mode === 'DEEPEN') {
+        if (requestedMode) {
+          const target =
+            pickPerspectiveScopedCell(requestedMode, 'DEEPEN') ||
+            pickRandomPerspectiveCell(requestedMode)
+          return pickFromCell(target)
+        }
         const target = current || pickRandomCell()
         return pickFromCell(target)
       }
       if (mode === 'PERSPECTIVE') {
+        if (requestedMode) {
+          const nextCell =
+            pickPerspectiveScopedCell(requestedMode, 'PERSPECTIVE') ||
+            pickRandomPerspectiveCell(requestedMode)
+          return pickFromCell(nextCell)
+        }
         const nextCell = pickPerspectiveCell() || pickRandomCell()
         return pickFromCell(nextCell)
       }
@@ -1598,6 +2026,7 @@ export const handleCoachSuggest = async (req, res) => {
     })
     buildBaseLog({
       action: actionNormalized,
+      requestedPerspective,
       attempt: 0,
       baseQuestionId: baseQuestion.id,
       baseQuestionCell: `${baseQuestion.group_code}:${baseQuestion.mode_code}`,
@@ -1617,6 +2046,7 @@ export const handleCoachSuggest = async (req, res) => {
     console.log('[coach/suggest][rewrite]', {
       requestId,
       action: actionNormalized,
+      requestedPerspective,
       baseQuestionId: baseMapped.id,
       llm_called: true,
       raw_question_shown: false,
@@ -1676,6 +2106,7 @@ export const handleCoachSuggest = async (req, res) => {
     console.log('[coach/suggest][result]', {
       requestId,
       action: actionNormalized,
+      requestedPerspective,
       prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
       baseQuestionId: baseMapped.id,
       baseQuestionText: baseMapped.text,

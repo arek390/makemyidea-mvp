@@ -159,6 +159,7 @@ export type Database = {
           prompt_type: string | null
           matrix_row: string | null
           matrix_col: string | null
+          sort_order: number | null
           last_classified_text: string | null
           classification_dirty: boolean | null
         }
@@ -178,6 +179,7 @@ export type Database = {
           prompt_type?: string | null
           matrix_row?: string | null
           matrix_col?: string | null
+          sort_order?: number | null
           last_classified_text?: string | null
           classification_dirty?: boolean | null
         }
@@ -197,6 +199,7 @@ export type Database = {
           prompt_type?: string | null
           matrix_row?: string | null
           matrix_col?: string | null
+          sort_order?: number | null
           last_classified_text?: string | null
           classification_dirty?: boolean | null
         }

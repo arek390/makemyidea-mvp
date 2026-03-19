@@ -19,6 +19,15 @@ const resolveBackendSupabaseHost = () => {
   }
 }
 
+const resolveHostname = (value) => {
+  try {
+    if (!value) return null
+    return new URL(value).hostname
+  } catch {
+    return null
+  }
+}
+
 const resolveEnvDebug = () => ({
   hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
   hasSupabaseAnonKey: Boolean(process.env.SUPABASE_ANON_KEY),
@@ -84,6 +93,11 @@ const requireAuthUser = async (req, res) => {
   const supabaseUrl = process.env.SUPABASE_URL || ''
   const anonKey = process.env.SUPABASE_ANON_KEY || ''
   if (!supabaseUrl || !anonKey) {
+    console.warn('[admin.auth][missing_supabase_env]', {
+      hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+      hasSupabaseAnonKey: Boolean(process.env.SUPABASE_ANON_KEY),
+      hasSupabaseServiceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY),
+    })
     res.status(500).json({ ok: false, error: 'MISSING_SUPABASE_ENV' })
     return null
   }
@@ -202,23 +216,88 @@ export const handleAdminCheck = async (req, res) => {
     return
   }
   try {
+    const token = readBearerToken(req)
+    const jwt = token ? decodeJwtPayload(token) : null
+    const backendSupabaseUrl = process.env.SUPABASE_URL || null
+    const backendSupabaseHost = resolveBackendSupabaseHost()
+    const jwtSupabaseHost = resolveHostname(jwt?.iss ?? null)
+
     const authUser = await requireAuthUser(req, res)
     if (!authUser) return
+
+    const currentUserId = String(authUser.id || '').trim()
+    const currentEmail = authUser.email ?? null
     const supabaseAdmin = getSupabaseAdmin()
     const adminCheck = await supabaseAdmin
       .schema('public')
       .from('admin_users')
       .select('user_id')
-      .eq('user_id', authUser.id)
+      .eq('user_id', currentUserId)
       .limit(1)
       .maybeSingle()
+
+    const baseDiagnostic = {
+      currentUserId,
+      currentEmail,
+      backendSupabaseUrl,
+      backendSupabaseHost,
+      jwtIss: jwt?.iss ?? null,
+      jwtSupabaseHost,
+      hostMismatch:
+        Boolean(backendSupabaseHost) && Boolean(jwtSupabaseHost)
+          ? backendSupabaseHost !== jwtSupabaseHost
+          : null,
+    }
+
     if (adminCheck.error) {
-      res.status(500).json({ ok: false, error: adminCheck.error.message || 'QUERY_FAILED' })
+      const reasonCode = 'ADMIN_QUERY_FAILED'
+      console.error('[admin.check]', {
+        reasonCode,
+        ...baseDiagnostic,
+        query: {
+          schema: 'public',
+          table: 'admin_users',
+          select: 'user_id',
+          where: { user_id: currentUserId },
+          limit: 1,
+          maybeSingle: true,
+        },
+        queryResult: {
+          found: false,
+          rowUserId: null,
+          error: adminCheck.error.message || 'QUERY_FAILED',
+        },
+      })
+      res.status(500).json({
+        ok: false,
+        error: adminCheck.error.message || 'QUERY_FAILED',
+        reasonCode,
+        diagnostic: baseDiagnostic,
+      })
       return
     }
-    res.status(200).json({ ok: true, isAdmin: Boolean(adminCheck.data?.user_id) })
+    const rowUserId = adminCheck.data?.user_id ? String(adminCheck.data.user_id) : null
+    const isAdmin = Boolean(rowUserId)
+    const reasonCode = isAdmin ? 'ADMIN_ROW_FOUND' : 'ADMIN_ROW_NOT_FOUND'
+    res.status(200).json({
+      ok: true,
+      isAdmin,
+      reasonCode,
+      diagnostic: {
+        ...baseDiagnostic,
+        queryResult: {
+          found: isAdmin,
+          rowUserId,
+          error: null,
+        },
+      },
+    })
   } catch (error) {
-    res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
+    res.status(500).json({
+      ok: false,
+      error: error?.message || 'SERVER_ERROR',
+      reasonCode: 'ADMIN_CHECK_SERVER_ERROR',
+    })
   }
 }
 

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, MouseEvent as ReactMouseEvent } from 'react'
+import type { ChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react'
 import './App.css'
 import {
   MATRIX_COLS,
@@ -47,6 +47,11 @@ import type { Database } from './lib/supabase/types'
 import { getSupabaseInitError, supabase as client, supabaseEnvDiag } from './lib/supabase/client'
 import { saveSessionToCloud } from './lib/cloudSessions'
 import { useBillingAccount } from './lib/useBillingAccount'
+import {
+  cleanFinalSpeechTranscriptSegment,
+  toSpeechCleanupLocale,
+} from './lib/speechTranscript'
+import { interpretSpeechTranscript } from './lib/speechTranscriptInterpret'
 import {
   clearGuestMode,
   clearGuestSessions,
@@ -133,6 +138,43 @@ type AiQuestion = {
 }
 
 type SuggestLabelType = 'ai' | 'fallback'
+type SpeechRecognitionAlternativeLike = { transcript: string }
+type SpeechRecognitionResultLike = {
+  isFinal: boolean
+  length: number
+  [index: number]: SpeechRecognitionAlternativeLike
+}
+type SpeechRecognitionResultListLike = {
+  length: number
+  [index: number]: SpeechRecognitionResultLike
+}
+type SpeechRecognitionEventLike = Event & {
+  resultIndex?: number
+  results: SpeechRecognitionResultListLike
+}
+type SpeechRecognitionErrorEventLike = Event & {
+  error?: string
+}
+type SpeechRecognitionLike = {
+  continuous: boolean
+  interimResults: boolean
+  lang: string
+  onend: (() => void) | null
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null
+  abort: () => void
+  start: () => void
+  stop: () => void
+}
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike
+type EnginePerspectiveKey = 'as_is' | 'not_working' | 'should_be'
+type FacilitationPerspective = EnginePerspectiveKey
+
+const FACILITATION_PERSPECTIVE_MODE: Record<FacilitationPerspective, 1 | 2 | 3> = {
+  as_is: 1,
+  not_working: 2,
+  should_be: 3,
+}
 
 const normalizeSuggestResponse = (payload: {
   ok?: boolean
@@ -181,7 +223,8 @@ const normalizeSuggestResponse = (payload: {
   }
 }
 
-const WORD_LIMIT = 40
+const WORD_LIMIT = 100
+const INITIAL_BRIEF_WORD_LIMIT = 1000
 const SHORT_ENTRY_WORDS = 12
 const DEFAULT_IDLE_THRESHOLD_MS = 15000
 const ERASE_EMPTY_SECONDS_STRONG = 10
@@ -252,6 +295,33 @@ const cellCodeToMatrix = (cellCode: string) => {
   }
 }
 
+const perspectiveToAllowedCellIds = (perspective: FacilitationPerspective | null) => {
+  if (perspective === 'as_is') return ['A1', 'B1', 'C1'] as const
+  if (perspective === 'not_working') return ['A2', 'B2', 'C2'] as const
+  if (perspective === 'should_be') return ['A3', 'B3', 'C3'] as const
+  return null
+}
+
+const modeToFacilitationPerspective = (modeCode?: number | null): FacilitationPerspective | null => {
+  if (modeCode === 1) return 'as_is'
+  if (modeCode === 2) return 'not_working'
+  if (modeCode === 3) return 'should_be'
+  return null
+}
+
+const sanitizeInlineHelperText = (value: string | null | undefined) =>
+  String(value || '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const withAlpha = (hexColor: string, alphaHex = '66') => {
+  const value = String(hexColor || '').trim()
+  return /^#[0-9a-fA-F]{6}$/.test(value) ? `${value}${alphaHex}` : value
+}
+
+const ENGINE_PERSPECTIVE_KEYS: EnginePerspectiveKey[] = ['as_is', 'not_working', 'should_be']
+const ENGINE_SORT_GAP = 1024
+
 const createEmptyUsage = (): EngineUsage => ({
   perModel: {},
   totalUSD: 0,
@@ -278,6 +348,16 @@ const loadEngineUsage = (): EngineUsage => {
 const saveEngineUsage = (usage: EngineUsage) => {
   if (typeof window === 'undefined') return
   window.sessionStorage.setItem(ENGINE_USAGE_KEY, JSON.stringify(usage))
+}
+
+const getSpeechRecognitionCtor = (): SpeechRecognitionCtor | null => {
+  if (typeof window === 'undefined') return null
+  const speechWindow = window as Window &
+    typeof globalThis & {
+      SpeechRecognition?: SpeechRecognitionCtor
+      webkitSpeechRecognition?: SpeechRecognitionCtor
+    }
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null
 }
 
 import { fetchFxUsdPlnRate, getFreshFxRate } from './lib/fx'
@@ -473,6 +553,11 @@ type Translations = {
   enginePreviewCreateReport: string
   enginePreviewBoardItemsTitle: string
   engineEntryLabelHint: string
+  engineEntryEditHint: string
+  engineEntryDeleteHint: string
+  engineEntryLabelActionHint: string
+  engineEntryQuestionHint: string
+  engineEntryQuestionFallback: string
   feedbackButtonLabel: string
   feedbackTitle: string
   feedbackMessageLabel: string
@@ -531,8 +616,9 @@ type Translations = {
   engineSessionDetailsBoardEmpty: string
   engineFacilitationNote: string
   engineFacilitationNext: string
-  engineFacilitationDeepen: string
-  engineFacilitationPerspective: string
+  engineFacilitationAsIs: string
+  engineFacilitationProblem: string
+  engineFacilitationDesired: string
   engineFacilitationLoadingLabel: string
   engineFacilitationRetryMessage: string
   engineFacilitationRetryCta: string
@@ -542,6 +628,23 @@ type Translations = {
   engineNameLabel: string
   engineNamePlaceholder: string
   engineNameSave: string
+  engineInitialBriefTitle: string
+  engineInitialBriefDescription: string
+  engineInitialBriefPlaceholder: string
+  engineInitialBriefSubmit: string
+  engineInitialBriefSubmitting: string
+  engineInitialBriefWordCountRemaining: (count: number) => string
+  engineInitialBriefWordLimitReached: string
+  engineInitialBriefEmpty: string
+  engineInitialBriefTooLong: string
+  engineInitialBriefFailed: string
+  engineInitialBriefSuggestFailed: string
+  engineInitialBriefSaveFailed: string
+  engineInitialBriefPartialSaveFailed: (savedCount: number, failedCount: number) => string
+  engineInitialBriefVoiceInputLabel: string
+  engineInitialBriefVoiceInputListening: string
+  engineInitialBriefVoiceInputUnavailable: string
+  engineInitialBriefVoiceInputError: string
   engineWordCountRemaining: (count: number) => string
   engineQuestionsWipNote: string
   enginePlaceholderInitial: string
@@ -842,7 +945,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     axisSupersystem: 'World',
     axisPast: 'How is it?',
     axisNow: "What doesn't work?",
-    axisFuture: 'How should it be',
+    axisFuture: 'How should it be?',
     workshopIntro:
       'Use the question icon to prompt thinking. Use the idea icon to add your own post-it.',
     legendQuestion: 'Supportive question',
@@ -897,8 +1000,13 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewCreateSession: 'Create session',
     enginePreviewReset: 'Save and close session',
     enginePreviewCreateReport: 'Create report',
-    enginePreviewBoardItemsTitle: 'Board',
+    enginePreviewBoardItemsTitle: 'Idea Studio',
     engineEntryLabelHint: 'Click to add or change label',
+    engineEntryEditHint: 'Edit',
+    engineEntryDeleteHint: 'Delete',
+    engineEntryLabelActionHint: 'Label',
+    engineEntryQuestionHint: 'Show source question',
+    engineEntryQuestionFallback: 'This entry was created without a facilitation question.',
     feedbackButtonLabel: 'Feedback',
     feedbackTitle: 'Feedback',
     feedbackMessageLabel: 'Your feedback',
@@ -955,21 +1063,42 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineSessionDetailsNameLabel: 'Name',
     engineSessionDetailsUpdatedLabel: 'Last activity',
     engineSessionDetailsQuestionsLabel: 'Questions',
-    engineSessionDetailsBoardTitle: 'Idea board',
+    engineSessionDetailsBoardTitle: 'Idea Studio',
     engineSessionDetailsBoardEmpty: 'No items.',
-    engineFacilitationNote: 'If you want, I can help you look at this from another angle.',
+    engineFacilitationNote: 'I want to clarify',
     engineFacilitationNext: 'Next question',
-    engineFacilitationDeepen: 'Deepen',
-    engineFacilitationPerspective: 'Change perspective',
+    engineFacilitationAsIs: 'How is it now?',
+    engineFacilitationProblem: "What doesn't work?",
+    engineFacilitationDesired: 'How should it be?',
     engineFacilitationLoadingLabel: 'Generating question…',
     engineFacilitationRetryMessage: 'Couldn’t generate the question. Please retry.',
     engineFacilitationRetryCta: 'Retry',
-    engineFacilitationLoadingPerspective: 'Choosing a perspective for your board',
+    engineFacilitationLoadingPerspective: 'Choosing a question for this perspective',
     engineFacilitationLoadingDeepen: 'Choosing a question for your board',
     engineNamePrompt: 'Give this session a name so it’s easier to return to.',
     engineNameLabel: 'Session name',
     engineNamePlaceholder: 'Session name',
     engineNameSave: 'Save and continue',
+    engineInitialBriefTitle: 'Describe your idea to get started',
+    engineInitialBriefDescription:
+      'Write freely about your idea, context, problems, needs, observations, and open questions. I will split it into first board entries for this session.',
+    engineInitialBriefPlaceholder:
+      'Example: Who is this for, what does not work today, what should change, what assumptions do you have, what questions are still open?',
+    engineInitialBriefSubmit: 'Create first entries',
+    engineInitialBriefSubmitting: 'Creating entries…',
+    engineInitialBriefWordCountRemaining: (count) => `Remaining ${count} words`,
+    engineInitialBriefWordLimitReached: 'Word limit reached (1000).',
+    engineInitialBriefEmpty: 'Please enter a short description first.',
+    engineInitialBriefTooLong: 'The description exceeds the 1000-word limit.',
+    engineInitialBriefFailed: 'Unable to create initial entries. Please try again.',
+    engineInitialBriefSuggestFailed: 'Unable to analyze the brief into first entries. Please try again.',
+    engineInitialBriefSaveFailed: 'The brief was analyzed, but the first entries could not be saved.',
+    engineInitialBriefPartialSaveFailed: (savedCount, failedCount) =>
+      `The brief was analyzed. Saved ${savedCount} entries, but ${failedCount} could not be saved.`,
+    engineInitialBriefVoiceInputLabel: 'Use voice input',
+    engineInitialBriefVoiceInputListening: 'Listening…',
+    engineInitialBriefVoiceInputUnavailable: 'Voice input is not available in this browser.',
+    engineInitialBriefVoiceInputError: 'Voice input is currently unavailable.',
     engineWordCountRemaining: (count) => `Remaining ${count} words`,
     engineQuestionsWipNote: '',
     enginePlaceholderInitial:
@@ -1338,7 +1467,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     axisSupersystem: 'Świat',
     axisPast: 'Jak jest?',
     axisNow: 'Co nie działa?',
-    axisFuture: 'Jak powinno być',
+    axisFuture: 'Jak powinno być?',
     workshopIntro:
       'Użyj ikony pytania, aby uzyskać podpowiedź. Użyj ikony pomysłu, aby dodać własną karteczkę.',
     legendQuestion: 'Pytanie wspierające',
@@ -1461,8 +1590,13 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewCreateSession: 'Utwórz sesję',
     enginePreviewReset: 'Zapisz i zamknij sesję',
     enginePreviewCreateReport: 'Utwórz raport',
-    enginePreviewBoardItemsTitle: 'Tablica',
+    enginePreviewBoardItemsTitle: 'Pracownia pomysłu',
     engineEntryLabelHint: 'Kliknij żeby dodać lub zmienić etykietę',
+    engineEntryEditHint: 'Edytuj',
+    engineEntryDeleteHint: 'Usuń',
+    engineEntryLabelActionHint: 'Etykieta',
+    engineEntryQuestionHint: 'Pokaż pytanie źródłowe',
+    engineEntryQuestionFallback: 'Wpis powstał bez pytania facylitującego.',
     feedbackButtonLabel: 'Feedback',
     feedbackTitle: 'Feedback',
     feedbackMessageLabel: 'Twoja wiadomość / feedback',
@@ -1519,21 +1653,42 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineSessionDetailsNameLabel: 'Nazwa',
     engineSessionDetailsUpdatedLabel: 'Ostatnia aktywność',
     engineSessionDetailsQuestionsLabel: 'Zapytania',
-    engineSessionDetailsBoardTitle: 'Tablica opisująca twój pomysł',
+    engineSessionDetailsBoardTitle: 'Pracownia pomysłu',
     engineSessionDetailsBoardEmpty: 'Brak elementów.',
-    engineFacilitationNote: 'Jeśli chcesz, mogę pomóc spojrzeć na to z innej strony.',
+    engineFacilitationNote: 'Chcę doprecyzować',
     engineFacilitationNext: 'Następne pytanie',
-    engineFacilitationDeepen: 'Pogłęb',
-    engineFacilitationPerspective: 'Zmień perspektywę',
+    engineFacilitationAsIs: 'Jak jest?',
+    engineFacilitationProblem: 'Co nie działa?',
+    engineFacilitationDesired: 'Jak powinno być?',
     engineFacilitationLoadingLabel: 'Generuję pytanie…',
     engineFacilitationRetryMessage: 'Nie udało się wygenerować pytania. Spróbuj ponownie.',
     engineFacilitationRetryCta: 'Spróbuj ponownie',
-    engineFacilitationLoadingPerspective: 'Dobieram perspektywę do Twojej tablicy',
+    engineFacilitationLoadingPerspective: 'Dobieram pytanie do tej perspektywy',
     engineFacilitationLoadingDeepen: 'Dobieram pytanie do Twojej tablicy',
     engineNamePrompt: 'Nadaj nazwę tej sesji, żeby łatwiej do niej wrócić.',
     engineNameLabel: 'Nazwa sesji',
     engineNamePlaceholder: 'Nazwa sesji',
     engineNameSave: 'Zapisz i kontynuuj',
+    engineInitialBriefTitle: 'Opisz swój pomysł, żeby dobrze wystartować',
+    engineInitialBriefDescription:
+      'Napisz swobodnie o pomyśle, kontekście, problemach, potrzebach, obserwacjach i pytaniach. Podzielę to na pierwsze wpisy na tablicy tej sesji.',
+    engineInitialBriefPlaceholder:
+      'Przykład: Dla kogo to jest, co dziś nie działa, co chcesz zmienić, jakie masz założenia, jakie pytania pozostają otwarte?',
+    engineInitialBriefSubmit: 'Utwórz pierwsze wpisy',
+    engineInitialBriefSubmitting: 'Tworzę wpisy…',
+    engineInitialBriefWordCountRemaining: (count) => `Pozostało ${count} słów`,
+    engineInitialBriefWordLimitReached: 'Osiągnięto limit słów (1000).',
+    engineInitialBriefEmpty: 'Najpierw wpisz krótki opis.',
+    engineInitialBriefTooLong: 'Opis przekracza limit 1000 słów.',
+    engineInitialBriefFailed: 'Nie udało się utworzyć pierwszych wpisów. Spróbuj ponownie.',
+    engineInitialBriefSuggestFailed: 'Nie udało się przeanalizować opisu na pierwsze wpisy. Spróbuj ponownie.',
+    engineInitialBriefSaveFailed: 'Opis został przeanalizowany, ale nie udało się zapisać pierwszych wpisów.',
+    engineInitialBriefPartialSaveFailed: (savedCount, failedCount) =>
+      `Opis został przeanalizowany. Zapisano ${savedCount} wpisów, ale ${failedCount} nie udało się zapisać.`,
+    engineInitialBriefVoiceInputLabel: 'Użyj wprowadzania głosowego',
+    engineInitialBriefVoiceInputListening: 'Nasłuchiwanie…',
+    engineInitialBriefVoiceInputUnavailable: 'Wprowadzanie głosowe nie jest dostępne w tej przeglądarce.',
+    engineInitialBriefVoiceInputError: 'Wprowadzanie głosowe jest chwilowo niedostępne.',
     engineWordCountRemaining: (count) => `Pozostało ${count} słów`,
     engineQuestionsWipNote: '',
     engineWordLimitReached: 'Osiągnięto limit słów.',
@@ -2395,6 +2550,14 @@ function App() {
   const [engineNameDraft, setEngineNameDraft] = useState('')
   const [engineNameError, setEngineNameError] = useState<string | null>(null)
   const [engineNameSaving, setEngineNameSaving] = useState(false)
+  const [engineInitialBriefOpen, setEngineInitialBriefOpen] = useState(false)
+  const [engineInitialBriefText, setEngineInitialBriefText] = useState('')
+  const [engineInitialBriefError, setEngineInitialBriefError] = useState<string | null>(null)
+  const [engineInitialBriefSubmitting, setEngineInitialBriefSubmitting] = useState(false)
+  const [engineInitialBriefVoicePreview, setEngineInitialBriefVoicePreview] = useState('')
+  const [engineInitialBriefVoiceState, setEngineInitialBriefVoiceState] = useState<
+    'idle' | 'listening' | 'unavailable'
+  >(() => (getSpeechRecognitionCtor() ? 'idle' : 'unavailable'))
   const [resumeNamePromptAfterList, setResumeNamePromptAfterList] = useState(false)
   const [enginePreviewItems, setEnginePreviewItems] = useState<EngineBoardItem[]>([])
   const [engineBoardItemsLoadedBySession, setEngineBoardItemsLoadedBySession] = useState<
@@ -2404,6 +2567,11 @@ function App() {
     Record<string, boolean>
   >({})
   const [enginePreviewInput, setEnginePreviewInput] = useState('')
+  const [enginePreviewVoiceState, setEnginePreviewVoiceState] = useState<
+    'idle' | 'listening' | 'unavailable'
+  >(() => (getSpeechRecognitionCtor() ? 'idle' : 'unavailable'))
+  const [enginePreviewVoiceError, setEnginePreviewVoiceError] = useState<string | null>(null)
+  const [engineAddEntryLoading, setEngineAddEntryLoading] = useState(false)
   const [engineUiState, setEngineUiState] = useState<
     'INIT' | 'FREE_FLOW' | 'FACILITATION_OFFER' | 'FACILITATED_INPUT'
   >('INIT')
@@ -2414,6 +2582,10 @@ function App() {
     useState<FacilitationType | null>(null)
   const [lastFacilitationType, setLastFacilitationType] =
     useState<FacilitationType | null>(null)
+  const [engineActiveFacilitationPerspective, setEngineActiveFacilitationPerspective] =
+    useState<FacilitationPerspective | null>(null)
+  const [lastFacilitationPerspective, setLastFacilitationPerspective] =
+    useState<FacilitationPerspective | null>(null)
   const [showEngineFacilitationLoadingUI, setShowEngineFacilitationLoadingUI] =
     useState(false)
   const [engineWeakSignals, setEngineWeakSignals] = useState(0)
@@ -2512,17 +2684,40 @@ function App() {
   const facilitationIntroRef = useRef<string | null>(null)
   const [feedbackCooldown, setFeedbackCooldown] = useState(0)
   const [feedbackNotice, setFeedbackNotice] = useState<{ message: string; variant: 'success' | 'error' } | null>(null)
-  const [engineEntryHint, setEngineEntryHint] = useState<{
-    x: number
-    y: number
-    visible: boolean
-  }>({ x: 0, y: 0, visible: false })
+  const [engineEntryRowSpans, setEngineEntryRowSpans] = useState<Record<string, number>>({})
+  const [engineDraggingEntryId, setEngineDraggingEntryId] = useState<string | null>(null)
+  const [engineDragOverSection, setEngineDragOverSection] = useState<EnginePerspectiveKey | null>(null)
+  const [engineDragTargetIndex, setEngineDragTargetIndex] = useState<number | null>(null)
+  const [engineMovingEntryId, setEngineMovingEntryId] = useState<string | null>(null)
   const [engineMatrixVisible] = useState(false)
   const [engineLabelEditorId, setEngineLabelEditorId] = useState<string | null>(null)
   const engineLabelEditorRef = useRef<HTMLDivElement | null>(null)
+  const engineLabelSelectRef = useRef<HTMLSelectElement | null>(null)
+  const engineDragHoverTimerRef = useRef<number | null>(null)
+  const enginePendingDragTargetRef = useRef<{
+    section: EnginePerspectiveKey
+    index: number
+  } | null>(null)
+  const engineEntryNodesRef = useRef<Record<string, HTMLLIElement | null>>({})
   const engineLabelCache = useRef<Record<string, string | null>>({})
   const openSessionDebugOnceRef = useRef(false)
   const engineInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const enginePreviewRecognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const enginePreviewVoiceBaseTextRef = useRef('')
+  const enginePreviewVoiceSessionBaseTextRef = useRef('')
+  const enginePreviewVoiceCommittedTextRef = useRef('')
+  const enginePreviewVoiceTranscriptRef = useRef('')
+  const enginePreviewVoiceAbortRef = useRef(false)
+  const enginePreviewVoiceCorrectionSeqRef = useRef(0)
+  const engineInitialBriefInputRef = useRef<HTMLTextAreaElement | null>(null)
+  const engineInitialBriefRecognitionRef = useRef<SpeechRecognitionLike | null>(null)
+  const engineInitialBriefTextRef = useRef('')
+  const engineInitialBriefTranscriptDraftRef = useRef('')
+  const engineInitialBriefVoiceAbortRef = useRef(false)
+  const engineInitialBriefVoiceBaseTextRef = useRef('')
+  const engineInitialBriefVoiceSessionBaseTextRef = useRef('')
+  const engineInitialBriefVoiceCommittedTextRef = useRef('')
+  const engineInitialBriefVoiceCorrectionSeqRef = useRef(0)
   const enginePendingFocusRef = useRef(false)
   const enginePendingArmingRef = useRef(false)
   const engineAllowIdleWithoutFocusRef = useRef(false)
@@ -2766,6 +2961,16 @@ const isAuthFlowInProgress = () => {
       return false
     }
     return true
+  }
+
+  const resolveFacilitationRequestType = (
+    perspective: FacilitationPerspective
+  ): FacilitationType => {
+    const requestedMode = FACILITATION_PERSPECTIVE_MODE[perspective]
+    const isContinuation =
+      engineActiveFacilitationPerspective === perspective &&
+      engineLastQuestionMeta?.mode_code === requestedMode
+    return isContinuation ? 'DEEPEN' : 'PERSPECTIVE'
   }
 
   const resolveOfferReason = () => {
@@ -3716,6 +3921,29 @@ const isAuthFlowInProgress = () => {
     return () => document.removeEventListener('mousedown', handleClick)
   }, [engineLabelEditorId])
 
+  useEffect(() => {
+    if (!engineLabelEditorId || typeof window === 'undefined') return
+    const select = engineLabelSelectRef.current
+    if (!select) return
+
+    const frame = window.requestAnimationFrame(() => {
+      const currentSelect = engineLabelSelectRef.current
+      if (!currentSelect) return
+      currentSelect.focus()
+      const pickerSelect = currentSelect as HTMLSelectElement & {
+        showPicker?: () => void
+      }
+      if (typeof pickerSelect.showPicker === 'function') {
+        pickerSelect.showPicker()
+        return
+      }
+      currentSelect.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
+      currentSelect.click()
+    })
+
+    return () => window.cancelAnimationFrame(frame)
+  }, [engineLabelEditorId])
+
 
   const isDebugMatrix =
     typeof window !== 'undefined' && window.location.pathname === '/debug/matrix'
@@ -3820,6 +4048,15 @@ const isAuthFlowInProgress = () => {
     setLoginNotice(null)
     setFeedbackNotice(null)
   }, [uiLanguage])
+
+  useEffect(() => {
+    return () => {
+      if (engineDragHoverTimerRef.current) {
+        window.clearTimeout(engineDragHoverTimerRef.current)
+        engineDragHoverTimerRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     if (postAuthLanguageApplied) return
@@ -4606,17 +4843,34 @@ const normalizeBoardItem = (item: EngineBoardItem) => {
       : typeof updatedAtRaw === 'string' && !Number.isNaN(Date.parse(updatedAtRaw))
         ? Date.parse(updatedAtRaw)
         : undefined
+  const sortOrderRaw = (item as { sort_order?: unknown }).sort_order ?? null
+  const sortOrder =
+    typeof sortOrderRaw === 'number'
+      ? sortOrderRaw
+      : typeof sortOrderRaw === 'string'
+        ? Number(sortOrderRaw)
+        : undefined
   return {
     ...item,
     label: item.label ?? null,
     matrix_row: matrixRow ?? null,
     matrix_col: matrixCol ?? null,
+    sort_order: Number.isFinite(sortOrder ?? NaN) ? sortOrder : item.sort_order ?? null,
     created_at: createdAt ?? item.created_at,
     updated_at: updatedAt ?? item.updated_at,
   }
 }
 
-const normalizeBoardItems = (items: EngineBoardItem[]) => items.map(normalizeBoardItem)
+const normalizeBoardItems = (items: EngineBoardItem[]) => {
+  const normalized = items.map(normalizeBoardItem)
+  return normalized.map((item, index) => ({
+    ...item,
+    sort_order:
+      typeof item.sort_order === 'number' && Number.isFinite(item.sort_order)
+        ? item.sort_order
+        : (index + 1) * ENGINE_SORT_GAP,
+  }))
+}
 
 const safeLower = (value: unknown) => String(value ?? '').toLowerCase()
 
@@ -4639,6 +4893,247 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (!trimmed) return 0
     return trimmed.split(/\s+/).length
   }
+
+  const applyEngineInitialBriefTextChange = (next: string, previous = engineInitialBriefText) => {
+    const nextWords = countWords(next)
+    const isDeletion = next.length < previous.length
+    if (nextWords > INITIAL_BRIEF_WORD_LIMIT && !isDeletion) {
+      setEngineInitialBriefError(copy.engineInitialBriefTooLong)
+      return false
+    }
+    setEngineInitialBriefText(next)
+    if (engineInitialBriefError) setEngineInitialBriefError(null)
+    return true
+  }
+
+  const appendEngineInitialBriefTranscript = (transcript: string) => {
+    const cleanTranscript = cleanFinalSpeechTranscriptSegment(
+      transcript,
+      toSpeechCleanupLocale(uiLanguage)
+    )
+    if (!cleanTranscript) return null
+    const base = engineInitialBriefTextRef.current
+    const separator = base.trim() ? (/\s$/.test(base) ? '' : ' ') : ''
+    if (!applyEngineInitialBriefTextChange(`${base}${separator}${cleanTranscript}`, base)) {
+      return null
+    }
+    return cleanTranscript
+  }
+
+  const composeEngineInitialBriefVoiceText = (base: string, transcript: string) => {
+    const cleanTranscript = transcript.trim()
+    if (!cleanTranscript) return base
+    const separator = base.trim() ? (/\s$/.test(base) ? '' : ' ') : ''
+    return `${base}${separator}${cleanTranscript}`
+  }
+
+  const getEngineInitialBriefDisplayedText = () =>
+    engineInitialBriefVoiceState === 'listening' && engineInitialBriefVoicePreview
+      ? engineInitialBriefVoicePreview
+      : engineInitialBriefText
+
+  const syncEngineInitialBriefSubmitText = () => {
+    const visibleText = getEngineInitialBriefDisplayedText()
+    const draft = engineInitialBriefTranscriptDraftRef.current.trim()
+    if (draft) {
+      const base = engineInitialBriefVoiceBaseTextRef.current
+      const cleanedDraft = cleanFinalSpeechTranscriptSegment(draft, toSpeechCleanupLocale(uiLanguage))
+      const committed = cleanedDraft ? composeEngineInitialBriefVoiceText(base, cleanedDraft) : base
+      if (!applyEngineInitialBriefTextChange(committed, engineInitialBriefTextRef.current)) {
+        return null
+      }
+      engineInitialBriefTranscriptDraftRef.current = ''
+      setEngineInitialBriefVoicePreview('')
+      return committed
+    }
+    if (visibleText !== engineInitialBriefTextRef.current) {
+      if (!applyEngineInitialBriefTextChange(visibleText, engineInitialBriefTextRef.current)) {
+        return null
+      }
+    }
+    return visibleText
+  }
+
+  const stopEngineInitialBriefRecognition = (mode: 'stop' | 'abort' = 'stop') => {
+    const recognition = engineInitialBriefRecognitionRef.current
+    if (!recognition) return
+    engineInitialBriefVoiceAbortRef.current = mode === 'abort'
+    recognition.onresult = null
+    recognition.onerror = null
+    recognition.onend = null
+    engineInitialBriefRecognitionRef.current = null
+    if (mode === 'abort') {
+      recognition.abort()
+      return
+    }
+    recognition.stop()
+  }
+
+  const flushEngineInitialBriefTranscriptDraft = () => {
+    const draft = engineInitialBriefTranscriptDraftRef.current.trim()
+    setEngineInitialBriefVoicePreview('')
+    if (!draft) return true
+    const appendedTranscript = appendEngineInitialBriefTranscript(draft)
+    if (appendedTranscript) {
+      engineInitialBriefVoiceCommittedTextRef.current = composeEngineInitialBriefVoiceText(
+        engineInitialBriefVoiceCommittedTextRef.current,
+        appendedTranscript
+      )
+      engineInitialBriefTranscriptDraftRef.current = ''
+      engineInitialBriefInputRef.current?.focus()
+    }
+    return Boolean(appendedTranscript)
+  }
+
+  const toggleEngineInitialBriefVoiceInput = () => {
+    const SpeechRecognition = getSpeechRecognitionCtor()
+    if (!SpeechRecognition) {
+      setEngineInitialBriefVoiceState('unavailable')
+      setEngineInitialBriefError(copy.engineInitialBriefVoiceInputUnavailable)
+      return
+    }
+    if (engineInitialBriefRecognitionRef.current || engineInitialBriefVoiceState === 'listening') {
+      stopEngineInitialBriefRecognition('abort')
+      setEngineInitialBriefVoiceState('idle')
+      return
+    }
+    setEngineInitialBriefError(null)
+    engineInitialBriefVoiceAbortRef.current = false
+    engineInitialBriefTranscriptDraftRef.current = ''
+    engineInitialBriefVoiceCorrectionSeqRef.current += 1
+    engineInitialBriefVoiceCommittedTextRef.current = ''
+    engineInitialBriefVoiceSessionBaseTextRef.current = engineInitialBriefTextRef.current
+    engineInitialBriefVoiceBaseTextRef.current = engineInitialBriefTextRef.current
+    setEngineInitialBriefVoicePreview('')
+    const recognition = new SpeechRecognition()
+    engineInitialBriefRecognitionRef.current = recognition
+    recognition.lang = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.onresult = (event) => {
+      const results = event.results
+      const startIndex = event.resultIndex ?? 0
+      let finalTranscript = ''
+      let interimTranscript = ''
+      for (let index = startIndex; index < results.length; index += 1) {
+        const result = results[index]
+        const chunk = result[0]?.transcript ?? ''
+        if (!chunk.trim()) continue
+        if (result?.isFinal) {
+          finalTranscript += chunk
+        } else {
+          interimTranscript += chunk
+        }
+      }
+      const previewTranscript = `${finalTranscript}${interimTranscript}`.trim()
+      engineInitialBriefTranscriptDraftRef.current = previewTranscript
+      setEngineInitialBriefVoicePreview(
+        composeEngineInitialBriefVoiceText(
+          engineInitialBriefVoiceBaseTextRef.current,
+          previewTranscript
+        )
+      )
+      if (!finalTranscript.trim()) return
+      const appendedTranscript = appendEngineInitialBriefTranscript(finalTranscript)
+      if (!appendedTranscript) {
+        engineInitialBriefTranscriptDraftRef.current = ''
+        setEngineInitialBriefVoicePreview('')
+        recognition.abort()
+        setEngineInitialBriefVoiceState('idle')
+        engineInitialBriefRecognitionRef.current = null
+        return
+      }
+      engineInitialBriefVoiceCommittedTextRef.current = composeEngineInitialBriefVoiceText(
+        engineInitialBriefVoiceCommittedTextRef.current,
+        appendedTranscript
+      )
+      engineInitialBriefVoiceBaseTextRef.current = engineInitialBriefTextRef.current
+      engineInitialBriefTranscriptDraftRef.current = ''
+      setEngineInitialBriefVoicePreview('')
+      engineInitialBriefInputRef.current?.focus()
+    }
+    recognition.onerror = (event) => {
+      engineInitialBriefRecognitionRef.current = null
+      setEngineInitialBriefVoicePreview('')
+      if (engineInitialBriefVoiceAbortRef.current || event.error === 'aborted') {
+        engineInitialBriefVoiceAbortRef.current = false
+        setEngineInitialBriefVoiceState('idle')
+        return
+      }
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setEngineInitialBriefVoiceState('unavailable')
+        setEngineInitialBriefError(copy.engineInitialBriefVoiceInputError)
+        return
+      }
+      if (event.error === 'language-not-supported') {
+        setEngineInitialBriefVoiceState('unavailable')
+        setEngineInitialBriefError(copy.engineInitialBriefVoiceInputUnavailable)
+        return
+      }
+      setEngineInitialBriefVoiceState('idle')
+      if (event.error === 'no-speech') {
+        return
+      }
+      setEngineInitialBriefError(
+        copy.engineInitialBriefVoiceInputError
+      )
+    }
+    recognition.onend = () => {
+      engineInitialBriefRecognitionRef.current = null
+      engineInitialBriefVoiceAbortRef.current = false
+      const didFlush = flushEngineInitialBriefTranscriptDraft()
+      const spokenText = engineInitialBriefVoiceCommittedTextRef.current.trim()
+      if (didFlush && spokenText) {
+        queueEngineInitialBriefSpeechCorrection(
+          engineInitialBriefVoiceSessionBaseTextRef.current,
+          spokenText
+        )
+      }
+      setEngineInitialBriefVoiceState((prev) => (prev === 'unavailable' ? prev : 'idle'))
+    }
+    try {
+      recognition.start()
+      setEngineInitialBriefVoiceState('listening')
+    } catch {
+      engineInitialBriefRecognitionRef.current = null
+      setEngineInitialBriefVoiceState('unavailable')
+      setEngineInitialBriefError(copy.engineInitialBriefVoiceInputError)
+    }
+  }
+
+  useEffect(() => {
+    engineInitialBriefTextRef.current = engineInitialBriefText
+  }, [engineInitialBriefText])
+
+  useEffect(() => {
+    if (enginePreviewVoiceState === 'listening') return
+    enginePreviewVoiceBaseTextRef.current = enginePreviewInput
+  }, [enginePreviewInput, enginePreviewVoiceState])
+
+  useEffect(() => {
+    if (engineInitialBriefVoiceState === 'listening') return
+    engineInitialBriefVoiceBaseTextRef.current = engineInitialBriefText
+  }, [engineInitialBriefText, engineInitialBriefVoiceState])
+
+  useEffect(() => {
+    setEngineInitialBriefVoiceState(getSpeechRecognitionCtor() ? 'idle' : 'unavailable')
+  }, [])
+
+  useEffect(() => {
+    setEnginePreviewVoiceState(getSpeechRecognitionCtor() ? 'idle' : 'unavailable')
+  }, [])
+
+  useEffect(() => {
+    if (engineInitialBriefOpen) return
+    stopEngineInitialBriefRecognition('abort')
+    setEngineInitialBriefVoicePreview('')
+    setEngineInitialBriefVoiceState(getSpeechRecognitionCtor() ? 'idle' : 'unavailable')
+  }, [engineInitialBriefOpen])
+
+  useEffect(() => () => {
+    stopEnginePreviewRecognition('abort')
+    stopEngineInitialBriefRecognition('abort')
+  }, [])
 
   const containsVaguePhrase = (value: string) => {
     const lowered = safeLower(value)
@@ -5358,7 +5853,63 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   }
 
-  const activateFacilitationPrompt = async (type: FacilitationType, retryCount = 0) => {
+  const classifyFacilitatedEntryWithinPerspective = async (
+    sessionId: string,
+    answerText: string,
+    perspective: FacilitationPerspective
+  ) => {
+    const allowedCellIds = perspectiveToAllowedCellIds(perspective)
+    if (!allowedCellIds) return null
+    const fallbackCellId = allowedCellIds[1]
+    const result = await fetchJsonWithDiagnostics('/api/coach?action=suggest', {
+      method: 'POST',
+      headers: llmHeaders,
+      body: JSON.stringify({
+        currentUserId: authSession?.user?.id ?? null,
+        sessionId,
+        action: 'reclassify_entries',
+        locale: uiLanguage === 'Polish' ? 'pl' : 'en',
+        sessionName: enginePreviewSessionName,
+        allowedCellIds,
+        entries: [
+          {
+            id: 'facilitation-answer',
+            text: answerText,
+            currentCellId: fallbackCellId,
+          },
+        ],
+      }),
+    })
+    const payload = result.json as
+      | {
+          ok?: boolean
+          classifications?: Array<{
+            id?: string
+            suggestedCellId?: string
+            confidence?: number
+            shouldMove?: boolean
+          }>
+          meta?: LlmUsageMeta
+        }
+      | null
+    if (!result.ok || !payload?.ok || !Array.isArray(payload.classifications)) {
+      return null
+    }
+    applyUsageModel(payload.meta)
+    void applyUsageToSession(payload.meta, sessionId)
+    const allowedSet = new Set<string>(allowedCellIds)
+    const suggestedCellId = String(payload.classifications[0]?.suggestedCellId || '').toUpperCase()
+    if (!allowedSet.has(suggestedCellId)) {
+      return cellCodeToMatrix(fallbackCellId)
+    }
+    return cellCodeToMatrix(suggestedCellId)
+  }
+
+  const activateFacilitationPrompt = async (
+    type: FacilitationType,
+    perspective: FacilitationPerspective,
+    retryCount = 0
+  ) => {
     if (!engineSessionPersisted || !enginePreviewSessionId) {
       setEngineFacilitationInlineError(notices.createSessionFirst)
       return
@@ -5372,9 +5923,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
     if (!enginePreviewSessionId) return
     if (engineFacilitationLoading) return
+    setEngineFacilitationInlineError(null)
     setEngineFacilitationLoading(true)
     setEngineFacilitationLoadingType(type)
     setLastFacilitationType(type)
+    setLastFacilitationPerspective(perspective)
     setShowEngineFacilitationLoadingUI(false)
     setEngineActivePrompt(null)
     setEnginePromptSource(null)
@@ -5424,6 +5977,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           sessionName,
           language,
           action: type,
+          requestedPerspective: perspective,
           askedIds: engineAskedQuestionIds,
           askedTexts: engineAskedQuestionTexts,
           lastQuestionText: engineLastQuestionText,
@@ -5506,7 +6060,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           })
         }
         setTimeout(() => {
-          void activateFacilitationPrompt(type, retryCount + 1)
+          void activateFacilitationPrompt(type, perspective, retryCount + 1)
         }, 0)
         return
       }
@@ -5543,9 +6097,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
       enginePreviousInput.current = ''
       setEngineUiState('FACILITATED_INPUT')
       setEngineOfferReason(null)
+      setEngineActiveFacilitationPerspective(perspective)
       logFacilitationEvent('facilitation_used', {
         sessionId: enginePreviewSessionId || 'unknown',
         action: type,
+        perspective,
         promptText: normalized.questionText,
       })
       const questionId = normalized.questions.length
@@ -5677,16 +6233,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   }
 
-  const handleEnginePreviewInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
-    const rawNext = event.target.value
-    const prev = enginePreviewInput
+  const applyEnginePreviewInputText = (rawNext: string, previous = enginePreviewInput) => {
+    const prev = previous
     const nextWordCount = countWords(rawNext)
     const isDeletion = rawNext.length < prev.length
     if (nextWordCount > WORD_LIMIT && !isDeletion) {
-      return
+      return false
     }
     const next = limitWords(rawNext, WORD_LIMIT)
     setEnginePreviewInput(next)
+    setEnginePreviewVoiceError(null)
     setEngineLastInputActivityAt(Date.now())
     engineIdleTriggered.current = false
 
@@ -5715,6 +6271,230 @@ const isMissingLabel = (item: EngineBoardItem) => {
           registerSignal('strong', 'erase')
         }
       }, ERASE_EMPTY_SECONDS_STRONG * 1000)
+    }
+    return true
+  }
+
+  const requestSpeechTranscriptInterpretation = async (rawText: string, sessionId: string | null) => {
+    const text = String(rawText || '').trim()
+    if (!text) return ''
+    const boardContext = getSessionContext(sessionId).boardEntries
+      .map((entry) => String(entry.text || '').trim())
+      .filter(Boolean)
+    const result = await interpretSpeechTranscript({
+      text,
+      locale: toSpeechCleanupLocale(uiLanguage),
+      aiSupportEnabled,
+      sessionId,
+      boardContext,
+    })
+    const meta = result.meta as LlmUsageMeta | undefined
+    if (meta) {
+      applyUsageModel(meta)
+      if (sessionId) {
+        void applyUsageToSession(meta, sessionId)
+      }
+    }
+    return String(result.text || '').trim() || text
+  }
+
+  const queueEngineInitialBriefSpeechCorrection = (baseText: string, spokenText: string) => {
+    const normalizedSpokenText = spokenText.trim()
+    if (!normalizedSpokenText) return
+    const expectedText = composeEngineInitialBriefVoiceText(baseText, normalizedSpokenText)
+    const requestSeq = ++engineInitialBriefVoiceCorrectionSeqRef.current
+    void requestSpeechTranscriptInterpretation(normalizedSpokenText, enginePreviewSessionId).then(
+      (correctedText) => {
+        const normalizedCorrectedText = correctedText.trim()
+        if (!normalizedCorrectedText || normalizedCorrectedText === normalizedSpokenText) return
+        if (engineInitialBriefVoiceCorrectionSeqRef.current !== requestSeq) return
+        if (engineInitialBriefTextRef.current !== expectedText) return
+        void applyEngineInitialBriefTextChange(
+          composeEngineInitialBriefVoiceText(baseText, normalizedCorrectedText),
+          engineInitialBriefTextRef.current
+        )
+      }
+    )
+  }
+
+  const handleEnginePreviewInputChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    enginePreviewVoiceCorrectionSeqRef.current += 1
+    applyEnginePreviewInputText(event.target.value)
+  }
+
+  const composeEnginePreviewVoiceText = (base: string, transcript: string) => {
+    const cleanTranscript = transcript.trim()
+    if (!cleanTranscript) return base
+    const separator = base.trim() ? (/\s$/.test(base) ? '' : ' ') : ''
+    return `${base}${separator}${cleanTranscript}`
+  }
+
+  const queueEnginePreviewSpeechCorrection = (baseText: string, spokenText: string) => {
+    const normalizedSpokenText = spokenText.trim()
+    if (!normalizedSpokenText) return
+    const expectedText = composeEnginePreviewVoiceText(baseText, normalizedSpokenText)
+    const requestSeq = ++enginePreviewVoiceCorrectionSeqRef.current
+    void requestSpeechTranscriptInterpretation(normalizedSpokenText, enginePreviewSessionId).then(
+      (correctedText) => {
+        const normalizedCorrectedText = correctedText.trim()
+        if (!normalizedCorrectedText || normalizedCorrectedText === normalizedSpokenText) return
+        if (enginePreviewVoiceCorrectionSeqRef.current !== requestSeq) return
+        if (enginePreviousInput.current !== expectedText) return
+        void applyEnginePreviewInputText(
+          composeEnginePreviewVoiceText(baseText, normalizedCorrectedText),
+          enginePreviousInput.current
+        )
+      }
+    )
+  }
+
+  const stopEnginePreviewRecognition = (mode: 'stop' | 'abort' = 'stop') => {
+    const recognition = enginePreviewRecognitionRef.current
+    if (!recognition) return
+    enginePreviewVoiceAbortRef.current = mode === 'abort'
+    recognition.onresult = null
+    recognition.onerror = null
+    recognition.onend = null
+    enginePreviewRecognitionRef.current = null
+    if (mode === 'abort') {
+      recognition.abort()
+      return
+    }
+    recognition.stop()
+  }
+
+  const syncEnginePreviewVoiceTranscript = () => {
+    const rawDraft = enginePreviewVoiceTranscriptRef.current
+    const draft = cleanFinalSpeechTranscriptSegment(rawDraft, toSpeechCleanupLocale(uiLanguage))
+    if (!draft) {
+      if (rawDraft.trim()) {
+        void applyEnginePreviewInputText(
+          enginePreviewVoiceBaseTextRef.current,
+          enginePreviousInput.current || enginePreviewInput
+        )
+      }
+      enginePreviewVoiceTranscriptRef.current = ''
+      return enginePreviewVoiceBaseTextRef.current
+    }
+    const committed = composeEnginePreviewVoiceText(enginePreviewVoiceBaseTextRef.current, draft)
+    if (!applyEnginePreviewInputText(committed, enginePreviousInput.current || enginePreviewInput)) {
+      return null
+    }
+    enginePreviewVoiceBaseTextRef.current = committed
+    enginePreviewVoiceCommittedTextRef.current = composeEnginePreviewVoiceText(
+      enginePreviewVoiceCommittedTextRef.current,
+      draft
+    )
+    enginePreviewVoiceTranscriptRef.current = ''
+    return committed
+  }
+
+  const toggleEnginePreviewVoiceInput = () => {
+    const SpeechRecognition = getSpeechRecognitionCtor()
+    if (!SpeechRecognition) {
+      setEnginePreviewVoiceState('unavailable')
+      setEnginePreviewVoiceError(copy.engineInitialBriefVoiceInputUnavailable)
+      return
+    }
+    if (enginePreviewRecognitionRef.current || enginePreviewVoiceState === 'listening') {
+      stopEnginePreviewRecognition('abort')
+      setEnginePreviewVoiceState('idle')
+      return
+    }
+    setEnginePreviewVoiceError(null)
+    enginePreviewVoiceAbortRef.current = false
+    enginePreviewVoiceCorrectionSeqRef.current += 1
+    enginePreviewVoiceCommittedTextRef.current = ''
+    enginePreviewVoiceTranscriptRef.current = ''
+    enginePreviewVoiceSessionBaseTextRef.current = enginePreviewInput
+    enginePreviewVoiceBaseTextRef.current = enginePreviewInput
+    const recognition = new SpeechRecognition()
+    enginePreviewRecognitionRef.current = recognition
+    recognition.lang = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
+    recognition.continuous = false
+    recognition.interimResults = true
+    recognition.onresult = (event) => {
+      const results = event.results
+      const startIndex = event.resultIndex ?? 0
+      let finalTranscript = ''
+      let interimTranscript = ''
+      for (let index = startIndex; index < results.length; index += 1) {
+        const result = results[index]
+        const chunk = result[0]?.transcript ?? ''
+        if (!chunk.trim()) continue
+        if (result?.isFinal) {
+          finalTranscript += chunk
+        } else {
+          interimTranscript += chunk
+        }
+      }
+      const cleanedFinalTranscript = cleanFinalSpeechTranscriptSegment(
+        finalTranscript,
+        toSpeechCleanupLocale(uiLanguage)
+      )
+      if (cleanedFinalTranscript) {
+        enginePreviewVoiceBaseTextRef.current = composeEnginePreviewVoiceText(
+          enginePreviewVoiceBaseTextRef.current,
+          cleanedFinalTranscript
+        )
+        enginePreviewVoiceCommittedTextRef.current = composeEnginePreviewVoiceText(
+          enginePreviewVoiceCommittedTextRef.current,
+          cleanedFinalTranscript
+        )
+      }
+      const previewTranscript = interimTranscript.trim()
+      enginePreviewVoiceTranscriptRef.current = previewTranscript
+      const nextVisible = composeEnginePreviewVoiceText(
+        enginePreviewVoiceBaseTextRef.current,
+        previewTranscript
+      )
+      if (!applyEnginePreviewInputText(nextVisible, enginePreviousInput.current || enginePreviewInput)) {
+        recognition.abort()
+        setEnginePreviewVoiceState('idle')
+        enginePreviewRecognitionRef.current = null
+        enginePreviewVoiceTranscriptRef.current = ''
+        return
+      }
+      engineInputRef.current?.focus()
+    }
+    recognition.onerror = (event) => {
+      enginePreviewRecognitionRef.current = null
+      if (enginePreviewVoiceAbortRef.current || event.error === 'aborted') {
+        enginePreviewVoiceAbortRef.current = false
+        setEnginePreviewVoiceState('idle')
+        return
+      }
+      if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
+        setEnginePreviewVoiceState('unavailable')
+        setEnginePreviewVoiceError(copy.engineInitialBriefVoiceInputError)
+        return
+      }
+      if (event.error === 'language-not-supported') {
+        setEnginePreviewVoiceState('unavailable')
+        setEnginePreviewVoiceError(copy.engineInitialBriefVoiceInputUnavailable)
+        return
+      }
+      setEnginePreviewVoiceState('idle')
+      if (event.error === 'no-speech') return
+      setEnginePreviewVoiceError(copy.engineInitialBriefVoiceInputError)
+    }
+    recognition.onend = () => {
+      enginePreviewRecognitionRef.current = null
+      enginePreviewVoiceAbortRef.current = false
+      const syncedText = syncEnginePreviewVoiceTranscript()
+      const spokenText = enginePreviewVoiceCommittedTextRef.current.trim()
+      if (syncedText && spokenText) {
+        queueEnginePreviewSpeechCorrection(enginePreviewVoiceSessionBaseTextRef.current, spokenText)
+      }
+      setEnginePreviewVoiceState((prev) => (prev === 'unavailable' ? prev : 'idle'))
+    }
+    try {
+      recognition.start()
+      setEnginePreviewVoiceState('listening')
+    } catch {
+      enginePreviewRecognitionRef.current = null
+      setEnginePreviewVoiceState('unavailable')
+      setEnginePreviewVoiceError(copy.engineInitialBriefVoiceInputError)
     }
   }
 
@@ -5851,8 +6631,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return null
   }
 
-  const handleEnginePreviewAdd = async (nameOverride?: string) => {
-    const text = enginePreviewInput.trim()
+  const handleEnginePreviewAdd = async (nameOverride?: string, textOverride?: string) => {
+    if (engineAddEntryLoading) return
+    enginePreviewVoiceCorrectionSeqRef.current += 1
+    const text = (textOverride ?? enginePreviewInput).trim()
     if (!text) return
     if (isDebugEnabled()) {
       const details = computeMappingDetails(text, uiLanguage)
@@ -5879,6 +6661,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
     engineInteractionBySession.current[sessionId] = true
 
     const now = Date.now()
+    const nextSortOrder =
+      enginePreviewItems.reduce((max, item) => {
+        const current =
+          typeof item.sort_order === 'number' && Number.isFinite(item.sort_order)
+            ? item.sort_order
+            : 0
+        return Math.max(max, current)
+      }, 0) + ENGINE_SORT_GAP
     const wordCount = countWords(text)
     const isShort = wordCount > 0 && wordCount < SHORT_ENTRY_WORDS
     const isVague = containsVaguePhrase(text)
@@ -5903,6 +6693,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
 
     setEnginePreviewError(null)
+    setEngineAddEntryLoading(true)
     try {
       if (!client) {
         showEngineNotice(notices.authSessionExpired, 'error')
@@ -5923,15 +6714,31 @@ const isMissingLabel = (item: EngineBoardItem) => {
         typeof crypto !== 'undefined' && 'randomUUID' in crypto
           ? crypto.randomUUID()
           : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+      const facilitationPerspective =
+        entryType === 'facilitated_input'
+          ? engineActiveFacilitationPerspective ??
+            lastFacilitationPerspective ??
+            modeToFacilitationPerspective(engineLastQuestionMeta?.mode_code ?? null)
+          : null
+      const facilitationModeCode =
+        facilitationPerspective
+          ? FACILITATION_PERSPECTIVE_MODE[facilitationPerspective]
+          : engineLastQuestionMeta?.mode_code ?? null
+      const classifiedFacilitationCell =
+        entryType === 'facilitated_input' && facilitationPerspective
+          ? await classifyFacilitatedEntryWithinPerspective(sessionId, text, facilitationPerspective)
+          : null
       // Source of truth for report cell mapping: EngineBoardItem.matrix_row/matrix_col.
-      // We attach them only for facilitated inputs based on the current question meta.
+      // For facilitation answers, the active perspective locks the column and LLM picks only the row.
       const mappedRow =
         entryType === 'facilitated_input'
-          ? toMatrixRowKey(engineLastQuestionMeta?.group_code ?? null)
+          ? classifiedFacilitationCell?.matrix_row ??
+            toMatrixRowKey('B')
           : null
       const mappedCol =
         entryType === 'facilitated_input'
-          ? toMatrixColKey(engineLastQuestionMeta?.mode_code ?? null)
+          ? classifiedFacilitationCell?.matrix_col ??
+            toMatrixColKey(facilitationModeCode)
           : null
       const questionText =
         entryType === 'facilitated_input'
@@ -5952,6 +6759,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         prompt_type: engineActivePrompt?.type || null,
         matrix_row: mappedRow,
         matrix_col: mappedCol,
+        sort_order: nextSortOrder,
         lastClassifiedText: mappedRow && mappedCol ? text : null,
         classificationDirty: mappedRow && mappedCol ? false : true,
       }
@@ -5962,6 +6770,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         label: null,
         matrixRow: mappedRow ?? null,
         matrixCol: mappedCol ?? null,
+        sortOrder: nextSortOrder,
         questionId: newItem.question_id ?? null,
         questionTextPl: isPolish ? questionText : null,
         questionTextEn: !isPolish ? questionText : null,
@@ -6036,12 +6845,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
         prompt_type: (insertedRow.prompt_type as EngineBoardItem['prompt_type']) ?? newItem.prompt_type ?? null,
         matrix_row: insertedRow.matrix_row ?? newItem.matrix_row ?? null,
         matrix_col: insertedRow.matrix_col ?? newItem.matrix_col ?? null,
+        sort_order: insertedRow.sort_order ?? newItem.sort_order ?? null,
         lastClassifiedText: insertedRow.last_classified_text ?? newItem.lastClassifiedText ?? null,
         classificationDirty:
           insertedRow.classification_dirty ?? newItem.classificationDirty ?? null,
       })
       setEnginePreviewItems((prev) => [persistedItem, ...prev])
       setEnginePreviewInput('')
+      setEnginePreviewVoiceError(null)
       setEngineLastInputActivityAt(now)
       setEngineInputFocused(true)
       engineLastAddAtBySession.current[sessionId] = now
@@ -6112,6 +6923,301 @@ const isMissingLabel = (item: EngineBoardItem) => {
     } catch {
       setEnginePreviewError(notices.addEntryFailed)
       logSessionStore('engine_preview_add_failed', { sessionId })
+    } finally {
+      setEngineAddEntryLoading(false)
+    }
+  }
+
+  const persistInitialBriefToUserSessionPayload = async (
+    userId: string,
+    sessionId: string,
+    rawText: string
+  ) => {
+    if (!client) return
+    const { data: current, error: readError } = await client
+      .from('user_sessions')
+      .select('payload')
+      .eq('user_id', userId)
+      .eq('session_id', sessionId)
+      .maybeSingle()
+    if (readError) return
+    const previousPayload =
+      current?.payload && typeof current.payload === 'object' && !Array.isArray(current.payload)
+        ? (current.payload as Record<string, unknown>)
+        : {}
+    const nextPayload = {
+      ...previousPayload,
+      initialBriefRaw: rawText,
+      initialBriefLocale: uiLanguage === 'Polish' ? 'pl' : 'en',
+      initialBriefParsedAt: new Date().toISOString(),
+    }
+    await client
+      .from('user_sessions')
+      .update({ payload: nextPayload, updated_at: new Date().toISOString() })
+      .eq('user_id', userId)
+      .eq('session_id', sessionId)
+  }
+
+  const submitEngineInitialBrief = async () => {
+    if (engineInitialBriefSubmitting) return
+    const sessionId = enginePreviewSessionId
+    if (!sessionId) return
+    engineInitialBriefVoiceCorrectionSeqRef.current += 1
+    const syncedText = syncEngineInitialBriefSubmitText()
+    if (syncedText === null) return
+    if (engineInitialBriefVoiceState === 'listening') {
+      stopEngineInitialBriefRecognition('stop')
+      setEngineInitialBriefVoiceState('idle')
+    }
+    const text = syncedText.trim()
+    const words = countWords(text)
+    if (!text) {
+      setEngineInitialBriefError(copy.engineInitialBriefEmpty)
+      return
+    }
+    if (words > INITIAL_BRIEF_WORD_LIMIT) {
+      setEngineInitialBriefError(copy.engineInitialBriefTooLong)
+      return
+    }
+    if (!client || !authSession?.user?.id) {
+      setEngineInitialBriefError(notices.authSessionExpired)
+      return
+    }
+    setEngineInitialBriefSubmitting(true)
+    setEngineInitialBriefError(null)
+    console.info('[initialBrief] submit start', {
+      sessionId,
+      textLength: text.length,
+      words,
+      uiLanguage,
+      voiceState: engineInitialBriefVoiceState,
+    })
+    try {
+      const { data: sessionData } = await client.auth.getSession()
+      const accessToken = sessionData.session?.access_token || ''
+      const userId = sessionData.session?.user?.id || authSession.user.id
+      if (!accessToken || !userId) {
+        setEngineInitialBriefError(notices.authSessionExpired)
+        setEngineInitialBriefSubmitting(false)
+        return
+      }
+
+      const response = await fetch('/api/coach?action=suggest', {
+        method: 'POST',
+        headers: llmHeaders,
+        body: JSON.stringify({
+          currentUserId: userId,
+          sessionId,
+          action: 'seed_from_brief',
+          text,
+          locale: uiLanguage === 'Polish' ? 'pl' : 'en',
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      const entries = Array.isArray(payload?.entries) ? payload.entries : []
+      console.info('[initialBrief] suggest result', {
+        sessionId,
+        responseOk: response.ok,
+        payloadOk: Boolean(payload?.ok),
+        status: response.status,
+        source: payload?.source ?? null,
+        entriesCount: entries.length,
+        firstEntryRaw: entries[0]
+          ? {
+              text: String(entries[0]?.text || '').slice(0, 160),
+              cellCode: entries[0]?.cellCode ?? null,
+              kind: entries[0]?.kind ?? null,
+            }
+          : null,
+      })
+      if (!response.ok || !payload?.ok) {
+        setEngineInitialBriefError(copy.engineInitialBriefSuggestFailed)
+        setEngineInitialBriefSubmitting(false)
+        return
+      }
+      applyUsageModel(payload?.meta as LlmUsageMeta)
+      void applyUsageToSession(payload?.meta as LlmUsageMeta, sessionId)
+      const inserted: EngineBoardItem[] = []
+      let firstUpsertErrorMessage: string | null = null
+      let firstUpsertErrorStatus: number | null = null
+      let upsertSuccessCount = 0
+      let upsertFailureCount = 0
+      let nextSortOrderBase =
+        enginePreviewItems.reduce((max, item) => {
+          const current =
+            typeof item.sort_order === 'number' && Number.isFinite(item.sort_order)
+              ? item.sort_order
+              : 0
+          return Math.max(max, current)
+        }, 0) + ENGINE_SORT_GAP
+      let fetchBoardItemsFailedMessage: string | null = null
+      let firstNormalizedEntry: {
+        text: string
+        matrixRow: string | null
+        matrixCol: string | null
+      } | null = null
+      for (const entry of entries) {
+        const entryText = String(entry?.text || '').trim()
+        if (!entryText) continue
+        const mapped = entry?.cellCode ? cellCodeToMatrix(String(entry.cellCode)) : null
+        if (!firstNormalizedEntry) {
+          firstNormalizedEntry = {
+            text: entryText.slice(0, 160),
+            matrixRow: mapped?.matrix_row ?? null,
+            matrixCol: mapped?.matrix_col ?? null,
+          }
+        }
+        const upsertResponse = await fetch('/api/board-items?action=upsert', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            sessionId,
+            text: entryText,
+            label: null,
+            matrixRow: mapped?.matrix_row ?? null,
+            matrixCol: mapped?.matrix_col ?? null,
+            sortOrder: nextSortOrderBase,
+            entryType: 'free_input',
+            promptType: null,
+          }),
+        })
+        const upsertPayload = await upsertResponse.json().catch(() => null)
+        if (!upsertResponse.ok || !upsertPayload?.ok || !upsertPayload?.item) {
+          upsertFailureCount += 1
+          if (!firstUpsertErrorMessage) {
+            const code = String(upsertPayload?.error || '').trim()
+            firstUpsertErrorMessage = code || `HTTP_${upsertResponse.status || 'n/a'}`
+            firstUpsertErrorStatus = upsertResponse.status || null
+          }
+          continue
+        }
+        upsertSuccessCount += 1
+        const insertedRow = upsertPayload.item as Database['public']['Tables']['board_items']['Row']
+        const insertedCreatedAt =
+          typeof insertedRow.created_at === 'number'
+            ? insertedRow.created_at
+            : Number.isNaN(Date.parse(String(insertedRow.created_at)))
+              ? Date.now()
+              : Date.parse(String(insertedRow.created_at))
+        const insertedUpdatedAt =
+          typeof insertedRow.updated_at === 'number'
+            ? insertedRow.updated_at
+            : Number.isNaN(Date.parse(String(insertedRow.updated_at)))
+              ? insertedCreatedAt
+              : Date.parse(String(insertedRow.updated_at))
+        inserted.push(
+          normalizeBoardItem({
+            id: insertedRow.id,
+            type: (insertedRow.type as EngineBoardItem['type']) ?? 'idea',
+            text: insertedRow.text ?? entryText,
+            label: insertedRow.label ?? null,
+            question_id: insertedRow.question_id ?? null,
+            question_text_pl: insertedRow.question_text_pl ?? null,
+            question_text_en: insertedRow.question_text_en ?? null,
+            created_at: insertedCreatedAt,
+            updated_at: insertedUpdatedAt,
+            entry_type: (insertedRow.entry_type as EngineBoardItem['entry_type']) ?? 'free_input',
+            prompt_type: (insertedRow.prompt_type as EngineBoardItem['prompt_type']) ?? null,
+            matrix_row: insertedRow.matrix_row ?? null,
+            matrix_col: insertedRow.matrix_col ?? null,
+            sort_order: insertedRow.sort_order ?? nextSortOrderBase,
+            lastClassifiedText: insertedRow.last_classified_text ?? null,
+            classificationDirty: insertedRow.classification_dirty ?? null,
+          })
+        )
+        nextSortOrderBase += ENGINE_SORT_GAP
+      }
+      let sourceItems = inserted
+      if (authSession?.user?.id && client) {
+        try {
+          sourceItems = await fetchBoardItems(sessionId, userId)
+        } catch (error) {
+          fetchBoardItemsFailedMessage =
+            error instanceof Error ? error.message : String(error)
+          sourceItems = inserted
+        }
+      }
+      if (sourceItems.length === 0 && inserted.length > 0) {
+        sourceItems = inserted
+      }
+      const normalizedItems = normalizeBoardItems(sourceItems)
+      console.info('[initialBrief] persistence result', {
+        sessionId,
+        firstNormalizedEntry,
+        upsertSuccessCount,
+        upsertFailureCount,
+        firstUpsertErrorStatus,
+        firstUpsertErrorMessage,
+        fetchBoardItemsFailedMessage,
+        insertedCount: inserted.length,
+        fetchedBoardItemsCount: Array.isArray(sourceItems) ? sourceItems.length : 0,
+        normalizedItemsCount: normalizedItems.length,
+      })
+      setEnginePreviewItems(normalizedItems)
+      const detail = await getSession(sessionId)
+      const now = Date.now()
+      const nextDetail: EngineSessionDetail = {
+        session: detail?.session || {
+          id: sessionId,
+          name: enginePreviewSessionName || null,
+          created_at: now,
+          updated_at: now,
+          last_group_code: null,
+          last_mode_code: null,
+          last_category_code: null,
+          stuck_counter: 0,
+          tokensInTotal: 0,
+          tokensOutTotal: 0,
+        },
+        boardItems: normalizedItems,
+        askedQuestionIds: detail?.askedQuestionIds || [],
+        report: detail?.report || null,
+      }
+      await updateSession(nextDetail)
+      if (engineSessionDetail?.session?.id === sessionId) {
+        setEngineSessionDetail(nextDetail)
+      }
+      await persistInitialBriefToUserSessionPayload(userId, sessionId, text)
+      setEngineInitialBriefOpen(false)
+      setEngineInitialBriefText('')
+      setEngineInitialBriefVoicePreview('')
+      setEngineInitialBriefError(null)
+      setEngineUiState('FREE_FLOW')
+      setEngineInputFocused(true)
+      if (upsertFailureCount > 0 && upsertSuccessCount > 0) {
+        const partialSaveMessage = `${copy.engineInitialBriefPartialSaveFailed(
+          upsertSuccessCount,
+          upsertFailureCount
+        )}${firstUpsertErrorMessage ? ` (${firstUpsertErrorMessage})` : ''}`
+        showEngineNotice(partialSaveMessage, 'error')
+      } else if (normalizedItems.length === 0) {
+        console.warn('[initialBrief] no items after save', {
+          sessionId,
+          upsertSuccessCount,
+          upsertFailureCount,
+          firstUpsertErrorStatus,
+          firstUpsertErrorMessage,
+          fetchBoardItemsFailedMessage,
+        })
+        const saveFailedMessage = firstUpsertErrorMessage
+          ? `${copy.engineInitialBriefSaveFailed} (${firstUpsertErrorMessage})`
+          : fetchBoardItemsFailedMessage
+            ? `${copy.engineInitialBriefSaveFailed} (${fetchBoardItemsFailedMessage})`
+            : copy.engineInitialBriefSaveFailed
+        showEngineNotice(saveFailedMessage, 'error')
+      }
+      engineInputRef.current?.focus()
+    } catch (error) {
+      console.error('[initialBrief] submit failed', {
+        sessionId,
+        message: error instanceof Error ? error.message : String(error),
+      })
+      setEngineInitialBriefError(copy.engineInitialBriefFailed)
+    } finally {
+      setEngineInitialBriefSubmitting(false)
     }
   }
 
@@ -6131,6 +7237,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineUiState('INIT')
     setEngineNamePromptOpen(false)
     setEngineNameDraft('')
+    setEngineInitialBriefOpen(false)
+    setEngineInitialBriefText('')
+    setEngineInitialBriefError(null)
+    setEngineInitialBriefSubmitting(false)
     setEnginePreviewSessionName('')
     setEngineActivePrompt(null)
     setEnginePromptSource(null)
@@ -6171,16 +7281,431 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   const orderedEnginePreviewItems = useMemo(() => {
-    const estimateLines = (value: string) => {
-      const length = String(value || '').trim().length
-      const perLine = 55
-      return Math.max(1, Math.ceil(length / perLine))
-    }
-    return enginePreviewItems
-      .map((item, index) => ({ item, index, lines: estimateLines(item.text) }))
-      .sort((a, b) => a.lines - b.lines || a.index - b.index)
+    return [...enginePreviewItems]
+      .map((item, index) => ({ item, index }))
+      .sort((a, b) => {
+        const aOrder =
+          typeof a.item.sort_order === 'number' && Number.isFinite(a.item.sort_order)
+            ? a.item.sort_order
+            : (a.index + 1) * ENGINE_SORT_GAP
+        const bOrder =
+          typeof b.item.sort_order === 'number' && Number.isFinite(b.item.sort_order)
+            ? b.item.sort_order
+            : (b.index + 1) * ENGINE_SORT_GAP
+        return aOrder - bOrder || a.index - b.index
+      })
       .map(({ item }) => item)
   }, [enginePreviewItems])
+
+  const resolveEngineEntryLayoutClass = (item: EngineBoardItem) => {
+    const wordCount = countWords(item.text)
+    const textLength = String(item.text || '').trim().length
+    if (wordCount > 45 || textLength > 280) return 'is-hero'
+    if (wordCount > 30 || textLength > 180) return 'is-wide'
+    return 'is-medium'
+  }
+
+  const estimateEngineEntryRowSpan = (item: EngineBoardItem, layoutClass: string) => {
+    const textLength = String(item.text || '').trim().length
+    const base =
+      layoutClass === 'is-hero' ? 24 : layoutClass === 'is-wide' ? 18 : 14
+    const growth = layoutClass === 'is-hero' ? 36 : layoutClass === 'is-wide' ? 42 : 34
+    return base + Math.max(0, Math.ceil(textLength / growth))
+  }
+
+  const enginePerspectiveSections = useMemo(() => {
+    const sections = [
+      { key: 'as_is', title: copy.axisPast, toneClass: 'is-as-is' },
+      { key: 'not_working', title: copy.axisNow, toneClass: 'is-not-working' },
+      { key: 'should_be', title: copy.axisFuture, toneClass: 'is-should-be' },
+    ] as const
+    const grouped: Record<'as_is' | 'not_working' | 'should_be', EngineBoardItem[]> = {
+      as_is: [],
+      not_working: [],
+      should_be: [],
+    }
+    orderedEnginePreviewItems.forEach((item) => {
+      const key =
+        item.matrix_col === 'as_is' || item.matrix_col === 'not_working' || item.matrix_col === 'should_be'
+          ? item.matrix_col
+          : 'not_working'
+      grouped[key].push(item)
+    })
+    return sections.map((section) => ({
+      ...section,
+      items: grouped[section.key].map((item) => ({
+        item,
+        layoutClass: resolveEngineEntryLayoutClass(item),
+      })),
+    }))
+  }, [copy.axisFuture, copy.axisNow, copy.axisPast, orderedEnginePreviewItems])
+
+  const getSortOrderForPlacement = (
+    items: EngineBoardItem[],
+    movingItemId: string,
+    targetSection: EnginePerspectiveKey,
+    targetIndex: number
+  ) => {
+    const sectionItems = items
+      .filter((item) => item.id !== movingItemId)
+      .filter((item) => {
+        const key =
+          item.matrix_col === 'as_is' || item.matrix_col === 'not_working' || item.matrix_col === 'should_be'
+            ? item.matrix_col
+            : 'not_working'
+        return key === targetSection
+      })
+      .sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+
+    const boundedIndex = Math.max(0, Math.min(targetIndex, sectionItems.length))
+    const previous = sectionItems[boundedIndex - 1] ?? null
+    const next = sectionItems[boundedIndex] ?? null
+    const previousOrder =
+      typeof previous?.sort_order === 'number' && Number.isFinite(previous.sort_order)
+        ? previous.sort_order
+        : null
+    const nextOrder =
+      typeof next?.sort_order === 'number' && Number.isFinite(next.sort_order)
+        ? next.sort_order
+        : null
+
+    if (previousOrder === null && nextOrder === null) return ENGINE_SORT_GAP
+    if (previousOrder === null && nextOrder !== null) return nextOrder - ENGINE_SORT_GAP
+    if (previousOrder !== null && nextOrder === null) return previousOrder + ENGINE_SORT_GAP
+    if (previousOrder !== null && nextOrder !== null) {
+      const midpoint = previousOrder + (nextOrder - previousOrder) / 2
+      if (Number.isFinite(midpoint) && Math.abs(nextOrder - previousOrder) > 0.0001) {
+        return midpoint
+      }
+    }
+
+    return (previousOrder ?? ENGINE_SORT_GAP) + ENGINE_SORT_GAP / 2
+  }
+
+  const moveEngineEntryToSection = async (
+    itemId: string,
+    targetSection: EnginePerspectiveKey,
+    targetIndex: number
+  ) => {
+    const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id
+    if (!sessionId) {
+      showEngineNotice(notices.createSessionFirst, 'error')
+      return
+    }
+
+    const currentItem = enginePreviewItems.find((item) => item.id === itemId) ?? null
+    if (!currentItem?.matrix_row) return
+    const currentSection =
+      currentItem.matrix_col && ENGINE_PERSPECTIVE_KEYS.includes(currentItem.matrix_col as EnginePerspectiveKey)
+        ? (currentItem.matrix_col as EnginePerspectiveKey)
+        : 'not_working'
+    const previousItems = enginePreviewItems
+    const previousDetailBoardItems = engineSessionDetail?.boardItems ?? null
+    const currentSectionItems = previousItems.filter((item) => {
+      const key =
+        item.matrix_col === 'as_is' || item.matrix_col === 'not_working' || item.matrix_col === 'should_be'
+          ? item.matrix_col
+          : 'not_working'
+      return key === currentSection
+    })
+    const currentIndex = currentSectionItems.findIndex((item) => item.id === itemId)
+    const effectiveTargetIndex =
+      currentSection === targetSection && currentIndex >= 0 && targetIndex > currentIndex
+        ? targetIndex - 1
+        : targetIndex
+    const nextSortOrder = getSortOrderForPlacement(
+      previousItems,
+      itemId,
+      targetSection,
+      effectiveTargetIndex
+    )
+    if (
+      currentSection === targetSection &&
+      typeof currentItem.sort_order === 'number' &&
+      Math.abs(currentItem.sort_order - nextSortOrder) < 0.0001
+    ) {
+      return
+    }
+    const nextMatrixCol = targetSection
+
+    setEngineSessionsError(null)
+    setEngineMovingEntryId(itemId)
+    setEnginePreviewItems((prev) =>
+      prev.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              matrix_col: nextMatrixCol,
+              sort_order: nextSortOrder,
+              updated_at: Date.now(),
+            }
+          : item
+      )
+    )
+    if (engineSessionDetail?.session) {
+      setEngineSessionDetail((prev) =>
+        prev
+          ? {
+              ...prev,
+              boardItems: prev.boardItems.map((item) =>
+                item.id === itemId
+                  ? {
+                      ...item,
+                      matrix_col: nextMatrixCol,
+                      sort_order: nextSortOrder,
+                      updated_at: Date.now(),
+                    }
+                  : item
+              ),
+            }
+          : prev
+      )
+    }
+
+    try {
+      if (authSession?.user?.id && client) {
+        await updateBoardItemMatrix(
+          sessionId,
+          itemId,
+          currentItem.matrix_row ?? null,
+          nextMatrixCol,
+          nextSortOrder
+        )
+      }
+      const detail = await getSession(sessionId)
+      if (detail?.session) {
+        const updatedDetail: EngineSessionDetail = {
+          ...detail,
+          boardItems: detail.boardItems.map((item) =>
+            item.id === itemId
+              ? {
+                  ...item,
+                  matrix_row: currentItem.matrix_row ?? null,
+                  matrix_col: nextMatrixCol,
+                  sort_order: nextSortOrder,
+                }
+              : item
+          ),
+          session: { ...detail.session, updated_at: Date.now() },
+        }
+        await updateSession(updatedDetail)
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Request failed'
+      setEnginePreviewItems(previousItems)
+      if (previousDetailBoardItems && engineSessionDetail?.session) {
+        setEngineSessionDetail((prev) =>
+          prev
+            ? {
+                ...prev,
+                boardItems: previousDetailBoardItems,
+              }
+            : prev
+        )
+      }
+      setEngineSessionsError(notices.saveChangesFailed(message))
+      showEngineNotice(notices.saveChangesFailed(message), 'error')
+    } finally {
+      setEngineMovingEntryId(null)
+    }
+  }
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const calculateRowSpan = (id: string, node: HTMLLIElement) => {
+      const list = node.closest('.engine-entry-list')
+      if (!(list instanceof HTMLElement)) return
+      const styles = window.getComputedStyle(list)
+      const rowHeight = parseFloat(styles.gridAutoRows || '') || 4
+      const rowGap =
+        parseFloat(styles.rowGap || '') || parseFloat(styles.getPropertyValue('grid-row-gap')) || 12
+      const content = node.querySelector('.engine-entry-main')
+      const contentHeight =
+        content instanceof HTMLElement ? content.scrollHeight : node.scrollHeight
+      const nodeStyles = window.getComputedStyle(node)
+      const verticalPadding =
+        (parseFloat(nodeStyles.paddingTop || '') || 0) +
+        (parseFloat(nodeStyles.paddingBottom || '') || 0)
+      const borderWidth =
+        (parseFloat(nodeStyles.borderTopWidth || '') || 0) +
+        (parseFloat(nodeStyles.borderBottomWidth || '') || 0)
+      const measuredHeight = contentHeight + verticalPadding + borderWidth
+      const contentWidth = node.getBoundingClientRect().width
+      const rawSpan = Math.max(1, Math.ceil((measuredHeight + rowGap) / (rowHeight + rowGap)))
+      const maxReadableHeight = Math.max(contentWidth * 2.4, 96)
+      const maxSpan = Math.max(1, Math.ceil((maxReadableHeight + rowGap) / (rowHeight + rowGap)))
+      const span = Math.min(rawSpan, maxSpan)
+      setEngineEntryRowSpans((prev) => (prev[id] === span ? prev : { ...prev, [id]: span }))
+    }
+
+    const nodes = Object.entries(engineEntryNodesRef.current).filter(
+      (entry): entry is [string, HTMLLIElement] => entry[1] instanceof HTMLLIElement
+    )
+    if (!nodes.length) return
+
+    const frame = window.requestAnimationFrame(() => {
+      nodes.forEach(([id, node]) => calculateRowSpan(id, node))
+    })
+    const settleFrame = window.setTimeout(() => {
+      window.requestAnimationFrame(() => {
+        nodes.forEach(([id, node]) => calculateRowSpan(id, node))
+      })
+    }, 80)
+
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver((entries) => {
+            entries.forEach((entry) => {
+              const node = entry.target
+              if (!(node instanceof HTMLLIElement)) return
+              const id = node.dataset.entryId
+              if (!id) return
+              calculateRowSpan(id, node)
+            })
+          })
+
+    nodes.forEach(([, node]) => resizeObserver?.observe(node))
+
+    const handleResize = () => {
+      nodes.forEach(([id, node]) => calculateRowSpan(id, node))
+    }
+
+    window.addEventListener('resize', handleResize)
+
+    return () => {
+      window.cancelAnimationFrame(frame)
+      window.clearTimeout(settleFrame)
+      window.removeEventListener('resize', handleResize)
+      resizeObserver?.disconnect()
+    }
+  }, [
+    enginePerspectiveSections,
+    engineEntryDeleteId,
+    engineLabelEditorId,
+    enginePreviewEditId,
+    enginePreviewEditText,
+    isReport,
+  ])
+
+  useEffect(() => {
+    if (isReport) return
+    setEngineEntryRowSpans({})
+  }, [isReport, enginePreviewSessionId])
+
+  const handleEngineEntryDragStart = (
+    event: ReactDragEvent<HTMLLIElement>,
+    item: EngineBoardItem
+  ) => {
+    const target = event.target as HTMLElement | null
+    if (target?.closest('button, select, textarea, option')) {
+      event.preventDefault()
+      return
+    }
+    if (enginePreviewEditId === item.id || engineMovingEntryId === item.id) {
+      event.preventDefault()
+      return
+    }
+    setEngineDraggingEntryId(item.id)
+    setEngineDragOverSection(null)
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', item.id)
+  }
+
+  const handleEngineEntryDragEnd = () => {
+    if (engineDragHoverTimerRef.current) {
+      window.clearTimeout(engineDragHoverTimerRef.current)
+      engineDragHoverTimerRef.current = null
+    }
+    enginePendingDragTargetRef.current = null
+    setEngineDraggingEntryId(null)
+    setEngineDragOverSection(null)
+    setEngineDragTargetIndex(null)
+  }
+
+  const scheduleEngineDragTarget = (
+    sectionKey: EnginePerspectiveKey,
+    targetIndex: number
+  ) => {
+    const currentSection = engineDragOverSection
+    const currentIndex = engineDragTargetIndex
+    const pending = enginePendingDragTargetRef.current
+
+    if (currentSection !== sectionKey || currentIndex === null) {
+      if (engineDragHoverTimerRef.current) {
+        window.clearTimeout(engineDragHoverTimerRef.current)
+        engineDragHoverTimerRef.current = null
+      }
+      enginePendingDragTargetRef.current = null
+      setEngineDragOverSection(sectionKey)
+      setEngineDragTargetIndex(targetIndex)
+      return
+    }
+
+    if (currentIndex === targetIndex) return
+    if (pending?.section === sectionKey && pending.index === targetIndex) return
+
+    if (engineDragHoverTimerRef.current) {
+      window.clearTimeout(engineDragHoverTimerRef.current)
+    }
+    enginePendingDragTargetRef.current = { section: sectionKey, index: targetIndex }
+    engineDragHoverTimerRef.current = window.setTimeout(() => {
+      const next = enginePendingDragTargetRef.current
+      if (!next) return
+      setEngineDragOverSection(next.section)
+      setEngineDragTargetIndex(next.index)
+      enginePendingDragTargetRef.current = null
+      engineDragHoverTimerRef.current = null
+    }, 100)
+  }
+
+  const handleEngineSectionDragOver = (
+    event: ReactDragEvent<HTMLElement>,
+    sectionKey: EnginePerspectiveKey,
+    targetIndex: number
+  ) => {
+    if (!engineDraggingEntryId) return
+    event.preventDefault()
+    event.dataTransfer.dropEffect = 'move'
+    scheduleEngineDragTarget(sectionKey, targetIndex)
+  }
+
+  const handleEngineEntryDragOver = (
+    event: ReactDragEvent<HTMLLIElement>,
+    sectionKey: EnginePerspectiveKey,
+    itemIndex: number
+  ) => {
+    if (!engineDraggingEntryId) return
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    const midpoint = rect.top + rect.height / 2
+    const targetIndex = event.clientY < midpoint ? itemIndex : itemIndex + 1
+    handleEngineSectionDragOver(event, sectionKey, targetIndex)
+  }
+
+  const handleEngineSectionDrop = async (
+    event: ReactDragEvent<HTMLElement>,
+    sectionKey: EnginePerspectiveKey
+  ) => {
+    event.preventDefault()
+    const draggedId = engineDraggingEntryId || event.dataTransfer.getData('text/plain')
+    const pendingTarget = enginePendingDragTargetRef.current
+    const targetIndex =
+      pendingTarget && pendingTarget.section === sectionKey
+        ? pendingTarget.index
+        : engineDragTargetIndex ?? 0
+    if (engineDragHoverTimerRef.current) {
+      window.clearTimeout(engineDragHoverTimerRef.current)
+      engineDragHoverTimerRef.current = null
+    }
+    enginePendingDragTargetRef.current = null
+    setEngineDragOverSection(null)
+    setEngineDragTargetIndex(null)
+    setEngineDraggingEntryId(null)
+    if (!draggedId) return
+    await moveEngineEntryToSection(draggedId, sectionKey, targetIndex)
+  }
 
   const facilitationIntros = useMemo(
     () =>
@@ -6224,6 +7749,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
       facilitationIntroRef.current = pick || facilitationIntros[0] || null
     }
   }, [showFirstQuestionWrapper, facilitationIntros])
+
+  useEffect(() => {
+    setEngineActiveFacilitationPerspective(null)
+    setLastFacilitationPerspective(null)
+  }, [enginePreviewSessionId])
 
   const engineUnassignedItems = useMemo(
     () => enginePreviewItems.filter((item) => !item.matrix_row || !item.matrix_col),
@@ -6428,7 +7958,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const { data: existing, error } = await supabaseClient
       .from('board_items')
       .select(
-        'id,session_id,user_id,text,label,matrix_row,matrix_col,question_id,question_text_pl,question_text_en,entry_type,prompt_type'
+        'id,session_id,user_id,text,label,matrix_row,matrix_col,sort_order,question_id,question_text_pl,question_text_en,entry_type,prompt_type'
       )
       .eq('session_id', sessionId)
       .eq('user_id', userId)
@@ -7218,6 +8748,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineSessionsError(null)
     setEngineEditItemId(null)
     setEngineEditText('')
+    setEngineInitialBriefOpen(false)
+    setEngineInitialBriefError(null)
+    setEngineInitialBriefSubmitting(false)
     setEngineBoardItemsLoadedBySession((prev) => ({ ...prev, [sessionId]: false }))
     setEngineSessionEmptyOnLoadById((prev) => ({ ...prev, [sessionId]: false }))
     try {
@@ -7241,7 +8774,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           const legacyItems = Array.isArray(payload.boardItems) ? payload.boardItems : []
           if (!legacyItems.length) return
           const rows = legacyItems
-            .map((item) => {
+            .map((item, index) => {
               const entry = item as {
                 text?: string | null
                 label?: string | null
@@ -7258,6 +8791,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 label: entry.label ?? null,
                 matrix_row: entry.matrixRow ?? null,
                 matrix_col: entry.matrixCol ?? null,
+                sort_order: (index + 1) * ENGINE_SORT_GAP,
                 question_id: entry.questionId ?? null,
                 question_text_pl: entry.questionTextPl ?? null,
                 question_text_en: entry.questionTextEn ?? null,
@@ -7394,7 +8928,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         }
         const biRes = await client
           .from('board_items')
-          .select('id,session_id,user_id,text,label,matrix_row,matrix_col,question_id,question_text_pl,question_text_en,created_at,updated_at')
+          .select('id,session_id,user_id,text,label,matrix_row,matrix_col,sort_order,question_id,question_text_pl,question_text_en,created_at,updated_at')
           .eq('user_id', userId)
           .eq('session_id', sessionId)
           .order('created_at', { ascending: true })
@@ -8478,6 +10012,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
   const engineRemainingWords = Math.max(0, WORD_LIMIT - countWords(enginePreviewInput))
   const isEngineWordLimitReached =
     enginePreviewInput.trim().length > 0 && countWords(enginePreviewInput) >= WORD_LIMIT
+  const engineInitialBriefWords = countWords(engineInitialBriefText)
+  const engineInitialBriefRemainingWords = Math.max(
+    0,
+    INITIAL_BRIEF_WORD_LIMIT - engineInitialBriefWords
+  )
+  const isEngineInitialBriefLimitReached =
+    engineInitialBriefText.trim().length > 0 &&
+    engineInitialBriefWords >= INITIAL_BRIEF_WORD_LIMIT
   const showEngineInputCaret = !engineInputFocused && !enginePreviewInput.trim()
   const showFacilitationOffer =
     engineUiState === 'FACILITATION_OFFER' ||
@@ -8485,6 +10027,31 @@ const isMissingLabel = (item: EngineBoardItem) => {
     engineOfferReason === 'manual'
   const showHelpButton = !showFacilitationOffer
   const facilitationDisabled = !engineSessionPersisted || !enginePreviewSessionId
+  const facilitationPerspectiveActions: Array<{
+    key: FacilitationPerspective
+    label: string
+    toneClass: 'is-as-is' | 'is-not-working' | 'is-should-be'
+    testId: string
+  }> = [
+    {
+      key: 'as_is',
+      label: copy.engineFacilitationAsIs,
+      toneClass: 'is-as-is',
+      testId: 'facilitation-as-is',
+    },
+    {
+      key: 'not_working',
+      label: copy.engineFacilitationProblem,
+      toneClass: 'is-not-working',
+      testId: 'facilitation-not-working',
+    },
+    {
+      key: 'should_be',
+      label: copy.engineFacilitationDesired,
+      toneClass: 'is-should-be',
+      testId: 'facilitation-should-be',
+    },
+  ]
   const llmUsageClass = llmUsageModel
     ? `llm-model-${llmUsageModel.replace(/\./g, '-')}`
     : 'llm-model-none'
@@ -8498,6 +10065,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
     new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(
       Math.max(0, value || 0)
     )
+  const resolveEntryQuestionHelperText = (item: EngineBoardItem) => {
+    const primary =
+      uiLanguage === 'Polish'
+        ? item.question_text_pl ?? item.question_text_en ?? null
+        : item.question_text_en ?? item.question_text_pl ?? null
+    const questionText = sanitizeInlineHelperText(primary)
+    return questionText || copy.engineEntryQuestionFallback
+  }
   const formatPln = (value: number) =>
     new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
       Math.max(0, value || 0)
@@ -9128,10 +10703,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       }
                       armIdleWatch('save_and_continue')
                       engineInteractionBySession.current['new'] = true
-                      setEngineInputFocused(true)
-                      setEngineUiState('FREE_FLOW')
-                      enginePendingArmingRef.current = true
-                      enginePendingFocusRef.current = true
+                      setEngineInputFocused(false)
+                      setEngineUiState('INIT')
+                      enginePendingArmingRef.current = false
+                      enginePendingFocusRef.current = false
                       const sessionId = await ensureEnginePreviewSession(name, {
                         onNameCollision: () =>
                           setEngineNameError(notices.sessionNameCollision),
@@ -9144,12 +10719,21 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       }
                       setEnginePreviewSessionName(name)
                       setEngineNamePromptOpen(false)
+                      const shouldShowInitialBrief = Boolean(authSession?.user?.id && client)
+                      setEngineInitialBriefOpen(shouldShowInitialBrief)
+                      if (shouldShowInitialBrief) {
+                        setEngineInitialBriefText('')
+                        setEngineInitialBriefError(null)
+                      } else {
+                        setEngineUiState('FREE_FLOW')
+                        setEngineInputFocused(true)
+                        engineInputRef.current?.focus()
+                      }
                       setEngineNameSaving(false)
                       if (sessionId) {
                         engineInteractionBySession.current[sessionId] = true
                         setEngineLastInputActivityAt(Date.now())
                       }
-                      engineInputRef.current?.focus()
                       markUserInitiatedInteraction('pointer')
                       setEngineLastInputActivityAt(Date.now())
                     }}
@@ -9210,7 +10794,93 @@ const isMissingLabel = (item: EngineBoardItem) => {
             </section>
           )}
 
-          {enginePreviewSessionId && (
+          {enginePreviewSessionId && engineInitialBriefOpen && (
+            <section className="engine-panel">
+              <div className="engine-panel-header">
+                <h2>{copy.engineInitialBriefTitle}</h2>
+              </div>
+              <div className="engine-helper">{copy.engineInitialBriefDescription}</div>
+              <div className="engine-board-input">
+                <div className="engine-input-field engine-input-field-with-action">
+                  <textarea
+                    ref={engineInitialBriefInputRef}
+                    data-testid="engine-initial-brief-input"
+                    value={getEngineInitialBriefDisplayedText()}
+                    onChange={(event) => {
+                      if (engineInitialBriefVoiceState === 'listening') {
+                        stopEngineInitialBriefRecognition('abort')
+                        setEngineInitialBriefVoiceState('idle')
+                        setEngineInitialBriefVoicePreview('')
+                      }
+                      engineInitialBriefVoiceCorrectionSeqRef.current += 1
+                      applyEngineInitialBriefTextChange(event.target.value)
+                    }}
+                    placeholder={copy.engineInitialBriefPlaceholder}
+                    rows={6}
+                  />
+                  <button
+                    type="button"
+                    className={`ghost engine-input-action engine-input-action--voice is-${engineInitialBriefVoiceState}`}
+                    aria-label={
+                      engineInitialBriefVoiceState === 'listening'
+                        ? copy.engineInitialBriefVoiceInputListening
+                        : copy.engineInitialBriefVoiceInputLabel
+                    }
+                    title={
+                      engineInitialBriefVoiceState === 'listening'
+                        ? copy.engineInitialBriefVoiceInputListening
+                        : engineInitialBriefVoiceState === 'unavailable'
+                          ? copy.engineInitialBriefVoiceInputUnavailable
+                          : copy.engineInitialBriefVoiceInputLabel
+                    }
+                    onClick={toggleEngineInitialBriefVoiceInput}
+                    data-testid="engine-initial-brief-voice-input"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                      <path
+                        d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2.07A7 7 0 0 1 5 12a1 1 0 1 1 2 0 5 5 0 0 0 10 0Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                    <span>
+                      {engineInitialBriefVoiceState === 'listening'
+                        ? copy.engineInitialBriefVoiceInputListening
+                        : copy.engineInitialBriefVoiceInputLabel}
+                    </span>
+                  </button>
+                </div>
+                {engineInitialBriefError && (
+                  <div className="engine-error">{engineInitialBriefError}</div>
+                )}
+                <div className="engine-input-footer">
+                  <span className="engine-word-count">
+                    {isEngineInitialBriefLimitReached
+                      ? copy.engineInitialBriefWordLimitReached
+                      : copy.engineInitialBriefWordCountRemaining(engineInitialBriefRemainingWords)}
+                  </span>
+                  <button
+                    type="button"
+                    className="primary"
+                    data-testid="engine-initial-brief-submit"
+                    onClick={() => {
+                      void submitEngineInitialBrief()
+                    }}
+                    disabled={
+                      !engineInitialBriefText.trim() ||
+                      engineInitialBriefSubmitting ||
+                      engineInitialBriefWords > INITIAL_BRIEF_WORD_LIMIT
+                    }
+                  >
+                    {engineInitialBriefSubmitting
+                      ? copy.engineInitialBriefSubmitting
+                      : copy.engineInitialBriefSubmit}
+                  </button>
+                </div>
+              </div>
+            </section>
+          )}
+
+          {enginePreviewSessionId && !engineInitialBriefOpen && (
             <section className="engine-panel">
               <div className="engine-panel-header">
                 <h2>{copy.enginePreviewBoardItemsTitle}</h2>
@@ -9260,92 +10930,85 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 >
                   ?
                 </button>
-              <div
-                className={`engine-helper engine-facilitation-note ${
-                  showFacilitationOffer ? 'is-visible' : 'is-hidden'
-                }`}
-                aria-hidden={!showFacilitationOffer}
-              >
-                {copy.engineFacilitationNote}
               </div>
               {uiLanguage === 'English' && copy.engineQuestionsWipNote && (
                 <div className="engine-helper">{copy.engineQuestionsWipNote}</div>
               )}
               <div
-                className={`engine-facilitation-actions engine-facilitation-actions--fade ${
+                className={`engine-facilitation-offer engine-facilitation-actions--fade ${
                   showFacilitationOffer ? 'is-visible' : 'is-hidden'
                 }`}
-                data-testid="facilitation-buttons"
                 aria-hidden={!showFacilitationOffer}
               >
-                {engineFacilitationInlineError && (
-                  <span className="text-sm text-red-600">{engineFacilitationInlineError}</span>
-                )}
-                <button
-                  type="button"
-                  className="ghost"
-                  data-testid="facilitation-deepen"
-                  onClick={() => {
-                    if (facilitationDisabled) {
-                      setEngineFacilitationInlineError(notices.createSessionFirst)
-                      return
-                    }
-                    setFacilitationCooldown('DEEPEN')
-                    armIdleWatch('facilitation_deepen')
-                    void activateFacilitationPrompt('DEEPEN')
-                  }}
-                  disabled={
-                    !showFacilitationOffer || engineFacilitationLoading || facilitationDisabled
-                  }
+                <div className="engine-helper engine-facilitation-note">
+                  {copy.engineFacilitationNote}
+                </div>
+                <div
+                  className="engine-facilitation-actions"
+                  data-testid="facilitation-buttons"
                 >
-                  {showEngineFacilitationLoadingUI &&
-                  engineFacilitationLoadingType === 'DEEPEN' ? (
-                    <>
-                      <span className="button-spinner" aria-hidden="true" />
-                      {copy.engineFacilitationLoadingLabel}
-                    </>
-                  ) : (
-                    copy.engineFacilitationDeepen
+                  {engineFacilitationInlineError && (
+                    <span className="text-sm text-red-600">{engineFacilitationInlineError}</span>
                   )}
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  data-testid="facilitation-perspective"
-                  onClick={() => {
-                    if (facilitationDisabled) {
-                      setEngineFacilitationInlineError(notices.createSessionFirst)
-                      return
-                    }
-                    setFacilitationCooldown('PERSPECTIVE')
-                    armIdleWatch('facilitation_perspective')
-                    void activateFacilitationPrompt('PERSPECTIVE')
-                  }}
-                  disabled={
-                    !showFacilitationOffer || engineFacilitationLoading || facilitationDisabled
-                  }
-                >
-                  {showEngineFacilitationLoadingUI &&
-                  engineFacilitationLoadingType === 'PERSPECTIVE' ? (
-                    <>
-                      <span className="button-spinner" aria-hidden="true" />
-                      {copy.engineFacilitationLoadingLabel}
-                    </>
-                  ) : (
-                    copy.engineFacilitationPerspective
-                  )}
-                </button>
-              </div>
+                  {facilitationPerspectiveActions.map((action) => {
+                    const requestType = resolveFacilitationRequestType(action.key)
+                    const isLoading =
+                      showEngineFacilitationLoadingUI &&
+                      engineFacilitationLoading &&
+                      engineFacilitationLoadingType === requestType &&
+                      lastFacilitationPerspective === action.key
+                    const isActive = engineActiveFacilitationPerspective === action.key
+                    return (
+                      <button
+                        key={action.key}
+                        type="button"
+                        className={`ghost engine-facilitation-perspective-button ${action.toneClass} ${
+                          isActive ? 'is-active' : ''
+                        }`}
+                        data-testid={action.testId}
+                        onClick={() => {
+                          if (facilitationDisabled) {
+                            setEngineFacilitationInlineError(notices.createSessionFirst)
+                            return
+                          }
+                          const nextType = resolveFacilitationRequestType(action.key)
+                          setFacilitationCooldown(`${nextType}:${action.key}`)
+                          armIdleWatch(
+                            nextType === 'DEEPEN'
+                              ? `facilitation_continue_${action.key}`
+                              : `facilitation_switch_${action.key}`
+                          )
+                          void activateFacilitationPrompt(nextType, action.key)
+                        }}
+                        disabled={
+                          !showFacilitationOffer || engineFacilitationLoading || facilitationDisabled
+                        }
+                      >
+                        {isLoading ? (
+                          <>
+                            <span className="button-spinner" aria-hidden="true" />
+                            {copy.engineFacilitationLoadingLabel}
+                          </>
+                        ) : (
+                          action.label
+                        )}
+                      </button>
+                    )
+                  })}
+                </div>
               </div>
               {enginePreviewError && (
                 <div className="engine-error">
                   <span>{enginePreviewError}</span>
-                  {lastFacilitationType && (
+                  {lastFacilitationType && lastFacilitationPerspective && (
                     <button
                       type="button"
                       className="ghost"
                       onClick={() => {
-                        void activateFacilitationPrompt(lastFacilitationType)
+                        void activateFacilitationPrompt(
+                          lastFacilitationType,
+                          lastFacilitationPerspective
+                        )
                       }}
                     >
                       {copy.engineFacilitationRetryCta}
@@ -9357,7 +11020,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 {(engineFacilitationLoading && showEngineFacilitationLoadingUI
                   ? copy.engineFacilitationLoadingPerspective
                   : engineActivePrompt?.text) && (
-                  <div className="engine-helper engine-facilitation-prompt">
+                  <div
+                    className={`engine-helper engine-facilitation-prompt ${
+                      lastFacilitationPerspective === 'as_is'
+                        ? 'is-as-is'
+                        : lastFacilitationPerspective === 'not_working'
+                          ? 'is-not-working'
+                          : lastFacilitationPerspective === 'should_be'
+                            ? 'is-should-be'
+                            : ''
+                    }`}
+                  >
                     <div className="engine-facilitation-question">
                       {engineFacilitationLoading && showEngineFacilitationLoadingUI ? (
                         <span className="engine-facilitation-loading-row">
@@ -9409,13 +11082,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     )}
                   </div>
                 )}
-                <div className="engine-input-field">
+                <div className="engine-input-field engine-input-field-with-action">
                   {showEngineInputCaret && <span className="engine-input-caret" aria-hidden="true" />}
                   <textarea
                     data-testid="engine-input"
                     ref={engineInputRef}
                     value={enginePreviewInput}
                     onChange={(event) => {
+                      if (enginePreviewVoiceState === 'listening') {
+                        stopEnginePreviewRecognition('abort')
+                        setEnginePreviewVoiceState('idle')
+                      }
                       handleEnginePreviewInputChange(event)
                       engineIdleTriggered.current = false
                       clearEngineIdleTimer('input_change')
@@ -9463,7 +11140,40 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     placeholder={enginePlaceholder}
                     rows={3}
                   />
+                  <button
+                    type="button"
+                    className={`ghost engine-input-action engine-input-action--voice is-${enginePreviewVoiceState}`}
+                    aria-label={
+                      enginePreviewVoiceState === 'listening'
+                        ? copy.engineInitialBriefVoiceInputListening
+                        : copy.engineInitialBriefVoiceInputLabel
+                    }
+                    title={
+                      enginePreviewVoiceState === 'listening'
+                        ? copy.engineInitialBriefVoiceInputListening
+                        : enginePreviewVoiceState === 'unavailable'
+                          ? copy.engineInitialBriefVoiceInputUnavailable
+                          : copy.engineInitialBriefVoiceInputLabel
+                    }
+                    onClick={toggleEnginePreviewVoiceInput}
+                    data-testid="engine-input-voice"
+                  >
+                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                      <path
+                        d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2.07A7 7 0 0 1 5 12a1 1 0 1 1 2 0 5 5 0 0 0 10 0Z"
+                        fill="currentColor"
+                      />
+                    </svg>
+                    <span>
+                      {enginePreviewVoiceState === 'listening'
+                        ? copy.engineInitialBriefVoiceInputListening
+                        : copy.engineInitialBriefVoiceInputLabel}
+                    </span>
+                  </button>
                 </div>
+                {enginePreviewVoiceError && (
+                  <div className="engine-helper">{enginePreviewVoiceError}</div>
+                )}
                 <div className="engine-input-footer">
                 <span className="engine-word-count">
                   {isEngineWordLimitReached
@@ -9475,211 +11185,360 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   className="primary"
                   data-testid="add-entry"
                   onClick={() => {
+                    if (engineAddEntryLoading) return
+                    const syncedText = syncEnginePreviewVoiceTranscript()
+                    if (syncedText === null) return
+                    if (enginePreviewVoiceState === 'listening') {
+                      stopEnginePreviewRecognition('stop')
+                      setEnginePreviewVoiceState('idle')
+                    }
                     markUserInitiatedInteraction('pointer')
                     setEngineLastInputActivityAt(Date.now())
                     setEngineInputFocused(true)
                     engineAllowIdleWithoutFocusRef.current = true
                     armIdleWatch('add_item')
                     engineInputRef.current?.focus()
-                    void handleEnginePreviewAdd()
+                    void handleEnginePreviewAdd(undefined, syncedText)
                   }}
-                  disabled={!enginePreviewInput.trim()}
+                  disabled={!enginePreviewInput.trim() || engineAddEntryLoading}
                 >
+                  {engineAddEntryLoading && (
+                    <span className="report-updating-slot" aria-hidden="true">
+                      <span
+                        className="report-updating-indicator"
+                        role="status"
+                        aria-label={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
+                        title={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
+                      />
+                    </span>
+                  )}
                   {copy.enginePreviewAddItem}
                 </button>
                 </div>
               </div>
-              <ul className="engine-entry-list">
-                {enginePreviewItems.length === 0 && (
-                  <li className="engine-empty">{copy.enginePreviewBoardItemsEmpty}</li>
-                )}
-                {orderedEnginePreviewItems.map((item) => (
-                  <li
-                    key={item.id}
-                    className={`engine-entry ${
-                      highlightMissingLabels && isMissingLabel(item) ? 'missing-label' : ''
-                    }`}
-                    data-testid={`entry-row-${item.id}`}
-                    onClick={() =>
-                      setEngineLabelEditorId((prev) => (prev === item.id ? null : item.id))
-                    }
-                    onMouseMove={(event) => {
-                      setEngineEntryHint({
-                        x: event.clientX + 12,
-                        y: event.clientY + 12,
-                        visible: true,
-                      })
-                    }}
-                    onMouseLeave={() =>
-                      setEngineEntryHint((prev) => ({ ...prev, visible: false }))
-                    }
-                  >
-                    {showDiagnostics &&
-                      (() => {
-                        const cellId = getEntryCellId(item)
-                        return (
-                          <button
-                            type="button"
-                            className={`engine-entry-cell ${cellId ? '' : 'is-na'}`}
-                            title={cellId ? `Cell ${cellId}` : 'N/A'}
-                            disabled
-                          >
-                            {cellId || 'N/A'}
-                          </button>
+              {enginePreviewItems.length === 0 ? (
+                <div className="engine-empty">{copy.enginePreviewBoardItemsEmpty}</div>
+              ) : (
+                <div className="engine-perspective-board">
+                  {enginePerspectiveSections.map((section) => (
+                    <section
+                      key={section.key}
+                      className={`engine-perspective-section ${section.toneClass} ${
+                        engineDragOverSection === section.key ? 'is-drop-target' : ''
+                      } ${engineDraggingEntryId ? 'is-drag-active' : ''}`}
+                      onDragOver={(event) =>
+                        handleEngineSectionDragOver(
+                          event,
+                          section.key as EnginePerspectiveKey,
+                          section.items.length
                         )
-                      })()}
-                    <div className="engine-entry-main">
-                      {enginePreviewEditId === item.id ? (
-                        <div className="engine-entry-edit" onClick={(event) => event.stopPropagation()}>
-                          <textarea
-                            className="engine-entry-edit-input"
-                            rows={3}
-                            value={enginePreviewEditText}
-                            onChange={(event) => {
-                              const next = limitWords(event.target.value, WORD_LIMIT)
-                              setEnginePreviewEditText(next)
-                            }}
-                          />
-                          <div className="engine-entry-edit-actions">
-                            <button
-                              type="button"
-                              className="primary"
-                              onClick={saveEnginePreviewEdit}
-                              disabled={!enginePreviewEditText.trim()}
-                            >
-                              {copy.save}
-                            </button>
-                            <button
-                              type="button"
-                              className="ghost"
-                              onClick={cancelEnginePreviewEdit}
-                            >
-                              {copy.cancel}
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="engine-entry-text">{item.text}</div>
-                      )}
-                      <div className="engine-entry-label-group">
-                        {highlightMissingLabels && isMissingLabel(item) && (
-                          <span className="engine-entry-missing-badge">
-                            {copy.missingLabelBadge}
-                          </span>
-                        )}
-                        <button
-                          type="button"
-                          className="engine-entry-delete-button engine-entry-action"
-                          aria-label={copy.engineEntryDeleteLabel}
-                          title={copy.engineEntryDeleteLabel}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            setEngineEntryDeleteId(item.id)
-                          }}
-                        >
-                          <svg
-                            viewBox="0 0 24 24"
-                            width="14"
-                            height="14"
-                            aria-hidden="true"
-                          >
-                            <path
-                              fill="currentColor"
-                              d="M9 3a1 1 0 0 0-1 1v1H5.5a1 1 0 1 0 0 2H6v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7h.5a1 1 0 1 0 0-2H16V4a1 1 0 0 0-1-1H9zm1 2h4v1h-4V5zm-1 4a1 1 0 0 1 1 1v7a1 1 0 1 1-2 0v-7a1 1 0 0 1 1-1zm6 1a1 1 0 1 0-2 0v7a1 1 0 1 0 2 0v-7z"
-                            />
-                          </svg>
-                        </button>
-                        <button
-                          type="button"
-                          className="engine-entry-edit-button engine-entry-action"
-                          aria-label={copy.editIdeaTitle}
-                          onClick={(event) => {
-                            event.stopPropagation()
-                            startEnginePreviewEdit(item)
-                          }}
-                        >
-                          ✎
-                        </button>
-                        {item.label && (
-                          <span
-                            className="engine-entry-label"
-                            data-testid={`entry-label-${item.id}`}
-                            style={{
-                              backgroundColor:
-                                ENGINE_ENTRY_LABEL_COLORS[item.label] || '#e7ebf0',
-                              color: '#000000',
-                            }}
-                          >
-                            {uiLanguage === 'English'
-                              ? getEntryLabelText(item.label, 'English')
-                              : getEntryLabelText(item.label, 'Polish')}
-                          </span>
-                        )}
+                      }
+                      onDrop={(event) =>
+                        void handleEngineSectionDrop(event, section.key as EnginePerspectiveKey)
+                      }
+                      onDragLeave={(event) => {
+                        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+                        if (engineDragHoverTimerRef.current) {
+                          window.clearTimeout(engineDragHoverTimerRef.current)
+                          engineDragHoverTimerRef.current = null
+                        }
+                        enginePendingDragTargetRef.current = null
+                        setEngineDragOverSection((prev) => (prev === section.key ? null : prev))
+                        setEngineDragTargetIndex(null)
+                      }}
+                    >
+                      <div className="engine-perspective-header">
+                        <h3>{section.title}</h3>
+                        <span className="engine-perspective-count">{section.items.length}</span>
                       </div>
-                    </div>
-                    {engineEntryDeleteId === item.id && (
-                      <div
-                        className="engine-entry-delete-confirm"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <span>{copy.engineEntryDeleteConfirm}</span>
-                        <div className="engine-entry-delete-actions">
-                          <button
-                            type="button"
-                            className="primary"
-                            onClick={() => confirmEngineEntryDelete(item.id)}
-                          >
-                            {copy.engineEntryDeleteYes}
-                          </button>
-                          <button
-                            type="button"
-                            className="ghost"
-                            onClick={cancelEngineEntryDelete}
-                          >
-                            {copy.engineEntryDeleteCancel}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                    {engineLabelEditorId === item.id && (
-                      <div
-                        ref={engineLabelEditorRef}
-                        className="engine-entry-label-editor"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <label className="engine-entry-label-field">
-                          <span className="sr-only">Etykieta wpisu</span>
-                          <select
-                            data-testid={`entry-label-select-${item.id}`}
-                            value={item.label ?? ''}
-                            onChange={(event) => {
-                              const nextValue = event.target.value || null
-                              armIdleWatch('label_change')
-                              setEngineLastInputActivityAt(Date.now())
-                              void updateEngineEntryLabel(item.id, nextValue)
-                              setEngineLabelEditorId(null)
-                            }}
-                          >
-                          <option value="">{getNoLabelText(uiLanguage)}</option>
-                          {ENGINE_ENTRY_LABELS.map((label) => (
-                            <option key={label} value={label}>
-                              {getEntryLabelText(label, uiLanguage)}
-                            </option>
-                          ))}
-                          </select>
-                        </label>
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              <div
-                className={`engine-entry-hint ${engineEntryHint.visible ? 'is-visible' : ''}`}
-                style={{ left: engineEntryHint.x, top: engineEntryHint.y }}
-                aria-hidden={!engineEntryHint.visible}
-              >
-                {copy.engineEntryLabelHint}
-              </div>
+                      <ul className="engine-entry-list">
+                        {(() => {
+                          const renderedItems: Array<
+                            | { kind: 'item'; item: EngineBoardItem; layoutClass: string; itemIndex: number }
+                            | { kind: 'placeholder'; key: string; layoutClass: string }
+                          > = []
+                          section.items.forEach(({ item, layoutClass }, itemIndex) => {
+                            if (
+                              engineDraggingEntryId &&
+                              engineDragOverSection === section.key &&
+                              engineDragTargetIndex === itemIndex
+                            ) {
+                              const dragged = enginePreviewItems.find((entry) => entry.id === engineDraggingEntryId)
+                              renderedItems.push({
+                                kind: 'placeholder',
+                                key: `placeholder-${section.key}-${itemIndex}`,
+                                layoutClass: dragged ? resolveEngineEntryLayoutClass(dragged) : 'is-medium',
+                              })
+                            }
+                            renderedItems.push({ kind: 'item', item, layoutClass, itemIndex })
+                          })
+                          if (
+                            engineDraggingEntryId &&
+                            engineDragOverSection === section.key &&
+                            engineDragTargetIndex === section.items.length
+                          ) {
+                            const dragged = enginePreviewItems.find((entry) => entry.id === engineDraggingEntryId)
+                            renderedItems.push({
+                              kind: 'placeholder',
+                              key: `placeholder-${section.key}-end`,
+                              layoutClass: dragged ? resolveEngineEntryLayoutClass(dragged) : 'is-medium',
+                            })
+                          }
+
+                          return renderedItems.map((rendered) => {
+                            if (rendered.kind === 'placeholder') {
+                              return (
+                                <li
+                                  key={rendered.key}
+                                  className={`engine-entry engine-entry-placeholder ${rendered.layoutClass}`}
+                                  aria-hidden="true"
+                                  style={{
+                                    gridRowEnd: `span ${estimateEngineEntryRowSpan(
+                                      { id: rendered.key, type: 'idea', text: 'placeholder' },
+                                      rendered.layoutClass
+                                    )}`,
+                                  }}
+                                />
+                              )
+                            }
+
+                            const { item, layoutClass, itemIndex } = rendered
+                            return (
+                              <li
+                                key={item.id}
+                                ref={(node) => {
+                                  engineEntryNodesRef.current[item.id] = node
+                                }}
+                                className={`engine-entry ${layoutClass} ${
+                                  engineDraggingEntryId === item.id ? 'is-dragging' : ''
+                                } ${engineMovingEntryId === item.id ? 'is-moving' : ''} ${
+                                  highlightMissingLabels && isMissingLabel(item) ? 'missing-label' : ''
+                                }`}
+                                data-testid={`entry-row-${item.id}`}
+                                data-entry-id={item.id}
+                                draggable={enginePreviewEditId !== item.id && engineMovingEntryId !== item.id}
+                                style={{
+                                  gridRowEnd: `span ${
+                                    engineEntryRowSpans[item.id] ?? estimateEngineEntryRowSpan(item, layoutClass)
+                                  }`,
+                                }}
+                                onDragStart={(event) => handleEngineEntryDragStart(event, item)}
+                                onDragEnd={handleEngineEntryDragEnd}
+                                onDragOver={(event) =>
+                                  handleEngineEntryDragOver(
+                                    event,
+                                    section.key as EnginePerspectiveKey,
+                                    itemIndex
+                                  )
+                                }
+                              >
+                            {showDiagnostics &&
+                              (() => {
+                                const cellId = getEntryCellId(item)
+                                return (
+                                  <button
+                                    type="button"
+                                    className={`engine-entry-cell ${cellId ? '' : 'is-na'}`}
+                                    title={cellId ? `Cell ${cellId}` : 'N/A'}
+                                    disabled
+                                  >
+                                    {cellId || 'N/A'}
+                                  </button>
+                                )
+                              })()}
+                            <div className="engine-entry-main">
+                              {enginePreviewEditId === item.id ? (
+                                <div className="engine-entry-edit" onClick={(event) => event.stopPropagation()}>
+                                  <textarea
+                                    className="engine-entry-edit-input"
+                                    rows={3}
+                                    value={enginePreviewEditText}
+                                    onChange={(event) => {
+                                      const next = limitWords(event.target.value, WORD_LIMIT)
+                                      setEnginePreviewEditText(next)
+                                    }}
+                                  />
+                                  <div className="engine-entry-edit-actions">
+                                    <button
+                                      type="button"
+                                      className="primary"
+                                      onClick={saveEnginePreviewEdit}
+                                      disabled={!enginePreviewEditText.trim()}
+                                    >
+                                      {copy.save}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      className="ghost"
+                                      onClick={cancelEnginePreviewEdit}
+                                    >
+                                      {copy.cancel}
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="engine-entry-text">{item.text}</div>
+                              )}
+                              <div className="engine-entry-actions">
+                                <div className="engine-entry-question-help">
+                                  <button
+                                    type="button"
+                                    className="engine-entry-question-button engine-entry-action"
+                                    aria-label={copy.engineEntryQuestionHint}
+                                    title={copy.engineEntryQuestionHint}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                    }}
+                                  >
+                                    ?
+                                  </button>
+                                  <div className="engine-entry-question-tooltip" role="note">
+                                    {resolveEntryQuestionHelperText(item)}
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  className="engine-entry-edit-button engine-entry-action"
+                                  aria-label={copy.engineEntryEditHint}
+                                  title={copy.engineEntryEditHint}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    startEnginePreviewEdit(item)
+                                  }}
+                                >
+                                  ✎
+                                </button>
+                                <button
+                                  type="button"
+                                  className="engine-entry-delete-button engine-entry-action"
+                                  aria-label={copy.engineEntryDeleteHint}
+                                  title={copy.engineEntryDeleteHint}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    setEngineEntryDeleteId(item.id)
+                                  }}
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    width="14"
+                                    height="14"
+                                    aria-hidden="true"
+                                  >
+                                    <path
+                                      fill="currentColor"
+                                      d="M9 3a1 1 0 0 0-1 1v1H5.5a1 1 0 1 0 0 2H6v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7h.5a1 1 0 1 0 0-2H16V4a1 1 0 0 0-1-1H9zm1 2h4v1h-4V5zm-1 4a1 1 0 0 1 1 1v7a1 1 0 1 1-2 0v-7a1 1 0 0 1 1-1zm6 1a1 1 0 1 0-2 0v7a1 1 0 1 0 2 0v-7z"
+                                    />
+                                  </svg>
+                                </button>
+                                <button
+                                  type="button"
+                                  className="engine-entry-label-button engine-entry-action"
+                                  aria-label={copy.engineEntryLabelActionHint}
+                                  title={copy.engineEntryLabelActionHint}
+                                  onClick={(event) => {
+                                    event.stopPropagation()
+                                    setEngineLabelEditorId((prev) => (prev === item.id ? null : item.id))
+                                  }}
+                                >
+                                  <svg
+                                    viewBox="0 0 24 24"
+                                    width="14"
+                                    height="14"
+                                    aria-hidden="true"
+                                  >
+                                    <path
+                                      fill="currentColor"
+                                      d="M10.59 13.41a1 1 0 0 1 0-1.41l6.3-6.3a3 3 0 1 1 4.24 4.24l-6.3 6.3a1 1 0 0 1-1.41 0l-2.83-2.83ZM18.3 7.1l-5.6 5.6 1.41 1.41 5.6-5.6a1 1 0 0 0-1.41-1.41ZM3 6a3 3 0 0 1 3-3h6a1 1 0 1 1 0 2H6a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3a1 1 0 1 1 2 0v3a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z"
+                                    />
+                                  </svg>
+                                </button>
+                              </div>
+                              <div className="engine-entry-label-group">
+                                {highlightMissingLabels && isMissingLabel(item) && (
+                                  <span className="engine-entry-missing-badge">
+                                    {copy.missingLabelBadge}
+                                  </span>
+                                )}
+                                {item.label && (
+                                  <span
+                                    className="engine-entry-label"
+                                    data-testid={`entry-label-${item.id}`}
+                                    style={{
+                                      backgroundColor:
+                                        withAlpha(ENGINE_ENTRY_LABEL_COLORS[item.label] || '#e7ebf0'),
+                                      color: '#000000',
+                                    }}
+                                  >
+                                    {uiLanguage === 'English'
+                                      ? getEntryLabelText(item.label, 'English')
+                                      : getEntryLabelText(item.label, 'Polish')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                            {engineEntryDeleteId === item.id && (
+                              <div
+                                className="engine-entry-delete-confirm"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <span>{copy.engineEntryDeleteConfirm}</span>
+                                <div className="engine-entry-delete-actions">
+                                  <button
+                                    type="button"
+                                    className="primary"
+                                    onClick={() => confirmEngineEntryDelete(item.id)}
+                                  >
+                                    {copy.engineEntryDeleteYes}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="ghost"
+                                    onClick={cancelEngineEntryDelete}
+                                  >
+                                    {copy.engineEntryDeleteCancel}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                            {engineLabelEditorId === item.id && (
+                              <div
+                                ref={engineLabelEditorRef}
+                                className="engine-entry-label-editor"
+                                onClick={(event) => event.stopPropagation()}
+                              >
+                                <label className="engine-entry-label-field">
+                                  <span className="sr-only">Etykieta wpisu</span>
+                                  <select
+                                    ref={engineLabelSelectRef}
+                                    data-testid={`entry-label-select-${item.id}`}
+                                    value={item.label ?? ''}
+                                    onChange={(event) => {
+                                      const nextValue = event.target.value || null
+                                      armIdleWatch('label_change')
+                                      setEngineLastInputActivityAt(Date.now())
+                                      void updateEngineEntryLabel(item.id, nextValue)
+                                      setEngineLabelEditorId(null)
+                                    }}
+                                  >
+                                  <option value="">{getNoLabelText(uiLanguage)}</option>
+                                  {ENGINE_ENTRY_LABELS.map((label) => (
+                                    <option key={label} value={label}>
+                                      {getEntryLabelText(label, uiLanguage)}
+                                    </option>
+                                  ))}
+                                  </select>
+                                </label>
+                              </div>
+                            )}
+                              </li>
+                            )
+                          })
+                        })()}
+                      </ul>
+                    </section>
+                  ))}
+                </div>
+              )}
             </section>
           )}
         </main>
@@ -10433,7 +12292,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 <span
                   key={label.id}
                   className="legend-chip"
-                  style={{ backgroundColor: `${label.color}4D` }}
+                  style={{ backgroundColor: withAlpha(label.color) }}
                 >
                   {label.text}
                 </span>
@@ -10697,7 +12556,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     className={`label-drop-target ${isFilled ? 'filled' : 'placeholder'}`}
                     style={
                       isFilled && color
-                        ? { backgroundColor: color, borderColor: color }
+                        ? { backgroundColor: withAlpha(color), borderColor: color }
                         : undefined
                     }
                     onDragOver={allowDrop}
@@ -10736,7 +12595,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     draggable
                     onDragStart={(event) => handleLabelDragStart(event, label.id)}
                     style={{
-                      backgroundColor: `${label.color}4D`,
+                      backgroundColor: withAlpha(label.color),
                     }}
                   >
                     {label.text}
@@ -10963,7 +12822,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                         )
                         setIdeaLabels(next)
                       }}
-                      style={{ backgroundColor: `${label.color}4D` }}
+                      style={{ backgroundColor: withAlpha(label.color) }}
                     />
                     <button
                       type="button"
@@ -11030,7 +12889,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     className={`label-drop-target ${isFilled ? 'filled' : 'placeholder'}`}
                     style={
                       isFilled && color
-                        ? { backgroundColor: color, borderColor: color }
+                        ? { backgroundColor: withAlpha(color), borderColor: color }
                         : undefined
                     }
                     onDragOver={allowDrop}
@@ -11071,7 +12930,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     draggable
                     onDragStart={(event) => handleLabelDragStart(event, label.id)}
                     style={{
-                      backgroundColor: `${label.color}4D`,
+                      backgroundColor: withAlpha(label.color),
                     }}
                   >
                     {label.text}

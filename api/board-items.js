@@ -106,6 +106,7 @@ export default async function handler(req, res) {
         question_text_en: payload.questionTextEn ?? null,
         entry_type: payload.entryType ?? null,
         prompt_type: payload.promptType ?? null,
+        sort_order: payload.sortOrder ?? null,
       }
       const { data, error } = await supabaseAdmin
         .from('board_items')
@@ -135,6 +136,7 @@ export default async function handler(req, res) {
     if (payload.questionTextEn !== undefined) patch.question_text_en = payload.questionTextEn ?? null
     if (payload.entryType !== undefined) patch.entry_type = payload.entryType ?? null
     if (payload.promptType !== undefined) patch.prompt_type = payload.promptType ?? null
+    if (payload.sortOrder !== undefined) patch.sort_order = payload.sortOrder ?? null
 
     if (!Object.keys(patch).length) {
       sendJson(res, 400, { ok: false, error: 'NOTHING_TO_UPDATE' })

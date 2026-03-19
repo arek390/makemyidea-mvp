@@ -215,6 +215,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
   }, [authReady, authUserId])
 
   useEffect(() => {
+    if (!authReady) return
     if (!authUserId) {
       setAdminAllowed('no')
       return
@@ -226,15 +227,43 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         const { data } = await supabase.auth.getSession()
         const token = data.session?.access_token || ''
         if (!token) throw new Error('AUTH_REQUIRED')
-        const response = await fetch('/api/admin?action=admin.check', {
+        const requestPath = '/api/admin?action=admin.check'
+        const response = await fetch(requestPath, {
           headers: { Authorization: `Bearer ${token}` },
         })
         const payload = await response.json().catch(() => null)
         if (!response.ok || !payload?.ok) {
+          if (!cancelled && import.meta.env.DEV) {
+            setDebugPayload(
+              JSON.stringify(
+                {
+                  source: 'admin.check',
+                  httpStatus: response.status,
+                  responseOk: response.ok,
+                  payload,
+                },
+                null,
+                2
+              )
+            )
+          }
           if (!cancelled) setAdminAllowed('no')
           return
         }
         if (!cancelled) {
+          if (import.meta.env.DEV) {
+            setDebugPayload(
+              JSON.stringify(
+                {
+                  source: 'admin.check',
+                  reasonCode: payload.reasonCode ?? null,
+                  diagnostic: payload.diagnostic ?? null,
+                },
+                null,
+                2
+              )
+            )
+          }
           setAdminAllowed(payload.isAdmin ? 'yes' : 'no')
         }
       } catch {
@@ -245,7 +274,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     return () => {
       cancelled = true
     }
-  }, [authUserId])
+  }, [authReady, authUserId, authEmail])
 
   useEffect(() => {
     setError(null)

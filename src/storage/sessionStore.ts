@@ -12,6 +12,7 @@ export type EngineBoardItem = {
   prompt_type?: 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET' | null
   matrix_row?: string | null
   matrix_col?: string | null
+  sort_order?: number | null
   lastClassifiedText?: string | null
   classificationDirty?: boolean | null
 }
