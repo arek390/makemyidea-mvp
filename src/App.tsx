@@ -112,7 +112,7 @@ type LabelItem = {
 
 type Language = 'English' | 'Polish'
 
-type LlmUsageModel = 'gpt-4.1-mini' | 'gpt-5-nano' | 'gpt-5-mini'
+type LlmUsageModel = 'gpt-4.1-mini' | 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-image-1'
 type LlmUsageTokens = { input?: number; output?: number; total?: number }
 type LlmUsageMeta = {
   modelUsed?: string | null
@@ -244,6 +244,7 @@ const MODEL_PRICING_USD: Record<string, ModelPricing> = {
   'gpt-4.1-mini': { input: 0.4, output: 1.6 },
   'gpt-5-mini': { input: 0.25, output: 2.0 },
   'gpt-5-nano': { input: 0.05, output: 0.4 },
+  'gpt-image-1': { input: 5.0, output: 40.0 },
 }
 
 const getOAuthRedirectTo = () => {
@@ -385,6 +386,9 @@ type Translations = {
   landingWhoTitle: string
   landingWhoList: string[]
   landingFinalLines: [string, string]
+  landingPrivacyTitle: string
+  landingPrivacyBody: string
+  landingPrivacyLink: string
   workInProgressLink: string
   impulseButtonLabel: string
   impulseTitle: string
@@ -558,6 +562,9 @@ type Translations = {
   engineEntryLabelActionHint: string
   engineEntryQuestionHint: string
   engineEntryQuestionFallback: string
+  engineSectionAddEntryHint: string
+  engineSectionAddEntryAria: (sectionTitle: string) => string
+  engineDraftRemoveEntry: string
   feedbackButtonLabel: string
   feedbackTitle: string
   feedbackMessageLabel: string
@@ -815,6 +822,10 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       '⏱️ You want results now, not after three workshops',
     ],
     landingFinalLines: ['You don’t need a perfect idea.', 'You need a solid process.'],
+    landingPrivacyTitle: 'Privacy Policy',
+    landingPrivacyBody:
+      'We process account, session, board, report and AI usage data only to operate the product, paid features and admin diagnostics.',
+    landingPrivacyLink: 'Read the full privacy policy',
     workInProgressLink: 'Work in progress',
     impulseButtonLabel: 'Give me an impulse',
     impulseTitle: 'Suggested question',
@@ -824,7 +835,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     impulseSourceAi: 'AI',
     impulseSourceAiGenerated: 'AI generated',
     impulseSourceDeterministic: 'Deterministic fallback',
-    report: 'Report',
+    report: 'Action plan',
     llmSettings: 'LLM settings',
     languageLabel: 'JĘZYK/LANGUAGE',
     engine: {
@@ -973,7 +984,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     reportLanguageLabel: 'Report language',
     reportLanguageHint:
       'Report language follows the app language selected on the landing page.',
-    enginePreviewOpenReport: 'Open report',
+    enginePreviewOpenReport: 'Go to action plan',
     productLabel: 'Product',
     spacesLabel: 'Where do we look?',
     timeFramesLabel: 'Observation / thinking level',
@@ -1007,6 +1018,9 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineEntryLabelActionHint: 'Label',
     engineEntryQuestionHint: 'Show source question',
     engineEntryQuestionFallback: 'This entry was created without a facilitation question.',
+    engineSectionAddEntryHint: 'Add item',
+    engineSectionAddEntryAria: (sectionTitle) => `Add item to ${sectionTitle}`,
+    engineDraftRemoveEntry: 'Remove item',
     feedbackButtonLabel: 'Feedback',
     feedbackTitle: 'Feedback',
     feedbackMessageLabel: 'Your feedback',
@@ -1335,6 +1349,10 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       '⏱️ Chcesz efektów teraz, a nie po 3 warsztatach',
     ],
     landingFinalLines: ['Nie potrzebujesz idealnego pomysłu.', 'Potrzebujesz dobrego procesu.'],
+    landingPrivacyTitle: 'Polityka prywatności',
+    landingPrivacyBody:
+      'Aplikacja MakeMyIdea.work zbiera podstawowe dane użytkownika, takie jak adres email oraz identyfikator konta Google, wyłącznie w celu umożliwienia logowania i korzystania z aplikacji.',
+    landingPrivacyLink: 'Przeczytaj pełną politykę prywatności',
     workInProgressLink: 'Work in progress',
     impulseButtonLabel: 'Daj mi impuls',
     impulseTitle: 'Sugerowane pytanie',
@@ -1344,7 +1362,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     impulseSourceAi: 'AI',
     impulseSourceAiGenerated: 'Wygenerowane przez AI',
     impulseSourceDeterministic: 'Deterministyczny fallback',
-    report: 'Raport',
+    report: 'Plan działania',
     llmSettings: 'Ustawienia LLM',
     languageLabel: 'JĘZYK/LANGUAGE',
     engine: {
@@ -1495,7 +1513,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     reportLanguageLabel: 'Język raportu',
     reportLanguageHint:
       'Język raportu jest zgodny z językiem wybranym na landing page.',
-    enginePreviewOpenReport: 'Przejdź do raportu',
+    enginePreviewOpenReport: 'Przejdź do planu działania',
     productLabel: 'Produkt',
     spacesLabel: 'Gdzie patrzymy?',
     timeFramesLabel: 'Poziom obserwacji / myślenia',
@@ -1597,6 +1615,9 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineEntryLabelActionHint: 'Etykieta',
     engineEntryQuestionHint: 'Pokaż pytanie źródłowe',
     engineEntryQuestionFallback: 'Wpis powstał bez pytania facylitującego.',
+    engineSectionAddEntryHint: 'Dodaj wpis',
+    engineSectionAddEntryAria: (sectionTitle) => `Dodaj wpis do sekcji ${sectionTitle}`,
+    engineDraftRemoveEntry: 'Usuń wpis',
     feedbackButtonLabel: 'Feedback',
     feedbackTitle: 'Feedback',
     feedbackMessageLabel: 'Twoja wiadomość / feedback',
@@ -2421,6 +2442,7 @@ function App() {
     if (meta.modelUsed === 'gpt-4.1-mini') return 'gpt-4.1-mini'
     if (meta.modelUsed === 'gpt-5-nano') return 'gpt-5-nano'
     if (meta.modelUsed === 'gpt-5-mini') return 'gpt-5-mini'
+    if (meta.modelUsed === 'gpt-image-1') return 'gpt-image-1'
     return null
   }
   const applyUsageModel = (meta?: LlmUsageMeta) => {
@@ -2439,30 +2461,30 @@ function App() {
       return
     }
     const modelUsed = meta?.modelUsed ?? null
-    if (modelUsed && MODEL_PRICING_USD[modelUsed]) {
-      const pricing = MODEL_PRICING_USD[modelUsed]
-      const costUSD =
-        (input / 1_000_000) * pricing.input + (output / 1_000_000) * pricing.output
-      setEngineUsage((prev) => {
-        const prevModel = prev.perModel[modelUsed] || {
-          inputTokens: 0,
-          outputTokens: 0,
-          totalUSD: 0,
-        }
-        const nextModel = {
-          inputTokens: prevModel.inputTokens + input,
-          outputTokens: prevModel.outputTokens + output,
-          totalUSD: prevModel.totalUSD + costUSD,
-        }
-        const next: EngineUsage = {
-          perModel: { ...prev.perModel, [modelUsed]: nextModel },
-          totalUSD: prev.totalUSD + costUSD,
-          totalTokens: prev.totalTokens + delta,
-        }
-        saveEngineUsage(next)
-        return next
-      })
-    }
+    setEngineUsage((prev) => {
+      const pricing = modelUsed ? MODEL_PRICING_USD[modelUsed] : null
+      const costUSD = pricing
+        ? (input / 1_000_000) * pricing.input + (output / 1_000_000) * pricing.output
+        : 0
+      const perModel =
+        modelUsed && pricing
+          ? {
+              ...prev.perModel,
+              [modelUsed]: {
+                inputTokens: (prev.perModel[modelUsed]?.inputTokens ?? 0) + input,
+                outputTokens: (prev.perModel[modelUsed]?.outputTokens ?? 0) + output,
+                totalUSD: (prev.perModel[modelUsed]?.totalUSD ?? 0) + costUSD,
+              },
+            }
+          : prev.perModel
+      const next: EngineUsage = {
+        perModel,
+        totalUSD: prev.totalUSD + costUSD,
+        totalTokens: prev.totalTokens + delta,
+      }
+      saveEngineUsage(next)
+      return next
+    })
     setLlmTokensTotal((prev) => {
       const next = prev + delta
       if (typeof window !== 'undefined') {
@@ -2567,6 +2589,9 @@ function App() {
     Record<string, boolean>
   >({})
   const [enginePreviewInput, setEnginePreviewInput] = useState('')
+  const [engineDraftTargetSection, setEngineDraftTargetSection] = useState<EnginePerspectiveKey | null>(
+    null
+  )
   const [enginePreviewVoiceState, setEnginePreviewVoiceState] = useState<
     'idle' | 'listening' | 'unavailable'
   >(() => (getSpeechRecognitionCtor() ? 'idle' : 'unavailable'))
@@ -2739,6 +2764,7 @@ function App() {
     if (typeof window === 'undefined') return false
     return window.location.pathname.replace(/\/+$/, '') === '/report'
   })
+  const hasEngineBoardEntries = enginePreviewItems.length > 0
 
   const languageOptions: Language[] = ['English', 'Polish']
 
@@ -3039,6 +3065,7 @@ const isAuthFlowInProgress = () => {
   const isWorkInProgress = normalizedPath === '/wip'
   const isIdeaGrid = normalizedPath === '/grid'
   const isLogin = normalizedPath === '/login'
+  const isPrivacy = normalizedPath === '/privacy'
   const isTopup =
     normalizedPath === '/topup' ||
     appPath === '/topup' ||
@@ -3348,8 +3375,9 @@ const isAuthFlowInProgress = () => {
     const path = window.location.pathname
     let target = path
     const isReportPath = path.replace(/\/+$/, '') === '/report' || path.endsWith('/report')
+    const isPrivacyPath = path.replace(/\/+$/, '') === '/privacy'
 
-    if (!canEnterApp && !isReportPath) {
+    if (!canEnterApp && !isReportPath && !isPrivacyPath) {
       if (
         path !== '/' &&
         !path.startsWith('/login') &&
@@ -3364,24 +3392,7 @@ const isAuthFlowInProgress = () => {
       }
     }
 
-    if (import.meta.env.DEV) {
-      console.log('[route] start', {
-        path,
-        authResolved,
-        isAuthed,
-        isGuest,
-        hasActiveGuestSession,
-        canEnterApp,
-        isReportPath,
-        target,
-      })
-    }
-
     if (target !== path) {
-      if (import.meta.env.DEV) {
-        console.log('[route-force] redirect to', target)
-        console.trace()
-      }
       window.location.replace(target)
     }
     initialRouteResolvedRef.current = true
@@ -3844,6 +3855,7 @@ const isAuthFlowInProgress = () => {
   useEffect(() => {
     setEngineAskedQuestionIds([])
     setEngineLastQuestionMeta(null)
+    setEngineDraftTargetSection(null)
   }, [enginePreviewSessionId])
 
   useEffect(() => {
@@ -4346,6 +4358,7 @@ const isAuthFlowInProgress = () => {
           summary: reportMeta.summary ?? null,
           ideas: reportMeta.ideas ?? null,
           recommendations: reportMeta.recommendations ?? null,
+          triz: reportMeta.triz ?? null,
           lang: reportMeta.lang ?? null,
         }
       : null
@@ -6322,6 +6335,35 @@ const isMissingLabel = (item: EngineBoardItem) => {
     applyEnginePreviewInputText(event.target.value)
   }
 
+  const activateEngineDraftTarget = (section: EnginePerspectiveKey) => {
+    setEngineDraftTargetSection(section)
+    setEnginePreviewVoiceError(null)
+    markUserInitiatedInteraction('pointer')
+    setEngineLastInputActivityAt(Date.now())
+    setEngineInputFocused(true)
+    setEngineUiState('FREE_FLOW')
+    setEngineActivePrompt(null)
+    setEngineOfferReason(null)
+    window.setTimeout(() => {
+      engineInputRef.current?.focus()
+    }, 0)
+  }
+
+  const clearEngineDraftTarget = () => {
+    if (enginePreviewVoiceState === 'listening') {
+      stopEnginePreviewRecognition('abort')
+      setEnginePreviewVoiceState('idle')
+    }
+    setEnginePreviewInput('')
+    setEngineDraftTargetSection(null)
+    setEnginePreviewVoiceError(null)
+    enginePreviousInput.current = ''
+    enginePreviewVoiceBaseTextRef.current = ''
+    enginePreviewVoiceSessionBaseTextRef.current = ''
+    enginePreviewVoiceCommittedTextRef.current = ''
+    enginePreviewVoiceTranscriptRef.current = ''
+  }
+
   const composeEnginePreviewVoiceText = (base: string, transcript: string) => {
     const cleanTranscript = transcript.trim()
     if (!cleanTranscript) return base
@@ -6631,7 +6673,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return null
   }
 
-  const handleEnginePreviewAdd = async (nameOverride?: string, textOverride?: string) => {
+  const handleEnginePreviewAdd = async (
+    nameOverride?: string,
+    textOverride?: string,
+    targetSectionOverride?: EnginePerspectiveKey | null
+  ) => {
     if (engineAddEntryLoading) return
     enginePreviewVoiceCorrectionSeqRef.current += 1
     const text = (textOverride ?? enginePreviewInput).trim()
@@ -6728,18 +6774,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
         entryType === 'facilitated_input' && facilitationPerspective
           ? await classifyFacilitatedEntryWithinPerspective(sessionId, text, facilitationPerspective)
           : null
+      const classifiedTargetedFreeInputCell =
+        entryType === 'free_input' && targetSectionOverride
+          ? await classifyFacilitatedEntryWithinPerspective(sessionId, text, targetSectionOverride)
+          : null
       // Source of truth for report cell mapping: EngineBoardItem.matrix_row/matrix_col.
       // For facilitation answers, the active perspective locks the column and LLM picks only the row.
       const mappedRow =
         entryType === 'facilitated_input'
-          ? classifiedFacilitationCell?.matrix_row ??
-            toMatrixRowKey('B')
-          : null
+          ? classifiedFacilitationCell?.matrix_row ?? toMatrixRowKey('B')
+          : classifiedTargetedFreeInputCell?.matrix_row ?? null
       const mappedCol =
         entryType === 'facilitated_input'
-          ? classifiedFacilitationCell?.matrix_col ??
-            toMatrixColKey(facilitationModeCode)
-          : null
+          ? classifiedFacilitationCell?.matrix_col ?? toMatrixColKey(facilitationModeCode)
+          : classifiedTargetedFreeInputCell?.matrix_col ?? targetSectionOverride ?? null
       const questionText =
         entryType === 'facilitated_input'
           ? engineLastQuestionText || engineActivePrompt?.text || null
@@ -6852,6 +6900,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       })
       setEnginePreviewItems((prev) => [persistedItem, ...prev])
       setEnginePreviewInput('')
+      setEngineDraftTargetSection(null)
       setEnginePreviewVoiceError(null)
       setEngineLastInputActivityAt(now)
       setEngineInputFocused(true)
@@ -6904,6 +6953,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
         setEngineSessions(await listSessions())
       }
       enginePreviousInput.current = ''
+      enginePreviewVoiceBaseTextRef.current = ''
+      enginePreviewVoiceSessionBaseTextRef.current = ''
+      enginePreviewVoiceCommittedTextRef.current = ''
+      enginePreviewVoiceTranscriptRef.current = ''
       if (entryType !== 'facilitated_input') {
         setEngineUiState('FREE_FLOW')
         setEngineActivePrompt(null)
@@ -7269,16 +7322,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
     return engineSessions.find((session) => session.id === enginePreviewSessionId) || null
   }, [enginePreviewSessionId, engineSessionDetail, engineSessions])
-
-  if (import.meta.env.DEV) {
-    console.log('[hooks-check] reached memo block', {
-      path: typeof window !== 'undefined' ? window.location.pathname : '',
-      isEnginePreview,
-      authResolved,
-      hasSession: Boolean(authSession?.user?.id),
-      hasActiveSession: Boolean(enginePreviewSessionId),
-    })
-  }
 
   const orderedEnginePreviewItems = useMemo(() => {
     return [...enginePreviewItems]
@@ -8516,6 +8559,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         summary: dbReport.summary ?? null,
         ideas: dbReport.ideas ?? null,
         recommendations: dbReport.recommendations ?? null,
+        triz: dbReport.triz ?? null,
       }
     }
     if (engineSessionDetail?.session?.id === sessionId && engineSessionDetail?.report) {
@@ -9463,6 +9507,28 @@ const isMissingLabel = (item: EngineBoardItem) => {
     )
   }
 
+  const llmUsageClass = llmUsageModel
+    ? `llm-model-${llmUsageModel.replace(/\./g, '-')}`
+    : 'llm-model-none'
+  const currentTokensTotal = llmTokensTotal
+  const formatTokenTotal = (value: number) => {
+    const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
+    return new Intl.NumberFormat(locale).format(Math.max(0, Math.floor(value || 0)))
+  }
+  const formatUsd = (value: number) =>
+    new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(
+      Math.max(0, value || 0)
+    )
+  const formatPln = (value: number) =>
+    new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
+      Math.max(0, value || 0)
+    )
+  const totalCostUsd = engineUsage.totalUSD
+  const totalCostPln = usdPlnRate ? totalCostUsd * usdPlnRate : null
+  const modelUsageEntries = Object.entries(engineUsage.perModel)
+    .filter(([, usage]) => (usage?.inputTokens || 0) + (usage?.outputTokens || 0) > 0)
+    .sort((a, b) => (b[1]?.totalUSD || 0) - (a[1]?.totalUSD || 0))
+
   if (isReport && !isTopup) {
     const snapshot = getReportSessionSnapshot()
     const reportLanguage =
@@ -9515,6 +9581,61 @@ const isMissingLabel = (item: EngineBoardItem) => {
         onLogout={handleReportLogout}
         aiSupportEnabled={aiSupportEnabled}
         diagnosticsEnabled={showDiagnostics}
+        canToggleDiagnostics={isAdmin}
+        diagnosticsToggleLabel={showDiagnostics ? copy.diagnosticsOn : copy.diagnosticsOff}
+        onToggleDiagnostics={() => {
+          const nextEnabled = !showDiagnostics
+          setDiagnosticsEnabled(nextEnabled)
+          localStorage.setItem(DIAGNOSTICS_STORAGE_KEY, nextEnabled ? 'true' : 'false')
+        }}
+        diagnosticsAuthLabel={
+          isDiagEnabled() ? `${copy.diagnosticsAuthLabel}: ${authSession?.user?.email ?? '—'}` : null
+        }
+        canToggleAiSupport={showDiagnostics}
+        aiSupportToggleLabel={aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
+        onToggleAiSupport={() => {
+          const nextEnabled = !aiSupportEnabled
+          setAiSupportEnabled(nextEnabled)
+          localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
+          if (nextEnabled) {
+            void checkLlmStatus(normalizeApiBase(llmApiBase))
+          } else {
+            setLlmStatus('offline')
+          }
+        }}
+        llmUsageIndicatorLabel={copy.llmUsageIndicatorLabel}
+        llmUsageValue={showDiagnostics ? `${formatTokenTotal(currentTokensTotal)} tok` : null}
+        llmUsageClassName={llmUsageClass}
+        llmCostLines={
+          showDiagnostics
+            ? [
+                copy.llmCostLabel(formatUsd(totalCostUsd)),
+                usdPlnRate
+                  ? copy.llmCostPlnLabel(formatPln(totalCostPln || 0))
+                  : copy.llmCostPlnFallback,
+              ]
+            : []
+        }
+        llmCostBreakdownLabel={showDiagnostics ? copy.llmCostBreakdown : undefined}
+        llmCostBreakdownRows={
+          showDiagnostics
+            ? [
+                copy.llmCostTotalTokens(formatTokenTotal(engineUsage.totalTokens)),
+                copy.llmCostTotalUsd(formatUsd(totalCostUsd)),
+                usdPlnRate
+                  ? copy.llmCostTotalPln(formatPln(totalCostPln || 0))
+                  : copy.llmCostTotalPlnFallback,
+                ...modelUsageEntries.map(([model, usage]) =>
+                  copy.llmCostModelRow(
+                    model,
+                    formatTokenTotal(usage.inputTokens),
+                    formatTokenTotal(usage.outputTokens),
+                    formatUsd(usage.totalUSD)
+                  )
+                ),
+              ]
+            : []
+        }
         naFillStatus={naFillStatus}
         onUpdateLabel={updateEngineEntryLabel}
         onBillingInsufficient={triggerInsufficientBalance}
@@ -9549,6 +9670,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             updated_at: meta.updatedAt ?? Date.now(),
             ideas: meta.ideas ?? existing?.ideas ?? null,
             recommendations: meta.recommendations ?? existing?.recommendations ?? null,
+            triz: meta.triz ?? existing?.triz ?? null,
           }
           const updatedDetail: EngineSessionDetail = {
             ...detail,
@@ -9563,17 +9685,32 @@ const isMissingLabel = (item: EngineBoardItem) => {
             await saveSessionToCloud(authSession.user.id, updatedDetail, uiLanguage)
             setReportRecords((prev) => {
               const existingRecord = prev[sessionId]
-              if (!existingRecord) return prev
               return {
                 ...prev,
                 [sessionId]: {
-                  ...existingRecord,
-                  summary: meta.summary ?? existingRecord.summary,
-                  ideas: meta.ideas ?? existingRecord.ideas,
-                  recommendations: meta.recommendations ?? existingRecord.recommendations,
-                  lastSummaryTextHash:
-                    meta.lastSummaryTextHash ?? existingRecord.lastSummaryTextHash,
+                  id: existingRecord?.id ?? existing?.id ?? sessionId,
+                  sessionId,
+                  createdAt:
+                    meta.createdAt ??
+                    existingRecord?.createdAt ??
+                    existing?.created_at ??
+                    Date.now(),
                   updatedAt: meta.updatedAt ?? Date.now(),
+                  summary: meta.summary ?? existingRecord?.summary ?? existing?.summary ?? null,
+                  ideas: meta.ideas ?? existingRecord?.ideas ?? existing?.ideas ?? null,
+                  recommendations:
+                    meta.recommendations ??
+                    existingRecord?.recommendations ??
+                    existing?.recommendations ??
+                    null,
+                  triz: meta.triz ?? existingRecord?.triz ?? existing?.triz ?? null,
+                  lang: existingRecord?.lang ?? existing?.lang ?? reportLanguage,
+                  lastSummaryTextHash:
+                    meta.lastSummaryTextHash ??
+                    existingRecord?.lastSummaryTextHash ??
+                    existing?.lastSummaryTextHash ??
+                    null,
+                  sourceUpdatedAt: existingRecord?.sourceUpdatedAt ?? 0,
                 },
               }
             })
@@ -9752,6 +9889,65 @@ const isMissingLabel = (item: EngineBoardItem) => {
             {topupCopy.footer}
           </p>
         </div>
+      </div>
+    )
+  }
+
+  if (isPrivacy) {
+    const privacyCopy =
+      uiLanguage === 'Polish'
+        ? {
+            title: 'Polityka prywatności',
+            body: [
+              'Aplikacja MakeMyIdea.work zbiera podstawowe dane użytkownika, takie jak adres email oraz identyfikator konta Google, wyłącznie w celu umożliwienia logowania i korzystania z aplikacji.',
+              'Dane mogą być przetwarzane przez zewnętrznych dostawców usług, takich jak Supabase (baza danych) oraz OpenAI (przetwarzanie AI).',
+              'Dane nie są sprzedawane ani udostępniane osobom trzecim w celach marketingowych.',
+              'Kontakt: areklupierz@gmail.com',
+            ],
+            back: 'Wróć',
+          }
+        : {
+            title: 'Privacy Policy',
+            body: [
+              'The MakeMyIdea.work application collects basic user data, such as email address and Google account identifier, solely to enable login and use of the application.',
+              'Data may be processed by external service providers such as Supabase (database) and OpenAI (AI processing).',
+              'Data is not sold or shared with third parties for marketing purposes.',
+              'Contact: areklupierz@gmail.com',
+            ],
+            back: 'Back',
+          }
+
+    return withDevOverlay(
+      <div className="app privacy-page">
+        <section className="privacy-panel">
+          <div className="privacy-header">
+            <img className="privacy-logo" src={landingLogoUrl} alt="MakeMyIdea.work" />
+          </div>
+          <h1>{privacyCopy.title}</h1>
+          <div className="privacy-sections">
+            {privacyCopy.body.map((paragraph) => (
+              <p key={paragraph} className="privacy-paragraph">
+                {paragraph}
+              </p>
+            ))}
+          </div>
+          <div className="privacy-actions">
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                if (typeof window === 'undefined') return
+                if (window.history.length > 1) {
+                  window.history.back()
+                } else {
+                  window.location.href = '/'
+                }
+              }}
+            >
+              {privacyCopy.back}
+            </button>
+          </div>
+        </section>
       </div>
     )
   }
@@ -10012,6 +10208,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
   const engineRemainingWords = Math.max(0, WORD_LIMIT - countWords(enginePreviewInput))
   const isEngineWordLimitReached =
     enginePreviewInput.trim().length > 0 && countWords(enginePreviewInput) >= WORD_LIMIT
+  const hasEngineDraftContent =
+    Boolean(enginePreviewInput.trim()) || enginePreviewVoiceState === 'listening'
+  const showEngineDraftRemove = Boolean(engineDraftTargetSection) && hasEngineDraftContent
+  const engineDraftToneClass =
+    engineDraftTargetSection === 'as_is'
+      ? 'is-as-is'
+      : engineDraftTargetSection === 'not_working'
+        ? 'is-not-working'
+        : engineDraftTargetSection === 'should_be'
+          ? 'is-should-be'
+          : ''
   const engineInitialBriefWords = countWords(engineInitialBriefText)
   const engineInitialBriefRemainingWords = Math.max(
     0,
@@ -10052,19 +10259,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
       testId: 'facilitation-should-be',
     },
   ]
-  const llmUsageClass = llmUsageModel
-    ? `llm-model-${llmUsageModel.replace(/\./g, '-')}`
-    : 'llm-model-none'
-  const currentTokensTotal = llmTokensTotal
-  const formatTokenTotal = (value: number) => {
-    const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
-    return new Intl.NumberFormat(locale).format(Math.max(0, Math.floor(value || 0)))
-  }
-
-  const formatUsd = (value: number) =>
-    new Intl.NumberFormat('en-US', { minimumFractionDigits: 4, maximumFractionDigits: 4 }).format(
-      Math.max(0, value || 0)
-    )
   const resolveEntryQuestionHelperText = (item: EngineBoardItem) => {
     const primary =
       uiLanguage === 'Polish'
@@ -10073,10 +10267,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const questionText = sanitizeInlineHelperText(primary)
     return questionText || copy.engineEntryQuestionFallback
   }
-  const formatPln = (value: number) =>
-    new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
-      Math.max(0, value || 0)
-    )
   const formatBalanceMinor = (currency: 'PLN' | 'USD', minor: number) => {
     const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
     return new Intl.NumberFormat(locale, {
@@ -10086,11 +10276,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
       maximumFractionDigits: 2,
     }).format(Math.max(0, minor || 0) / 100)
   }
-  const totalCostUsd = engineUsage.totalUSD
-  const totalCostPln = usdPlnRate ? totalCostUsd * usdPlnRate : null
-  const modelUsageEntries = Object.entries(engineUsage.perModel)
-    .filter(([, usage]) => (usage?.inputTokens || 0) + (usage?.outputTokens || 0) > 0)
-    .sort((a, b) => (b[1]?.totalUSD || 0) - (a[1]?.totalUSD || 0))
 
     return withDevOverlay(
       <div className="app engine-preview" data-testid="active-session">
@@ -10308,7 +10493,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     {copy.enginePreviewCreateSession}
                   </button>
                 )}
-                {enginePreviewSessionId && (
+                {enginePreviewSessionId && hasEngineBoardEntries && (
                   <div className="engine-actions-group">
                     {enginePreviewSessionId &&
                     (authSession?.user?.id
@@ -10940,7 +11125,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 }`}
                 aria-hidden={!showFacilitationOffer}
               >
-                <div className="engine-helper engine-facilitation-note">
+                <div
+                  className="engine-helper engine-facilitation-note"
+                  style={
+                    uiLanguage === 'English'
+                      ? { transform: 'translate(-75px, -5px)' }
+                      : undefined
+                  }
+                >
                   {copy.engineFacilitationNote}
                 </div>
                 <div
@@ -11082,7 +11274,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     )}
                   </div>
                 )}
-                <div className="engine-input-field engine-input-field-with-action">
+                <div
+                  className={`engine-input-field engine-input-field-with-action ${
+                    engineDraftToneClass ? `is-targeted ${engineDraftToneClass}` : ''
+                  }`}
+                >
                   {showEngineInputCaret && <span className="engine-input-caret" aria-hidden="true" />}
                   <textarea
                     data-testid="engine-input"
@@ -11175,45 +11371,56 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   <div className="engine-helper">{enginePreviewVoiceError}</div>
                 )}
                 <div className="engine-input-footer">
-                <span className="engine-word-count">
-                  {isEngineWordLimitReached
-                    ? copy.engineWordLimitReached
-                    : copy.engineWordCountRemaining(engineRemainingWords)}
-                </span>
-                <button
-                  type="button"
-                  className="primary"
-                  data-testid="add-entry"
-                  onClick={() => {
-                    if (engineAddEntryLoading) return
-                    const syncedText = syncEnginePreviewVoiceTranscript()
-                    if (syncedText === null) return
-                    if (enginePreviewVoiceState === 'listening') {
-                      stopEnginePreviewRecognition('stop')
-                      setEnginePreviewVoiceState('idle')
-                    }
-                    markUserInitiatedInteraction('pointer')
-                    setEngineLastInputActivityAt(Date.now())
-                    setEngineInputFocused(true)
-                    engineAllowIdleWithoutFocusRef.current = true
-                    armIdleWatch('add_item')
-                    engineInputRef.current?.focus()
-                    void handleEnginePreviewAdd(undefined, syncedText)
-                  }}
-                  disabled={!enginePreviewInput.trim() || engineAddEntryLoading}
-                >
-                  {engineAddEntryLoading && (
-                    <span className="report-updating-slot" aria-hidden="true">
-                      <span
-                        className="report-updating-indicator"
-                        role="status"
-                        aria-label={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
-                        title={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
-                      />
-                    </span>
-                  )}
-                  {copy.enginePreviewAddItem}
-                </button>
+                  <span className="engine-word-count">
+                    {isEngineWordLimitReached
+                      ? copy.engineWordLimitReached
+                      : copy.engineWordCountRemaining(engineRemainingWords)}
+                  </span>
+                  <div className="engine-input-footer-actions">
+                    {showEngineDraftRemove && (
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={clearEngineDraftTarget}
+                      >
+                        {copy.engineDraftRemoveEntry}
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="primary"
+                      data-testid="add-entry"
+                      onClick={() => {
+                        if (engineAddEntryLoading) return
+                        const syncedText = syncEnginePreviewVoiceTranscript()
+                        if (syncedText === null) return
+                        if (enginePreviewVoiceState === 'listening') {
+                          stopEnginePreviewRecognition('stop')
+                          setEnginePreviewVoiceState('idle')
+                        }
+                        markUserInitiatedInteraction('pointer')
+                        setEngineLastInputActivityAt(Date.now())
+                        setEngineInputFocused(true)
+                        engineAllowIdleWithoutFocusRef.current = true
+                        armIdleWatch('add_item')
+                        engineInputRef.current?.focus()
+                        void handleEnginePreviewAdd(undefined, syncedText, engineDraftTargetSection)
+                      }}
+                      disabled={!enginePreviewInput.trim() || engineAddEntryLoading}
+                    >
+                      {engineAddEntryLoading && (
+                        <span className="report-updating-slot" aria-hidden="true">
+                          <span
+                            className="report-updating-indicator"
+                            role="status"
+                            aria-label={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
+                            title={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
+                          />
+                        </span>
+                      )}
+                      {copy.enginePreviewAddItem}
+                    </button>
+                  </div>
                 </div>
               </div>
               {enginePreviewItems.length === 0 ? (
@@ -11249,7 +11456,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     >
                       <div className="engine-perspective-header">
                         <h3>{section.title}</h3>
-                        <span className="engine-perspective-count">{section.items.length}</span>
+                        <div className="engine-perspective-header-actions">
+                          <button
+                            type="button"
+                            className={`engine-perspective-add-button ${
+                              engineDraftTargetSection === section.key ? 'is-active' : ''
+                            }`}
+                            aria-label={copy.engineSectionAddEntryAria(section.title)}
+                            title={copy.engineSectionAddEntryHint}
+                            onClick={() => activateEngineDraftTarget(section.key as EnginePerspectiveKey)}
+                          >
+                            <span aria-hidden="true">+</span>
+                          </button>
+                          <span className="engine-perspective-count">{section.items.length}</span>
+                        </div>
                       </div>
                       <ul className="engine-entry-list">
                         {(() => {
@@ -11379,80 +11599,84 @@ const isMissingLabel = (item: EngineBoardItem) => {
                               ) : (
                                 <div className="engine-entry-text">{item.text}</div>
                               )}
-                              <div className="engine-entry-actions">
-                                <div className="engine-entry-question-help">
+                              {enginePreviewEditId !== item.id &&
+                                engineEntryDeleteId !== item.id &&
+                                engineLabelEditorId !== item.id && (
+                                <div className="engine-entry-actions">
+                                  <div className="engine-entry-question-help">
+                                    <button
+                                      type="button"
+                                      className="engine-entry-question-button engine-entry-action"
+                                      aria-label={copy.engineEntryQuestionHint}
+                                      title={copy.engineEntryQuestionHint}
+                                      onClick={(event) => {
+                                        event.stopPropagation()
+                                      }}
+                                    >
+                                      ?
+                                    </button>
+                                    <div className="engine-entry-question-tooltip" role="note">
+                                      {resolveEntryQuestionHelperText(item)}
+                                    </div>
+                                  </div>
                                   <button
                                     type="button"
-                                    className="engine-entry-question-button engine-entry-action"
-                                    aria-label={copy.engineEntryQuestionHint}
-                                    title={copy.engineEntryQuestionHint}
+                                    className="engine-entry-edit-button engine-entry-action"
+                                    aria-label={copy.engineEntryEditHint}
+                                    title={copy.engineEntryEditHint}
                                     onClick={(event) => {
                                       event.stopPropagation()
+                                      startEnginePreviewEdit(item)
                                     }}
                                   >
-                                    ?
+                                    ✎
                                   </button>
-                                  <div className="engine-entry-question-tooltip" role="note">
-                                    {resolveEntryQuestionHelperText(item)}
-                                  </div>
+                                  <button
+                                    type="button"
+                                    className="engine-entry-delete-button engine-entry-action"
+                                    aria-label={copy.engineEntryDeleteHint}
+                                    title={copy.engineEntryDeleteHint}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setEngineEntryDeleteId(item.id)
+                                    }}
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      width="14"
+                                      height="14"
+                                      aria-hidden="true"
+                                    >
+                                      <path
+                                        fill="currentColor"
+                                        d="M9 3a1 1 0 0 0-1 1v1H5.5a1 1 0 1 0 0 2H6v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7h.5a1 1 0 1 0 0-2H16V4a1 1 0 0 0-1-1H9zm1 2h4v1h-4V5zm-1 4a1 1 0 0 1 1 1v7a1 1 0 1 1-2 0v-7a1 1 0 0 1 1-1zm6 1a1 1 0 1 0-2 0v7a1 1 0 1 0 2 0v-7z"
+                                      />
+                                    </svg>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="engine-entry-label-button engine-entry-action"
+                                    aria-label={copy.engineEntryLabelActionHint}
+                                    title={copy.engineEntryLabelActionHint}
+                                    onClick={(event) => {
+                                      event.stopPropagation()
+                                      setEngineLabelEditorId((prev) => (prev === item.id ? null : item.id))
+                                    }}
+                                  >
+                                    <svg
+                                      viewBox="0 0 24 24"
+                                      width="14"
+                                      height="14"
+                                      aria-hidden="true"
+                                    >
+                                      <path
+                                        fill="currentColor"
+                                        d="M10.59 13.41a1 1 0 0 1 0-1.41l6.3-6.3a3 3 0 1 1 4.24 4.24l-6.3 6.3a1 1 0 0 1-1.41 0l-2.83-2.83ZM18.3 7.1l-5.6 5.6 1.41 1.41 5.6-5.6a1 1 0 0 0-1.41-1.41ZM3 6a3 3 0 0 1 3-3h6a1 1 0 1 1 0 2H6a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3a1 1 0 1 1 2 0v3a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z"
+                                      />
+                                    </svg>
+                                  </button>
                                 </div>
-                                <button
-                                  type="button"
-                                  className="engine-entry-edit-button engine-entry-action"
-                                  aria-label={copy.engineEntryEditHint}
-                                  title={copy.engineEntryEditHint}
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    startEnginePreviewEdit(item)
-                                  }}
-                                >
-                                  ✎
-                                </button>
-                                <button
-                                  type="button"
-                                  className="engine-entry-delete-button engine-entry-action"
-                                  aria-label={copy.engineEntryDeleteHint}
-                                  title={copy.engineEntryDeleteHint}
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    setEngineEntryDeleteId(item.id)
-                                  }}
-                                >
-                                  <svg
-                                    viewBox="0 0 24 24"
-                                    width="14"
-                                    height="14"
-                                    aria-hidden="true"
-                                  >
-                                    <path
-                                      fill="currentColor"
-                                      d="M9 3a1 1 0 0 0-1 1v1H5.5a1 1 0 1 0 0 2H6v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7h.5a1 1 0 1 0 0-2H16V4a1 1 0 0 0-1-1H9zm1 2h4v1h-4V5zm-1 4a1 1 0 0 1 1 1v7a1 1 0 1 1-2 0v-7a1 1 0 0 1 1-1zm6 1a1 1 0 1 0-2 0v7a1 1 0 1 0 2 0v-7z"
-                                    />
-                                  </svg>
-                                </button>
-                                <button
-                                  type="button"
-                                  className="engine-entry-label-button engine-entry-action"
-                                  aria-label={copy.engineEntryLabelActionHint}
-                                  title={copy.engineEntryLabelActionHint}
-                                  onClick={(event) => {
-                                    event.stopPropagation()
-                                    setEngineLabelEditorId((prev) => (prev === item.id ? null : item.id))
-                                  }}
-                                >
-                                  <svg
-                                    viewBox="0 0 24 24"
-                                    width="14"
-                                    height="14"
-                                    aria-hidden="true"
-                                  >
-                                    <path
-                                      fill="currentColor"
-                                      d="M10.59 13.41a1 1 0 0 1 0-1.41l6.3-6.3a3 3 0 1 1 4.24 4.24l-6.3 6.3a1 1 0 0 1-1.41 0l-2.83-2.83ZM18.3 7.1l-5.6 5.6 1.41 1.41 5.6-5.6a1 1 0 0 0-1.41-1.41ZM3 6a3 3 0 0 1 3-3h6a1 1 0 1 1 0 2H6a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3a1 1 0 1 1 2 0v3a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z"
-                                    />
-                                  </svg>
-                                </button>
-                              </div>
+                              )}
                               <div className="engine-entry-label-group">
                                 {highlightMissingLabels && isMissingLabel(item) && (
                                   <span className="engine-entry-missing-badge">
@@ -11834,6 +12058,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 </div>
               </div>
             </div>
+
           </section>
         )}
         {showLanding && landingView === 'threeSteps' && (
@@ -11901,6 +12126,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 </div>
               </div>
             </div>
+
           </section>
         )}
         {!showLanding && activeStep === 1 && (
@@ -12542,6 +12768,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
           </section>
         )}
       </main>
+      {showLanding && (
+        <footer className="landing-bottom-bar">
+          <a className="ghost landing-bottom-link" href="/privacy">
+            {copy.landingPrivacyTitle}
+          </a>
+        </footer>
+      )}
       {activeIdeaCell && (
         <div className="modal" role="dialog" aria-modal="true">
           <div className="modal-content">

@@ -19,6 +19,23 @@ export const reportCopy: Record<
     summaryToday: string
     summaryChange: string
     summaryProduct: string
+    trizTitle: string
+    trizIntro: string
+    trizImproving: string
+    trizWorsening: string
+    trizPrinciples: string
+    trizSolutions: string
+    trizEmpty: string
+    trizGenerateSketch: string
+    trizRegenerateSketch: string
+    trizDownloadImage: string
+    trizSaveImage: string
+    trizDeleteImage: string
+    trizGeneratingImage: string
+    trizImageFailed: string
+    trizImageDeleteFailed: string
+    trizNoImageYet: string
+    trizImageIncluded: string
     perspectiveMap: string
     collectedIdeas: string
     nextSteps: string
@@ -57,7 +74,7 @@ export const reportCopy: Record<
   }
 > = {
   en: {
-    title: 'Report',
+    title: 'Action plan',
     back: 'Back to session',
     print: 'Print',
     downloadPdf: 'Download PDF',
@@ -73,6 +90,25 @@ export const reportCopy: Record<
     summaryToday: 'What I see today',
     summaryChange: 'What I want to change',
     summaryProduct: 'My product concept',
+    trizTitle: 'Contradictions & Innovation Paths (TRIZ)',
+    trizIntro:
+      'This section highlights the strongest tensions in your idea and turns them into practical innovation directions instead of trade-offs you simply accept.',
+    trizImproving: 'What we want to improve',
+    trizWorsening: 'What gets worse',
+    trizPrinciples: 'Suggested TRIZ principles',
+    trizSolutions: 'Potential solution directions',
+    trizEmpty:
+      'Not enough strong contradictions were found in the current material. Add more concrete tensions, constraints, or trade-offs to generate this section.',
+    trizGenerateSketch: 'Generate sketch',
+    trizRegenerateSketch: 'Generate again',
+    trizDownloadImage: 'Download image',
+    trizSaveImage: 'Save image',
+    trizDeleteImage: 'Delete image',
+    trizGeneratingImage: 'Generating image…',
+    trizImageFailed: 'Image generation failed.',
+    trizImageDeleteFailed: 'Image deletion failed.',
+    trizNoImageYet: 'No image yet.',
+    trizImageIncluded: 'Image included in report.',
     perspectiveMap: 'Perspective / questions map',
     collectedIdeas: 'Collected ideas and observations',
     nextSteps: 'Recommendations / next steps',
@@ -90,7 +126,7 @@ export const reportCopy: Record<
     summaryEmptyTitle: 'You’ll get a summary once you add a few more notes',
     summaryEmptyBody:
       'Right now there isn’t enough on the board to create a summary that truly helps you move forward. Add 2–3 short notes (like sticky notes) and I’ll generate a clear summary and suggested next steps.',
-    reportUpdate: 'Update report',
+    reportUpdate: 'Update\naction plan',
     reportUpdated: 'Report updated.',
     reportNoChanges: 'No changes to apply.',
     logout: 'Log out',
@@ -102,18 +138,18 @@ export const reportCopy: Record<
     noEntries: 'No entries',
     placeholder: 'Placeholder content — to be completed in later versions.',
     labelSaveError: 'Failed to save label.',
-    recommendationsEmpty: 'No recommendations. Click “Update report” to generate them.',
+    recommendationsEmpty: 'No recommendations. Click “Update action plan” to generate them.',
     recommendationsIdeasTitle: 'Based on your ideas',
     recommendationsMorphTitle: 'Morphological alternatives',
     recommendationsTrendsTitle: 'Market trends',
     updatingAria: 'Updating…',
     reportOutdatedNotice:
-      'Due to new board entries, the Executive summary, Perspective / questions map, and Recommendations / next steps sections require an update.',
+      'Due to new board entries, the Executive summary, Contradictions & Innovation Paths (TRIZ), Perspective / questions map, and\nRecommendations / next steps sections\nrequire an update.',
     reportOutdatedPrint:
-      'The report does not yet reflect the latest board entries. This applies to the Executive summary, Perspective / questions map, and Recommendations / next steps sections.',
+      'The report does not yet reflect the latest board entries. This applies to the Executive summary, Contradictions & Innovation Paths (TRIZ), Perspective / questions map, and Recommendations / next steps sections.',
   },
   pl: {
-    title: 'Raport',
+    title: 'Plan działania',
     back: 'Wróć do sesji',
     print: 'Drukuj',
     downloadPdf: 'Pobierz PDF',
@@ -129,6 +165,25 @@ export const reportCopy: Record<
     summaryToday: 'To widzę dzisiaj',
     summaryChange: 'To chcę zmienić',
     summaryProduct: 'To mój pomysł na produkt',
+    trizTitle: 'Sprzeczności i kierunki innowacji (TRIZ)',
+    trizIntro:
+      'Ta sekcja pokazuje najmocniejsze napięcia w twoim pomyśle i zamienia je w praktyczne kierunki innowacji zamiast kompromisów, które trzeba tylko zaakceptować.',
+    trizImproving: 'Co chcemy poprawić',
+    trizWorsening: 'Co się pogarsza',
+    trizPrinciples: 'Sugerowane zasady TRIZ',
+    trizSolutions: 'Potencjalne kierunki rozwiązań',
+    trizEmpty:
+      'W obecnym materiale nie znaleziono wystarczająco mocnych sprzeczności. Dodaj więcej konkretnych napięć, ograniczeń lub kompromisów, aby wygenerować tę sekcję.',
+    trizGenerateSketch: 'Wygeneruj szkic',
+    trizRegenerateSketch: 'Wygeneruj ponownie',
+    trizDownloadImage: 'Pobierz grafikę',
+    trizSaveImage: 'Zapisz grafikę',
+    trizDeleteImage: 'Usuń grafikę',
+    trizGeneratingImage: 'Generowanie grafiki…',
+    trizImageFailed: 'Nie udało się wygenerować grafiki.',
+    trizImageDeleteFailed: 'Nie udało się usunąć grafiki.',
+    trizNoImageYet: 'Brak grafiki.',
+    trizImageIncluded: 'Grafika dołączona do raportu.',
     perspectiveMap: 'Mapa perspektyw / pytań',
     collectedIdeas: 'Zebrane pomysły i obserwacje',
     nextSteps: 'Rekomendacje / następne kroki',
@@ -146,7 +201,7 @@ export const reportCopy: Record<
     summaryEmptyTitle: 'Podsumowanie pojawi się, gdy dopiszesz kilka wpisów',
     summaryEmptyBody:
       'Na razie na tablicy jest zbyt mało konkretnych informacji, żeby przygotować podsumowanie, które realnie pomoże iść dalej. Dodaj 2–3 krótkie wpisy (jak post-it) — wtedy wygeneruję klarowne podsumowanie i kolejne kroki.',
-    reportUpdate: 'Aktualizuj raport',
+    reportUpdate: 'Aktualizuj Plan działania',
     reportUpdated: 'Raport został zaktualizowany.',
     reportNoChanges: 'Brak zmian do wprowadzenia.',
     logout: 'Wyloguj',
@@ -158,14 +213,14 @@ export const reportCopy: Record<
     noEntries: 'Brak wpisów',
     placeholder: 'Treść przykładowa — do uzupełnienia w kolejnych wersjach.',
     labelSaveError: 'Nie udało się zapisać etykiety.',
-    recommendationsEmpty: 'Brak rekomendacji. Kliknij “Aktualizuj raport”, aby je wygenerować.',
+    recommendationsEmpty: 'Brak rekomendacji. Kliknij “Aktualizuj Plan działania”, aby je wygenerować.',
     recommendationsIdeasTitle: 'Na podstawie twoich pomysłów',
     recommendationsMorphTitle: 'Alternatywy morfologiczne',
     recommendationsTrendsTitle: 'Trendy rynkowe',
     updatingAria: 'Aktualizowanie…',
     reportOutdatedNotice:
-      'Ze względu na nowe wpisy na tablicy, rozdziały Podsumowanie, Mapa perspektyw / pytań oraz Rekomendacje / następne kroki wymagają aktualizacji.',
+      'Ze względu na nowe wpisy na tablicy, rozdziały Podsumowanie, Sprzeczności i kierunki innowacji (TRIZ), Mapa perspektyw / pytań oraz Rekomendacje / następne kroki wymagają aktualizacji.',
     reportOutdatedPrint:
-      'Raport nie odzwierciedla jeszcze najnowszych wpisów na tablicy. Dotyczy to rozdziałów Podsumowanie, Mapa perspektyw / pytań oraz Rekomendacje / następne kroki.',
+      'Raport nie odzwierciedla jeszcze najnowszych wpisów na tablicy. Dotyczy to rozdziałów Podsumowanie, Sprzeczności i kierunki innowacji (TRIZ), Mapa perspektyw / pytań oraz Rekomendacje / następne kroki.',
   },
 }

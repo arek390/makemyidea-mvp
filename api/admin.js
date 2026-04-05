@@ -8,6 +8,7 @@ import {
   handleAdminCheck,
   handleAdminDebug,
   handleAdminAuthProbe,
+  handleAdminPricingSync,
   handleAdminWhoAmI,
 } from '../src/lib/server/handlers/admin.js'
 
@@ -74,6 +75,14 @@ export default async function handler(req, res) {
       return
     }
     await handleAdminDebug(req, res)
+    return
+  }
+  if (action === 'admin.pricing.sync') {
+    if (req.method !== 'POST') {
+      methodNotAllowed(res, ['POST'])
+      return
+    }
+    await handleAdminPricingSync(req, res)
     return
   }
   if (action === 'admin.auth_probe') {

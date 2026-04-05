@@ -11,9 +11,18 @@ type AdminRow = {
   board_items_count: number | null
   report_created: boolean | null
   report_updated: boolean | null
+  tokens_input_total: number | null
+  tokens_output_total: number | null
   tokens_total: number | null
-  cost_pln: number | null
-  cost_usd: number | null
+  usage_cost_pln: number | null
+  usage_cost_usd: number | null
+  total_cost_session_minor: number | null
+  last_image_cost_minor: number | null
+  last_image_cost_currency: 'PLN' | 'USD' | null
+  last_report_update_cost_minor: number | null
+  last_report_update_cost_currency: 'PLN' | 'USD' | null
+  last_report_generate_cost_minor: number | null
+  last_report_generate_cost_currency: 'PLN' | 'USD' | null
   balance_pln_grosze: number | null
   balance_usd_cents: number | null
   billing_currency: 'PLN' | 'USD' | null
@@ -30,6 +39,19 @@ type BillingRow = {
 type AdminPageProps = {
   authLoading: boolean
   uiLanguage: 'Polish' | 'English'
+}
+
+type PricingInfo = {
+  latestSync: {
+    status?: string | null
+    sync_finished_at?: string | null
+    sync_started_at?: string | null
+  } | null
+  latestFetchedAt: string | null
+  sourceLabel: string | null
+  sourceUrl: string | null
+  activeSnapshotsCount: number
+  isFresh: boolean
 }
 
 const formatNumber = (value: number | null | undefined) => {
@@ -50,6 +72,14 @@ const formatMoney = (value: number | null | undefined, currency: 'PLN' | 'USD') 
 const formatMoneyMinor = (minor: number | null | undefined, currency: 'PLN' | 'USD') => {
   if (minor == null || Number.isNaN(minor)) return '—'
   return formatMoney(minor / 100, currency)
+}
+
+const formatSessionMinor = (
+  minor: number | null | undefined,
+  currency: 'PLN' | 'USD' | null | undefined
+) => {
+  const resolved = currency === 'USD' ? 'USD' : 'PLN'
+  return formatMoneyMinor(minor, resolved)
 }
 
 const formatDateTime = (value: string | null | undefined) => {
@@ -101,7 +131,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     adminOnlyReport: isPl ? 'Raport tylko dla admina' : 'Admin-only report',
     sortLabel: isPl ? 'Sortuj' : 'Sort',
     sortCreatedAt: isPl ? 'Utworzono' : 'Created at',
-    sortCostPln: isPl ? 'Koszt PLN' : 'Cost PLN',
+    sortCostPln: isPl ? 'Koszt sesji' : 'Session cost',
     sortTokens: isPl ? 'Tokeny' : 'Tokens total',
     sortAsc: isPl ? 'Rosnąco' : 'Ascending',
     sortDesc: isPl ? 'Malejąco' : 'Descending',
@@ -112,8 +142,10 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     tableReportCreated: isPl ? 'Raport utworzony' : 'Report created',
     tableReportUpdated: isPl ? 'Raport zaktualizowany' : 'Report updated',
     tableTokens: isPl ? 'Tokeny' : 'Tokens',
-    tableCostPln: isPl ? 'Koszt PLN' : 'Cost PLN',
-    tableCostUsd: isPl ? 'Koszt USD' : 'Cost USD',
+    tableCostPln: isPl ? 'Koszt sesji' : 'Session cost',
+    tableCostUsd: isPl ? 'Ostatni koszt grafiki' : 'Last image cost',
+    tableLastReportUpdate: isPl ? 'Ostatni koszt update raportu' : 'Last report update cost',
+    tableLastReportGenerate: isPl ? 'Ostatni koszt generate raportu' : 'Last report generate cost',
     tableBalancePln: isPl ? 'Saldo' : 'Balance',
     tableTotalPaidPln: isPl ? 'Suma wpłat PLN' : 'Total paid PLN',
     tableYes: isPl ? 'Tak' : 'Yes',
@@ -135,6 +167,12 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     billingResetFailed: isPl
       ? 'Nie udało się zresetować salda.'
       : 'Unable to reset the balance.',
+    pricingStatus: isPl ? 'Cennik modeli OpenAI' : 'OpenAI model pricing',
+    pricingSyncNow: isPl ? 'Synchronizuj ceny teraz' : 'Sync prices now',
+    pricingSyncRunning: isPl ? 'Synchronizacja cen...' : 'Syncing prices...',
+    pricingSource: isPl ? 'Źródło cen' : 'Pricing source',
+    pricingUpdatedAt: isPl ? 'Ostatni snapshot cen' : 'Latest pricing snapshot',
+    pricingSyncState: isPl ? 'Status synchronizacji' : 'Sync status',
   }
   const { user, authReady } = useAuthState()
   const authUserId = user?.id ?? null
@@ -155,7 +193,9 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
   const [billingResetBusy, setBillingResetBusy] = useState<Record<string, boolean>>({})
   const [debugPayload, setDebugPayload] = useState<string | null>(null)
   const [sessionDebugPayload, setSessionDebugPayload] = useState<string | null>(null)
-  const [sortKey, setSortKey] = useState<'session_created_at' | 'cost_pln' | 'tokens_total'>(
+  const [pricingInfo, setPricingInfo] = useState<PricingInfo | null>(null)
+  const [pricingSyncBusy, setPricingSyncBusy] = useState(false)
+  const [sortKey, setSortKey] = useState<'session_created_at' | 'total_cost_session_minor' | 'tokens_total'>(
     'session_created_at'
   )
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
@@ -311,6 +351,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         if (!cancelled) {
           setAdminAllowed('yes')
           setRows(Array.isArray(payload.rows) ? payload.rows : [])
+          setPricingInfo(payload?.pricing ?? null)
         }
       } catch (err) {
         if (!cancelled) {
@@ -525,6 +566,39 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       setDebugPayload(
         JSON.stringify({ ok: false, error: message }, null, 2)
       )
+    }
+  }
+
+  const handlePricingSync = async () => {
+    setPricingSyncBusy(true)
+    setError(null)
+    try {
+      if (!supabase) throw new Error('AUTH_REQUIRED')
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token || ''
+      if (!token) throw new Error('AUTH_REQUIRED')
+      const response = await fetch('/api/admin?action=admin.pricing.sync', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error || 'PRICING_SYNC_FAILED')
+      }
+      setPricingInfo(payload?.pricing ?? null)
+      const listResponse = await fetch('/api/admin?action=admin.report.list&limit=500&offset=0', {
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const listPayload = await listResponse.json().catch(() => null)
+      if (listResponse.ok && listPayload?.ok) {
+        setRows(Array.isArray(listPayload.rows) ? listPayload.rows : [])
+        setPricingInfo(listPayload?.pricing ?? payload?.pricing ?? null)
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'PRICING_SYNC_FAILED'
+      setError(message === 'AUTH_REQUIRED' ? t.authRequired : message)
+    } finally {
+      setPricingSyncBusy(false)
     }
   }
 
@@ -766,6 +840,20 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
           <div>
           <h1>{t.usersSessionsTitle}</h1>
           <p className="muted">{t.adminOnlyReport}</p>
+          {pricingInfo && (
+            <>
+              <p className="muted">
+                {t.pricingSource}: {pricingInfo.sourceLabel || '—'}
+                {pricingInfo.sourceUrl ? ` (${pricingInfo.sourceUrl})` : ''}
+              </p>
+              <p className="muted">
+                {t.pricingUpdatedAt}: {formatDateTime(pricingInfo.latestFetchedAt)}
+              </p>
+              <p className="muted">
+                {t.pricingSyncState}: {pricingInfo.latestSync?.status || '—'}
+              </p>
+            </>
+          )}
           </div>
           <div className="admin-controls">
             <input
@@ -780,11 +868,16 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                 <select
                   value={sortKey}
                   onChange={(event) =>
-                    setSortKey(event.target.value as 'session_created_at' | 'cost_pln' | 'tokens_total')
+                    setSortKey(
+                      event.target.value as
+                        | 'session_created_at'
+                        | 'total_cost_session_minor'
+                        | 'tokens_total'
+                    )
                   }
                 >
                   <option value="session_created_at">{t.sortCreatedAt}</option>
-                  <option value="cost_pln">{t.sortCostPln}</option>
+                  <option value="total_cost_session_minor">{t.sortCostPln}</option>
                   <option value="tokens_total">{t.sortTokens}</option>
                 </select>
               </label>
@@ -794,6 +887,14 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                 onClick={() => setSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
               >
                 {sortDir === 'asc' ? t.sortAsc : t.sortDesc}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                disabled={pricingSyncBusy}
+                onClick={handlePricingSync}
+              >
+                {pricingSyncBusy ? t.pricingSyncRunning : t.pricingSyncNow}
               </button>
             </div>
           </div>
@@ -816,6 +917,8 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                   <th>{t.tableTokens}</th>
                   <th>{t.tableCostPln}</th>
                   <th>{t.tableCostUsd}</th>
+                  <th>{t.tableLastReportUpdate}</th>
+                  <th>{t.tableLastReportGenerate}</th>
                   <th>{t.tableBalancePln}</th>
                   <th>{t.tableTotalPaidPln}</th>
                 </tr>
@@ -823,7 +926,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
               <tbody>
                   {sortedRows.length === 0 && (
                     <tr>
-                      <td colSpan={11} className="admin-empty">
+                      <td colSpan={13} className="admin-empty">
                       {t.tableEmpty}
                       </td>
                     </tr>
@@ -844,8 +947,20 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                     <td>{row.report_created ? t.tableYes : t.tableNo}</td>
                     <td>{row.report_updated ? t.tableYes : t.tableNo}</td>
                     <td>{formatNumber(row.tokens_total)}</td>
-                    <td>{formatMoney(row.cost_pln, 'PLN')}</td>
-                    <td>{formatMoney(row.cost_usd, 'USD')}</td>
+                    <td>{formatSessionMinor(row.total_cost_session_minor, row.billing_currency)}</td>
+                    <td>{formatSessionMinor(row.last_image_cost_minor, row.last_image_cost_currency)}</td>
+                    <td>
+                      {formatSessionMinor(
+                        row.last_report_update_cost_minor,
+                        row.last_report_update_cost_currency
+                      )}
+                    </td>
+                    <td>
+                      {formatSessionMinor(
+                        row.last_report_generate_cost_minor,
+                        row.last_report_generate_cost_currency
+                      )}
+                    </td>
                     <td>
                       {formatMoneyMinor(
                         row.billing_currency === 'USD'

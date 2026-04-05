@@ -1,8 +1,13 @@
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../src/lib/server/http.js'
 import { resolveAction } from '../src/lib/server/router.js'
-import { handleReportUpdate } from '../src/lib/server/handlers/reportUpdate.js'
+import {
+  handleReportUpdate,
+  handleReportTrizImageGenerate,
+  handleReportTrizImageDelete,
+} from '../src/lib/server/handlers/reportUpdate.js'
 import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
 import { normalizeBillingError } from '../src/lib/server/billing.js'
+import { recordSessionBillingEvent } from '../src/lib/server/aiCostEvents.js'
 
 const getBearerToken = (req) => {
   const authHeader =
@@ -117,7 +122,13 @@ const handleReportGenerate = async (req, res) => {
     return
   }
   if (existingRes.data) {
-    sendJson(res, 200, { ok: true, report: existingRes.data })
+    const hasGeneratedContent = Boolean(existingRes.data.summary_json)
+    if (hasGeneratedContent) {
+      sendJson(res, 200, { ok: true, report: existingRes.data })
+      return
+    }
+    req.reportOptions = { skipBilling: true, returnReport: true, actionKey: 'report_generate' }
+    await handleReportUpdate(req, res)
     return
   }
 
@@ -171,14 +182,36 @@ const handleReportGenerate = async (req, res) => {
       .eq('session_id', sessionId)
       .maybeSingle()
     if (retry.data) {
-      sendJson(res, 200, { ok: true, report: retry.data })
+      const billingRow = Array.isArray(billingRes.data) ? billingRes.data[0] : billingRes.data
+      await recordSessionBillingEvent(supabaseAdmin, {
+        sessionId: retry.data.session_id ?? sessionId,
+        reportId: retry.data.id ?? null,
+        userId,
+        actionKey: 'report_generate',
+        referenceId: retry.data.id ?? sessionId,
+        amountMinor: billingRow?.amount_minor ?? null,
+        currency: billingRow?.currency ?? billingCurrency,
+      })
+      req.reportOptions = { skipBilling: true, returnReport: true, actionKey: 'report_generate' }
+      await handleReportUpdate(req, res)
       return
     }
     sendJson(res, 500, { ok: false, error: 'REPORT_CREATE_FAILED' })
     return
   }
 
-  sendJson(res, 200, { ok: true, report: insertRes.data })
+  const billingRow = Array.isArray(billingRes.data) ? billingRes.data[0] : billingRes.data
+  await recordSessionBillingEvent(supabaseAdmin, {
+    sessionId: insertRes.data?.session_id ?? sessionId,
+    reportId: insertRes.data?.id ?? null,
+    userId,
+    actionKey: 'report_generate',
+    referenceId: insertRes.data?.id ?? sessionId,
+    amountMinor: billingRow?.amount_minor ?? null,
+    currency: billingRow?.currency ?? billingCurrency,
+  })
+  req.reportOptions = { skipBilling: true, returnReport: true, actionKey: 'report_generate' }
+  await handleReportUpdate(req, res)
 }
 
 export default async function handler(req, res) {
@@ -200,6 +233,14 @@ export default async function handler(req, res) {
   }
   if (action === 'generate') {
     await handleReportGenerate(req, res)
+    return
+  }
+  if (action === 'generate-triz-image') {
+    await handleReportTrizImageGenerate(req, res)
+    return
+  }
+  if (action === 'delete-triz-image') {
+    await handleReportTrizImageDelete(req, res)
     return
   }
   notFound(res)

@@ -40,6 +40,7 @@ import devHandler from './api/dev.js'
 import adminHandler from './api/admin.js'
 import boardItemsHandler from './api/board-items.js'
 import billingHandler from './api/billing.js'
+import reportHandler from './api/report.js'
 import { createSupabaseServerClient } from './src/lib/server/supabaseServer.js'
 import { chargeUserBalance, normalizeBillingError } from './src/lib/server/billing.js'
 import {
@@ -453,6 +454,20 @@ const server = http.createServer(async (req, res) => {
       await billingHandler(req, resShim)
     } catch (error) {
       console.error('[server][billing] unhandled error', {
+        name: error?.name,
+        message: error?.message,
+      })
+      sendJson(res, 500, { ok: false, error: 'SERVER_ERROR', message: 'Server error.' })
+    }
+    return
+  }
+
+  if (url.pathname === '/api/report') {
+    const resShim = createResShim(res)
+    try {
+      await reportHandler(req, resShim)
+    } catch (error) {
+      console.error('[server][report] unhandled error', {
         name: error?.name,
         message: error?.message,
       })

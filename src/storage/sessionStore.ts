@@ -65,6 +65,47 @@ export type ReportRecommendations = {
   market_trends: RecommendationItem[]
 }
 
+export type ReportTrizPrinciple = {
+  id?: number
+  name: string
+  rationale?: string
+  how_to_apply?: string
+}
+
+export type ReportTrizSolutionImage = {
+  status?: 'idle' | 'ready' | 'failed'
+  storage_path?: string
+  public_url?: string
+  mime_type?: string
+  file_name?: string
+  generated_at?: string
+  prompt?: string
+  error_message?: string
+}
+
+export type ReportTrizSolution = {
+  title: string
+  description: string
+  sketch_prompt?: string
+  image?: ReportTrizSolutionImage | null
+  images?: ReportTrizSolutionImage[] | null
+}
+
+export type ReportTrizContradiction = {
+  title: string
+  description: string
+  improving: string
+  worsening: string
+  principles: ReportTrizPrinciple[]
+  solutions: ReportTrizSolution[]
+}
+
+export type ReportTrizSection = {
+  section_title?: string
+  section_intro?: string
+  contradictions: ReportTrizContradiction[]
+}
+
 export type ReportIdea = {
   id: string
   text: string
@@ -85,6 +126,7 @@ export type ReportMeta = {
   summary?: ReportSummary | null
   ideas?: ReportIdea[] | null
   recommendations?: ReportRecommendations | null
+  triz?: ReportTrizSection | null
 }
 
 export const STORAGE_KEY = 'engine-sessions-v1'

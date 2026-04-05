@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { runLlmTask, createRateLimiter } from '../../../llm/llmRouter.mjs'
 import { getSupabaseAdmin } from '../supabaseAdmin.js'
+import { recordSessionAiUsageEvent } from '../aiCostEvents.js'
 import { getSessionState, getSessionStoreType, updateSessionStateRow } from '../../../engine/storage/sessionStore.mjs'
 import {
   buildMeta,
@@ -14,6 +15,18 @@ import {
 
 let cachedDataset = null
 const limiter = createRateLimiter({ windowMs: 60_000, max: 20 })
+
+const recordCoachUsageEvent = async ({ sessionId, currentUserId, actionKey, meta }) => {
+  if (!sessionId || !meta) return
+  await recordSessionAiUsageEvent(getSupabaseAdmin(), {
+    sessionId,
+    userId: currentUserId || null,
+    actionKey,
+    sourceTask: actionKey,
+    referenceId: sessionId,
+    meta,
+  })
+}
 
 const parseCsvRow = (line, delimiter) => {
   const result = []
@@ -961,6 +974,7 @@ export const handleCoachSuggest = async (req, res) => {
         }
         if (result.ok && entries && entries.length) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          await recordCoachUsageEvent({ sessionId, currentUserId, actionKey: 'seed-from-brief', meta })
           const usage = buildUsagePayload(meta)
           sendJson(res, 200, {
             ok: true,
@@ -1100,6 +1114,12 @@ export const handleCoachSuggest = async (req, res) => {
         })
         if (result.ok && result.data?.text) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          await recordCoachUsageEvent({
+            sessionId,
+            currentUserId,
+            actionKey: 'speech-transcript-interpret',
+            meta,
+          })
           const usage = buildUsagePayload(meta)
           sendJson(res, 200, {
             ok: true,
@@ -1247,6 +1267,7 @@ export const handleCoachSuggest = async (req, res) => {
         }
         if (result.ok && assignments) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          await recordCoachUsageEvent({ sessionId, currentUserId, actionKey: 'assign-na', meta })
           const usage = buildUsagePayload(meta)
           sendJson(res, 200, {
             ok: true,
@@ -1378,6 +1399,7 @@ export const handleCoachSuggest = async (req, res) => {
         })
         if (result.ok && result.data?.classifications) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          await recordCoachUsageEvent({ sessionId, currentUserId, actionKey: 'report-reclass', meta })
           const allowedSet = new Set(allowedCellIds)
           const classifications = result.data.classifications
             .map((entry) => ({
@@ -1505,6 +1527,12 @@ export const handleCoachSuggest = async (req, res) => {
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
         })
         if (preprocessResult.ok && preprocessResult.data) {
+          await recordCoachUsageEvent({
+            sessionId,
+            currentUserId,
+            actionKey: 'report-preprocess',
+            meta: buildMeta(preprocessResult.meta || { aiSupportEnabled: true, modelUsed: null }),
+          })
           analysisJson = preprocessResult.data
         }
       } catch {
@@ -1578,6 +1606,7 @@ export const handleCoachSuggest = async (req, res) => {
       }
       if (result.ok && result.data) {
         const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+        await recordCoachUsageEvent({ sessionId, currentUserId, actionKey: 'report-full', meta })
         const usage = buildUsagePayload(meta)
         sendJson(res, 200, {
           ok: true,
@@ -1665,6 +1694,7 @@ export const handleCoachSuggest = async (req, res) => {
         })
         if (result.ok && result.data) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+          await recordCoachUsageEvent({ sessionId, currentUserId, actionKey: 'report-summary', meta })
           const usage = buildUsagePayload(meta)
           if (entries.length && result.data.summary && result.data.classifications) {
             const classifications = result.data.classifications
@@ -2101,6 +2131,12 @@ export const handleCoachSuggest = async (req, res) => {
       return
     }
     const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+    await recordCoachUsageEvent({
+      sessionId,
+      currentUserId,
+      actionKey: `coach-${String(actionNormalized || '').toLowerCase()}`,
+      meta,
+    })
     const finalQuestion = normalizeQuestion({ ...baseMapped, text: finalText })
     assertQuestionShape(finalQuestion, 'llm_rewrite_success')
     console.log('[coach/suggest][result]', {

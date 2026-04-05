@@ -1,4 +1,5 @@
 import type { ReportLang } from './reportI18n'
+import type { ReportTrizSection } from '../storage/sessionStore'
 
 export type ReportIdea = {
   id: string
@@ -26,6 +27,7 @@ export type ReportSnapshot = {
     summary?: { today: string; change: string; product: string } | null
     ideas?: ReportIdea[] | null
     recommendations?: unknown
+    triz?: ReportTrizSection | null
     lang?: 'pl' | 'en' | null
   } | null
 }

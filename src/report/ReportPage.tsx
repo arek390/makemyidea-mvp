@@ -7,7 +7,12 @@ import {
   getEntryLabelText,
   getNoLabelText,
 } from '../engine/entryLabels'
-import type { ReportRecommendations } from '../storage/sessionStore'
+import type {
+  ReportRecommendations,
+  ReportTrizSection,
+  ReportTrizSolution,
+  ReportTrizSolutionImage,
+} from '../storage/sessionStore'
 import { UsageBadge } from '../components/UsageBadge'
 import { buildSessionGoalText, extractProductNameFromSessionName } from './sessionGoal'
 import { fetchReportBySessionId } from '../lib/cloudReports'
@@ -31,6 +36,19 @@ type ReportPageProps = {
   userId?: string | null
   aiSupportEnabled: boolean
   diagnosticsEnabled: boolean
+  canToggleDiagnostics?: boolean
+  diagnosticsToggleLabel?: string
+  onToggleDiagnostics?: () => void
+  diagnosticsAuthLabel?: string | null
+  canToggleAiSupport?: boolean
+  aiSupportToggleLabel?: string
+  onToggleAiSupport?: () => void
+  llmUsageIndicatorLabel?: string
+  llmUsageValue?: string | null
+  llmUsageClassName?: string
+  llmCostLines?: string[]
+  llmCostBreakdownLabel?: string
+  llmCostBreakdownRows?: string[]
   naFillStatus?: 'idle' | 'running' | 'done' | 'error'
   onAiUsage?: (meta: unknown) => void
   onReportMetaChange?: (meta: {
@@ -40,6 +58,7 @@ type ReportPageProps = {
     updatedAt?: number | null
     ideas?: ReportSnapshot['ideas'] | null
     recommendations?: ReportRecommendations | null
+    triz?: ReportTrizSection | null
   }) => void
   onUpdateLabel?: (itemId: string, label: string | null) => Promise<boolean>
   onBillingInsufficient?: () => void
@@ -56,7 +75,9 @@ type AiSummary = { today: string; change: string; product: string }
 
 const sanitizeReportText = (input: string) => {
   let value = String(input ?? '')
-  value = value.replace(/\(\s*(?:[ABC][123]\s*(?:,\s*[ABC][123]\s*)*)\)/g, '')
+  const matrixCodeGroup = String.raw`(?:[ABC][123]\s*(?:,\s*[ABC][123]\s*)*)`
+  value = value.replace(new RegExp(String.raw`\s*\(\s*${matrixCodeGroup}\)\s*[.;:!?]`, 'g'), '')
+  value = value.replace(new RegExp(String.raw`\s*\(\s*${matrixCodeGroup}\)\s*`, 'g'), ' ')
   value = value.replace(
     /(^|[\s\u00A0])([ABC][123])(?=([\s\u00A0]*[.,;:!?)]|[\s\u00A0]*$))/g,
     '$1'
@@ -111,6 +132,11 @@ const validateAndNormalizeReport = (payload: unknown) => {
       morphological: [],
       market_trends: [],
     } as ReportRecommendations,
+    triz: {
+      section_title: '',
+      section_intro: '',
+      contradictions: [],
+    } as ReportTrizSection,
     source_snapshot: null as unknown,
   }
   if (!payload || typeof payload !== 'object') {
@@ -120,6 +146,7 @@ const validateAndNormalizeReport = (payload: unknown) => {
     summary?: unknown
     ideas?: unknown
     recommendations?: unknown
+    triz?: unknown
     source_snapshot?: unknown
     today?: unknown
     change?: unknown
@@ -146,10 +173,12 @@ const validateAndNormalizeReport = (payload: unknown) => {
   }
   const ideas = Array.isArray(value.ideas) ? (value.ideas as ReportSnapshot['ideas']) : []
   const recommendations = normalizeRecommendations(value.recommendations)
+  const triz = normalizeTriz(value.triz)
   return {
     summary,
     ideas,
     recommendations,
+    triz,
     source_snapshot: value.source_snapshot ?? null,
   }
 }
@@ -205,6 +234,207 @@ const normalizeRecommendations = (value: unknown): ReportRecommendations => {
     market_trends: trends,
   }
 }
+
+const isTrizPrinciple = (
+  value: unknown
+): value is NonNullable<ReportTrizSection['contradictions'][number]>['principles'][number] => {
+  if (!value || typeof value !== 'object') return false
+  const item = value as {
+    id?: unknown
+    name?: unknown
+    rationale?: unknown
+    how_to_apply?: unknown
+  }
+  if (typeof item.name !== 'string' || item.name.trim().length === 0) return false
+  if (item.id != null && !Number.isFinite(Number(item.id))) return false
+  if (item.rationale != null && typeof item.rationale !== 'string') return false
+  if (item.how_to_apply != null && typeof item.how_to_apply !== 'string') return false
+  return true
+}
+
+const normalizeTrizSolutionImage = (value: unknown): ReportTrizSolutionImage | null => {
+  if (!value || typeof value !== 'object') return null
+  const image = value as {
+    status?: unknown
+    storage_path?: unknown
+    public_url?: unknown
+    mime_type?: unknown
+    file_name?: unknown
+    generated_at?: unknown
+    prompt?: unknown
+    error_message?: unknown
+  }
+  const status =
+    image.status === 'idle' || image.status === 'ready' || image.status === 'failed'
+      ? image.status
+      : undefined
+  const storagePath =
+    typeof image.storage_path === 'string' && image.storage_path.trim()
+      ? image.storage_path.trim()
+      : undefined
+  const publicUrl =
+    typeof image.public_url === 'string' && image.public_url.trim()
+      ? image.public_url.trim()
+      : undefined
+  const mimeType =
+    typeof image.mime_type === 'string' && image.mime_type.trim()
+      ? image.mime_type.trim()
+      : undefined
+  const fileName =
+    typeof image.file_name === 'string' && image.file_name.trim()
+      ? image.file_name.trim()
+      : undefined
+  const generatedAt =
+    typeof image.generated_at === 'string' && image.generated_at.trim()
+      ? image.generated_at.trim()
+      : undefined
+  const prompt =
+    typeof image.prompt === 'string' && image.prompt.trim() ? image.prompt.trim() : undefined
+  const errorMessage =
+    typeof image.error_message === 'string' && image.error_message.trim()
+      ? image.error_message.trim()
+      : undefined
+  if (
+    !status &&
+    !storagePath &&
+    !publicUrl &&
+    !mimeType &&
+    !fileName &&
+    !generatedAt &&
+    !prompt &&
+    !errorMessage
+  ) {
+    return null
+  }
+  return {
+    ...(status ? { status } : {}),
+    ...(storagePath ? { storage_path: storagePath } : {}),
+    ...(publicUrl ? { public_url: publicUrl } : {}),
+    ...(mimeType ? { mime_type: mimeType } : {}),
+    ...(fileName ? { file_name: fileName } : {}),
+    ...(generatedAt ? { generated_at: generatedAt } : {}),
+    ...(prompt ? { prompt } : {}),
+    ...(errorMessage ? { error_message: errorMessage } : {}),
+  }
+}
+
+const normalizeTrizSolutionImages = (value: unknown): ReportTrizSolutionImage[] => {
+  if (!Array.isArray(value)) return []
+  return value
+    .map((item) => normalizeTrizSolutionImage(item))
+    .filter((item): item is ReportTrizSolutionImage => Boolean(item))
+}
+
+const normalizeTrizSolution = (value: unknown): ReportTrizSolution | null => {
+  if (typeof value === 'string') {
+    const text = value.trim()
+    if (!text) return null
+    return {
+      title: text,
+      description: '',
+    }
+  }
+  if (!value || typeof value !== 'object') return null
+  const solution = value as {
+    title?: unknown
+    description?: unknown
+    sketch_prompt?: unknown
+    image?: unknown
+  }
+  const title = typeof solution.title === 'string' ? solution.title.trim() : ''
+  const description = typeof solution.description === 'string' ? solution.description.trim() : ''
+  const sketchPrompt =
+    typeof solution.sketch_prompt === 'string' && solution.sketch_prompt.trim()
+      ? solution.sketch_prompt.trim()
+      : undefined
+  const image = normalizeTrizSolutionImage(solution.image)
+  const images = normalizeTrizSolutionImages((solution as { images?: unknown }).images)
+  const mergedImages = (() => {
+    if (image && images.some((item) => item.storage_path && item.storage_path === image.storage_path)) {
+      return images
+    }
+    if (image) return [image, ...images]
+    return images
+  })()
+  if (!title && !description) return null
+  return {
+    title: title || description,
+    description,
+    ...(sketchPrompt ? { sketch_prompt: sketchPrompt } : {}),
+    ...(image ? { image } : {}),
+    ...(mergedImages.length ? { images: mergedImages } : {}),
+  }
+}
+
+const normalizeTriz = (value: unknown): ReportTrizSection => {
+  const empty: ReportTrizSection = {
+    section_title: '',
+    section_intro: '',
+    contradictions: [],
+  }
+  if (!value || typeof value !== 'object') return { ...empty }
+  const section = value as {
+    section_title?: unknown
+    section_intro?: unknown
+    contradictions?: unknown
+  }
+  const contradictions = Array.isArray(section.contradictions)
+    ? section.contradictions
+        .filter((item) => item && typeof item === 'object')
+        .map((item) => {
+          const contradiction = item as {
+            title?: unknown
+            description?: unknown
+            improving?: unknown
+            worsening?: unknown
+            principles?: unknown
+            solutions?: unknown
+          }
+          const title = typeof contradiction.title === 'string' ? contradiction.title.trim() : ''
+          const description =
+            typeof contradiction.description === 'string' ? contradiction.description.trim() : ''
+          const improving =
+            typeof contradiction.improving === 'string' ? contradiction.improving.trim() : ''
+          const worsening =
+            typeof contradiction.worsening === 'string' ? contradiction.worsening.trim() : ''
+          if (!title || !description || !improving || !worsening) return null
+          const principles = Array.isArray(contradiction.principles)
+            ? contradiction.principles
+                .filter(isTrizPrinciple)
+                .map((principle) => ({
+                  ...(principle.id != null ? { id: Number(principle.id) } : {}),
+                  name: principle.name.trim(),
+                  ...(typeof principle.rationale === 'string' && principle.rationale.trim()
+                    ? { rationale: principle.rationale.trim() }
+                    : {}),
+                  ...(typeof principle.how_to_apply === 'string' && principle.how_to_apply.trim()
+                    ? { how_to_apply: principle.how_to_apply.trim() }
+                    : {}),
+                }))
+            : []
+          const solutions = Array.isArray(contradiction.solutions)
+            ? contradiction.solutions
+                .map((solution) => normalizeTrizSolution(solution))
+                .filter((solution): solution is ReportTrizSolution => Boolean(solution))
+            : []
+          return {
+            title,
+            description,
+            improving,
+            worsening,
+            principles,
+            solutions,
+          }
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+        .slice(0, 3)
+    : []
+  return {
+    section_title: typeof section.section_title === 'string' ? section.section_title.trim() : '',
+    section_intro: typeof section.section_intro === 'string' ? section.section_intro.trim() : '',
+    contradictions,
+  }
+}
 type SummaryUsage = {
   model: string | null
   inputTokens: number
@@ -221,7 +451,21 @@ export const ReportPage = ({
   onBack,
   aiSupportEnabled,
   diagnosticsEnabled,
+  canToggleDiagnostics = false,
+  diagnosticsToggleLabel,
+  onToggleDiagnostics,
+  diagnosticsAuthLabel = null,
+  canToggleAiSupport = false,
+  aiSupportToggleLabel,
+  onToggleAiSupport,
+  llmUsageIndicatorLabel,
+  llmUsageValue = null,
+  llmUsageClassName = '',
+  llmCostLines = [],
+  llmCostBreakdownLabel,
+  llmCostBreakdownRows = [],
   naFillStatus,
+  onAiUsage,
   onUpdateLabel,
   onReportMetaChange,
   onBillingInsufficient,
@@ -241,6 +485,7 @@ export const ReportPage = ({
     summary: snapshot.reportMeta?.summary ?? null,
     ideas: snapshot.ideas ?? null,
     recommendations: snapshot.reportMeta?.recommendations ?? null,
+    triz: snapshot.reportMeta?.triz ?? null,
   })
   const [aiSummary, setAiSummary] = useState<AiSummary | null>(
     sanitizeReportPayload(initialReport.summary)
@@ -256,6 +501,9 @@ export const ReportPage = ({
   const [reportRecommendations, setReportRecommendations] = useState<ReportRecommendations>(
     normalizeRecommendations(sanitizeReportPayload(initialReport.recommendations))
   )
+  const [reportTriz, setReportTriz] = useState<ReportTrizSection | null>(
+    snapshot.reportMeta?.triz ? normalizeTriz(sanitizeReportPayload(snapshot.reportMeta.triz)) : null
+  )
   const lastBoardChangeAt = Number(snapshot.sourceUpdatedAt || 0) || null
   const lastReportUpdateAt =
     snapshot.reportMeta?.updatedAt ?? snapshot.reportMeta?.createdAt ?? null
@@ -263,6 +511,14 @@ export const ReportPage = ({
     Boolean(lastBoardChangeAt && lastReportUpdateAt && lastBoardChangeAt > lastReportUpdateAt)
   const [priceMinor, setPriceMinor] = useState<number | null>(null)
   const [priceLoading, setPriceLoading] = useState(false)
+  const [trizImagePrices, setTrizImagePrices] = useState<{
+    generate: number | null
+    regenerate: number | null
+  }>({ generate: null, regenerate: null })
+  const [trizImagePriceLoading, setTrizImagePriceLoading] = useState(false)
+  const [trizImageLoading, setTrizImageLoading] = useState<Record<string, boolean>>({})
+  const [trizImageDeleting, setTrizImageDeleting] = useState<Record<string, boolean>>({})
+  const [trizImageErrors, setTrizImageErrors] = useState<Record<string, string | null>>({})
   const balanceCurrency: 'PLN' | 'USD' = billingCurrency
   const formatBalanceMinor = (currency: 'PLN' | 'USD', minor: number) => {
     const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
@@ -307,6 +563,52 @@ export const ReportPage = ({
       }
     }
     void loadPrice()
+    return () => {
+      cancelled = true
+    }
+  }, [billingCurrency])
+
+  useEffect(() => {
+    const supabaseClient = client
+    if (!supabaseClient) return
+    let cancelled = false
+    const loadTrizImagePrices = async () => {
+      setTrizImagePriceLoading(true)
+      try {
+        const { data, error } = await supabaseClient
+          .from('pricing_rules_public')
+          .select('action_key,price_grosze,price_cents')
+          .in('action_key', ['image_generate', 'image_regenerate'])
+        if (cancelled) return
+        if (error || !Array.isArray(data)) {
+          setTrizImagePrices({ generate: null, regenerate: null })
+          return
+        }
+        const next = { generate: null as number | null, regenerate: null as number | null }
+        data.forEach((row) => {
+          const typedRow = row as
+            | {
+                action_key?: string | null
+                price_grosze?: number | string | null
+                price_cents?: number | string | null
+              }
+            | null
+          const raw =
+            billingCurrency === 'USD'
+              ? Number(typedRow?.price_cents ?? NaN)
+              : Number(typedRow?.price_grosze ?? NaN)
+          const value = Number.isFinite(raw) ? raw : null
+          if (typedRow?.action_key === 'image_generate') next.generate = value
+          if (typedRow?.action_key === 'image_regenerate') next.regenerate = value
+        })
+        setTrizImagePrices(next)
+      } catch {
+        if (!cancelled) setTrizImagePrices({ generate: null, regenerate: null })
+      } finally {
+        if (!cancelled) setTrizImagePriceLoading(false)
+      }
+    }
+    void loadTrizImagePrices()
     return () => {
       cancelled = true
     }
@@ -391,6 +693,7 @@ export const ReportPage = ({
         setReportRecommendations(
           normalizeRecommendations(sanitizeReportPayload(record.recommendations))
         )
+        setReportTriz(record.triz ? normalizeTriz(sanitizeReportPayload(record.triz)) : null)
         if (!aiSummary && record.summary) {
           setAiSummary(sanitizeReportPayload(record.summary))
         }
@@ -452,40 +755,41 @@ export const ReportPage = ({
 
   const handleUpdateReport = async () => {
     if (typeof window === 'undefined') return
-    const sessionId = window.sessionStorage.getItem('reportReturnSessionId') || ''
+    const sessionId =
+      snapshot.sessionId || window.sessionStorage.getItem('reportReturnSessionId') || ''
     const sourceUpdatedAt = Number(snapshot.sourceUpdatedAt || 0)
     if (!sessionId) {
-      setUpdateNotice(t.reportUpdated)
+      setUpdateNotice(t.labelSaveError)
       return
     }
-    console.log('[report:update] no-llm step1')
     setIsReportUpdating(true)
     try {
       const sessionRes = client ? await client.auth.getSession() : null
       const token = sessionRes?.data?.session?.access_token || ''
+      const payload = { sessionId: reportSessionId || sessionId, lang: language }
       const response = await fetch('/api/report?action=update', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
-        body: JSON.stringify({ sessionId: reportSessionId, lang: language }),
+        body: JSON.stringify(payload),
       })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok || !payload?.ok) {
-        if (payload?.error === 'INSUFFICIENT_BALANCE') {
+      const responsePayload = await response.json().catch(() => null)
+      if (!response.ok || !responsePayload?.ok) {
+        if (responsePayload?.error === 'INSUFFICIENT_BALANCE') {
           onBillingInsufficient?.()
-          if (diagnosticsEnabled) {
-            console.warn('[report:update] insufficient balance', payload)
-          }
           return
         }
+        setUpdateNotice(t.labelSaveError)
+        return
       }
-      if (response.ok && payload?.ok) {
+      if (response.ok && responsePayload?.ok) {
         onBillingRefresh?.()
       }
-    } catch {
-      // ignore
+    } catch (error) {
+      setUpdateNotice(t.labelSaveError)
+      return
     } finally {
       setIsReportUpdating(false)
     }
@@ -493,23 +797,7 @@ export const ReportPage = ({
       try {
         const record = await fetchReportBySessionId(reportSessionId)
         if (record) {
-          const normalized = validateAndNormalizeReport({
-            summary: record.summary,
-            ideas: record.ideas,
-            recommendations: record.recommendations,
-          })
-          const sanitized = sanitizeReportPayload(normalized)
-          setReportRecommendations(sanitized.recommendations)
-          setAiSummary(sanitized.summary)
-          setLastSummaryTextHash(record.lastSummaryTextHash ?? null)
-          onReportMetaChange?.({
-            summary: sanitized.summary,
-            ideas: sanitized.ideas,
-            recommendations: sanitized.recommendations,
-            lastSummaryTextHash: record.lastSummaryTextHash ?? null,
-            createdAt: record.createdAt ?? null,
-            updatedAt: record.updatedAt ?? null,
-          })
+          applyReportRecord(record)
           setSummaryStatus('done')
         }
       } catch {
@@ -529,6 +817,185 @@ export const ReportPage = ({
       String(sourceUpdatedAt)
     )
     setUpdateNotice(t.reportUpdated)
+  }
+
+  const formatActionPrice = (minor: number | null) => {
+    if (!Number.isFinite(minor ?? NaN)) return null
+    return formatBalanceMinor(balanceCurrency, minor || 0)
+  }
+
+  const applyReportRecord = (record: Awaited<ReturnType<typeof fetchReportBySessionId>>) => {
+    if (!record) return
+    const normalized = validateAndNormalizeReport({
+      summary: record.summary,
+      ideas: record.ideas,
+      recommendations: record.recommendations,
+      triz: record.triz,
+    })
+    const sanitized = sanitizeReportPayload(normalized)
+    setReportRecommendations(sanitized.recommendations)
+    setReportTriz(record.triz ? normalizeTriz(sanitizeReportPayload(record.triz)) : null)
+    setAiSummary(sanitized.summary)
+    setLastSummaryTextHash(record.lastSummaryTextHash ?? null)
+    onReportMetaChange?.({
+      summary: sanitized.summary,
+      ideas: sanitized.ideas,
+      recommendations: sanitized.recommendations,
+      triz: sanitized.triz,
+      lastSummaryTextHash: record.lastSummaryTextHash ?? null,
+      createdAt: record.createdAt ?? null,
+      updatedAt: record.updatedAt ?? null,
+    })
+  }
+
+  const handleGenerateTrizImage = async (contradictionIndex: number, solutionIndex: number) => {
+    if (!reportSessionId || typeof window === 'undefined') return
+    const requestKey = `${contradictionIndex}:${solutionIndex}`
+    setTrizImageLoading((prev) => ({ ...prev, [requestKey]: true }))
+    setTrizImageErrors((prev) => ({ ...prev, [requestKey]: null }))
+    try {
+      const sessionRes = client ? await client.auth.getSession() : null
+      const token = sessionRes?.data?.session?.access_token || ''
+      const response = await fetch('/api/report?action=generate-triz-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          sessionId: reportSessionId,
+          contradictionIndex,
+          solutionIndex,
+          lang: language,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (payload?.meta) {
+        onAiUsage?.(payload.meta)
+      }
+      if (!response.ok || !payload?.ok) {
+        const errorCode =
+          typeof payload?.code === 'string'
+            ? payload.code
+            : typeof payload?.error === 'string'
+              ? payload.error
+              : ''
+        const errorMessage =
+          typeof payload?.message === 'string' && payload.message
+            ? payload.message
+            : errorCode || t.trizImageFailed
+        if (errorCode === 'INSUFFICIENT_BALANCE') {
+          onBillingInsufficient?.()
+          return
+        }
+        setTrizImageErrors((prev) => ({
+          ...prev,
+          [requestKey]: errorMessage,
+        }))
+        return
+      }
+      onBillingRefresh?.()
+      if (payload?.report) {
+        const refreshed = await fetchReportBySessionId(reportSessionId)
+        if (refreshed) {
+          applyReportRecord(refreshed)
+        }
+      } else {
+        const refreshed = await fetchReportBySessionId(reportSessionId)
+        if (refreshed) {
+          applyReportRecord(refreshed)
+        }
+      }
+    } catch (error) {
+      console.error('[triz-image][ui] request_failed', {
+        requestKey,
+        message: error instanceof Error ? error.message : String(error),
+        error,
+      })
+      setTrizImageErrors((prev) => ({ ...prev, [requestKey]: t.trizImageFailed }))
+    } finally {
+      setTrizImageLoading((prev) => ({ ...prev, [requestKey]: false }))
+    }
+  }
+
+  const handleDeleteTrizImage = async (
+    contradictionIndex: number,
+    solutionIndex: number,
+    image: ReportTrizSolutionImage,
+    galleryIndex: number
+  ) => {
+    if (!reportSessionId || typeof window === 'undefined') return
+    const deleteKey = `${contradictionIndex}:${solutionIndex}:${
+      image.storage_path || image.public_url || galleryIndex
+    }`
+    const requestKey = `${contradictionIndex}:${solutionIndex}`
+    setTrizImageDeleting((prev) => ({ ...prev, [deleteKey]: true }))
+    setTrizImageErrors((prev) => ({ ...prev, [requestKey]: null }))
+    try {
+      const sessionRes = client ? await client.auth.getSession() : null
+      const token = sessionRes?.data?.session?.access_token || ''
+      const response = await fetch('/api/report?action=delete-triz-image', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          sessionId: reportSessionId,
+          contradictionIndex,
+          solutionIndex,
+          storagePath: image.storage_path || null,
+          publicUrl: image.public_url || null,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.ok) {
+        const errorMessage =
+          typeof payload?.message === 'string' && payload.message
+            ? payload.message
+            : typeof payload?.code === 'string' && payload.code
+              ? payload.code
+              : t.trizImageDeleteFailed
+        setTrizImageErrors((prev) => ({
+          ...prev,
+          [requestKey]: errorMessage,
+        }))
+        return
+      }
+      const refreshed = await fetchReportBySessionId(reportSessionId)
+      if (refreshed) {
+        applyReportRecord(refreshed)
+      }
+    } catch {
+      setTrizImageErrors((prev) => ({ ...prev, [requestKey]: t.trizImageDeleteFailed }))
+    } finally {
+      setTrizImageDeleting((prev) => ({ ...prev, [deleteKey]: false }))
+    }
+  }
+
+  const handleDownloadTrizImage = async (
+    image: ReportTrizSolutionImage,
+    solution: ReportTrizSolution,
+    galleryIndex: number
+  ) => {
+    if (typeof window === 'undefined' || !image.public_url) return
+    const fallbackName = `${sanitizeFilenamePart(solution.title || 'triz-sketch')}-${galleryIndex + 1}.png`
+    const fileName = image.file_name || fallbackName
+    try {
+      const response = await fetch(image.public_url)
+      if (!response.ok) throw new Error('DOWNLOAD_FAILED')
+      const blob = await response.blob()
+      const objectUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = objectUrl
+      link.download = fileName
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(objectUrl)
+    } catch {
+      window.open(image.public_url, '_blank', 'noopener,noreferrer')
+    }
   }
 
   const handlePrintReport = () => {
@@ -599,6 +1066,12 @@ export const ReportPage = ({
         : sanitizeReportText(aiSummary?.product || ''),
     }
   }, [aiSummary, language])
+  const normalizedTriz = useMemo(
+    () => (reportTriz ? normalizeTriz(sanitizeReportPayload(reportTriz)) : null),
+    [reportTriz]
+  )
+  const hasTrizSection = Boolean(normalizedTriz)
+  const hasTriz = Boolean(normalizedTriz?.contradictions.length)
   const resolveQuestionText = (idea: (typeof summaryItems)[number] | null | undefined) => {
     if (!idea) return ''
     const primary =
@@ -752,6 +1225,59 @@ export const ReportPage = ({
           <button type="button" className="primary" onClick={onBack}>
             {t.back}
           </button>
+          {diagnosticsEnabled && diagnosticsAuthLabel && (
+            <span className="muted">{diagnosticsAuthLabel}</span>
+          )}
+          {canToggleDiagnostics && onToggleDiagnostics && diagnosticsToggleLabel && (
+            <button
+              className={`ai-support-toggle diagnostics-toggle ${diagnosticsEnabled ? 'on' : 'off'}`}
+              type="button"
+              onClick={onToggleDiagnostics}
+            >
+              {diagnosticsToggleLabel}
+            </button>
+          )}
+          {diagnosticsEnabled && canToggleAiSupport && onToggleAiSupport && aiSupportToggleLabel && (
+            <button
+              className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
+              type="button"
+              onClick={onToggleAiSupport}
+            >
+              {aiSupportToggleLabel}
+            </button>
+          )}
+          {diagnosticsEnabled && llmUsageValue && llmUsageIndicatorLabel && (
+            <button
+              className={`ai-support-toggle llm-usage-indicator ${llmUsageClassName}`}
+              type="button"
+              aria-label={llmUsageIndicatorLabel}
+              title={llmUsageIndicatorLabel}
+              disabled
+            >
+              {llmUsageValue}
+            </button>
+          )}
+          {diagnosticsEnabled && (llmCostLines.length > 0 || llmCostBreakdownRows.length > 0) && (
+            <div className="llm-cost-panel" aria-live="polite">
+              {llmCostLines.map((line, index) => (
+                <div key={`report-llm-cost-line-${index}`} className="llm-cost-line">
+                  {line}
+                </div>
+              ))}
+              {llmCostBreakdownLabel && llmCostBreakdownRows.length > 0 && (
+                <details className="llm-cost-details">
+                  <summary>{llmCostBreakdownLabel}</summary>
+                  <div className="llm-cost-breakdown">
+                    {llmCostBreakdownRows.map((row, index) => (
+                      <div key={`report-llm-cost-row-${index}`} className="llm-cost-row">
+                        {row}
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
           {onSaveSession && (
             <button
               className="secondary"
@@ -836,6 +1362,11 @@ export const ReportPage = ({
             <li>
               <a href="#summary">{t.executiveSummary}</a>
             </li>
+            {hasTrizSection && (
+              <li>
+                <a href="#triz">{t.trizTitle}</a>
+              </li>
+            )}
             <li>
               <a href="#map">{t.perspectiveMap}</a>
             </li>
@@ -899,6 +1430,203 @@ export const ReportPage = ({
               </div>
             )}
         </section>
+
+        {hasTrizSection && (
+          <section id="triz" className="report-section">
+            <h2>{normalizedTriz?.section_title || t.trizTitle}</h2>
+            <p>{normalizedTriz?.section_intro || t.trizIntro}</p>
+            {!hasTriz ? (
+              <p className="muted">{t.trizEmpty}</p>
+            ) : (
+              normalizedTriz!.contradictions.map((item, index) => (
+              <div key={`triz-${index}`} className="report-summary-block">
+                <h3>{sanitizeReportText(item.title)}</h3>
+                <p>{sanitizeReportText(item.description)}</p>
+                <p>
+                  <strong>{t.trizImproving}:</strong> {sanitizeReportText(item.improving)}
+                </p>
+                <p>
+                  <strong>{t.trizWorsening}:</strong> {sanitizeReportText(item.worsening)}
+                </p>
+                {item.principles.length ? (
+                  <>
+                    <h3>{t.trizPrinciples}</h3>
+                    <ul>
+                      {item.principles.map((principle, principleIndex) => (
+                        <li key={`triz-principle-${index}-${principleIndex}`}>
+                          <strong>
+                            {principle.id != null
+                              ? `${principle.id}. ${sanitizeReportText(principle.name)}`
+                              : sanitizeReportText(principle.name)}
+                          </strong>
+                          {principle.rationale ? (
+                            <div>{sanitizeReportText(principle.rationale)}</div>
+                          ) : null}
+                          {principle.how_to_apply ? (
+                            <div>{sanitizeReportText(principle.how_to_apply)}</div>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
+                {item.solutions.length ? (
+                  <>
+                    <h3>{t.trizSolutions}</h3>
+                    <ul className="triz-solutions-list">
+                      {item.solutions.map((solution, solutionIndex) => {
+                        const requestKey = `${index}:${solutionIndex}`
+                        const image = solution.image || null
+                        const readyImages = Array.isArray(solution.images)
+                          ? solution.images.filter(
+                              (entry) => entry?.status === 'ready' && Boolean(entry.public_url)
+                            )
+                          : image?.status === 'ready' && image.public_url
+                            ? [image]
+                            : []
+                        const imageReady = readyImages.length > 0
+                        const isGenerating = Boolean(trizImageLoading[requestKey])
+                        const errorText = trizImageErrors[requestKey] || image?.error_message || null
+                        const hasRichDescription = Boolean(solution.description.trim())
+                        const priceLabel = formatActionPrice(
+                          imageReady ? trizImagePrices.regenerate : trizImagePrices.generate
+                        )
+                        const actionLabel = imageReady
+                          ? t.trizRegenerateSketch
+                          : t.trizGenerateSketch
+                        return (
+                          <li
+                            key={`triz-solution-${index}-${solutionIndex}`}
+                            className="triz-solution-item"
+                          >
+                            <div className="triz-solution-copy">
+                              <div className="triz-solution-title">
+                                {sanitizeReportText(solution.title)}
+                              </div>
+                              {hasRichDescription && (
+                                <p className="triz-solution-description">
+                                  {sanitizeReportText(solution.description)}
+                                </p>
+                              )}
+                              <div className="triz-solution-actions">
+                                <span className="triz-image-button-wrap">
+                                  <button
+                                    type="button"
+                                    className="secondary triz-image-button"
+                                    onClick={() => void handleGenerateTrizImage(index, solutionIndex)}
+                                    disabled={isGenerating || trizImagePriceLoading}
+                                  >
+                                    {isGenerating
+                                      ? t.trizGeneratingImage
+                                      : `${actionLabel}${priceLabel ? ` — ${priceLabel}` : ''}`}
+                                  </button>
+                                  {isGenerating && (
+                                    <span
+                                      className="report-updating-indicator triz-image-spinner"
+                                      role="status"
+                                      aria-label={t.trizGeneratingImage}
+                                      title={t.trizGeneratingImage}
+                                    />
+                                  )}
+                                </span>
+                              </div>
+                                {errorText ? (
+                                <p className="report-error">{sanitizeReportText(errorText)}</p>
+                              ) : imageReady ? (
+                                <p className="muted">{t.trizImageIncluded}</p>
+                              ) : (
+                                <p className="muted">{t.trizNoImageYet}</p>
+                              )}
+                            </div>
+                            {imageReady && (
+                              <div className="triz-solution-gallery">
+                                {readyImages.map((galleryImage, galleryIndex) => {
+                                  const deleteKey = `${index}:${solutionIndex}:${
+                                    galleryImage.storage_path || galleryImage.public_url || galleryIndex
+                                  }`
+                                  const isDeleting = Boolean(trizImageDeleting[deleteKey])
+                                  return (
+                                    <div
+                                      key={`triz-solution-image-${index}-${solutionIndex}-${galleryIndex}`}
+                                      className="triz-solution-image-card"
+                                    >
+                                      <div className="triz-solution-image-wrap">
+                                        <img
+                                          className="triz-solution-image"
+                                          src={galleryImage.public_url}
+                                          alt={sanitizeReportText(solution.title)}
+                                          loading="lazy"
+                                        />
+                                        <div className="triz-solution-image-overlay">
+                                          <button
+                                            type="button"
+                                            className="icon-button triz-image-overlay-action triz-image-overlay-action--danger"
+                                            onClick={() =>
+                                              void handleDeleteTrizImage(
+                                                index,
+                                                solutionIndex,
+                                                galleryImage,
+                                                galleryIndex
+                                              )
+                                            }
+                                            disabled={isDeleting}
+                                            aria-label={t.trizDeleteImage}
+                                            title={t.trizDeleteImage}
+                                          >
+                                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                              <path
+                                                fill="currentColor"
+                                                d="M9 3a1 1 0 0 0-1 1v1H5.5a1 1 0 1 0 0 2H6v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7h.5a1 1 0 1 0 0-2H16V4a1 1 0 0 0-1-1H9zm1 2h4v1h-4V5zm-1 4a1 1 0 0 1 1 1v7a1 1 0 1 1-2 0v-7a1 1 0 0 1 1-1zm6 1a1 1 0 1 0-2 0v7a1 1 0 1 0 2 0v-7z"
+                                              />
+                                            </svg>
+                                          </button>
+                                          <button
+                                            type="button"
+                                            className="icon-button triz-image-overlay-action"
+                                            onClick={() =>
+                                              void handleDownloadTrizImage(
+                                                galleryImage,
+                                                solution,
+                                                galleryIndex
+                                              )
+                                            }
+                                            disabled={isDeleting}
+                                            aria-label={t.trizSaveImage}
+                                            title={t.trizSaveImage}
+                                          >
+                                            <svg viewBox="0 0 24 24" aria-hidden="true">
+                                              <path
+                                                fill="currentColor"
+                                                d="M12 3a1 1 0 0 1 1 1v8.59l2.3-2.29a1 1 0 1 1 1.4 1.41l-4 3.99a1 1 0 0 1-1.4 0l-4-3.99a1 1 0 1 1 1.4-1.41L11 12.59V4a1 1 0 0 1 1-1zm-7 14a1 1 0 0 1 1 1v1h12v-1a1 1 0 1 1 2 0v2a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1z"
+                                              />
+                                            </svg>
+                                          </button>
+                                          {isDeleting && (
+                                            <span
+                                              className="report-updating-indicator triz-image-spinner"
+                                              role="status"
+                                              aria-label={t.trizDeleteImage}
+                                              title={t.trizDeleteImage}
+                                            />
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  )
+                                })}
+                              </div>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  </>
+                ) : null}
+              </div>
+              ))
+            )}
+          </section>
+        )}
 
         <section id="map" className="report-section">
           <h2>{t.perspectiveMap}</h2>

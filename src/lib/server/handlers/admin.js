@@ -1,6 +1,11 @@
 import crypto from 'crypto'
 import { createClient } from '@supabase/supabase-js'
 import { getSupabaseAdmin } from '../supabaseAdmin.js'
+import {
+  ensureOpenAIModelPricingFresh,
+  getOpenAIModelPricingStatus,
+  syncOpenAIModelPricing,
+} from '../openaiPricingSync.js'
 
 const MAX_DELTA = 100000
 
@@ -793,30 +798,6 @@ export const handleAdminBillingReset = async (req, res) => {
   }
 }
 
-const MODEL_PRICING_USD = {
-  'gpt-4.1-mini': { input: 0.4, output: 1.6 },
-  'gpt-5-mini': { input: 0.25, output: 2.0 },
-  'gpt-5-nano': { input: 0.05, output: 0.4 },
-}
-
-const resolveFxUsdPln = () => {
-  const raw = Number(process.env.FX_USD_PLN || 0)
-  return Number.isFinite(raw) && raw > 0 ? raw : 4.0
-}
-
-const calculateCostFromTotalTokens = (tokensTotal) => {
-  const total = Number(tokensTotal || 0)
-  if (!Number.isFinite(total) || total <= 0) {
-    return { costUsd: 0, costPln: 0 }
-  }
-  const model = process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini'
-  const pricing = MODEL_PRICING_USD[model]
-  const avgRate = pricing ? (pricing.input + pricing.output) / 2 : 0
-  const costUsd = (total / 1_000_000) * avgRate
-  const costPln = costUsd * resolveFxUsdPln()
-  return { costUsd, costPln }
-}
-
 export const handleAdminReportList = async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.status(204).end()
@@ -837,9 +818,20 @@ export const handleAdminReportList = async (req, res) => {
     const to = offset + limit - 1
 
     const supabaseAdmin = getSupabaseAdmin()
+    const pricingRefresh = await ensureOpenAIModelPricingFresh(supabaseAdmin, {
+      maxAgeDays: 30,
+      reason: 'admin_report_list',
+    }).catch((error) => {
+      console.error('[admin.pricing] refresh failed', {
+        message: error?.message || 'UNKNOWN_ERROR',
+      })
+      return null
+    })
+    const pricingStatus =
+      pricingRefresh?.status || (await getOpenAIModelPricingStatus(supabaseAdmin))
     const reportRes = await supabaseAdmin
       .schema('public')
-      .from('admin_session_report')
+      .from('session_ai_cost_summary')
       .select('*')
       .order('session_created_at', { ascending: false })
       .range(offset, to)
@@ -849,19 +841,55 @@ export const handleAdminReportList = async (req, res) => {
       return
     }
 
-    const rows = (reportRes.data || []).map((row) => {
-      const tokensTotal = Number(row.tokens_total || 0)
-      const costs = calculateCostFromTotalTokens(tokensTotal)
-      return {
-        ...row,
-        cost_usd: costs.costUsd,
-        cost_pln: costs.costPln,
-      }
-    })
-
     res.status(200).json({
       ok: true,
-      rows,
+      rows: reportRes.data || [],
+      pricing: {
+        latestSync: pricingStatus?.latestSync ?? null,
+        latestFetchedAt: pricingStatus?.latestFetchedAt ?? null,
+        sourceLabel: pricingStatus?.sourceLabel ?? null,
+        sourceUrl: pricingStatus?.sourceUrl ?? null,
+        activeSnapshotsCount: Array.isArray(pricingStatus?.activeSnapshots)
+          ? pricingStatus.activeSnapshots.length
+          : 0,
+        isFresh: Boolean(pricingStatus?.isFresh),
+      },
+    })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: 'SERVER_ERROR' })
+  }
+}
+
+export const handleAdminPricingSync = async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.status(204).end()
+    return
+  }
+  if (req.method !== 'POST') {
+    res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['POST'] })
+    return
+  }
+  try {
+    const adminUser = await requireAdmin(req, res)
+    if (!adminUser) return
+    const supabaseAdmin = getSupabaseAdmin()
+    const syncResult = await syncOpenAIModelPricing(supabaseAdmin, {
+      reason: 'admin_manual',
+    })
+    const pricingStatus = await getOpenAIModelPricingStatus(supabaseAdmin)
+    res.status(syncResult.ok ? 200 : 502).json({
+      ok: syncResult.ok,
+      sync: syncResult,
+      pricing: {
+        latestSync: pricingStatus?.latestSync ?? null,
+        latestFetchedAt: pricingStatus?.latestFetchedAt ?? null,
+        sourceLabel: pricingStatus?.sourceLabel ?? null,
+        sourceUrl: pricingStatus?.sourceUrl ?? null,
+        activeSnapshotsCount: Array.isArray(pricingStatus?.activeSnapshots)
+          ? pricingStatus.activeSnapshots.length
+          : 0,
+        isFresh: Boolean(pricingStatus?.isFresh),
+      },
     })
   } catch (error) {
     res.status(500).json({ ok: false, error: 'SERVER_ERROR' })
