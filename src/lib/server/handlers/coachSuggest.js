@@ -500,6 +500,65 @@ const parseSeedEntriesPayload = (payload, maxEntries = 16) => {
   return entries
 }
 
+const inferCellMeaning = (cellCode) => {
+  const safe = coerceCellId(cellCode)
+  if (!safe) return { row: null, col: null }
+  const rowMap = {
+    A: 'world',
+    B: 'product',
+    C: 'elements',
+  }
+  const colMap = {
+    1: 'as_is',
+    2: 'not_working',
+    3: 'should_be',
+  }
+  return {
+    row: rowMap[safe[0]] || null,
+    col: colMap[safe[1]] || null,
+  }
+}
+
+const buildSeedDiagnosticFlags = (value) => {
+  const text = String(value || '').toLowerCase()
+  return {
+    hasShouldSignal:
+      /powin|ma mieć|musi|warto żeby|docelowo/.test(text),
+    hasProblemSignal:
+      /problem|nie działa|trudno|ciężk|brak|utrudnia/.test(text),
+    hasAsIsSignal:
+      /jest|obecnie|dzisiejsze|teraz/.test(text),
+  }
+}
+
+const shouldNullConflictingSeedCellCode = (entry) => {
+  const confidence = clampConfidence(entry?.confidence)
+  const inferred = inferCellMeaning(entry?.cellCode)
+  const flags = buildSeedDiagnosticFlags(entry?.text)
+  if (flags.hasShouldSignal && inferred.col && inferred.col !== 'should_be') {
+    return confidence == null || confidence < 0.98
+  }
+  if (flags.hasProblemSignal && inferred.col && inferred.col !== 'not_working') {
+    return confidence == null || confidence < 0.98
+  }
+  if (flags.hasAsIsSignal && inferred.col && inferred.col !== 'as_is' && !flags.hasProblemSignal) {
+    return confidence == null || confidence < 0.98
+  }
+  return false
+}
+
+const applySeedClassificationSafetyCheck = (entries) => {
+  if (!Array.isArray(entries)) return []
+  return entries.map((entry) => {
+    if (!shouldNullConflictingSeedCellCode(entry)) return entry
+    // Conservative safeguard: keep the text, but drop obviously contradictory cell guesses.
+    return {
+      ...entry,
+      cellCode: null,
+    }
+  })
+}
+
 const buildSeedFallbackEntries = (text, maxEntries = 8) => {
   const chunks = String(text || '')
     .split(/[\n\r]+|(?<=[.!?])\s+/)
@@ -883,6 +942,7 @@ export const handleCoachSuggest = async (req, res) => {
       if (!text) {
         sendJson(res, 200, {
           ok: true,
+          requestId,
           source: 'fallback',
           entries: [],
           usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
@@ -898,8 +958,14 @@ export const handleCoachSuggest = async (req, res) => {
       }
       const fallbackEntries = buildSeedFallbackEntries(text, 8)
       if (!aiSupportEnabled || killSwitch || !hasOpenAiKey) {
+        const errorCategory = killSwitch
+          ? 'AI_DISABLED'
+          : !hasOpenAiKey
+            ? 'MISSING_OPENAI_KEY'
+            : 'AI_DISABLED'
         sendJson(res, 200, {
           ok: true,
+          requestId,
           source: 'fallback',
           entries: fallbackEntries,
           usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
@@ -908,11 +974,7 @@ export const handleCoachSuggest = async (req, res) => {
             modelUsed: null,
             escalated: false,
             tokens: { input: 0, output: 0, total: 0 },
-            errorCategory: killSwitch
-              ? 'AI_DISABLED'
-              : !hasOpenAiKey
-                ? 'MISSING_OPENAI_KEY'
-                : 'AI_DISABLED',
+            errorCategory,
           },
         })
         return
@@ -923,6 +985,35 @@ export const handleCoachSuggest = async (req, res) => {
         'Allowed kinds: idea, observation, problem, need, conclusion, question, note.',
         'Do not add new facts. Do not duplicate entries.',
         'Each entry should be one concise thought.',
+        'Classify in two steps. Step 1: choose the COLUMN based on semantics. Step 2: choose the ROW.',
+        'Column semantics have priority over row semantics.',
+        'as_is = current state, present observation, what exists now.',
+        'not_working = problem, pain point, limitation, friction, something missing or making work harder.',
+        'should_be = desired future state, requirement, intended feature, expected property, what should exist.',
+        'Language-specific signals for column selection:',
+        'For Polish: signals like "powin", "powinna", "powinno", "ma mieć", "musi", "docelowo", "warto żeby", "chciałbym, żeby" usually indicate should_be.',
+        'For Polish: signals like "problem", "nie działa", "trudno", "ciężkie", "brak", "utrudnia", "za wolne", "za ciężkie", "przeszkadza" usually indicate not_working.',
+        'For Polish: signals like "jest", "obecnie", "dzisiejsze", "teraz", "aktualnie" usually indicate as_is.',
+        'For English: signals like "should", "should be", "must", "needs to", "has to", "ideally", "target state", "I want it to", "I would like it to" usually indicate should_be.',
+        'For English: signals like "problem", "doesn\'t work", "does not work", "hard to", "difficult to", "too heavy", "lack", "missing", "prevents", "gets in the way" usually indicate not_working.',
+        'For English: signals like "is", "are", "currently", "today", "now", "at the moment", "existing", "currently it" usually indicate as_is.',
+        'These signals are helpful hints, not absolute rules. Use semantic meaning, not just a single word without context.',
+        'Do not spread entries across columns just to fill the matrix. Classification must be semantic, not distribution-based.',
+        'If you are confident about the column but less sure about the row, choose the most likely row.',
+        'If you are not confident even about the column, return null cellCode instead of guessing.',
+        'Rows mean: world = usage context, user, environment, surroundings, situation; product = the whole product/system as one object; elements = specific parts, components, mechanisms, interfaces, power sources, light sources, wires, controls.',
+        'Exact cell meanings: A1=world+as_is, A2=world+not_working, A3=world+should_be, B1=product+as_is, B2=product+not_working, B3=product+should_be, C1=elements+as_is, C2=elements+not_working, C3=elements+should_be.',
+        'Few-shot examples:',
+        '"Dzisiejsze lampy są ciężkie i niełatwo je przenosić." -> not_working, C2',
+        '"Lampa powinna mieć regulowany kolor światła." -> should_be, B3',
+        '"Obecnie lampa stoi na biurku i świeci tylko w jednym kierunku." -> as_is, B1',
+        '"Przewód zasilający przeszkadza w przesuwaniu lampy." -> not_working, C2',
+        '"Lampa powinna umożliwiać sterowanie głosem." -> should_be, B3',
+        '"The lamp should have adjustable light color." -> should_be, B3',
+        '"The power cable gets in the way when moving the lamp." -> not_working, C2',
+        '"Currently the lamp lights only one part of the desk." -> as_is, B1',
+        '"The lamp should support voice control." -> should_be, B3',
+        '"Existing desk lamps are too heavy to move easily." -> not_working, C2',
         'If unsure about matrix placement, use null cellCode and lower confidence.',
         'Return STRICT JSON ONLY:',
         '{"entries":[{"text":"...","cellCode":"A1|null","confidence":0.84,"kind":"idea"}]}',
@@ -965,11 +1056,13 @@ export const handleCoachSuggest = async (req, res) => {
       try {
         let result = await callSeed(defaultModels)
         let entries = result.ok ? parseSeedEntriesPayload(result.data, 16) : null
+        entries = entries ? applySeedClassificationSafetyCheck(entries) : null
         if (!entries || entries.length < 2) {
           const retry = await callSeed(escalateModels)
           if (retry.ok) {
             result = retry
             entries = parseSeedEntriesPayload(retry.data, 16)
+            entries = entries ? applySeedClassificationSafetyCheck(entries) : null
           }
         }
         if (result.ok && entries && entries.length) {
@@ -978,6 +1071,7 @@ export const handleCoachSuggest = async (req, res) => {
           const usage = buildUsagePayload(meta)
           sendJson(res, 200, {
             ok: true,
+            requestId,
             source: 'llm',
             entries,
             usage,
@@ -987,15 +1081,17 @@ export const handleCoachSuggest = async (req, res) => {
         }
         sendJson(res, 200, {
           ok: true,
+          requestId,
           source: 'fallback',
           entries: fallbackEntries,
           usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
           meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
         })
         return
-      } catch {
+      } catch (error) {
         sendJson(res, 200, {
           ok: true,
+          requestId,
           source: 'fallback',
           entries: fallbackEntries,
           usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),

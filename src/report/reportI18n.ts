@@ -21,6 +21,10 @@ export const reportCopy: Record<
     summaryProduct: string
     trizTitle: string
     trizIntro: string
+    trizExplanation: string
+    trizDirections: string
+    trizApproaches: string
+    trizReflections: string
     trizImproving: string
     trizWorsening: string
     trizPrinciples: string
@@ -90,17 +94,21 @@ export const reportCopy: Record<
     summaryToday: 'What I see today',
     summaryChange: 'What I want to change',
     summaryProduct: 'My product concept',
-    trizTitle: 'Contradictions & Innovation Paths (TRIZ)',
+    trizTitle: 'Key trade-offs in your project',
     trizIntro:
-      'This section highlights the strongest tensions in your idea and turns them into practical innovation directions instead of trade-offs you simply accept.',
+      'This section highlights the most important trade-offs in your idea and helps you make deliberate design decisions instead of defaulting to accidental compromises.',
+    trizExplanation: 'Why this trade-off matters',
+    trizDirections: 'Solution directions',
+    trizApproaches: 'Possible approaches',
+    trizReflections: 'What this points you to',
     trizImproving: 'What we want to improve',
     trizWorsening: 'What gets worse',
-    trizPrinciples: 'Suggested TRIZ principles',
+    trizPrinciples: 'Helpful design cues',
     trizSolutions: 'Potential solution directions',
     trizEmpty:
-      'Not enough strong contradictions were found in the current material. Add more concrete tensions, constraints, or trade-offs to generate this section.',
+      'No clear trade-offs are visible in your project yet. To generate this section, add entries that describe concrete decisions or constraints, for example:\n– something needs to be both lightweight and durable\n– you want to reduce cost while maintaining quality\n– the product should be simple to use but offer many features.\nThe more situations like this you describe, the easier it will be to suggest meaningful solution directions.',
     trizGenerateSketch: 'Generate sketch',
-    trizRegenerateSketch: 'Generate again',
+    trizRegenerateSketch: 'Generate another sketch',
     trizDownloadImage: 'Download image',
     trizSaveImage: 'Save image',
     trizDeleteImage: 'Delete image',
@@ -144,9 +152,9 @@ export const reportCopy: Record<
     recommendationsTrendsTitle: 'Market trends',
     updatingAria: 'Updating…',
     reportOutdatedNotice:
-      'Due to new board entries, the Executive summary, Contradictions & Innovation Paths (TRIZ), Perspective / questions map, and\nRecommendations / next steps sections\nrequire an update.',
+      'Due to new board entries, the Executive summary, Key trade-offs in your project, Perspective / questions map, and\nRecommendations / next steps sections\nrequire an update.',
     reportOutdatedPrint:
-      'The report does not yet reflect the latest board entries. This applies to the Executive summary, Contradictions & Innovation Paths (TRIZ), Perspective / questions map, and Recommendations / next steps sections.',
+      'The report does not yet reflect the latest board entries. This applies to the Executive summary, Key trade-offs in your project, Perspective / questions map, and Recommendations / next steps sections.',
   },
   pl: {
     title: 'Plan działania',
@@ -165,17 +173,21 @@ export const reportCopy: Record<
     summaryToday: 'To widzę dzisiaj',
     summaryChange: 'To chcę zmienić',
     summaryProduct: 'To mój pomysł na produkt',
-    trizTitle: 'Sprzeczności i kierunki innowacji (TRIZ)',
+    trizTitle: 'Kluczowe kompromisy w Twoim projekcie',
     trizIntro:
-      'Ta sekcja pokazuje najmocniejsze napięcia w twoim pomyśle i zamienia je w praktyczne kierunki innowacji zamiast kompromisów, które trzeba tylko zaakceptować.',
+      'Ta sekcja pokazuje najważniejsze kompromisy projektowe w Twoim pomyśle i pomaga podejmować świadome decyzje zamiast przypadkowych wyborów.',
+    trizExplanation: 'Dlaczego ten kompromis ma znaczenie',
+    trizDirections: 'Kierunki rozwiązań',
+    trizApproaches: 'Możliwe podejścia',
+    trizReflections: 'Na co to Cię naprowadza',
     trizImproving: 'Co chcemy poprawić',
     trizWorsening: 'Co się pogarsza',
-    trizPrinciples: 'Sugerowane zasady TRIZ',
+    trizPrinciples: 'Pomocne wskazówki projektowe',
     trizSolutions: 'Potencjalne kierunki rozwiązań',
     trizEmpty:
-      'W obecnym materiale nie znaleziono wystarczająco mocnych sprzeczności. Dodaj więcej konkretnych napięć, ograniczeń lub kompromisów, aby wygenerować tę sekcję.',
+      'Na razie nie widać wyraźnych kompromisów w Twoim projekcie. Aby ta sekcja mogła się pojawić, dodaj wpisy, w których opisujesz konkretne decyzje lub ograniczenia, np.:\n– coś ma być jednocześnie lekkie i wytrzymałe\n– chcesz obniżyć koszt, ale utrzymać jakość\n– produkt ma być prosty w użyciu, ale mieć dużo funkcji.\nIm więcej takich sytuacji opiszesz, tym łatwiej będzie wskazać sensowne kierunki rozwiązań.',
     trizGenerateSketch: 'Wygeneruj szkic',
-    trizRegenerateSketch: 'Wygeneruj ponownie',
+    trizRegenerateSketch: 'Wygeneruj kolejny szkic',
     trizDownloadImage: 'Pobierz grafikę',
     trizSaveImage: 'Zapisz grafikę',
     trizDeleteImage: 'Usuń grafikę',
@@ -219,8 +231,8 @@ export const reportCopy: Record<
     recommendationsTrendsTitle: 'Trendy rynkowe',
     updatingAria: 'Aktualizowanie…',
     reportOutdatedNotice:
-      'Ze względu na nowe wpisy na tablicy, rozdziały Podsumowanie, Sprzeczności i kierunki innowacji (TRIZ), Mapa perspektyw / pytań oraz Rekomendacje / następne kroki wymagają aktualizacji.',
+      'Ze względu na nowe wpisy na tablicy, rozdziały Podsumowanie, Kluczowe kompromisy w Twoim projekcie, Mapa perspektyw / pytań oraz Rekomendacje / następne kroki wymagają aktualizacji.',
     reportOutdatedPrint:
-      'Raport nie odzwierciedla jeszcze najnowszych wpisów na tablicy. Dotyczy to rozdziałów Podsumowanie, Sprzeczności i kierunki innowacji (TRIZ), Mapa perspektyw / pytań oraz Rekomendacje / następne kroki.',
+      'Raport nie odzwierciedla jeszcze najnowszych wpisów na tablicy. Dotyczy to rozdziałów Podsumowanie, Kluczowe kompromisy w Twoim projekcie, Mapa perspektyw / pytań oraz Rekomendacje / następne kroki.',
   },
 }

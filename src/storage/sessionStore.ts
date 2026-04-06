@@ -91,11 +91,17 @@ export type ReportTrizSolution = {
   images?: ReportTrizSolutionImage[] | null
 }
 
+export type ReportTrizApproach = ReportTrizSolution
+
 export type ReportTrizContradiction = {
   title: string
-  description: string
-  improving: string
-  worsening: string
+  explanation?: string
+  solution_directions?: string[]
+  approaches?: ReportTrizApproach[]
+  reflections?: string[]
+  description?: string
+  improving?: string
+  worsening?: string
   principles: ReportTrizPrinciple[]
   solutions: ReportTrizSolution[]
 }

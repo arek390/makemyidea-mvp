@@ -384,6 +384,10 @@ const normalizeTriz = (value: unknown): ReportTrizSection => {
         .map((item) => {
           const contradiction = item as {
             title?: unknown
+            explanation?: unknown
+            solution_directions?: unknown
+            approaches?: unknown
+            reflections?: unknown
             description?: unknown
             improving?: unknown
             worsening?: unknown
@@ -391,13 +395,20 @@ const normalizeTriz = (value: unknown): ReportTrizSection => {
             solutions?: unknown
           }
           const title = typeof contradiction.title === 'string' ? contradiction.title.trim() : ''
+          const explanation =
+            typeof contradiction.explanation === 'string' ? contradiction.explanation.trim() : ''
           const description =
             typeof contradiction.description === 'string' ? contradiction.description.trim() : ''
           const improving =
             typeof contradiction.improving === 'string' ? contradiction.improving.trim() : ''
           const worsening =
             typeof contradiction.worsening === 'string' ? contradiction.worsening.trim() : ''
-          if (!title || !description || !improving || !worsening) return null
+          const solutionDirections = Array.isArray(contradiction.solution_directions)
+            ? contradiction.solution_directions
+                .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+                .map((entry) => entry.trim())
+                .slice(0, 4)
+            : []
           const principles = Array.isArray(contradiction.principles)
             ? contradiction.principles
                 .filter(isTrizPrinciple)
@@ -412,16 +423,35 @@ const normalizeTriz = (value: unknown): ReportTrizSection => {
                     : {}),
                 }))
             : []
+          const approaches = Array.isArray(contradiction.approaches)
+            ? contradiction.approaches
+                .map((approach) => normalizeTrizSolution(approach))
+                .filter((approach): approach is ReportTrizSolution => Boolean(approach))
+                .slice(0, 4)
+            : []
           const solutions = Array.isArray(contradiction.solutions)
             ? contradiction.solutions
                 .map((solution) => normalizeTrizSolution(solution))
                 .filter((solution): solution is ReportTrizSolution => Boolean(solution))
+            : approaches
+          const reflections = Array.isArray(contradiction.reflections)
+            ? contradiction.reflections
+                .filter((entry): entry is string => typeof entry === 'string' && entry.trim().length > 0)
+                .map((entry) => entry.trim())
+                .slice(0, 3)
             : []
+          const hasNewShape = Boolean(title && explanation)
+          const hasOldShape = Boolean(title && description && improving && worsening)
+          if (!hasNewShape && !hasOldShape) return null
           return {
             title,
-            description,
-            improving,
-            worsening,
+            ...(explanation ? { explanation } : {}),
+            ...(solutionDirections.length ? { solution_directions: solutionDirections } : {}),
+            ...(approaches.length ? { approaches } : {}),
+            ...(reflections.length ? { reflections } : {}),
+            ...(description ? { description } : {}),
+            ...(improving ? { improving } : {}),
+            ...(worsening ? { worsening } : {}),
             principles,
             solutions,
           }
@@ -1436,29 +1466,51 @@ export const ReportPage = ({
             <h2>{normalizedTriz?.section_title || t.trizTitle}</h2>
             <p>{normalizedTriz?.section_intro || t.trizIntro}</p>
             {!hasTriz ? (
-              <p className="muted">{t.trizEmpty}</p>
+              <p className="muted report-triz-empty">{t.trizEmpty}</p>
             ) : (
-              normalizedTriz!.contradictions.map((item, index) => (
+              normalizedTriz!.contradictions.map((item, index) => {
+                const renderedApproaches = item.approaches?.length ? item.approaches : item.solutions
+                return (
               <div key={`triz-${index}`} className="report-summary-block">
                 <h3>{sanitizeReportText(item.title)}</h3>
-                <p>{sanitizeReportText(item.description)}</p>
-                <p>
-                  <strong>{t.trizImproving}:</strong> {sanitizeReportText(item.improving)}
-                </p>
-                <p>
-                  <strong>{t.trizWorsening}:</strong> {sanitizeReportText(item.worsening)}
-                </p>
-                {item.principles.length ? (
+                {item.explanation ? (
+                  <>
+                    <h3>{t.trizExplanation}</h3>
+                    <p>{sanitizeReportText(item.explanation)}</p>
+                  </>
+                ) : (
+                  <>
+                    <p>{sanitizeReportText(item.description || '')}</p>
+                    {item.improving ? (
+                      <p>
+                        <strong>{t.trizImproving}:</strong> {sanitizeReportText(item.improving)}
+                      </p>
+                    ) : null}
+                    {item.worsening ? (
+                      <p>
+                        <strong>{t.trizWorsening}:</strong> {sanitizeReportText(item.worsening)}
+                      </p>
+                    ) : null}
+                  </>
+                )}
+                {item.solution_directions?.length ? (
+                  <>
+                    <h3>{t.trizDirections}</h3>
+                    <ul>
+                      {item.solution_directions.map((direction, directionIndex) => (
+                        <li key={`triz-direction-${index}-${directionIndex}`}>
+                          {sanitizeReportText(direction)}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : item.principles?.length ? (
                   <>
                     <h3>{t.trizPrinciples}</h3>
                     <ul>
                       {item.principles.map((principle, principleIndex) => (
                         <li key={`triz-principle-${index}-${principleIndex}`}>
-                          <strong>
-                            {principle.id != null
-                              ? `${principle.id}. ${sanitizeReportText(principle.name)}`
-                              : sanitizeReportText(principle.name)}
-                          </strong>
+                          <strong>{sanitizeReportText(principle.name)}</strong>
                           {principle.rationale ? (
                             <div>{sanitizeReportText(principle.rationale)}</div>
                           ) : null}
@@ -1470,11 +1522,11 @@ export const ReportPage = ({
                     </ul>
                   </>
                 ) : null}
-                {item.solutions.length ? (
+                {renderedApproaches.length ? (
                   <>
-                    <h3>{t.trizSolutions}</h3>
+                    <h3>{item.approaches?.length ? t.trizApproaches : t.trizSolutions}</h3>
                     <ul className="triz-solutions-list">
-                      {item.solutions.map((solution, solutionIndex) => {
+                      {renderedApproaches.map((solution, solutionIndex) => {
                         const requestKey = `${index}:${solutionIndex}`
                         const image = solution.image || null
                         const readyImages = Array.isArray(solution.images)
@@ -1530,13 +1582,11 @@ export const ReportPage = ({
                                   )}
                                 </span>
                               </div>
-                                {errorText ? (
+                              {errorText ? (
                                 <p className="report-error">{sanitizeReportText(errorText)}</p>
-                              ) : imageReady ? (
-                                <p className="muted">{t.trizImageIncluded}</p>
-                              ) : (
+                              ) : !imageReady ? (
                                 <p className="muted">{t.trizNoImageYet}</p>
-                              )}
+                              ) : null}
                             </div>
                             {imageReady && (
                               <div className="triz-solution-gallery">
@@ -1622,8 +1672,20 @@ export const ReportPage = ({
                     </ul>
                   </>
                 ) : null}
+                {item.reflections?.length ? (
+                  <>
+                    <h3>{t.trizReflections}</h3>
+                    <ul>
+                      {item.reflections.map((reflection, reflectionIndex) => (
+                        <li key={`triz-reflection-${index}-${reflectionIndex}`}>
+                          {sanitizeReportText(reflection)}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : null}
               </div>
-              ))
+              )})
             )}
           </section>
         )}

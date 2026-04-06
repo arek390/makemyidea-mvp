@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react'
 import './App.css'
 import {
@@ -122,9 +122,27 @@ type LlmUsageMeta = {
   errorCategory?: string | null
 }
 
-type ModelPricing = { input: number; output: number }
 type ModelUsage = { inputTokens: number; outputTokens: number; totalUSD: number }
-type EngineUsage = { perModel: Record<string, ModelUsage>; totalUSD: number; totalTokens: number }
+type SessionUsage = {
+  perModel: Record<string, ModelUsage>
+  totalUSD: number
+  totalPLN: number | null
+  totalTokens: number
+}
+type SessionUsageSummaryRow = {
+  session_id: string
+  user_id: string | null
+  total_tokens_input: number | null
+  total_tokens_output: number | null
+  total_usage_cost_usd: number | string | null
+  total_usage_cost_pln: number | string | null
+}
+type SessionUsageEventRow = {
+  model: string | null
+  tokens_input: number | null
+  tokens_output: number | null
+  usage_cost_usd: number | string | null
+}
 
 type FacilitationType = 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET'
 type FacilitationPrompt = { type: FacilitationType; text: string }
@@ -230,8 +248,6 @@ const DEFAULT_IDLE_THRESHOLD_MS = 15000
 const ERASE_EMPTY_SECONDS_STRONG = 10
 const MAX_AUTO_CLASSIFY = 25
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
-const LLM_TOKENS_TOTAL_KEY = 'llm_tokens_total'
-const ENGINE_USAGE_KEY = 'engine_usage_v1'
 const AUTH_LOGIN_ORIGIN_KEY = 'auth-login-origin'
 const AUTH_LOGIN_REDIRECT_KEY = 'auth-login-redirect'
 const AUTH_OAUTH_ORIGIN_KEY = 'auth_oauth_origin'
@@ -240,12 +256,6 @@ const POST_AUTH_NEXT_KEY = 'post-auth-next'
 const POST_AUTH_LANG_KEY = 'post-auth-lang'
 const TOPUP_RETURN_TO_KEY = 'topup-return-to'
 const FX_FALLBACK_RATE = 3.55
-const MODEL_PRICING_USD: Record<string, ModelPricing> = {
-  'gpt-4.1-mini': { input: 0.4, output: 1.6 },
-  'gpt-5-mini': { input: 0.25, output: 2.0 },
-  'gpt-5-nano': { input: 0.05, output: 0.4 },
-  'gpt-image-1': { input: 5.0, output: 40.0 },
-}
 
 const getOAuthRedirectTo = () => {
   if (typeof window === 'undefined') return ''
@@ -323,33 +333,12 @@ const withAlpha = (hexColor: string, alphaHex = '66') => {
 const ENGINE_PERSPECTIVE_KEYS: EnginePerspectiveKey[] = ['as_is', 'not_working', 'should_be']
 const ENGINE_SORT_GAP = 1024
 
-const createEmptyUsage = (): EngineUsage => ({
+const createEmptySessionUsage = (): SessionUsage => ({
   perModel: {},
   totalUSD: 0,
+  totalPLN: null,
   totalTokens: 0,
 })
-
-const loadEngineUsage = (): EngineUsage => {
-  if (typeof window === 'undefined') return createEmptyUsage()
-  try {
-    const raw = window.sessionStorage.getItem(ENGINE_USAGE_KEY)
-    if (!raw) return createEmptyUsage()
-    const parsed = JSON.parse(raw) as EngineUsage
-    if (!parsed || typeof parsed !== 'object') return createEmptyUsage()
-    return {
-      perModel: parsed.perModel ?? {},
-      totalUSD: Number(parsed.totalUSD ?? 0),
-      totalTokens: Number(parsed.totalTokens ?? 0),
-    }
-  } catch {
-    return createEmptyUsage()
-  }
-}
-
-const saveEngineUsage = (usage: EngineUsage) => {
-  if (typeof window === 'undefined') return
-  window.sessionStorage.setItem(ENGINE_USAGE_KEY, JSON.stringify(usage))
-}
 
 const getSpeechRecognitionCtor = (): SpeechRecognitionCtor | null => {
   if (typeof window === 'undefined') return null
@@ -2389,13 +2378,7 @@ function App() {
   const [llmStatus, setLlmStatus] = useState<'unknown' | 'online' | 'offline'>('unknown')
   const [llmSaved, setLlmSaved] = useState(false)
   const [llmUsageModel, setLlmUsageModel] = useState<LlmUsageModel | null>(null)
-  const [llmTokensTotal, setLlmTokensTotal] = useState(() => {
-    if (typeof window === 'undefined') return 0
-    const raw = window.localStorage.getItem(LLM_TOKENS_TOTAL_KEY)
-    const parsed = Number(raw)
-    return Number.isFinite(parsed) ? parsed : 0
-  })
-  const [engineUsage, setEngineUsage] = useState<EngineUsage>(() => loadEngineUsage())
+  const [sessionUsage, setSessionUsage] = useState<SessionUsage>(() => createEmptySessionUsage())
   const [usdPlnRate, setUsdPlnRate] = useState<number | null>(() => {
     return getFreshFxRate()
   })
@@ -2449,59 +2432,84 @@ function App() {
     if (!meta) return
     setLlmUsageModel(resolveUsageModel(meta))
   }
-  const applyUsageToApp = (meta?: LlmUsageMeta) => {
+  const refreshSessionUsage = useEffectEvent(async (sessionId: string | null | undefined) => {
+    const normalizedSessionId = String(sessionId || '').trim()
+    const userId = authSession?.user?.id ?? null
+    if (!normalizedSessionId || !client || !userId) {
+      setSessionUsage(createEmptySessionUsage())
+      return
+    }
+
+    const [summaryRes, eventsRes] = await Promise.all([
+      ((client
+        .from('session_ai_cost_summary' as never)
+        .select(
+          'session_id,user_id,total_tokens_input,total_tokens_output,total_usage_cost_usd,total_usage_cost_pln'
+        )
+        .eq('session_id', normalizedSessionId)
+        .eq('user_id', userId)
+        .maybeSingle() as unknown) as Promise<{ data: SessionUsageSummaryRow | null; error: unknown }>),
+      ((client
+        .from('session_ai_cost_events' as never)
+        .select('model,tokens_input,tokens_output,usage_cost_usd')
+        .eq('session_id', normalizedSessionId)
+        .eq('user_id', userId) as unknown) as Promise<{ data: SessionUsageEventRow[] | null; error: unknown }>),
+    ])
+
+    if (summaryRes.error || eventsRes.error) {
+      if (import.meta.env.DEV) {
+        console.error('[session usage] fetch failed', {
+          sessionId: normalizedSessionId,
+          summaryError: summaryRes.error,
+          eventsError: eventsRes.error,
+        })
+      }
+      setSessionUsage(createEmptySessionUsage())
+      return
+    }
+
+    const summary = summaryRes.data
+    const events = Array.isArray(eventsRes.data) ? eventsRes.data : []
+    const perModel = events.reduce<Record<string, ModelUsage>>((acc, row) => {
+      const model = String(row.model || '').trim()
+      if (!model) return acc
+      const inputTokens = Number(row.tokens_input ?? 0) || 0
+      const outputTokens = Number(row.tokens_output ?? 0) || 0
+      const totalUSD = Number(row.usage_cost_usd ?? 0) || 0
+      const previous = acc[model] ?? { inputTokens: 0, outputTokens: 0, totalUSD: 0 }
+      acc[model] = {
+        inputTokens: previous.inputTokens + inputTokens,
+        outputTokens: previous.outputTokens + outputTokens,
+        totalUSD: previous.totalUSD + totalUSD,
+      }
+      return acc
+    }, {})
+
+    const totalInput = Number(summary?.total_tokens_input ?? 0) || 0
+    const totalOutput = Number(summary?.total_tokens_output ?? 0) || 0
+    const totalUSD = Number(summary?.total_usage_cost_usd ?? 0) || 0
+    const totalPLNRaw = Number(summary?.total_usage_cost_pln ?? NaN)
+    setSessionUsage({
+      perModel,
+      totalUSD,
+      totalPLN: Number.isFinite(totalPLNRaw) ? totalPLNRaw : null,
+      totalTokens: totalInput + totalOutput,
+    })
+  })
+  const applyUsageToSession = async (
+    meta?: LlmUsageMeta,
+    sessionIdOverride?: string | null
+  ) => {
     const input = Number(meta?.tokens?.input ?? 0)
     const output = Number(meta?.tokens?.output ?? 0)
-    const delta = input + output
-    if (!delta) {
+    if (!input && !output) {
       if (import.meta.env.DEV) {
         console.log('[ai] no usage (fallback)')
       }
       setLastLlmSource('fallback')
       return
     }
-    const modelUsed = meta?.modelUsed ?? null
-    setEngineUsage((prev) => {
-      const pricing = modelUsed ? MODEL_PRICING_USD[modelUsed] : null
-      const costUSD = pricing
-        ? (input / 1_000_000) * pricing.input + (output / 1_000_000) * pricing.output
-        : 0
-      const perModel =
-        modelUsed && pricing
-          ? {
-              ...prev.perModel,
-              [modelUsed]: {
-                inputTokens: (prev.perModel[modelUsed]?.inputTokens ?? 0) + input,
-                outputTokens: (prev.perModel[modelUsed]?.outputTokens ?? 0) + output,
-                totalUSD: (prev.perModel[modelUsed]?.totalUSD ?? 0) + costUSD,
-              },
-            }
-          : prev.perModel
-      const next: EngineUsage = {
-        perModel,
-        totalUSD: prev.totalUSD + costUSD,
-        totalTokens: prev.totalTokens + delta,
-      }
-      saveEngineUsage(next)
-      return next
-    })
-    setLlmTokensTotal((prev) => {
-      const next = prev + delta
-      if (typeof window !== 'undefined') {
-        window.localStorage.setItem(LLM_TOKENS_TOTAL_KEY, String(next))
-      }
-      return next
-    })
     setLastLlmSource('llm')
-  }
-  const applyUsageToSession = async (
-    meta?: LlmUsageMeta,
-    sessionIdOverride?: string | null
-  ) => {
-    applyUsageToApp(meta)
-    const input = Number(meta?.tokens?.input ?? 0)
-    const output = Number(meta?.tokens?.output ?? 0)
-    if (!input && !output) return
     const sessionId = sessionIdOverride ?? enginePreviewSessionId ?? null
     if (!sessionId) return
     // Token accumulation happens here so it persists with the session record.
@@ -2530,6 +2538,7 @@ function App() {
           : session
       )
     )
+    await refreshSessionUsage(sessionId)
   }
 
   useEffect(() => {
@@ -2537,6 +2546,11 @@ function App() {
       setLlmUsageModel(null)
     }
   }, [aiSupportEnabled, llmStatus])
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.removeItem('llm_tokens_total')
+    window.sessionStorage.removeItem('engine_usage_v1')
+  }, [])
   const [ideaLabels, setIdeaLabels] = useState<LabelItem[]>([
     { id: 'label-1', text: 'Question to customer', color: '#f6b8a2' },
     { id: 'label-2', text: 'New functionality', color: '#f4d6a0' },
@@ -2773,6 +2787,7 @@ function App() {
   const hasSupabaseEnv = supabaseEnvDiag.hasUrl && supabaseEnvDiag.hasAnon
   const authDisabled = !hasSupabaseEnv
   const isAuthed = Boolean(authSession?.user?.id)
+  const activeUsageSessionId = enginePreviewSessionId || engineSessionDetail?.session?.id || null
   const isGuest = isGuestMode() === true
   const hasActiveGuestSession = isGuest ? getStorageSessionCount() > 0 : false
   const guestEntryAllowed =
@@ -2812,6 +2827,49 @@ function App() {
     }
     return import.meta.env.VITE_E2E === '1'
   }
+
+  useEffect(() => {
+    void refreshSessionUsage(activeUsageSessionId)
+  }, [activeUsageSessionId, authSession?.user?.id, client, isAuthed])
+
+  useEffect(() => {
+    const supabaseClient = client
+    if (!supabaseClient || !isAuthed || !activeUsageSessionId) return
+    let delayedRefreshTimer: number | null = null
+    const scheduleRefresh = () => {
+      void refreshSessionUsage(activeUsageSessionId)
+      if (delayedRefreshTimer) {
+        window.clearTimeout(delayedRefreshTimer)
+      }
+      // Refresh once more shortly after the event so the summary view can catch up.
+      delayedRefreshTimer = window.setTimeout(() => {
+        void refreshSessionUsage(activeUsageSessionId)
+      }, 250)
+    }
+
+    const channel = supabaseClient
+      .channel(`session-usage-${activeUsageSessionId}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'session_ai_cost_events',
+          filter: `session_id=eq.${activeUsageSessionId}`,
+        },
+        () => {
+          scheduleRefresh()
+        }
+      )
+      .subscribe()
+
+    return () => {
+      if (delayedRefreshTimer) {
+        window.clearTimeout(delayedRefreshTimer)
+      }
+      void supabaseClient.removeChannel(channel)
+    }
+  }, [activeUsageSessionId, client, isAuthed, refreshSessionUsage])
 
   const logFacilitationEvent = (event: string, payload: Record<string, unknown>) => {
     if (!isDebugEnabled()) return
@@ -7038,13 +7096,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
     setEngineInitialBriefSubmitting(true)
     setEngineInitialBriefError(null)
-    console.info('[initialBrief] submit start', {
-      sessionId,
-      textLength: text.length,
-      words,
-      uiLanguage,
-      voiceState: engineInitialBriefVoiceState,
-    })
+    const locale = uiLanguage === 'Polish' ? 'pl' : 'en'
     try {
       const { data: sessionData } = await client.auth.getSession()
       const accessToken = sessionData.session?.access_token || ''
@@ -7055,34 +7107,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
         return
       }
 
+      const requestPayload = {
+        currentUserId: userId,
+        sessionId,
+        action: 'seed_from_brief',
+        text,
+        locale,
+      }
       const response = await fetch('/api/coach?action=suggest', {
         method: 'POST',
         headers: llmHeaders,
-        body: JSON.stringify({
-          currentUserId: userId,
-          sessionId,
-          action: 'seed_from_brief',
-          text,
-          locale: uiLanguage === 'Polish' ? 'pl' : 'en',
-        }),
+        body: JSON.stringify(requestPayload),
       })
       const payload = await response.json().catch(() => null)
       const entries = Array.isArray(payload?.entries) ? payload.entries : []
-      console.info('[initialBrief] suggest result', {
-        sessionId,
-        responseOk: response.ok,
-        payloadOk: Boolean(payload?.ok),
-        status: response.status,
-        source: payload?.source ?? null,
-        entriesCount: entries.length,
-        firstEntryRaw: entries[0]
-          ? {
-              text: String(entries[0]?.text || '').slice(0, 160),
-              cellCode: entries[0]?.cellCode ?? null,
-              kind: entries[0]?.kind ?? null,
-            }
-          : null,
-      })
       if (!response.ok || !payload?.ok) {
         setEngineInitialBriefError(copy.engineInitialBriefSuggestFailed)
         setEngineInitialBriefSubmitting(false)
@@ -7111,8 +7149,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
       } | null = null
       for (const entry of entries) {
         const entryText = String(entry?.text || '').trim()
-        if (!entryText) continue
         const mapped = entry?.cellCode ? cellCodeToMatrix(String(entry.cellCode)) : null
+        if (!entryText) continue
         if (!firstNormalizedEntry) {
           firstNormalizedEntry = {
             text: entryText.slice(0, 160),
@@ -7197,18 +7235,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
         sourceItems = inserted
       }
       const normalizedItems = normalizeBoardItems(sourceItems)
-      console.info('[initialBrief] persistence result', {
-        sessionId,
-        firstNormalizedEntry,
-        upsertSuccessCount,
-        upsertFailureCount,
-        firstUpsertErrorStatus,
-        firstUpsertErrorMessage,
-        fetchBoardItemsFailedMessage,
-        insertedCount: inserted.length,
-        fetchedBoardItemsCount: Array.isArray(sourceItems) ? sourceItems.length : 0,
-        normalizedItemsCount: normalizedItems.length,
-      })
       setEnginePreviewItems(normalizedItems)
       const detail = await getSession(sessionId)
       const now = Date.now()
@@ -7264,10 +7290,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
       }
       engineInputRef.current?.focus()
     } catch (error) {
-      console.error('[initialBrief] submit failed', {
-        sessionId,
-        message: error instanceof Error ? error.message : String(error),
-      })
       setEngineInitialBriefError(copy.engineInitialBriefFailed)
     } finally {
       setEngineInitialBriefSubmitting(false)
@@ -7907,6 +7929,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           const reportLang: 'pl' | 'en' = uiLanguage === 'Polish' ? 'pl' : 'en'
           const ensured = await ensureReportExists(sessionId, sourceUpdatedAt, reportLang)
           setReportRecords((prev) => ({ ...prev, [sessionId]: ensured }))
+          await markReportCreated(sessionId)
           if (!hasDbReport && ensured?.id) {
             void refreshBillingBalance()
           }
@@ -8570,23 +8593,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return null
   }
 
-  const reportSessionId = isReport
-    ? enginePreviewSessionId || engineSessionDetail?.session?.id || null
-    : null
-
-  useEffect(() => {
-    if (!isReport) return
-    if (!reportSessionId) return
-    if (getReportMetaForSession(reportSessionId)?.created_at) return
-    void markReportCreated(reportSessionId)
-  }, [isReport, reportSessionId, cloudSessionPayloads, engineSessionDetail])
-
-  const markReportCreated = async (sessionId: string) => {
+  const markReportCreated = async (
+    sessionId: string,
+    options?: { ensureRemote?: boolean }
+  ) => {
     const now = Date.now()
     const reportLang: 'pl' | 'en' = uiLanguage === 'Polish' ? 'pl' : 'en'
     const detail = await getSession(sessionId)
     if (!detail?.session) return
-    if (authSession?.user?.id && client) {
+    if (options?.ensureRemote && authSession?.user?.id && client) {
       const sourceUpdatedAt =
         (detail.boardItems || []).reduce((max, item) => {
           const updatedAt = Number(item.updated_at || item.created_at || 0)
@@ -8637,27 +8652,33 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineSessionsError(null)
     setEngineDeleteLoadingId(sessionId)
     try {
-      const userId = authSession?.user?.id || null
-      if (userId && client) {
-        const { error } = await client
-          .from('user_sessions')
-          .delete()
-          .eq('session_id', sessionId)
-          .eq('user_id', userId)
-        if (error) {
+      if (authSession?.user?.id) {
+        const response = await apiFetch('/api/session?action=delete', {
+          method: 'POST',
+          body: JSON.stringify({ sessionId }),
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok || !payload?.ok) {
+          const apiError = String(payload?.error || 'SESSION_DELETE_FAILED')
           if (import.meta.env.DEV) {
-            console.error('[engine session delete] failed', {
-              code: error.code,
-              message: error.message,
+            console.error('[engine session delete][api] failed', {
+              status: response.status,
+              error: apiError,
               sessionId,
-              userId,
             })
           }
-          throw error
+          if (response.status === 401) {
+            throw new Error('AUTH_REQUIRED')
+          }
+          if (response.status === 403 || response.status === 404) {
+            throw new Error('FORBIDDEN')
+          }
+          throw new Error(apiError)
         }
       }
       await deleteSession(sessionId)
-      setEngineSessions((prev) => prev.filter((session) => session.id !== sessionId))
+      const nextSessions = engineSessions.filter((session) => session.id !== sessionId)
+      setEngineSessions(nextSessions)
       setCloudSessionPayloads((prev) => {
         if (!prev[sessionId]) return prev
         const next = { ...prev }
@@ -8670,11 +8691,21 @@ const isMissingLabel = (item: EngineBoardItem) => {
       if (enginePreviewSessionId === sessionId) {
         resetEnginePreview()
       }
+      if (nextSessions.length === 0) {
+        setEngineSessionsOpen(false)
+        setResumeNamePromptAfterList(false)
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(notices.sessionDeleteFailed(message))
       logSessionStore('engine_session_delete_failed', { sessionId, message })
-      showEngineNotice(notices.sessionDeleteForbidden, 'error')
+      if (message === 'FORBIDDEN') {
+        showEngineNotice(notices.sessionDeleteForbidden, 'error')
+      } else if (message === 'AUTH_REQUIRED') {
+        showEngineNotice(notices.authSessionExpired, 'error')
+      } else {
+        showEngineNotice(notices.sessionDeleteFailed('Request failed'), 'error')
+      }
     } finally {
       setEngineDeleteLoadingId(null)
     }
@@ -9510,7 +9541,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
   const llmUsageClass = llmUsageModel
     ? `llm-model-${llmUsageModel.replace(/\./g, '-')}`
     : 'llm-model-none'
-  const currentTokensTotal = llmTokensTotal
+  const currentTokensTotal = sessionUsage.totalTokens
   const formatTokenTotal = (value: number) => {
     const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
     return new Intl.NumberFormat(locale).format(Math.max(0, Math.floor(value || 0)))
@@ -9523,11 +9554,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
     new Intl.NumberFormat('pl-PL', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(
       Math.max(0, value || 0)
     )
-  const totalCostUsd = engineUsage.totalUSD
-  const totalCostPln = usdPlnRate ? totalCostUsd * usdPlnRate : null
-  const modelUsageEntries = Object.entries(engineUsage.perModel)
+  const totalCostUsd = sessionUsage.totalUSD
+  const totalCostPln = sessionUsage.totalPLN ?? (usdPlnRate ? totalCostUsd * usdPlnRate : null)
+  const modelUsageEntries = Object.entries(sessionUsage.perModel)
     .filter(([, usage]) => (usage?.inputTokens || 0) + (usage?.outputTokens || 0) > 0)
     .sort((a, b) => (b[1]?.totalUSD || 0) - (a[1]?.totalUSD || 0))
+  const showSessionUsage = showDiagnostics && Boolean(activeUsageSessionId) && isAuthed
 
   if (isReport && !isTopup) {
     const snapshot = getReportSessionSnapshot()
@@ -9604,25 +9636,25 @@ const isMissingLabel = (item: EngineBoardItem) => {
           }
         }}
         llmUsageIndicatorLabel={copy.llmUsageIndicatorLabel}
-        llmUsageValue={showDiagnostics ? `${formatTokenTotal(currentTokensTotal)} tok` : null}
+        llmUsageValue={showSessionUsage ? `${formatTokenTotal(currentTokensTotal)} tok` : null}
         llmUsageClassName={llmUsageClass}
         llmCostLines={
-          showDiagnostics
+          showSessionUsage
             ? [
                 copy.llmCostLabel(formatUsd(totalCostUsd)),
-                usdPlnRate
+                totalCostPln != null
                   ? copy.llmCostPlnLabel(formatPln(totalCostPln || 0))
                   : copy.llmCostPlnFallback,
               ]
             : []
         }
-        llmCostBreakdownLabel={showDiagnostics ? copy.llmCostBreakdown : undefined}
+        llmCostBreakdownLabel={showSessionUsage ? copy.llmCostBreakdown : undefined}
         llmCostBreakdownRows={
-          showDiagnostics
+          showSessionUsage
             ? [
-                copy.llmCostTotalTokens(formatTokenTotal(engineUsage.totalTokens)),
+                copy.llmCostTotalTokens(formatTokenTotal(sessionUsage.totalTokens)),
                 copy.llmCostTotalUsd(formatUsd(totalCostUsd)),
-                usdPlnRate
+                totalCostPln != null
                   ? copy.llmCostTotalPln(formatPln(totalCostPln || 0))
                   : copy.llmCostTotalPlnFallback,
                 ...modelUsageEntries.map(([model, usage]) =>
@@ -10417,51 +10449,55 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 >
                   {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
                 </button>
-                <button
-                  className={`ai-support-toggle llm-usage-indicator ${llmUsageClass}`}
-                  type="button"
-                  aria-label={copy.llmUsageIndicatorLabel}
-                  title={copy.llmUsageIndicatorLabel}
-                  disabled
-                >
-                  {`${formatTokenTotal(currentTokensTotal)} tok`}
-                </button>
-                <div className="llm-cost-panel" aria-live="polite">
-                  <div className="llm-cost-line">
-                    {copy.llmCostLabel(formatUsd(totalCostUsd))}
-                  </div>
-                  <div className="llm-cost-line">
-                    {usdPlnRate
-                      ? copy.llmCostPlnLabel(formatPln(totalCostPln || 0))
-                      : copy.llmCostPlnFallback}
-                  </div>
-                  <details className="llm-cost-details">
-                    <summary>{copy.llmCostBreakdown}</summary>
-                    <div className="llm-cost-breakdown">
-                      <div className="llm-cost-row">
-                        {copy.llmCostTotalTokens(formatTokenTotal(engineUsage.totalTokens))}
+                {showSessionUsage && (
+                  <>
+                    <button
+                      className={`ai-support-toggle llm-usage-indicator ${llmUsageClass}`}
+                      type="button"
+                      aria-label={copy.llmUsageIndicatorLabel}
+                      title={copy.llmUsageIndicatorLabel}
+                      disabled
+                    >
+                      {`${formatTokenTotal(currentTokensTotal)} tok`}
+                    </button>
+                    <div className="llm-cost-panel" aria-live="polite">
+                      <div className="llm-cost-line">
+                        {copy.llmCostLabel(formatUsd(totalCostUsd))}
                       </div>
-                      <div className="llm-cost-row">
-                        {copy.llmCostTotalUsd(formatUsd(totalCostUsd))}
+                      <div className="llm-cost-line">
+                        {totalCostPln != null
+                          ? copy.llmCostPlnLabel(formatPln(totalCostPln || 0))
+                          : copy.llmCostPlnFallback}
                       </div>
-                      <div className="llm-cost-row">
-                        {usdPlnRate
-                          ? copy.llmCostTotalPln(formatPln(totalCostPln || 0))
-                          : copy.llmCostTotalPlnFallback}
-                      </div>
-                      {modelUsageEntries.map(([model, usage]) => (
-                        <div key={model} className="llm-cost-row">
-                          {copy.llmCostModelRow(
-                            model,
-                            formatTokenTotal(usage.inputTokens),
-                            formatTokenTotal(usage.outputTokens),
-                            formatUsd(usage.totalUSD)
-                          )}
+                      <details className="llm-cost-details">
+                        <summary>{copy.llmCostBreakdown}</summary>
+                        <div className="llm-cost-breakdown">
+                          <div className="llm-cost-row">
+                            {copy.llmCostTotalTokens(formatTokenTotal(sessionUsage.totalTokens))}
+                          </div>
+                          <div className="llm-cost-row">
+                            {copy.llmCostTotalUsd(formatUsd(totalCostUsd))}
+                          </div>
+                          <div className="llm-cost-row">
+                            {totalCostPln != null
+                              ? copy.llmCostTotalPln(formatPln(totalCostPln || 0))
+                              : copy.llmCostTotalPlnFallback}
+                          </div>
+                          {modelUsageEntries.map(([model, usage]) => (
+                            <div key={model} className="llm-cost-row">
+                              {copy.llmCostModelRow(
+                                model,
+                                formatTokenTotal(usage.inputTokens),
+                                formatTokenTotal(usage.outputTokens),
+                                formatUsd(usage.totalUSD)
+                              )}
+                            </div>
+                          ))}
                         </div>
-                      ))}
+                      </details>
                     </div>
-                  </details>
-                </div>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -11043,23 +11079,33 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       ? copy.engineInitialBriefWordLimitReached
                       : copy.engineInitialBriefWordCountRemaining(engineInitialBriefRemainingWords)}
                   </span>
-                  <button
-                    type="button"
-                    className="primary"
-                    data-testid="engine-initial-brief-submit"
-                    onClick={() => {
-                      void submitEngineInitialBrief()
-                    }}
-                    disabled={
-                      !engineInitialBriefText.trim() ||
-                      engineInitialBriefSubmitting ||
-                      engineInitialBriefWords > INITIAL_BRIEF_WORD_LIMIT
-                    }
-                  >
-                    {engineInitialBriefSubmitting
-                      ? copy.engineInitialBriefSubmitting
-                      : copy.engineInitialBriefSubmit}
-                  </button>
+                  <span className="triz-image-button-wrap">
+                    <button
+                      type="button"
+                      className="primary"
+                      data-testid="engine-initial-brief-submit"
+                      onClick={() => {
+                        void submitEngineInitialBrief()
+                      }}
+                      disabled={
+                        !engineInitialBriefText.trim() ||
+                        engineInitialBriefSubmitting ||
+                        engineInitialBriefWords > INITIAL_BRIEF_WORD_LIMIT
+                      }
+                    >
+                      {engineInitialBriefSubmitting
+                        ? copy.engineInitialBriefSubmitting
+                        : copy.engineInitialBriefSubmit}
+                    </button>
+                    {engineInitialBriefSubmitting && (
+                      <span
+                        className="report-updating-indicator triz-image-spinner"
+                        role="status"
+                        aria-label={copy.engineInitialBriefSubmitting}
+                        title={copy.engineInitialBriefSubmitting}
+                      />
+                    )}
+                  </span>
                 </div>
               </div>
             </section>

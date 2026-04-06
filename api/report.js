@@ -4,6 +4,7 @@ import {
   handleReportUpdate,
   handleReportTrizImageGenerate,
   handleReportTrizImageDelete,
+  isFullReportGenerated,
 } from '../src/lib/server/handlers/reportUpdate.js'
 import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
 import { normalizeBillingError } from '../src/lib/server/billing.js'
@@ -122,7 +123,7 @@ const handleReportGenerate = async (req, res) => {
     return
   }
   if (existingRes.data) {
-    const hasGeneratedContent = Boolean(existingRes.data.summary_json)
+    const hasGeneratedContent = isFullReportGenerated(existingRes.data.summary_json)
     if (hasGeneratedContent) {
       sendJson(res, 200, { ok: true, report: existingRes.data })
       return

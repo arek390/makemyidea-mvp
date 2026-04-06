@@ -261,6 +261,14 @@ const normalizeTrizSolution = (value, context = {}) => {
   }
 }
 
+const normalizeTrizDirections = (value, limit = 4) => {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((item) => typeof item === 'string' && item.trim())
+    .map((item) => item.trim())
+    .slice(0, limit)
+}
+
 const normalizeTriz = (value) => {
   const empty = {
     section_title: '',
@@ -274,6 +282,8 @@ const normalizeTriz = (value) => {
         .filter((item) => item && typeof item === 'object')
         .map((item) => {
           const contradiction = item
+          const explanation =
+            typeof contradiction.explanation === 'string' ? contradiction.explanation.trim() : ''
           const principles = Array.isArray(contradiction.principles)
             ? contradiction.principles
                 .filter(isValidTrizPrinciple)
@@ -289,6 +299,17 @@ const normalizeTriz = (value) => {
                 }))
                 .slice(0, 5)
             : []
+          const approaches = Array.isArray(contradiction.approaches)
+            ? contradiction.approaches
+                .map((approach) =>
+                  normalizeTrizSolution(approach, {
+                    title: contradiction.title,
+                    description: contradiction.explanation || contradiction.description,
+                  })
+                )
+                .filter(Boolean)
+                .slice(0, 4)
+            : []
           const solutions = Array.isArray(contradiction.solutions)
             ? contradiction.solutions
                 .map((solution) =>
@@ -299,7 +320,9 @@ const normalizeTriz = (value) => {
                 )
                 .filter(Boolean)
                 .slice(0, 3)
-            : []
+            : approaches
+          const solutionDirections = normalizeTrizDirections(contradiction.solution_directions, 4)
+          const reflections = normalizeTrizDirections(contradiction.reflections, 3)
           const title = typeof contradiction.title === 'string' ? contradiction.title.trim() : ''
           const description =
             typeof contradiction.description === 'string' ? contradiction.description.trim() : ''
@@ -307,12 +330,18 @@ const normalizeTriz = (value) => {
             typeof contradiction.improving === 'string' ? contradiction.improving.trim() : ''
           const worsening =
             typeof contradiction.worsening === 'string' ? contradiction.worsening.trim() : ''
-          if (!title || !description || !improving || !worsening) return null
+          const hasNewShape = Boolean(title && explanation)
+          const hasOldShape = Boolean(title && description && improving && worsening)
+          if (!hasNewShape && !hasOldShape) return null
           return {
             title,
-            description,
-            improving,
-            worsening,
+            ...(explanation ? { explanation } : {}),
+            ...(solutionDirections.length ? { solution_directions: solutionDirections } : {}),
+            ...(approaches.length ? { approaches } : {}),
+            ...(reflections.length ? { reflections } : {}),
+            ...(description ? { description } : {}),
+            ...(improving ? { improving } : {}),
+            ...(worsening ? { worsening } : {}),
             principles,
             solutions,
           }
@@ -437,16 +466,33 @@ const validateTriz = (triz) => {
       return
     }
     if (!String(item.title || '').trim()) errors.push(`triz_missing_title:${index}`)
-    if (!String(item.description || '').trim()) errors.push(`triz_missing_description:${index}`)
-    if (!String(item.improving || '').trim()) errors.push(`triz_missing_improving:${index}`)
-    if (!String(item.worsening || '').trim()) errors.push(`triz_missing_worsening:${index}`)
-    if (!Array.isArray(item.principles)) errors.push(`triz_principles_not_array:${index}`)
-    if (!Array.isArray(item.solutions)) errors.push(`triz_solutions_not_array:${index}`)
+    const hasNewShape = Boolean(String(item.explanation || '').trim())
+    const hasOldShape = Boolean(
+      String(item.description || '').trim() &&
+        String(item.improving || '').trim() &&
+        String(item.worsening || '').trim()
+    )
+    if (!hasNewShape && !hasOldShape) errors.push(`triz_missing_content:${index}`)
+    if (item.solution_directions != null && !Array.isArray(item.solution_directions)) {
+      errors.push(`triz_solution_directions_not_array:${index}`)
+    }
+    if (item.approaches != null && !Array.isArray(item.approaches)) {
+      errors.push(`triz_approaches_not_array:${index}`)
+    }
+    if (item.reflections != null && !Array.isArray(item.reflections)) {
+      errors.push(`triz_reflections_not_array:${index}`)
+    }
+    if (item.principles != null && !Array.isArray(item.principles)) {
+      errors.push(`triz_principles_not_array:${index}`)
+    }
+    if (item.solutions != null && !Array.isArray(item.solutions)) {
+      errors.push(`triz_solutions_not_array:${index}`)
+    }
   })
   return { ok: errors.length === 0, errors }
 }
 
-const isReportGenerated = (summaryJson) => {
+export const isReportGenerated = (summaryJson) => {
   if (!summaryJson || typeof summaryJson !== 'object') return false
   const normalized = validateAndNormalizeReport(summaryJson)
   const summary = normalized.summary || {}
@@ -463,6 +509,26 @@ const isReportGenerated = (summaryJson) => {
   const hasTriz =
     Array.isArray(normalized.triz?.contradictions) && normalized.triz.contradictions.length > 0
   return hasSummary || hasIdeas || hasRecs || hasTriz
+}
+
+export const isFullReportGenerated = (summaryJson) => {
+  if (!summaryJson || typeof summaryJson !== 'object') return false
+  const normalized = validateAndNormalizeReport(summaryJson)
+  const summary = normalized.summary || {}
+  const hasSummary =
+    Boolean(String(summary.today || '').trim()) ||
+    Boolean(String(summary.change || '').trim()) ||
+    Boolean(String(summary.product || '').trim())
+  const recs = normalized.recommendations || {}
+  const hasRecs =
+    Array.isArray(recs.based_on_user_ideas) && recs.based_on_user_ideas.length > 0 &&
+    Array.isArray(recs.morphological) && recs.morphological.length > 0 &&
+    Array.isArray(recs.market_trends) && recs.market_trends.length > 0
+  const hasTriz =
+    Boolean(String(normalized.triz?.section_title || '').trim()) ||
+    Boolean(String(normalized.triz?.section_intro || '').trim()) ||
+    (Array.isArray(normalized.triz?.contradictions) && normalized.triz.contradictions.length > 0)
+  return hasSummary && hasRecs && hasTriz
 }
 
 const handleBillingError = (res, error) => {
@@ -637,7 +703,9 @@ const buildTrizSketchPrompt = ({ solution, contradiction, reportLang }) => {
   const basePrompt =
     'isometric view, pencil sketch, conceptual industrial design sketch, monochrome graphite lines, subtle shading, visible construction lines, transparent background, fully transparent background alpha 0, no background fill, no background scene, not photorealistic, not CAD render, no text labels, no hands'
   const contradictionTitle = String(contradiction?.title || '').trim()
-  const contradictionDescription = String(contradiction?.description || '').trim()
+  const contradictionDescription = String(
+    contradiction?.explanation || contradiction?.description || ''
+  ).trim()
   const solutionTitle = String(solution?.title || '').trim()
   const solutionDescription = String(solution?.description || '').trim()
   const promptText =
@@ -673,6 +741,7 @@ const applyTrizWatermark = async (inputBuffer) => {
 
   const resizedWatermark = await sharp(watermarkBuffer)
     .resize({ width: watermarkWidth })
+    .grayscale()
     .png()
     .toBuffer()
 
@@ -709,8 +778,14 @@ export const classifyTrizFormatState = (summaryJson, contradictionIndex, solutio
   if (!contradiction || typeof contradiction !== 'object') {
     return { ok: true, rawSolution: null, legacy: false }
   }
-  const solutions = Array.isArray(contradiction.solutions) ? contradiction.solutions : null
-  if (contradiction.solutions != null && !solutions) {
+  const hasSolutions = contradiction.solutions != null
+  const hasApproaches = contradiction.approaches != null
+  const solutions = Array.isArray(contradiction.solutions)
+    ? contradiction.solutions
+    : Array.isArray(contradiction.approaches)
+      ? contradiction.approaches
+      : null
+  if ((hasSolutions || hasApproaches) && !solutions) {
     return { ok: false, reason: 'solutions_not_array' }
   }
   const rawSolution = solutions?.[solutionIndex] ?? null
@@ -1151,6 +1226,15 @@ export const handleReportTrizImageGenerate = async (req, res) => {
         image: currentPrimaryImage || nextImage,
         images: mergedImages,
       }
+      if (Array.isArray(contradiction.approaches) && contradiction.approaches[solutionIndex]) {
+        contradiction.approaches[solutionIndex] = {
+          ...contradiction.approaches[solutionIndex],
+          ...(solution.description ? { description: solution.description } : {}),
+          ...(prompt ? { sketch_prompt: prompt } : {}),
+          image: currentPrimaryImage || nextImage,
+          images: mergedImages,
+        }
+      }
       const nextSummary = sanitizeReportPayload(normalizedReport)
       logTrizImage('log', 'metadata_save_start', {
         reportId: reportRes.data.id,
@@ -1368,6 +1452,15 @@ export const handleReportTrizImageDelete = async (req, res) => {
       ...(solution.sketch_prompt ? { sketch_prompt: solution.sketch_prompt } : {}),
       image: nextPrimaryImage,
       images: remainingImages,
+    }
+    if (Array.isArray(contradiction.approaches) && contradiction.approaches[solutionIndex]) {
+      contradiction.approaches[solutionIndex] = {
+        ...contradiction.approaches[solutionIndex],
+        ...(solution.description ? { description: solution.description } : {}),
+        ...(solution.sketch_prompt ? { sketch_prompt: solution.sketch_prompt } : {}),
+        image: nextPrimaryImage,
+        images: remainingImages,
+      }
     }
     const nextSummary = sanitizeReportPayload(normalizedReport)
     const updateRes = await supabaseAdmin
@@ -1745,18 +1838,15 @@ export const handleReportUpdate = async (req, res) => {
             contradictions: [
               {
                 title: 'string',
-                description: 'string',
-                improving: 'string',
-                worsening: 'string',
-                principles: [
+                explanation: 'string',
+                solution_directions: ['string'],
+                approaches: [
                   {
-                    id: 'optional number',
-                    name: 'string',
-                    rationale: 'optional string',
-                    how_to_apply: 'optional string',
+                    title: 'string',
+                    description: 'string',
                   },
                 ],
-                solutions: ['string'],
+                reflections: ['string'],
               },
             ],
           },
@@ -1766,12 +1856,15 @@ export const handleReportUpdate = async (req, res) => {
             'No markdown. No prose outside JSON. No commentary before or after JSON. No trailing text.',
             'Return at most 3 contradictions.',
             'Prefer 1 or 2 strong contradictions over many weak ones.',
-            'A contradiction means improving one aspect worsens another aspect.',
+            'Use TRIZ reasoning internally to identify meaningful design contradictions and derive solution directions.',
+            'Do NOT mention TRIZ, do NOT include principle names or numbers, and do NOT use academic language.',
+            'Write for a product builder making design decisions.',
+            'Translate contradictions into: a clear trade-off title, a simple explanation, solution directions, possible approaches, and reflection prompts.',
             'Detect contradictions not only from explicit opposites, but also from implicit trade-offs across multiple entries.',
             'Prefer concrete product and engineering tensions such as lightweight vs strength or durability, small or portable vs long reach, simple construction vs robustness, material choice conflicts, ambidextrous use vs ergonomic optimization, safety vs effectiveness.',
-            'Every contradiction must include: title, description, improving, worsening, principles, solutions.',
-            'principles and solutions must be arrays, but may be empty.',
-            'Keep title, description, principles, and solutions concise.',
+            'Every contradiction must include: title, explanation, solution_directions, approaches, reflections.',
+            'solution_directions, approaches, and reflections must be arrays, but may be empty.',
+            'Keep all strings concise, concrete, and action-oriented.',
             'Do not invent contradictions not grounded in the material.',
             reportLang === 'en' ? 'Output must be in English.' : 'Całość po polsku.',
           ],
@@ -1781,8 +1874,8 @@ export const handleReportUpdate = async (req, res) => {
 
       const trizTaskInstructions =
         reportLang === 'en'
-          ? 'Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: section_title, section_intro, contradictions. Find implicit contradictions across entries when needed. Prefer 1 or 2 strong contradictions. Each contradiction must contain title, description, improving, worsening, principles, solutions. Keep strings concise. Output must be in English.'
-          : 'Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucze: section_title, section_intro, contradictions. Wnioskuj także sprzeczności ukryte w wielu wpisach. Preferuj 1 lub 2 mocne sprzeczności. Każda sprzeczność musi zawierać title, description, improving, worsening, principles, solutions. Pisz zwięźle. Całość po polsku.'
+          ? 'Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: section_title, section_intro, contradictions. Use TRIZ reasoning internally but do not mention TRIZ in the output. Prefer 1 or 2 strong trade-offs. Each contradiction must contain title, explanation, solution_directions, approaches, reflections. Write like a product designer helping someone make design decisions. Keep strings concise. Output must be in English.'
+          : 'Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucze: section_title, section_intro, contradictions. Użyj TRIZ wewnętrznie do analizy, ale nie wspominaj o TRIZ w wyniku. Preferuj 1 lub 2 mocne kompromisy. Każda pozycja musi zawierać title, explanation, solution_directions, approaches, reflections. Pisz jak product designer pomagający podjąć decyzje projektowe. Pisz zwięźle. Całość po polsku.'
 
       const runDefault = async (modelOverride, validationErrors) =>
         runLlmTask({
