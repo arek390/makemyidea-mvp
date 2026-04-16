@@ -1185,6 +1185,7 @@ export const ReportPage = ({
       if (mode) payload.execution_mode = mode
       if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
         payload.execution_report = executionReport
+        payload.triz = reportTriz
       }
       const response = await fetch('/api/report?action=update', {
         method: 'POST',
