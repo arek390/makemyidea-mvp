@@ -94,6 +94,7 @@ const normalizeAiSummary = (value: unknown): AiSummary => {
   const empty: AiSummary = { headline: '', narrative: '', today: '', change: '', product: '' }
   if (!value || typeof value !== 'object') return empty
   const current = value as Record<string, unknown>
+  const toText = (input: unknown) => (typeof input === 'string' ? input.trim() : '')
   return {
     headline: toText(current.headline),
     narrative: toText(current.narrative),

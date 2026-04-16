@@ -1374,7 +1374,6 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingThreeStepsCta: 'Get started in 3 steps',
     landingThreeStepsTitle: '3 kroki',
     landingBackToFull: '← Wróć do pełnej strony',
-    landingBeforeLead: 'Jeśli choć jedno brzmi znajomo — jesteś w dobrym miejscu.',
     landingBeforeLead: 'Pomysły rzadko są złe.\nProblem to brak konkretu.',
     landingBeforeList: [
       'Upadają, bo:',
@@ -2681,6 +2680,7 @@ function App() {
       return
     }
 
+    const sb = client
     sessionUsageRefreshInFlightRef.current = true
     sessionUsageRefreshPendingSessionRef.current = null
     try {
@@ -2698,7 +2698,7 @@ function App() {
       }
 
       const [summaryRes, eventsRes] = await Promise.all([
-        ((client
+        ((sb
           .from('session_ai_cost_summary' as never)
           .select(
             'session_id,user_id,total_tokens_input,total_tokens_output,total_usage_cost_usd,total_usage_cost_pln'
@@ -2708,7 +2708,7 @@ function App() {
           .maybeSingle() as unknown) as Promise<{ data: SessionUsageSummaryRow | null; error: unknown }>),
         (async () => {
           const runSelect = async (columns: string) => {
-            return (await (client
+            return (await (sb
               .from('session_ai_cost_events' as never)
               .select(columns)
               .eq('session_id', normalizedSessionId)
@@ -3087,7 +3087,6 @@ function App() {
   const facilitationIntroRef = useRef<string | null>(null)
   const [feedbackCooldown, setFeedbackCooldown] = useState(0)
   const [feedbackNotice, setFeedbackNotice] = useState<{ message: string; variant: 'success' | 'error' } | null>(null)
-  const [engineEntryRowSpans, setEngineEntryRowSpans] = useState<Record<string, number>>({})
   const [engineDraggingEntryId, setEngineDraggingEntryId] = useState<string | null>(null)
   const [engineDragOverSection, setEngineDragOverSection] = useState<EnginePerspectiveKey | null>(null)
   const [engineDragTargetIndex, setEngineDragTargetIndex] = useState<number | null>(null)
@@ -4810,22 +4809,66 @@ const isAuthFlowInProgress = () => {
         : enginePreviewItems.length
           ? enginePreviewItems
           : reportMeta?.ideas || []
-    const ideas = reportIdeas.map((item, index) => ({
-      id: item.id || `idea-${index + 1}`,
-      text: item.text,
-      label: item.label ?? null,
-      questionId: item.question_id ?? null,
-      questionTextPl: item.question_text_pl ?? null,
-      questionTextEn: item.question_text_en ?? null,
-      matrixRow: item.matrix_row ?? null,
-      matrixCol: item.matrix_col ?? null,
-    }))
+    const ideas = reportIdeas.map((item, index) => {
+      const current = item as Record<string, unknown>
+      const questionId =
+        typeof current.question_id === 'string'
+          ? current.question_id
+          : typeof current.questionId === 'string'
+            ? current.questionId
+            : null
+      const questionTextPl =
+        typeof current.question_text_pl === 'string'
+          ? current.question_text_pl
+          : typeof current.questionTextPl === 'string'
+            ? current.questionTextPl
+            : null
+      const questionTextEn =
+        typeof current.question_text_en === 'string'
+          ? current.question_text_en
+          : typeof current.questionTextEn === 'string'
+            ? current.questionTextEn
+            : null
+      const matrixRow =
+        typeof current.matrix_row === 'string'
+          ? current.matrix_row
+          : typeof current.matrixRow === 'string'
+            ? current.matrixRow
+            : null
+      const matrixCol =
+        typeof current.matrix_col === 'string'
+          ? current.matrix_col
+          : typeof current.matrixCol === 'string'
+            ? current.matrixCol
+            : null
+      return {
+        id: (item as { id?: string }).id || `idea-${index + 1}`,
+        text: (item as { text: string }).text,
+        label: (item as { label?: string | null }).label ?? null,
+        questionId,
+        questionTextPl,
+        questionTextEn,
+        matrixRow,
+        matrixCol,
+      }
+    })
     const questions = Object.entries(engineAskedQuestionTextById).map(([id, text]) => ({
       id,
       text,
     }))
     const sourceUpdatedAt = reportIdeas.reduce((max, item) => {
-      const updatedAt = Number(item.updated_at || item.created_at || 0)
+      const current = item as Record<string, unknown>
+      const updatedAtRaw =
+        typeof current.updated_at === 'number'
+          ? current.updated_at
+          : typeof current.updatedAt === 'number'
+            ? current.updatedAt
+            : typeof current.created_at === 'number'
+              ? current.created_at
+              : typeof current.createdAt === 'number'
+                ? current.createdAt
+                : 0
+      const updatedAt = Number(updatedAtRaw || 0)
       return Math.max(max, updatedAt)
     }, 0)
     const reportSnapshotMeta = reportMeta
