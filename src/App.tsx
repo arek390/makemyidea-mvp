@@ -4354,6 +4354,11 @@ const isAuthFlowInProgress = () => {
     }
     setEngineOfferReason(null)
     setEngineUiState('FREE_FLOW')
+    // Avoid showing facilitation immediately after session creation due to a stale idle baseline
+    // (e.g. when user interaction happened on the landing screen and session creation took longer than the idle threshold).
+    if (sessionKey !== 'new' && transferInteraction) {
+      setEngineLastInputActivityAt(Date.now())
+    }
     logFacilitationEvent('session_switched', { sessionId: sessionKey })
   }, [enginePreviewSessionId])
 
