@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react'
+import { useMemo } from 'react'
 
 type GaugeLevel = 'not_ready' | 'can_proceed' | 'strong_material'
 

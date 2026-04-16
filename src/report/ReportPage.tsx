@@ -90,6 +90,19 @@ type AiSummary = {
   product: string
 }
 
+const normalizeAiSummary = (value: unknown): AiSummary => {
+  const empty: AiSummary = { headline: '', narrative: '', today: '', change: '', product: '' }
+  if (!value || typeof value !== 'object') return empty
+  const current = value as Record<string, unknown>
+  return {
+    headline: toText(current.headline),
+    narrative: toText(current.narrative),
+    today: toText(current.today),
+    change: toText(current.change),
+    product: toText(current.product),
+  }
+}
+
 const normalizeExecutionReport = (value: unknown): ReportExecutionReport => {
   const empty: ReportExecutionReport = {
     stage: null,
@@ -147,13 +160,15 @@ const normalizeExecutionReport = (value: unknown): ReportExecutionReport => {
           .filter((item) => item && typeof item === 'object')
           .map((item) => {
             const current = item as Record<string, unknown>
+            const impactRaw = toText(current.impact)
+            const impact =
+              impactRaw === 'high' || impactRaw === 'medium' || impactRaw === 'low'
+                ? (impactRaw as 'high' | 'medium' | 'low')
+                : 'medium'
             return {
               title: toText(current.title),
               why_it_matters: toText(current.why_it_matters),
-              impact:
-                current.impact === 'high' || current.impact === 'medium' || current.impact === 'low'
-                  ? current.impact
-                  : 'medium',
+              impact,
               risk_of_ignoring: toText(current.risk_of_ignoring),
             }
           })
@@ -344,33 +359,6 @@ const sanitizeReportPayload = <T,>(payload: T): T => {
   return payload
 }
 
-const RefreshIndicatorIcon = ({
-  variant,
-  className = '',
-}: {
-  variant: 'suggestion' | 'loading'
-  className?: string
-}) => (
-  <span
-    className={`report-refresh-icon report-refresh-icon--${variant}${className ? ` ${className}` : ''}`}
-    aria-hidden="true"
-  >
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      <path d="M21 2v6h-6" />
-      <path d="M3 12a9 9 0 0 1 15.13-6.13L21 8" />
-      <path d="M3 22v-6h6" />
-      <path d="M21 12a9 9 0 0 1-15.13 6.13L3 16" />
-    </svg>
-  </span>
-)
-
 const sanitizeFilenamePart = (value: string) => {
   const normalized = String(value || '')
     .toLowerCase()
@@ -379,16 +367,6 @@ const sanitizeFilenamePart = (value: string) => {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '')
   return normalized || 'report'
-}
-
-const formatDate = (value?: number | null) => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    const date = new Date(value)
-    if (!Number.isNaN(date.getTime())) {
-      return date.toISOString().slice(0, 10)
-    }
-  }
-  return new Date().toISOString().slice(0, 10)
 }
 
 const validateAndNormalizeReport = (payload: unknown) => {
@@ -1128,7 +1106,7 @@ export const ReportPage = ({
         setReportTriz(record.triz ? normalizeTriz(sanitizeReportPayload(record.triz)) : null)
         setExecutionReport(mergedExecutionReport)
         if (!aiSummary && record.summary) {
-          setAiSummary(sanitizeReportPayload(record.summary))
+          setAiSummary(normalizeAiSummary(sanitizeReportPayload(record.summary)))
         }
         if (!lastSummaryTextHash && record.lastSummaryTextHash) {
           setLastSummaryTextHash(record.lastSummaryTextHash)
@@ -1708,7 +1686,6 @@ export const ReportPage = ({
     () => (reportTriz ? normalizeTriz(sanitizeReportPayload(reportTriz)) : null),
     [reportTriz]
   )
-  const hasTrizSection = Boolean(normalizedTriz)
   const hasTriz = Boolean(normalizedTriz?.contradictions.length)
   const normalizedExecutionReport = useMemo(
     () => (executionReport ? normalizeExecutionReport(sanitizeReportPayload(executionReport)) : null),
@@ -2762,19 +2739,19 @@ export const ReportPage = ({
           {!hasNarrativeSummary && Boolean(cleanedSummary.today) && (
             <div className="report-summary-block">
               <h3>{t.summaryToday}</h3>
-              <p>{renderInlineMarkdown(cleanedSummary.today)}</p>
+              <p>{renderInlineMarkdown(cleanedSummary.today || '')}</p>
             </div>
           )}
           {!hasNarrativeSummary && Boolean(cleanedSummary.change) && (
             <div className="report-summary-block">
               <h3>{t.summaryChange}</h3>
-              <p>{renderInlineMarkdown(cleanedSummary.change)}</p>
+              <p>{renderInlineMarkdown(cleanedSummary.change || '')}</p>
             </div>
           )}
           {!hasNarrativeSummary && Boolean(cleanedSummary.product) && (
             <div className="report-summary-block">
               <h3>{t.summaryProduct}</h3>
-              <p>{renderInlineMarkdown(cleanedSummary.product)}</p>
+              <p>{renderInlineMarkdown(cleanedSummary.product || '')}</p>
             </div>
           )}
           {summaryStatus === 'done' &&

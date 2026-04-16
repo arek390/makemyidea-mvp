@@ -25,6 +25,7 @@ import {
   type EngineSessionSummary,
 } from './storage/sessionStore'
 import type { ReportExecutionReport, ReportMeta, ReportSummary } from './storage/sessionStore'
+import type { ReportRecommendations } from './storage/sessionStore'
 import { type CloudSessionPayload } from './lib/cloudSessions'
 import {
   fetchBoardItems,
@@ -7849,17 +7850,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return 'is-medium'
   }
 
-  const estimateEngineEntryRowSpan = (item: EngineBoardItem, layoutClass: string) => {
-    const textLength = String(item.text || '').trim().length
-    const charsPerLine =
-      layoutClass === 'is-hero' ? 58 : layoutClass === 'is-wide' ? 42 : 24
-    const minLines =
-      layoutClass === 'is-hero' ? 3 : layoutClass === 'is-wide' ? 2 : 2
-    const estimatedLines = Math.max(minLines, Math.ceil(textLength / charsPerLine))
-    const estimatedHeight =
-      28 + estimatedLines * 18 + (layoutClass === 'is-hero' ? 12 : layoutClass === 'is-wide' ? 6 : 0)
-    const span = Math.ceil(estimatedHeight / 10)
-    return Math.max(layoutClass === 'is-hero' ? 10 : layoutClass === 'is-wide' ? 8 : 6, span)
+  const normalizeRecommendations = (value: unknown): ReportRecommendations | null => {
+    if (!value || typeof value !== 'object') return null
+    const current = value as Record<string, unknown>
+    const based_on_user_ideas = Array.isArray(current.based_on_user_ideas) ? current.based_on_user_ideas : null
+    const morphological = Array.isArray(current.morphological) ? current.morphological : null
+    const market_trends = Array.isArray(current.market_trends) ? current.market_trends : null
+    if (!based_on_user_ideas || !morphological || !market_trends) return null
+    return {
+      based_on_user_ideas: based_on_user_ideas as ReportRecommendations['based_on_user_ideas'],
+      morphological: morphological as ReportRecommendations['morphological'],
+      market_trends: market_trends as ReportRecommendations['market_trends'],
+    }
   }
 
   const enginePerspectiveSections = useMemo(() => {
@@ -10833,10 +10835,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   snapshot.reportMeta?.ideas ??
                   null,
                 recommendations:
-                  meta.recommendations ??
-                  existingRecord?.recommendations ??
-                  snapshot.reportMeta?.recommendations ??
-                  null,
+                  normalizeRecommendations(
+                    meta.recommendations ??
+                      existingRecord?.recommendations ??
+                      snapshot.reportMeta?.recommendations ??
+                      null
+                  ),
                 triz:
                   meta.triz ??
                   existingRecord?.triz ??
@@ -10873,7 +10877,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             created_at: meta.createdAt ?? existing?.created_at ?? Date.now(),
             updated_at: meta.updatedAt ?? Date.now(),
             ideas: meta.ideas ?? existing?.ideas ?? null,
-            recommendations: meta.recommendations ?? existing?.recommendations ?? null,
+            recommendations: normalizeRecommendations(meta.recommendations ?? existing?.recommendations ?? null),
             triz: meta.triz ?? existing?.triz ?? null,
             execution_report: meta.execution_report ?? existing?.execution_report ?? null,
           }

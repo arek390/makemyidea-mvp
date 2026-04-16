@@ -57,16 +57,6 @@ const sanitizeFilenamePart = (value: string) => {
   return normalized || 'report'
 }
 
-const formatDate = (value?: number | null) => {
-  if (typeof value === 'number' && Number.isFinite(value)) {
-    const date = new Date(value)
-    if (!Number.isNaN(date.getTime())) {
-      return date.toISOString().slice(0, 10)
-    }
-  }
-  return new Date().toISOString().slice(0, 10)
-}
-
 export const downloadReportCsv = (
   snapshot: ReportSnapshot,
   items: ReportIdea[],

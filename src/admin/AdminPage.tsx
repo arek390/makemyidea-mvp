@@ -368,6 +368,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
 
   useEffect(() => {
     if (!authReady || !authUserId || adminAllowed !== 'yes' || !supabase) return
+    const sb = supabase
     let delayedRefreshTimer: number | null = null
     const scheduleRefresh = () => {
       if (delayedRefreshTimer) {
@@ -383,7 +384,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       scheduleRefresh()
     }
 
-    const channel = supabase
+    const channel = sb
       .channel('admin-session-costs')
       .on(
         'postgres_changes',
@@ -418,7 +419,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       }
       window.removeEventListener('focus', handleVisibilityOrFocus)
       document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
-      void supabase.removeChannel(channel)
+      void sb.removeChannel(channel)
     }
   }, [adminAllowed, authReady, authUserId, fetchReportRows])
 
