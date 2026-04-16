@@ -178,6 +178,8 @@ export const runLlmTask = async ({
   rateLimiter,
   rateLimitKey,
   sessionId = null,
+  skipPreprocess = false,
+  forceEscalation = false,
 }) => {
   let usageTotals = buildEmptyUsage()
   const finalize = async (payload) => {
@@ -221,17 +223,6 @@ export const runLlmTask = async ({
   }
 
   const safeInput = truncateInput(input)
-  const preprocessMessages = [
-    { role: 'system', content: PREPROCESS_SYSTEM_PROMPT },
-    {
-      role: 'user',
-      content: buildPreprocessUserPrompt({
-        task,
-        input: safeInput,
-        language,
-      }),
-    },
-  ]
 
   let preprocess = {
     cleaned_input: normalizeString(safeInput),
@@ -272,27 +263,46 @@ export const runLlmTask = async ({
   }
 
   let preprocessSucceeded = false
-  try {
-    logCoachSuggestStart(models.preprocess, preprocessMessages)
-    const result = await callOpenAIChat({
-      apiKey,
-      model: models.preprocess,
-      messages: preprocessMessages,
-      maxTokens: preprocessTokens,
-      temperature: 0.2,
-      timeoutMs,
-    })
-    usageTotals = mergeUsage(usageTotals, result.usage)
-    preprocess = resolvePreprocess(result.content, preprocess.cleaned_input)
-    preprocessSucceeded = preprocess.valid
-  } catch (err) {
-    logCoachSuggestError(err)
-    preprocessSucceeded = false
+  if (!skipPreprocess) {
+    const preprocessMessages = [
+      { role: 'system', content: PREPROCESS_SYSTEM_PROMPT },
+      {
+        role: 'user',
+        content: buildPreprocessUserPrompt({
+          task,
+          input: safeInput,
+          language,
+        }),
+      },
+    ]
+    try {
+      logCoachSuggestStart(models.preprocess, preprocessMessages)
+      const result = await callOpenAIChat({
+        apiKey,
+        model: models.preprocess,
+        messages: preprocessMessages,
+        maxTokens: preprocessTokens,
+        temperature: 0.2,
+        timeoutMs,
+      })
+      usageTotals = mergeUsage(usageTotals, result.usage)
+      preprocess = resolvePreprocess(result.content, preprocess.cleaned_input)
+      preprocessSucceeded = preprocess.valid
+    } catch (err) {
+      logCoachSuggestError(err)
+      preprocessSucceeded = false
+    }
   }
 
   const cleanedInput = preprocess.cleaned_input || normalizeString(safeInput)
   const summary = preprocess.summary
-  const escalated = preprocessSucceeded ? shouldEscalate({ cleanedInput, preprocess }) : false
+  const escalated = forceEscalation
+    ? true
+    : skipPreprocess
+      ? true
+      : preprocessSucceeded
+        ? shouldEscalate({ cleanedInput, preprocess })
+        : false
   const primaryModel = escalated ? models.escalation : models.default
   if (process.env.NODE_ENV !== 'production') {
     console.log('[ai] llm decision', {
@@ -357,6 +367,9 @@ export const runLlmTask = async ({
       },
     })
   } catch (error) {
+    if (error?.detail && typeof error.detail === 'string' && !String(error).includes('detail=')) {
+      error.message = `${String(error.message || error)} detail=${error.detail.slice(0, 2000)}`
+    }
     if (error?.usage) {
       usageTotals = mergeUsage(usageTotals, error.usage)
     }

@@ -1,4 +1,4 @@
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react'
 import './App.css'
 import {
@@ -24,7 +24,7 @@ import {
   type EngineSessionDetail,
   type EngineSessionSummary,
 } from './storage/sessionStore'
-import type { ReportSummary } from './storage/sessionStore'
+import type { ReportExecutionReport, ReportMeta, ReportSummary } from './storage/sessionStore'
 import { type CloudSessionPayload } from './lib/cloudSessions'
 import {
   fetchBoardItems,
@@ -65,6 +65,7 @@ import type { ReportSnapshot } from './report/exportCsv'
 import { AdminPage } from './admin/AdminPage'
 import { useAuthState } from './lib/authState'
 import { AiCostButton } from './components/AiCostButton'
+import { ActionPlanReadinessGauge } from './components/ActionPlanReadinessGauge'
 
 type StepId = 1 | 2 | 3 | 4
 type SpaceSlot = 'supersystem' | 'subsystem'
@@ -122,7 +123,7 @@ type LlmUsageMeta = {
   errorCategory?: string | null
 }
 
-type ModelUsage = { inputTokens: number; outputTokens: number; totalUSD: number }
+type ModelUsage = { inputTokens: number; outputTokens: number; totalUSD: number; eventsCount: number }
 type SessionUsage = {
   perModel: Record<string, ModelUsage>
   totalUSD: number
@@ -139,9 +140,21 @@ type SessionUsageSummaryRow = {
 }
 type SessionUsageEventRow = {
   model: string | null
+  model_used?: string | null
   tokens_input: number | null
   tokens_output: number | null
   usage_cost_usd: number | string | null
+}
+
+type ActionPlanReadinessLlmResult = {
+  summary: string
+  howToBoost: string
+  biggestBoostRightNow: string
+  qualityLevel: 'low' | 'medium' | 'high'
+  // Legacy / optional (kept for compatibility while the endpoint migrates).
+  insights?: string[]
+  improvements?: string[]
+  nextBestAction?: string
 }
 
 type FacilitationType = 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET'
@@ -357,7 +370,8 @@ type Translations = {
   appTitle: string
   landingHeroTitle: string
   landingHeroSubtitle: string
-  landingIntroTitleLines: [string, string, string]
+  landingHeroBullets: string[]
+  landingIntroTitleLines: string[]
   landingIntroSubtextLines: [string, string, string, string]
   landingIntroSubtextEmphasis: string
   landingCta: string
@@ -372,6 +386,9 @@ type Translations = {
   landingAfterList: string[]
   landingWhyLead: string
   landingWhyLines: string[]
+  landingHowTitle: string
+  landingHowSteps: { title: string; lines: string[] }[]
+  landingHowLines: string[]
   landingWhoTitle: string
   landingWhoList: string[]
   landingFinalLines: [string, string]
@@ -766,18 +783,25 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
   English: {
     stepLabel: 'Step',
     appTitle: 'Idea Clarity Grid',
-    landingHeroTitle: 'Turn idea chaos into a clear product.',
-    landingHeroSubtitle: 'No moderator. No sticky notes. No wasted time.',
+    landingHeroTitle: 'You have an idea.\nBut do you know what to do next?',
+    landingHeroSubtitle: 'Instead of another brainstorming session — move from idea to decisions and an action plan.',
+    landingHeroBullets: [
+      '🎤 Describe the idea (text or voice)',
+      '🧠 See what really doesn’t work',
+      '⚖️ Make the key decisions',
+      '📍 Leave with a ready plan',
+    ],
     landingIntroTitleLines: [
       CANONICAL_DISPLAY_HOST,
-      'guides you step by step',
-      'through product definition.',
+      'takes you from the first thought',
+      'to a concrete plan',
+      'step by step.',
     ],
     landingIntroSubtextLines: [
-      'Online or on-site.',
-      'Solo or with a team.',
-      'AI support (if you want), but...',
-      'always led by {emphasis}.',
+      '',
+      '',
+      '',
+      '',
     ],
     landingIntroSubtextEmphasis: 'you',
     landingCta: '▶ Start for free',
@@ -785,15 +809,34 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingThreeStepsCta: 'Zacznij w 3 krokach',
     landingThreeStepsTitle: '3 steps',
     landingBackToFull: '← Back to full page',
-    landingBeforeLead: 'If any of this sounds familiar — you are in the right place.',
-    landingBeforeList: ['❌ Chaos', '❌ Lost notes', '❌ No decisions'],
+    landingBeforeLead: 'Ideas are rarely bad.\nThe problem is a lack of clarity.',
+    landingBeforeList: [
+      'They fail because:',
+      '• conversations are chaotic',
+      '• problems aren’t clearly named',
+      '• decisions get postponed “for later”',
+      '',
+      '❌ Chaos.',
+      '❌ Unnamed problems.',
+      '❌ Delayed decisions.',
+      '',
+      'Sound familiar?',
+    ],
     landingBeforeEmphasis: {
       strong: '',
       medium: '',
       rest: '',
     },
-    landingAfterLead: 'Now the process works for you.',
-    landingAfterList: ['✅ Process', '✅ Structured questions', '✅ Report'],
+    landingAfterLead:
+      'It’s not an idea problem.\nIt’s simply hard to turn it into concrete decisions without the right structure.',
+    landingAfterList: [
+      'Instead of a blank board — you get a process that guides you:',
+      '✅ Your description becomes concrete observations.\nYou see what works — and what doesn’t.',
+      '✅ Contradictions reveal new directions.\nDecisions stop being postponed.',
+      '✅ In the end, you have a coherent action plan.',
+      '',
+      'No guessing. No chaos.',
+    ],
     landingWhyLead: 'We don’t replace thinking. We remove friction.',
     landingWhyLines: [
       CANONICAL_DISPLAY_HOST,
@@ -803,14 +846,25 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       'leaves people what matters most: decisions and creativity',
       'AI helps. Humans decide.',
     ],
+    landingHowTitle: 'How it works in practice:',
+    landingHowSteps: [],
+    landingHowLines: [
+      'You start with an idea — you type or speak.',
+      'You see the real state, without guessing.',
+      'The app organizes the problems',
+      'and asks questions that push you forward.',
+      'You see when you have enough data to decide.',
+      'Contradictions reveal new directions.',
+      'From chaos, a plan emerges.',
+    ],
     landingWhoTitle: 'Who is it for?',
     landingWhoList: [
-      '🚀 You have an idea, but can’t define it well',
-      '🛠️ You are a dev / PM and want real analysis, not brainstorming for sport',
+      '🚀 You have an idea, but don’t know how to define it well',
+      '🛠️ You are a dev / PM and want real analysis, not brainstorming “for sport”',
       '🤝 You work with a distributed or hybrid team',
-      '⏱️ You want results now, not after three workshops',
+      '⏱️ You want results in one session',
     ],
-    landingFinalLines: ['You don’t need a perfect idea.', 'You need a solid process.'],
+    landingFinalLines: ['You don’t need a perfect idea.', 'You need a process that gets you to a decision.'],
     landingPrivacyTitle: 'Privacy Policy',
     landingPrivacyBody:
       'We process account, session, board, report and AI usage data only to operate the product, paid features and admin diagnostics.',
@@ -902,7 +956,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     loginGuestMergeNo: 'No, discard',
     loginGuestMergeLoading: 'Importing...',
     loginDevSmtpNotice:
-      'Supabase default SMTP has a very low send limit. If you see 429, use password login or Google.',
+      "Can't find the email? Check spam, try again, or use Google.",
     loginDevResetAuth: 'Reset auth (dev)',
     steps: {
       1: 'Tell us about your new product',
@@ -999,7 +1053,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewSessionEmpty: 'Not created yet',
     enginePreviewCreateSession: 'Create session',
     enginePreviewReset: 'Save and close session',
-    enginePreviewCreateReport: 'Create report',
+    enginePreviewCreateReport: 'Analyze entries and build an action plan',
     enginePreviewBoardItemsTitle: 'Idea Studio',
     engineEntryLabelHint: 'Click to add or change label',
     engineEntryEditHint: 'Edit',
@@ -1007,7 +1061,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineEntryLabelActionHint: 'Label',
     engineEntryQuestionHint: 'Show source question',
     engineEntryQuestionFallback: 'This entry was created without a facilitation question.',
-    engineSectionAddEntryHint: 'Add item',
+    engineSectionAddEntryHint: 'Add item to this section',
     engineSectionAddEntryAria: (sectionTitle) => `Add item to ${sectionTitle}`,
     engineDraftRemoveEntry: 'Remove item',
     feedbackButtonLabel: 'Feedback',
@@ -1068,7 +1122,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineSessionDetailsQuestionsLabel: 'Questions',
     engineSessionDetailsBoardTitle: 'Idea Studio',
     engineSessionDetailsBoardEmpty: 'No items.',
-    engineFacilitationNote: 'I want to clarify',
+    engineFacilitationNote: 'Answer a focused question to move forward',
     engineFacilitationNext: 'Next question',
     engineFacilitationAsIs: 'How is it now?',
     engineFacilitationProblem: "What doesn't work?",
@@ -1293,18 +1347,25 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
   Polish: {
     stepLabel: 'Krok',
     appTitle: 'Idea Clarity Grid',
-    landingHeroTitle: 'Zamień chaos pomysłów w klarowny produkt.',
-    landingHeroSubtitle: 'Bez moderatora. Bez karteczek. Bez straty czasu.',
+    landingHeroTitle: 'Masz pomysł.\nAle czy wiesz, co z nim zrobić dalej?',
+    landingHeroSubtitle: 'Zamiast kolejnej burzy mózgów — przejdź od pomysłu do decyzji i planu działania.',
+    landingHeroBullets: [
+      '🎤 Opisz pomysł (tekstem lub głosem)',
+      '🧠 Zobacz, co naprawdę w nim nie działa',
+      '⚖️ Podejmij kluczowe decyzje',
+      '📍 Wyjdź z gotowym planem',
+    ],
     landingIntroTitleLines: [
       CANONICAL_DISPLAY_HOST,
-      'prowadzi Cię krok po kroku',
-      'przez proces definiowania produktu.',
+      'prowadzi Cię od pierwszej myśli',
+      'do konkretnego planu',
+      'krok po kroku.',
     ],
     landingIntroSubtextLines: [
-      'On-line lub on-site.',
-      'Solo lub z zespołem.',
-      'Wspierane przez AI (jeżeli chcesz), ale...',
-      'sterowane zawsze przez {emphasis}.',
+      '',
+      '',
+      '',
+      '',
     ],
     landingIntroSubtextEmphasis: 'Ciebie',
     landingCta: '▶ Zacznij za darmo',
@@ -1313,31 +1374,63 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingThreeStepsTitle: '3 kroki',
     landingBackToFull: '← Wróć do pełnej strony',
     landingBeforeLead: 'Jeśli choć jedno brzmi znajomo — jesteś w dobrym miejscu.',
-    landingBeforeList: ['❌ Chaos', '❌ Zgubione notatki', '❌ Brak decyzji'],
+    landingBeforeLead: 'Pomysły rzadko są złe.\nProblem to brak konkretu.',
+    landingBeforeList: [
+      'Upadają, bo:',
+      '• rozmowy są chaotyczne',
+      '• problemy nie są dobrze nazwane',
+      '• decyzje odkładane są „na później”',
+      '',
+      '❌ Chaos.',
+      '❌ Brak nazwanych problemów.',
+      '❌ Odkładane decyzje.',
+      '',
+      'Brzmi znajomo?',
+    ],
     landingBeforeEmphasis: {
       strong: '',
       medium: '',
       rest: '',
     },
-    landingAfterLead: 'Teraz proces pracuje dla Ciebie.',
-    landingAfterList: ['✅ Proces', '✅ Ustrukturyzowane pytania', '✅ Raport'],
+    landingAfterLead:
+      'To nie jest problem pomysłu.\nPo prostu trudno przełożyć go na konkretne decyzje bez odpowiedniej struktury.',
+    landingAfterList: [
+      'Zamiast pustej tablicy - masz proces, który prowadzi:',
+      '✅ Z Twojego opisu powstają konkretne obserwacje.\nWidzisz, co działa — i co nie.',
+      '✅ Sprzeczności pokazują nowe kierunki.\nDecyzje przestają się odkładać.',
+      '✅ Na końcu masz spójny plan działania.',
+      '',
+      'Bez zgadywania. Bez chaosu.',
+    ],
     landingWhyLead: 'Nie zastępujemy myślenia. Usuwamy tarcie.',
     landingWhyLines: [
       CANONICAL_DISPLAY_HOST,
-      'strukturyzuje rozmowę',
       'pilnuje logiki procesu',
+      'utrzymuje fokus',
       'porządkuje wiedzę w czasie rzeczywistym',
-      'zostawia ludziom to, co najważniejsze: decyzje i kreatywność',
-      'AI pomaga. Człowiek decyduje.',
+      'nie pozwala ominąć trudnych decyzji',
+      'AI pomaga.',
+      'Człowiek decyduje.',
+    ],
+    landingHowTitle: 'Jak to działa w praktyce:',
+    landingHowSteps: [],
+    landingHowLines: [
+      'Zaczynasz od pomysłu — piszesz lub mówisz.',
+      'Widzisz realny stan, bez zgadywania.',
+      'Aplikacja porządkuje problemy',
+      'i zadaje pytania, które pchają Cię dalej.',
+      'Widzisz, kiedy masz już dość danych na decyzje.',
+      'Sprzeczności pokazują nowe kierunki.',
+      'Z chaosu powstaje plan.',
     ],
     landingWhoTitle: 'Dla kogo?',
     landingWhoList: [
       '🚀 Masz pomysł, ale nie wiesz jak go dobrze zdefiniować',
       '🛠️ Jesteś devem / PM-em i chcesz sensownej analizy, nie burzy mózgów „dla sportu”',
       '🤝 Pracujesz z zespołem rozproszonym lub hybrydowym',
-      '⏱️ Chcesz efektów teraz, a nie po 3 warsztatach',
+      '⏱️ Chcesz efektów w jednej sesji',
     ],
-    landingFinalLines: ['Nie potrzebujesz idealnego pomysłu.', 'Potrzebujesz dobrego procesu.'],
+    landingFinalLines: ['Nie potrzebujesz idealnego pomysłu.', 'Potrzebujesz procesu, który doprowadzi Cię do decyzji.'],
     landingPrivacyTitle: 'Polityka prywatności',
     landingPrivacyBody:
       'Aplikacja MakeMyIdea.work zbiera podstawowe dane użytkownika, takie jak adres email oraz identyfikator konta Google, wyłącznie w celu umożliwienia logowania i korzystania z aplikacji.',
@@ -1430,7 +1523,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     loginGuestMergeNo: 'Nie, odrzuć',
     loginGuestMergeLoading: 'Importowanie...',
     loginDevSmtpNotice:
-      'Supabase default SMTP ma bardzo niski limit wysyłek. Jeśli widzisz 429, użyj logowania hasłem lub Google.',
+      'Nie widzisz maila? Sprawdź spam lub spróbuj jeszcze raz albo przez Google.',
     loginDevResetAuth: 'Zresetuj auth (dev)',
     steps: {
       1: 'Opowiedz o swoim nowym produkcie',
@@ -1596,7 +1689,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     enginePreviewSessionEmpty: 'Jeszcze nie utworzono',
     enginePreviewCreateSession: 'Utwórz sesję',
     enginePreviewReset: 'Zapisz i zamknij sesję',
-    enginePreviewCreateReport: 'Utwórz raport',
+    enginePreviewCreateReport: 'Przeanalizuj wpisy i ułóż plan działania',
     enginePreviewBoardItemsTitle: 'Pracownia pomysłu',
     engineEntryLabelHint: 'Kliknij żeby dodać lub zmienić etykietę',
     engineEntryEditHint: 'Edytuj',
@@ -1604,7 +1697,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineEntryLabelActionHint: 'Etykieta',
     engineEntryQuestionHint: 'Pokaż pytanie źródłowe',
     engineEntryQuestionFallback: 'Wpis powstał bez pytania facylitującego.',
-    engineSectionAddEntryHint: 'Dodaj wpis',
+    engineSectionAddEntryHint: 'Dodaj wpis do tej sekcji',
     engineSectionAddEntryAria: (sectionTitle) => `Dodaj wpis do sekcji ${sectionTitle}`,
     engineDraftRemoveEntry: 'Usuń wpis',
     feedbackButtonLabel: 'Feedback',
@@ -1665,7 +1758,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineSessionDetailsQuestionsLabel: 'Zapytania',
     engineSessionDetailsBoardTitle: 'Pracownia pomysłu',
     engineSessionDetailsBoardEmpty: 'Brak elementów.',
-    engineFacilitationNote: 'Chcę doprecyzować',
+    engineFacilitationNote: 'Odpowiedz na konkretne pytanie, żeby iść dalej',
     engineFacilitationNext: 'Następne pytanie',
     engineFacilitationAsIs: 'Jak jest?',
     engineFacilitationProblem: 'Co nie działa?',
@@ -2370,6 +2463,7 @@ function App() {
   const [isSuggestLoading, setIsSuggestLoading] = useState(false)
   const [showSuggestLoadingUI, setShowSuggestLoadingUI] = useState(false)
   const [engineSessionId, setEngineSessionId] = useState<string | null>(null)
+  const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
   const [confirmRemoveOpen, setConfirmRemoveOpen] = useState(false)
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(false)
   const [llmApiBase, setLlmApiBase] = useState(DEFAULT_LLM_API_BASE)
@@ -2379,6 +2473,23 @@ function App() {
   const [llmSaved, setLlmSaved] = useState(false)
   const [llmUsageModel, setLlmUsageModel] = useState<LlmUsageModel | null>(null)
   const [sessionUsage, setSessionUsage] = useState<SessionUsage>(() => createEmptySessionUsage())
+  const [sessionUsageDiagnostics, setSessionUsageDiagnostics] = useState<{
+    sessionId: string | null
+    summaryQueryStatus: 'idle' | 'running' | 'ok' | 'error'
+    eventsQueryStatus: 'idle' | 'running' | 'ok' | 'error'
+    realtimeStatus: string | null
+    summaryError: { code: string | null; message: string; details: string | null; hint: string | null } | null
+    eventsError: { code: string | null; message: string; details: string | null; hint: string | null } | null
+    lastCheckedAt: number | null
+  }>(() => ({
+    sessionId: null,
+    summaryQueryStatus: 'idle',
+    eventsQueryStatus: 'idle',
+    realtimeStatus: null,
+    summaryError: null,
+    eventsError: null,
+    lastCheckedAt: null,
+  }))
   const [usdPlnRate, setUsdPlnRate] = useState<number | null>(() => {
     return getFreshFxRate()
   })
@@ -2395,11 +2506,84 @@ function App() {
   const diagnosticsEnabledForUser = isAdmin && diagnosticsEnabled
   const [reportCreatePriceMinor, setReportCreatePriceMinor] = useState<number | null>(null)
   const [reportCreatePriceLoading, setReportCreatePriceLoading] = useState(false)
+  const [reportNavigationLoading, setReportNavigationLoading] = useState(false)
+  const [engineBoardLayoutVersion, setEngineBoardLayoutVersion] = useState(0)
+  const wasTopupOpenRef = useRef(false)
   const [topupLoadingTier, setTopupLoadingTier] = useState<'S' | 'M' | 'L' | null>(null)
 
   const suggestDiagEnabled =
     import.meta.env.VITE_SUGGEST_DIAG === '1' || diagnosticsEnabledForUser
   const showDiagnostics = diagnosticsEnabledForUser
+  const isEnvEnabled = (value: unknown) => value === '1' || value === 'true'
+  const seedClassificationMode =
+    String(import.meta.env.VITE_SEED_CLASSIFICATION_MODE || '').trim() || 'full_3x3 (default)'
+  const useColumnFirstSeedMode = seedClassificationMode === 'column_first'
+  // This section is part of the standard Engine view (not diagnostics-only).
+  const actionPlanReadinessEnabled = isEnvEnabled(import.meta.env.VITE_ACTION_PLAN_READINESS_ENABLED)
+  const actionPlanReadinessLlmEnabled =
+    actionPlanReadinessEnabled && isEnvEnabled(import.meta.env.VITE_ACTION_PLAN_READINESS_LLM_ENABLED)
+  const [actionPlanReadinessLlmCache, setActionPlanReadinessLlmCache] = useState<{
+    lastEvaluatedCount: number
+    lastEvaluatedCoverage: number | null
+    lastAttemptedAt: number | null
+    lastAttemptedCount: number
+    lastAttemptedCoverage: number | null
+    lastLLMResult: ActionPlanReadinessLlmResult | null
+    loading: boolean
+    pending: boolean
+  }>(() => ({
+    lastEvaluatedCount: 0,
+    lastEvaluatedCoverage: null,
+    lastAttemptedAt: null,
+    lastAttemptedCount: 0,
+    lastAttemptedCoverage: null,
+    lastLLMResult: null,
+    loading: false,
+    pending: false,
+  }))
+  const actionPlanReadinessLlmCacheRef = useRef(actionPlanReadinessLlmCache)
+  useEffect(() => {
+    actionPlanReadinessLlmCacheRef.current = actionPlanReadinessLlmCache
+  }, [actionPlanReadinessLlmCache])
+  const actionPlanReadinessLlmSeqRef = useRef(0)
+  const actionPlanReadinessLlmInFlightRef = useRef(false)
+  const actionPlanReadinessLlmDebounceRef = useRef<number | null>(null)
+  const actionPlanReadinessLastTotalCountRef = useRef(0)
+  const logActionPlanReadinessLlm = useEffectEvent(
+    (payload: {
+      triggered: boolean
+      reason: string
+      meaningfulItemsCount: number
+      lastEvaluatedCount: number
+      usedFallback: boolean
+    }) => {
+      if (!actionPlanReadinessEnabled) return
+      console.log('[readiness][llm]', payload)
+    }
+  )
+
+  useEffect(() => {
+    if (!actionPlanReadinessEnabled) return
+    if (!enginePreviewSessionId) return
+    // Reset per-session so existing sessions can bootstrap a first LLM insight.
+    setActionPlanReadinessLlmCache({
+      lastEvaluatedCount: 0,
+      lastEvaluatedCoverage: null,
+      lastAttemptedAt: null,
+      lastAttemptedCount: 0,
+      lastAttemptedCoverage: null,
+      lastLLMResult: null,
+      loading: false,
+      pending: false,
+    })
+    actionPlanReadinessLlmSeqRef.current += 1
+    actionPlanReadinessLlmInFlightRef.current = false
+    actionPlanReadinessLastTotalCountRef.current = 0
+    if (actionPlanReadinessLlmDebounceRef.current) {
+      window.clearTimeout(actionPlanReadinessLlmDebounceRef.current)
+      actionPlanReadinessLlmDebounceRef.current = null
+    }
+  }, [actionPlanReadinessEnabled, enginePreviewSessionId])
   const llmHeaders = useMemo(
     () => {
       const headers: Record<string, string> = {
@@ -2413,6 +2597,19 @@ function App() {
     },
     [aiSupportEnabled, diagnosticsEnabledForUser]
   )
+
+  const waitForActionPlanReadinessLlmSettled = useEffectEvent(async (timeoutMs: number) => {
+    if (!actionPlanReadinessLlmEnabled) return
+    const start = Date.now()
+    while (Date.now() - start < timeoutMs) {
+      const cache = actionPlanReadinessLlmCacheRef.current
+      // If we have any LLM result, we're done.
+      if (cache.lastLLMResult) return
+      // If an attempt was made and we're no longer loading, consider it "settled" (even if it failed/fell back).
+      if (cache.lastAttemptedAt && !cache.loading) return
+      await new Promise((r) => window.setTimeout(r, 120))
+    }
+  })
   const triggerInsufficientBalance = () => {
     const currentBalance = billingBalanceOverrideMinor ?? billingAccount.balanceMinor
     setInsufficientBalanceState({
@@ -2432,70 +2629,237 @@ function App() {
     if (!meta) return
     setLlmUsageModel(resolveUsageModel(meta))
   }
+  const normalizeSupabaseError = (value: unknown) => {
+    if (!value) return null
+    if (value instanceof Error) {
+      const anyErr = value as unknown as { code?: unknown; details?: unknown; hint?: unknown }
+      return {
+        code: typeof anyErr.code === 'string' ? anyErr.code : null,
+        message: value.message || 'UNKNOWN_ERROR',
+        details: typeof anyErr.details === 'string' ? anyErr.details : null,
+        hint: typeof anyErr.hint === 'string' ? anyErr.hint : null,
+      }
+    }
+    if (typeof value === 'object') {
+      const anyErr = value as Record<string, unknown>
+      return {
+        code: typeof anyErr.code === 'string' ? anyErr.code : null,
+        message: typeof anyErr.message === 'string' ? anyErr.message : 'UNKNOWN_ERROR',
+        details: typeof anyErr.details === 'string' ? anyErr.details : null,
+        hint: typeof anyErr.hint === 'string' ? anyErr.hint : null,
+      }
+    }
+    return { code: null, message: String(value), details: null, hint: null }
+  }
+  const sessionAiCostEventsHasModelUsedRef = useRef<boolean | null>(null)
+  const sessionUsageRefreshInFlightRef = useRef(false)
+  const sessionUsageRefreshPendingSessionRef = useRef<string | null>(null)
   const refreshSessionUsage = useEffectEvent(async (sessionId: string | null | undefined) => {
     const normalizedSessionId = String(sessionId || '').trim()
     const userId = authSession?.user?.id ?? null
+    if (sessionUsageRefreshInFlightRef.current) {
+      sessionUsageRefreshPendingSessionRef.current = normalizedSessionId || null
+      return
+    }
     if (!normalizedSessionId || !client || !userId) {
-      setSessionUsage(createEmptySessionUsage())
+      // Avoid transient resets in admin diagnostics (e.g. auth/session still resolving).
+      if (!diagnosticsEnabledForUser) {
+        setSessionUsage(createEmptySessionUsage())
+      }
+      if (diagnosticsEnabledForUser) {
+        setSessionUsageDiagnostics((prev) => ({
+          ...prev,
+          sessionId: normalizedSessionId || null,
+          summaryQueryStatus: 'idle',
+          eventsQueryStatus: 'idle',
+          summaryError: null,
+          eventsError: null,
+          lastCheckedAt: Date.now(),
+        }))
+      }
       return
     }
 
-    const [summaryRes, eventsRes] = await Promise.all([
-      ((client
-        .from('session_ai_cost_summary' as never)
-        .select(
-          'session_id,user_id,total_tokens_input,total_tokens_output,total_usage_cost_usd,total_usage_cost_pln'
-        )
-        .eq('session_id', normalizedSessionId)
-        .eq('user_id', userId)
-        .maybeSingle() as unknown) as Promise<{ data: SessionUsageSummaryRow | null; error: unknown }>),
-      ((client
-        .from('session_ai_cost_events' as never)
-        .select('model,tokens_input,tokens_output,usage_cost_usd')
-        .eq('session_id', normalizedSessionId)
-        .eq('user_id', userId) as unknown) as Promise<{ data: SessionUsageEventRow[] | null; error: unknown }>),
-    ])
-
-    if (summaryRes.error || eventsRes.error) {
-      if (import.meta.env.DEV) {
-        console.error('[session usage] fetch failed', {
+    sessionUsageRefreshInFlightRef.current = true
+    sessionUsageRefreshPendingSessionRef.current = null
+    try {
+      if (diagnosticsEnabledForUser) {
+        console.log('[session usage] refresh start', { sessionId: normalizedSessionId, userId, at: Date.now() })
+        setSessionUsageDiagnostics((prev) => ({
+          ...prev,
           sessionId: normalizedSessionId,
-          summaryError: summaryRes.error,
-          eventsError: eventsRes.error,
+          summaryQueryStatus: 'running',
+          eventsQueryStatus: 'running',
+          summaryError: null,
+          eventsError: null,
+          lastCheckedAt: Date.now(),
+        }))
+      }
+
+      const [summaryRes, eventsRes] = await Promise.all([
+        ((client
+          .from('session_ai_cost_summary' as never)
+          .select(
+            'session_id,user_id,total_tokens_input,total_tokens_output,total_usage_cost_usd,total_usage_cost_pln'
+          )
+          .eq('session_id', normalizedSessionId)
+          .eq('user_id', userId)
+          .maybeSingle() as unknown) as Promise<{ data: SessionUsageSummaryRow | null; error: unknown }>),
+        (async () => {
+          const runSelect = async (columns: string) => {
+            return (await (client
+              .from('session_ai_cost_events' as never)
+              .select(columns)
+              .eq('session_id', normalizedSessionId)
+              .eq('user_id', userId) as unknown)) as {
+              data: SessionUsageEventRow[] | null
+              error: unknown
+            }
+          }
+
+          if (sessionAiCostEventsHasModelUsedRef.current === false) {
+            return runSelect('model,tokens_input,tokens_output,usage_cost_usd')
+          }
+
+          const first = await runSelect('model,model_used,tokens_input,tokens_output,usage_cost_usd')
+          const normalizedFirstError = normalizeSupabaseError(first.error)
+          if (normalizedFirstError?.code === '42703' || normalizedFirstError?.code === 'PGRST204') {
+            sessionAiCostEventsHasModelUsedRef.current = false
+            if (diagnosticsEnabledForUser) {
+              console.warn('[session usage] events select retry (no model_used)', {
+                sessionId: normalizedSessionId,
+                error: normalizedFirstError,
+                at: Date.now(),
+              })
+            }
+            return runSelect('model,tokens_input,tokens_output,usage_cost_usd')
+          }
+          sessionAiCostEventsHasModelUsedRef.current = true
+          return first
+        })(),
+      ])
+
+      const summaryError = normalizeSupabaseError(summaryRes.error)
+      const eventsError = normalizeSupabaseError(eventsRes.error)
+      const summaryRow = summaryRes.data
+      const eventsRows = Array.isArray(eventsRes.data) ? eventsRes.data : []
+
+      if (diagnosticsEnabledForUser) {
+        console.log('[session usage] summary select result', {
+          sessionId: normalizedSessionId,
+          ok: !summaryError,
+          row: summaryRow,
+          error: summaryError,
+          at: Date.now(),
+        })
+        console.log('[session usage] events select result', {
+          sessionId: normalizedSessionId,
+          ok: !eventsError,
+          rowsCount: eventsRows.length,
+          rows: eventsRows,
+          error: eventsError,
+          at: Date.now(),
         })
       }
-      setSessionUsage(createEmptySessionUsage())
-      return
-    }
 
-    const summary = summaryRes.data
-    const events = Array.isArray(eventsRes.data) ? eventsRes.data : []
-    const perModel = events.reduce<Record<string, ModelUsage>>((acc, row) => {
-      const model = String(row.model || '').trim()
-      if (!model) return acc
-      const inputTokens = Number(row.tokens_input ?? 0) || 0
-      const outputTokens = Number(row.tokens_output ?? 0) || 0
-      const totalUSD = Number(row.usage_cost_usd ?? 0) || 0
-      const previous = acc[model] ?? { inputTokens: 0, outputTokens: 0, totalUSD: 0 }
-      acc[model] = {
-        inputTokens: previous.inputTokens + inputTokens,
-        outputTokens: previous.outputTokens + outputTokens,
-        totalUSD: previous.totalUSD + totalUSD,
+      if (summaryRes.error || eventsRes.error) {
+        if (diagnosticsEnabledForUser) {
+          console.error('[session usage] fetch failed', {
+            sessionId: normalizedSessionId,
+            summaryError,
+            eventsError,
+            at: Date.now(),
+          })
+          setSessionUsageDiagnostics((prev) => ({
+            ...prev,
+            sessionId: normalizedSessionId,
+            summaryQueryStatus: summaryError ? 'error' : 'ok',
+            eventsQueryStatus: eventsError ? 'error' : 'ok',
+            summaryError,
+            eventsError,
+            lastCheckedAt: Date.now(),
+          }))
+        }
+        // Don't mask errors as "0 tokens" in admin diagnostics; preserve last known values.
+        if (!diagnosticsEnabledForUser) {
+          setSessionUsage(createEmptySessionUsage())
+        }
+        return
       }
-      return acc
-    }, {})
 
-    const totalInput = Number(summary?.total_tokens_input ?? 0) || 0
-    const totalOutput = Number(summary?.total_tokens_output ?? 0) || 0
-    const totalUSD = Number(summary?.total_usage_cost_usd ?? 0) || 0
-    const totalPLNRaw = Number(summary?.total_usage_cost_pln ?? NaN)
-    setSessionUsage({
-      perModel,
-      totalUSD,
-      totalPLN: Number.isFinite(totalPLNRaw) ? totalPLNRaw : null,
-      totalTokens: totalInput + totalOutput,
-    })
+      if (diagnosticsEnabledForUser) {
+        setSessionUsageDiagnostics((prev) => ({
+          ...prev,
+          sessionId: normalizedSessionId,
+          summaryQueryStatus: 'ok',
+          eventsQueryStatus: 'ok',
+          summaryError: null,
+          eventsError: null,
+          lastCheckedAt: Date.now(),
+        }))
+        console.log('[session usage] refresh finish', { sessionId: normalizedSessionId, at: Date.now() })
+      }
+
+      const perModel = eventsRows.reduce<Record<string, ModelUsage>>((acc, row) => {
+        const model = String(row.model || row.model_used || '').trim()
+        if (!model) return acc
+        const inputTokens = Number(row.tokens_input ?? 0) || 0
+        const outputTokens = Number(row.tokens_output ?? 0) || 0
+        const totalUSD = Number(row.usage_cost_usd ?? 0) || 0
+        const previous = acc[model] ?? { inputTokens: 0, outputTokens: 0, totalUSD: 0, eventsCount: 0 }
+        acc[model] = {
+          inputTokens: previous.inputTokens + inputTokens,
+          outputTokens: previous.outputTokens + outputTokens,
+          totalUSD: previous.totalUSD + totalUSD,
+          eventsCount: previous.eventsCount + 1,
+        }
+        return acc
+      }, {})
+
+      const totalInput = Number(summaryRow?.total_tokens_input ?? 0) || 0
+      const totalOutput = Number(summaryRow?.total_tokens_output ?? 0) || 0
+      const totalUSD = Number(summaryRow?.total_usage_cost_usd ?? 0) || 0
+      const totalPLNRaw = Number(summaryRow?.total_usage_cost_pln ?? NaN)
+      setSessionUsage({
+        perModel,
+        totalUSD,
+        totalPLN: Number.isFinite(totalPLNRaw) ? totalPLNRaw : null,
+        totalTokens: totalInput + totalOutput,
+      })
+    } catch (error) {
+      const normalizedError = normalizeSupabaseError(error)
+      if (diagnosticsEnabledForUser) {
+        console.error('[session usage] refresh exception', {
+          sessionId: normalizedSessionId,
+          error: normalizedError,
+          at: Date.now(),
+        })
+        setSessionUsageDiagnostics((prev) => ({
+          ...prev,
+          sessionId: normalizedSessionId,
+          summaryQueryStatus: 'error',
+          eventsQueryStatus: 'error',
+          summaryError: normalizedError,
+          eventsError: normalizedError,
+          lastCheckedAt: Date.now(),
+        }))
+      } else {
+        setSessionUsage(createEmptySessionUsage())
+      }
+    } finally {
+      sessionUsageRefreshInFlightRef.current = false
+      const pending = sessionUsageRefreshPendingSessionRef.current
+      sessionUsageRefreshPendingSessionRef.current = null
+      if (pending) {
+        void refreshSessionUsage(pending)
+      }
+    }
   })
+
+  const refreshSessionUsageRef = useRef(refreshSessionUsage)
+  useEffect(() => {
+    refreshSessionUsageRef.current = refreshSessionUsage
+  }, [refreshSessionUsage])
   const applyUsageToSession = async (
     meta?: LlmUsageMeta,
     sessionIdOverride?: string | null
@@ -2579,7 +2943,6 @@ function App() {
   })
   const reportLanguage = uiLanguage
   const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
-  const [enginePreviewSessionId, setEnginePreviewSessionId] = useState<string | null>(null)
   const [enginePreviewSessionName, setEnginePreviewSessionName] = useState('')
   const [engineSessionPersisted, setEngineSessionPersisted] = useState(false)
   const [engineNamePromptOpen, setEngineNamePromptOpen] = useState(false)
@@ -2835,15 +3198,36 @@ function App() {
   useEffect(() => {
     const supabaseClient = client
     if (!supabaseClient || !isAuthed || !activeUsageSessionId) return
+    if (showDiagnostics) {
+      console.log('[session usage][realtime] subscribe start', { sessionId: activeUsageSessionId, at: Date.now() })
+      setSessionUsageDiagnostics((prev) => ({
+        ...prev,
+        sessionId: String(activeUsageSessionId || '').trim() || null,
+        realtimeStatus: 'SUBSCRIBING',
+      }))
+    }
+    let subscribeStatusTimeout: number | null = null
+    if (showDiagnostics) {
+      subscribeStatusTimeout = window.setTimeout(() => {
+        setSessionUsageDiagnostics((prev) => {
+          if (prev.realtimeStatus && prev.realtimeStatus !== 'SUBSCRIBING') return prev
+          console.warn('[session usage][realtime] subscribe timeout', {
+            sessionId: activeUsageSessionId,
+            at: Date.now(),
+          })
+          return { ...prev, realtimeStatus: 'SUBSCRIBE_TIMEOUT' }
+        })
+      }, 6000)
+    }
     let delayedRefreshTimer: number | null = null
     const scheduleRefresh = () => {
-      void refreshSessionUsage(activeUsageSessionId)
+      void refreshSessionUsageRef.current(activeUsageSessionId)
       if (delayedRefreshTimer) {
         window.clearTimeout(delayedRefreshTimer)
       }
       // Refresh once more shortly after the event so the summary view can catch up.
       delayedRefreshTimer = window.setTimeout(() => {
-        void refreshSessionUsage(activeUsageSessionId)
+        void refreshSessionUsageRef.current(activeUsageSessionId)
       }, 250)
     }
 
@@ -2857,19 +3241,45 @@ function App() {
           table: 'session_ai_cost_events',
           filter: `session_id=eq.${activeUsageSessionId}`,
         },
-        () => {
+        (payload) => {
+          if (showDiagnostics) {
+            console.log('[session usage][realtime] event', {
+              sessionId: activeUsageSessionId,
+              payload,
+              at: Date.now(),
+            })
+          }
           scheduleRefresh()
         }
       )
-      .subscribe()
+      .subscribe((status) => {
+        if (showDiagnostics) {
+          console.log('[session usage][realtime] status', { sessionId: activeUsageSessionId, status, at: Date.now() })
+        }
+        if (subscribeStatusTimeout) {
+          window.clearTimeout(subscribeStatusTimeout)
+          subscribeStatusTimeout = null
+        }
+        setSessionUsageDiagnostics((prev) => {
+          const nextSessionId = String(activeUsageSessionId || '').trim() || null
+          if (prev.realtimeStatus === status && prev.sessionId === nextSessionId) return prev
+          return { ...prev, sessionId: nextSessionId, realtimeStatus: status }
+        })
+      })
 
     return () => {
       if (delayedRefreshTimer) {
         window.clearTimeout(delayedRefreshTimer)
       }
+      if (subscribeStatusTimeout) {
+        window.clearTimeout(subscribeStatusTimeout)
+      }
+      if (showDiagnostics) {
+        console.log('[session usage][realtime] unsubscribe', { sessionId: activeUsageSessionId, at: Date.now() })
+      }
       void supabaseClient.removeChannel(channel)
     }
-  }, [activeUsageSessionId, client, isAuthed, refreshSessionUsage])
+  }, [activeUsageSessionId, client, isAuthed, showDiagnostics])
 
   const logFacilitationEvent = (event: string, payload: Record<string, unknown>) => {
     if (!isDebugEnabled()) return
@@ -4385,9 +4795,20 @@ const isAuthFlowInProgress = () => {
       authSession?.user?.email ||
       ''
     const userName = String(userNameCandidate || '').trim() || '—'
-    const reportIdeas = engineSessionDetail?.boardItems?.length
-      ? engineSessionDetail.boardItems
-      : enginePreviewItems
+    const sessionId =
+      enginePreviewSessionId ||
+      engineSessionDetail?.session?.id ||
+      (typeof window !== 'undefined'
+        ? window.sessionStorage.getItem('reportReturnSessionId')
+        : null) ||
+      null
+    const reportMeta = getReportMetaForSession(sessionId)
+    const reportIdeas =
+      engineSessionDetail?.boardItems?.length
+        ? engineSessionDetail.boardItems
+        : enginePreviewItems.length
+          ? enginePreviewItems
+          : reportMeta?.ideas || []
     const ideas = reportIdeas.map((item, index) => ({
       id: item.id || `idea-${index + 1}`,
       text: item.text,
@@ -4406,8 +4827,6 @@ const isAuthFlowInProgress = () => {
       const updatedAt = Number(item.updated_at || item.created_at || 0)
       return Math.max(max, updatedAt)
     }, 0)
-    const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id || null
-    const reportMeta = getReportMetaForSession(sessionId)
     const reportSnapshotMeta = reportMeta
       ? {
           createdAt: reportMeta.created_at ?? null,
@@ -4417,6 +4836,7 @@ const isAuthFlowInProgress = () => {
           ideas: reportMeta.ideas ?? null,
           recommendations: reportMeta.recommendations ?? null,
           triz: reportMeta.triz ?? null,
+          execution_report: reportMeta.execution_report ?? null,
           lang: reportMeta.lang ?? null,
         }
       : null
@@ -5976,6 +6396,53 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return cellCodeToMatrix(suggestedCellId)
   }
 
+  const classifyFreeEntryWithSeedMechanism = async (sessionId: string, text: string) => {
+    const result = await fetchJsonWithDiagnostics('/api/coach?action=suggest', {
+      method: 'POST',
+      headers: llmHeaders,
+      body: JSON.stringify({
+        currentUserId: authSession?.user?.id ?? null,
+        sessionId,
+        action: 'seed_from_brief',
+        text,
+        locale: uiLanguage === 'Polish' ? 'pl' : 'en',
+      }),
+    })
+    const payload = result.json as
+      | {
+          ok?: boolean
+          entries?: Array<{
+            text?: string
+            cellCode?: string | null
+          }>
+          meta?: LlmUsageMeta
+        }
+      | null
+    if (!result.ok || !payload?.ok || !Array.isArray(payload.entries)) {
+      return null
+    }
+    applyUsageModel(payload.meta)
+    void applyUsageToSession(payload.meta, sessionId)
+    const normalizedInput = String(text || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .toLowerCase()
+    const matchedEntry =
+      payload.entries.find((entry) => {
+        const candidate = String(entry?.text || '')
+          .trim()
+          .replace(/\s+/g, ' ')
+          .toLowerCase()
+        return candidate === normalizedInput
+      }) ??
+      payload.entries.find((entry) => Boolean(entry?.cellCode)) ??
+      payload.entries[0]
+    const cellCode = String(matchedEntry?.cellCode || '')
+      .trim()
+      .toUpperCase()
+    return cellCode ? cellCodeToMatrix(cellCode) : null
+  }
+
   const activateFacilitationPrompt = async (
     type: FacilitationType,
     perspective: FacilitationPerspective,
@@ -6007,7 +6474,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
     engineFacilitationLoadingTimerRef.current = window.setTimeout(() => {
       setShowEngineFacilitationLoadingUI(true)
-    }, 300)
+    }, 1000)
     setEnginePreviewError(null)
     setEngineFacilitationDiagnostics(null)
     const endpoint = '/api/coach?action=suggest'
@@ -6836,16 +7303,27 @@ const isMissingLabel = (item: EngineBoardItem) => {
         entryType === 'free_input' && targetSectionOverride
           ? await classifyFacilitatedEntryWithinPerspective(sessionId, text, targetSectionOverride)
           : null
+      const classifiedGenericFreeInputCell =
+        entryType === 'free_input' && !targetSectionOverride
+          ? await classifyFreeEntryWithSeedMechanism(sessionId, text)
+          : null
       // Source of truth for report cell mapping: EngineBoardItem.matrix_row/matrix_col.
       // For facilitation answers, the active perspective locks the column and LLM picks only the row.
       const mappedRow =
         entryType === 'facilitated_input'
           ? classifiedFacilitationCell?.matrix_row ?? toMatrixRowKey('B')
-          : classifiedTargetedFreeInputCell?.matrix_row ?? null
+          : classifiedTargetedFreeInputCell?.matrix_row ??
+            classifiedGenericFreeInputCell?.matrix_row ??
+            null
+      const forcedRow = useColumnFirstSeedMode ? toMatrixRowKey('B') : null
+      const finalMappedRow = forcedRow ?? mappedRow
       const mappedCol =
         entryType === 'facilitated_input'
           ? classifiedFacilitationCell?.matrix_col ?? toMatrixColKey(facilitationModeCode)
-          : classifiedTargetedFreeInputCell?.matrix_col ?? targetSectionOverride ?? null
+          : classifiedTargetedFreeInputCell?.matrix_col ??
+            classifiedGenericFreeInputCell?.matrix_col ??
+            targetSectionOverride ??
+            null
       const questionText =
         entryType === 'facilitated_input'
           ? engineLastQuestionText || engineActivePrompt?.text || null
@@ -6863,18 +7341,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
         updated_at: now,
         entry_type: entryType,
         prompt_type: engineActivePrompt?.type || null,
-        matrix_row: mappedRow,
+        matrix_row: finalMappedRow,
         matrix_col: mappedCol,
         sort_order: nextSortOrder,
-        lastClassifiedText: mappedRow && mappedCol ? text : null,
-        classificationDirty: mappedRow && mappedCol ? false : true,
+        lastClassifiedText: finalMappedRow && mappedCol ? text : null,
+        classificationDirty: finalMappedRow && mappedCol ? false : true,
       }
       let persistedItem = newItem
       const payload = {
         sessionId,
         text: text.trim(),
         label: null,
-        matrixRow: mappedRow ?? null,
+        matrixRow: finalMappedRow ?? null,
         matrixCol: mappedCol ?? null,
         sortOrder: nextSortOrder,
         questionId: newItem.question_id ?? null,
@@ -7150,11 +7628,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
       for (const entry of entries) {
         const entryText = String(entry?.text || '').trim()
         const mapped = entry?.cellCode ? cellCodeToMatrix(String(entry.cellCode)) : null
+        const forcedSeedRow = useColumnFirstSeedMode ? toMatrixRowKey('B') : null
         if (!entryText) continue
         if (!firstNormalizedEntry) {
           firstNormalizedEntry = {
             text: entryText.slice(0, 160),
-            matrixRow: mapped?.matrix_row ?? null,
+            matrixRow: forcedSeedRow ?? mapped?.matrix_row ?? null,
             matrixCol: mapped?.matrix_col ?? null,
           }
         }
@@ -7168,7 +7647,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             sessionId,
             text: entryText,
             label: null,
-            matrixRow: mapped?.matrix_row ?? null,
+            matrixRow: forcedSeedRow ?? mapped?.matrix_row ?? null,
             matrixCol: mapped?.matrix_col ?? null,
             sortOrder: nextSortOrderBase,
             entryType: 'free_input',
@@ -7235,7 +7714,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
         sourceItems = inserted
       }
       const normalizedItems = normalizeBoardItems(sourceItems)
-      setEnginePreviewItems(normalizedItems)
       const detail = await getSession(sessionId)
       const now = Date.now()
       const nextDetail: EngineSessionDetail = {
@@ -7256,16 +7734,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         report: detail?.report || null,
       }
       await updateSession(nextDetail)
-      if (engineSessionDetail?.session?.id === sessionId) {
-        setEngineSessionDetail(nextDetail)
-      }
       await persistInitialBriefToUserSessionPayload(userId, sessionId, text)
-      setEngineInitialBriefOpen(false)
-      setEngineInitialBriefText('')
-      setEngineInitialBriefVoicePreview('')
-      setEngineInitialBriefError(null)
-      setEngineUiState('FREE_FLOW')
-      setEngineInputFocused(true)
       if (upsertFailureCount > 0 && upsertSuccessCount > 0) {
         const partialSaveMessage = `${copy.engineInitialBriefPartialSaveFailed(
           upsertSuccessCount,
@@ -7288,6 +7757,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
             : copy.engineInitialBriefSaveFailed
         showEngineNotice(saveFailedMessage, 'error')
       }
+      await openEngineSession(sessionId)
+      // Keep the "Creating entries…" screen visible until the readiness LLM finishes its first pass,
+      // to avoid layout "jumping" while the section hydrates.
+      await waitForActionPlanReadinessLlmSettled(10_000)
+      setEngineInitialBriefOpen(false)
+      setEngineInitialBriefText('')
+      setEngineInitialBriefVoicePreview('')
+      setEngineInitialBriefError(null)
+      setEngineUiState('FREE_FLOW')
+      setEngineInputFocused(true)
       engineInputRef.current?.focus()
     } catch (error) {
       setEngineInitialBriefError(copy.engineInitialBriefFailed)
@@ -7372,10 +7851,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
   const estimateEngineEntryRowSpan = (item: EngineBoardItem, layoutClass: string) => {
     const textLength = String(item.text || '').trim().length
-    const base =
-      layoutClass === 'is-hero' ? 24 : layoutClass === 'is-wide' ? 18 : 14
-    const growth = layoutClass === 'is-hero' ? 36 : layoutClass === 'is-wide' ? 42 : 34
-    return base + Math.max(0, Math.ceil(textLength / growth))
+    const charsPerLine =
+      layoutClass === 'is-hero' ? 58 : layoutClass === 'is-wide' ? 42 : 24
+    const minLines =
+      layoutClass === 'is-hero' ? 3 : layoutClass === 'is-wide' ? 2 : 2
+    const estimatedLines = Math.max(minLines, Math.ceil(textLength / charsPerLine))
+    const estimatedHeight =
+      28 + estimatedLines * 18 + (layoutClass === 'is-hero' ? 12 : layoutClass === 'is-wide' ? 6 : 0)
+    const span = Math.ceil(estimatedHeight / 10)
+    return Math.max(layoutClass === 'is-hero' ? 10 : layoutClass === 'is-wide' ? 8 : 6, span)
   }
 
   const enginePerspectiveSections = useMemo(() => {
@@ -7575,7 +8059,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   }
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (typeof window === 'undefined') return
 
     const calculateRowSpan = (id: string, node: HTMLLIElement) => {
@@ -7596,11 +8080,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         (parseFloat(nodeStyles.borderTopWidth || '') || 0) +
         (parseFloat(nodeStyles.borderBottomWidth || '') || 0)
       const measuredHeight = contentHeight + verticalPadding + borderWidth
-      const contentWidth = node.getBoundingClientRect().width
-      const rawSpan = Math.max(1, Math.ceil((measuredHeight + rowGap) / (rowHeight + rowGap)))
-      const maxReadableHeight = Math.max(contentWidth * 2.4, 96)
-      const maxSpan = Math.max(1, Math.ceil((maxReadableHeight + rowGap) / (rowHeight + rowGap)))
-      const span = Math.min(rawSpan, maxSpan)
+      const span = Math.max(1, Math.ceil((measuredHeight + rowGap) / (rowHeight + rowGap)))
       setEngineEntryRowSpans((prev) => (prev[id] === span ? prev : { ...prev, [id]: span }))
     }
 
@@ -7608,6 +8088,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
       (entry): entry is [string, HTMLLIElement] => entry[1] instanceof HTMLLIElement
     )
     if (!nodes.length) return
+
+    nodes.forEach(([id, node]) => calculateRowSpan(id, node))
 
     const frame = window.requestAnimationFrame(() => {
       nodes.forEach(([id, node]) => calculateRowSpan(id, node))
@@ -7617,6 +8099,21 @@ const isMissingLabel = (item: EngineBoardItem) => {
         nodes.forEach(([id, node]) => calculateRowSpan(id, node))
       })
     }, 80)
+    const lateSettleFrame = window.setTimeout(() => {
+      window.requestAnimationFrame(() => {
+        nodes.forEach(([id, node]) => calculateRowSpan(id, node))
+      })
+    }, 280)
+
+    let cancelled = false
+    if (typeof document !== 'undefined' && 'fonts' in document && document.fonts?.ready) {
+      void document.fonts.ready.then(() => {
+        if (cancelled) return
+        window.requestAnimationFrame(() => {
+          nodes.forEach(([id, node]) => calculateRowSpan(id, node))
+        })
+      })
+    }
 
     const resizeObserver =
       typeof ResizeObserver === 'undefined'
@@ -7640,8 +8137,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
     window.addEventListener('resize', handleResize)
 
     return () => {
+      cancelled = true
       window.cancelAnimationFrame(frame)
       window.clearTimeout(settleFrame)
+      window.clearTimeout(lateSettleFrame)
       window.removeEventListener('resize', handleResize)
       resizeObserver?.disconnect()
     }
@@ -7658,6 +8157,26 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (isReport) return
     setEngineEntryRowSpans({})
   }, [isReport, enginePreviewSessionId])
+
+  useEffect(() => {
+    if (isTopup) {
+      wasTopupOpenRef.current = true
+      return
+    }
+    if (!wasTopupOpenRef.current) return
+    wasTopupOpenRef.current = false
+    engineEntryNodesRef.current = {}
+    setEngineEntryRowSpans({})
+    setEngineBoardLayoutVersion((prev) => prev + 1)
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        window.dispatchEvent(new Event('resize'))
+      })
+      window.setTimeout(() => {
+        window.dispatchEvent(new Event('resize'))
+      }, 120)
+    }
+  }, [isTopup])
 
   const handleEngineEntryDragStart = (
     event: ReactDragEvent<HTMLLIElement>,
@@ -7844,6 +8363,489 @@ const isMissingLabel = (item: EngineBoardItem) => {
   )
   const missingLabelCount = missingLabelEntries.length
 
+  const actionPlanReadinessMeaningfulItems = useMemo(() => {
+    const items = Array.isArray(enginePreviewItems) ? enginePreviewItems : []
+    return items.filter((item) => {
+      const text = typeof item?.text === 'string' ? item.text.trim() : ''
+      if (!text) return false
+      // Readiness should react to real material even before the matrix assignment is complete.
+      // We still use matrix_col for coverage, but "meaningful" is primarily "has text".
+      return true
+    })
+  }, [enginePreviewItems])
+  const actionPlanReadinessMeaningfulCount = actionPlanReadinessMeaningfulItems.length
+	  const actionPlanReadinessHeuristic = useMemo(() => {
+	    const isPl = uiLanguage === 'Polish'
+	    const cols = new Map<string, number>()
+	    actionPlanReadinessMeaningfulItems.forEach((item) => {
+      const col = String(item.matrix_col || '').trim().toLowerCase()
+      if (!col) return
+      cols.set(col, (cols.get(col) || 0) + 1)
+    })
+	    const hasAsIs = (cols.get('as_is') || 0) > 0
+	    const notWorkingMeaningfulCount = cols.get('not_working') || 0
+	    const hasNotWorking = notWorkingMeaningfulCount > 0
+	    const hasToBe = (cols.get('should_be') || 0) > 0
+	    const coverage = [hasAsIs, hasNotWorking, hasToBe].filter(Boolean).length
+	    const normalizeKey = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ')
+	    const uniqueStrings = (values: string[]) => {
+	      const seen = new Set<string>()
+	      const out: string[] = []
+	      for (const value of values) {
+	        const normalized = normalizeKey(String(value || ''))
+	        if (!normalized || seen.has(normalized)) continue
+	        seen.add(normalized)
+	        out.push(value)
+	      }
+	      return out
+	    }
+
+	    const positives: string[] = []
+	    if (actionPlanReadinessMeaningfulCount >= 3) {
+	      positives.push(
+        isPl
+          ? 'Wystarczająco wpisów z przypisaną perspektywą, aby zacząć syntezę.'
+          : 'Enough categorized entries to start synthesis.'
+      )
+    }
+    if (coverage >= 2) {
+      positives.push(
+        isPl
+          ? 'Masz materiał z więcej niż jednej perspektywy (stan obecny / problemy / cel).'
+          : 'Multiple perspectives are present (current / constraints / desired).'
+      )
+    }
+    if (coverage === 3) {
+      positives.push(
+        isPl
+          ? 'Materiał jest zbalansowany między As‑is / Not working / Should be.'
+          : 'Balanced material across As‑is / Not working / Should be.'
+      )
+	    }
+
+	    const improvementCandidates: string[] = []
+	    // Priority 1: Not working coverage (most important).
+	    if (!hasNotWorking || notWorkingMeaningfulCount < 3) {
+	      improvementCandidates.push(
+	        isPl
+	          ? 'Dodaj kilka wpisów „Not working” (co nie działa: ograniczenia, problemy, ryzyka).'
+	          : 'Add a few “Not working” entries (what is not working: constraints, pain points, risks).'
+	      )
+	    } else if (notWorkingMeaningfulCount < 5) {
+	      improvementCandidates.push(
+	        isPl
+	          ? 'Dodaj jeszcze 1–2 wpisy „Not working”, aby lepiej ugruntować decyzje.'
+	          : 'Add 1–2 more “Not working” entries to better ground decisions.'
+	      )
+	    }
+	    // Priority 2: As-is coverage.
+	    if (!hasAsIs) {
+	      improvementCandidates.push(
+	        isPl
+	          ? 'Dodaj kilka wpisów „As‑is” (stan obecny, co istnieje dziś).'
+	          : 'Add a few “As‑is” entries (current state, what exists today).'
+	      )
+	    }
+	    // Priority 3: Diversity / Should-be presence.
+	    if (!hasToBe) {
+	      improvementCandidates.push(
+	        isPl
+	          ? 'Dodaj kilka wpisów „Should be” (oczekiwany efekt, kryteria sukcesu).'
+	          : 'Add a few “Should be” entries (desired outcomes, success criteria).'
+	      )
+	    } else if (coverage < 2) {
+	      improvementCandidates.push(
+	        isPl
+	          ? 'Dodaj wpisy z innej perspektywy (As‑is / Not working), aby zbalansować materiał.'
+	          : 'Add entries from another perspective (As‑is / Not working) to balance the material.'
+	      )
+	    }
+
+	    const improvements = uniqueStrings(improvementCandidates).slice(0, 3)
+	    const nextBestAction =
+	      improvements[0] ||
+	      (actionPlanReadinessMeaningfulCount < 3
+	        ? isPl
+	          ? 'Dodaj 2–3 wpisy z perspektywą (As‑is / Not working / Should be), żeby ugruntować plan działania.'
+	          : 'Add 2–3 categorized entries so the action plan can be grounded.'
+	        : '')
+    const baseScore = Math.min(
+      100,
+      Math.max(0, actionPlanReadinessMeaningfulCount * 12 + coverage * 18)
+    )
+    let score = baseScore
+    if (notWorkingMeaningfulCount < 3) {
+      score = Math.min(baseScore, 49)
+    } else if (notWorkingMeaningfulCount < 5) {
+      score = Math.min(baseScore, 74)
+    }
+    const level = score >= 75 ? 'strong' : score >= 50 ? 'ok' : 'weak'
+	    return {
+	      score,
+	      level,
+	      positives,
+	      improvements,
+      nextBestAction,
+      coverage,
+      notWorkingMeaningfulCount,
+    }
+  }, [actionPlanReadinessMeaningfulCount, actionPlanReadinessMeaningfulItems, uiLanguage])
+
+  const pickReadinessLlmItems = useEffectEvent(() => {
+    const items = Array.isArray(enginePreviewItems) ? enginePreviewItems : []
+    const normalized = items
+      .map((item) => {
+        const text = typeof item?.text === 'string' ? item.text.trim() : ''
+        if (!text) return null
+        const row = typeof item.matrix_row === 'string' ? item.matrix_row.trim() : ''
+        const col = typeof item.matrix_col === 'string' ? item.matrix_col.trim() : ''
+        const clipped = text.length > 280 ? `${text.slice(0, 280)}…` : text
+        const ts = Number(item.updated_at || item.created_at || 0) || 0
+        return { text: clipped, matrix_row: row, matrix_col: col, ts }
+      })
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
+    if (!normalized.length) return []
+    const newest = [...normalized].sort((a, b) => b.ts - a.ts).slice(0, 10)
+    const first = normalized.slice(0, 5)
+    const merged = [...newest, ...first]
+    const seen = new Set<string>()
+    return merged
+      .filter((item) => {
+        const key = `${item.matrix_row}|${item.matrix_col}|${item.text}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .slice(0, 15)
+      .map(({ text, matrix_row, matrix_col }) => ({ text, matrix_row, matrix_col }))
+  })
+
+  const toShortText = useEffectEvent((value: unknown, maxLen: number) => {
+    const raw = typeof value === 'string' ? value : String(value ?? '')
+    const trimmed = raw.replace(/\s+/g, ' ').trim()
+    if (!trimmed) return ''
+    return trimmed.length > maxLen ? `${trimmed.slice(0, maxLen)}…` : trimmed
+  })
+
+  const normalizeReadinessLlmResult = useEffectEvent(
+    (payload: any): ActionPlanReadinessLlmResult | null => {
+      if (!payload || typeof payload !== 'object') return null
+      const summary = toShortText(payload.summary, 220)
+      const howToBoost = toShortText(payload.howToBoost, 220)
+      const biggestBoostRightNow = toShortText(payload.biggestBoostRightNow, 220)
+      const qualityLevel =
+        payload.qualityLevel === 'low' || payload.qualityLevel === 'medium' || payload.qualityLevel === 'high'
+          ? payload.qualityLevel
+          : 'medium'
+
+      // Keep legacy fields if the backend still returns them.
+      const improvements = Array.isArray(payload.improvements)
+        ? payload.improvements.map((x: any) => toShortText(x, 140)).filter(Boolean).slice(0, 3)
+        : undefined
+      const insights = Array.isArray(payload.insights)
+        ? payload.insights.map((x: any) => toShortText(x, 140)).filter(Boolean).slice(0, 3)
+        : undefined
+      const nextBestAction = typeof payload.nextBestAction === 'string' ? toShortText(payload.nextBestAction, 220) : undefined
+
+      // Require at least one of the three UX fields; UI will apply partial fallback per-field.
+      if (!summary && !howToBoost && !biggestBoostRightNow) return null
+      return { summary, howToBoost, biggestBoostRightNow, qualityLevel, insights, improvements, nextBestAction }
+    }
+  )
+
+	  const fetchActionPlanReadinessLlm = useEffectEvent(async (meaningfulCount: number) => {
+	    if (!actionPlanReadinessLlmEnabled) return
+	    if (!enginePreviewSessionId) return
+	    // Run LLM after the first meaningful inputs appear (>=3 required for stable signal),
+      // and then after every +2 meaningful items thereafter.
+      // Always clear "pending" when the debounce fires (even if we return early).
+      setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: false }))
+	    if (meaningfulCount < 3) return
+	    if (actionPlanReadinessLlmInFlightRef.current) return
+	    const lastEvaluated = actionPlanReadinessLlmCache.lastEvaluatedCount || 0
+      const lastCoverage = actionPlanReadinessLlmCache.lastEvaluatedCoverage
+      const lastAttemptedAt = actionPlanReadinessLlmCache.lastAttemptedAt
+      const lastAttemptedCount = actionPlanReadinessLlmCache.lastAttemptedCount || 0
+      const lastAttemptedCoverage = actionPlanReadinessLlmCache.lastAttemptedCoverage
+      const currentCoverage = actionPlanReadinessHeuristic.coverage
+	    // Bootstrap for existing sessions (and the moment we cross the >=3 meaningful threshold)
+	    // without spamming on repeated failures.
+	    const bootstrap = actionPlanReadinessLlmCache.lastLLMResult == null && lastEvaluated < 3
+      const retryWindowMs = 15_000
+      const recentlyAttemptedSameInput =
+        actionPlanReadinessLlmCache.lastLLMResult == null &&
+        typeof lastAttemptedAt === 'number' &&
+        Date.now() - lastAttemptedAt < retryWindowMs &&
+        lastAttemptedCount === meaningfulCount &&
+        (typeof lastAttemptedCoverage === 'number' ? lastAttemptedCoverage === currentCoverage : true)
+      if (recentlyAttemptedSameInput) {
+        logActionPlanReadinessLlm({
+          triggered: false,
+          reason: 'skip_recent_failed_attempt_same_input',
+          meaningfulItemsCount: meaningfulCount,
+          lastEvaluatedCount: lastEvaluated,
+          usedFallback: true,
+        })
+        return
+      }
+      const coverageChanged =
+        typeof lastCoverage === 'number' && Number.isFinite(lastCoverage) ? currentCoverage !== lastCoverage : false
+      // Optional quality improvement: re-evaluate when we gain a new perspective (coverage changes),
+      // even if meaningfulCount increased by only 1.
+      const allowByCoverageChange = !bootstrap && coverageChanged
+	    if (!bootstrap && !allowByCoverageChange && meaningfulCount < lastEvaluated + 2) {
+	      logActionPlanReadinessLlm({
+	        triggered: false,
+	        reason: 'skip_not_enough_new_meaningful_items',
+	        meaningfulItemsCount: meaningfulCount,
+        lastEvaluatedCount: lastEvaluated,
+        usedFallback: false,
+      })
+      return
+    }
+    // Only retrigger after new items are added (prevents loops from background reclassification/metadata updates).
+    if (!bootstrap && enginePreviewItems.length <= actionPlanReadinessLastTotalCountRef.current) {
+      logActionPlanReadinessLlm({
+        triggered: false,
+        reason: 'skip_no_new_items_added',
+        meaningfulItemsCount: meaningfulCount,
+        lastEvaluatedCount: lastEvaluated,
+        usedFallback: false,
+      })
+      return
+    }
+
+    const items = pickReadinessLlmItems()
+    if (items.length < 3) {
+      logActionPlanReadinessLlm({
+        triggered: true,
+        reason: 'fallback_insufficient_items_after_pick',
+        meaningfulItemsCount: meaningfulCount,
+        lastEvaluatedCount: lastEvaluated,
+        usedFallback: true,
+      })
+      setActionPlanReadinessLlmCache((prev) => ({
+        ...prev,
+        lastEvaluatedCount: meaningfulCount,
+        lastEvaluatedCoverage: currentCoverage,
+        lastLLMResult: null,
+        loading: false,
+      }))
+      return
+    }
+
+    actionPlanReadinessLlmInFlightRef.current = true
+	    const seq = (actionPlanReadinessLlmSeqRef.current += 1)
+	    const requestId = `apr_ui_${Date.now()}_${seq}`
+	    logActionPlanReadinessLlm({
+	      triggered: true,
+	      reason: `${bootstrap ? 'trigger_bootstrap' : 'trigger_increment'} requestId=${requestId}`,
+	      meaningfulItemsCount: meaningfulCount,
+	      lastEvaluatedCount: lastEvaluated,
+	      usedFallback: false,
+	    })
+    // Mark attempted at request start to avoid tight retry loops when LLM is down.
+    setActionPlanReadinessLlmCache((prev) => ({
+      ...prev,
+      lastAttemptedAt: Date.now(),
+      lastAttemptedCount: meaningfulCount,
+      lastAttemptedCoverage: currentCoverage,
+      loading: true,
+    }))
+    actionPlanReadinessLastTotalCountRef.current = enginePreviewItems.length
+    try {
+      const sessionRes = client ? await client.auth.getSession() : null
+      const token = sessionRes?.data?.session?.access_token || ''
+      if (!token) throw new Error('AUTH_REQUIRED')
+	      logActionPlanReadinessLlm({
+	        triggered: true,
+	        reason: `endpoint_called requestId=${requestId}`,
+	        meaningfulItemsCount: meaningfulCount,
+	        lastEvaluatedCount: lastEvaluated,
+	        usedFallback: false,
+	      })
+	      const response = await fetch('/api/coach?action=action_plan_readiness', {
+	        method: 'POST',
+	        headers: {
+	          'Content-Type': 'application/json',
+	          Authorization: `Bearer ${token}`,
+	          'x-request-id': requestId,
+	        },
+	        body: JSON.stringify({
+	          sessionId: enginePreviewSessionId,
+	          language: uiLanguage === 'Polish' ? 'pl' : 'en',
+          items,
+        }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (seq !== actionPlanReadinessLlmSeqRef.current) return
+      logActionPlanReadinessLlm({
+        triggered: true,
+        reason: 'response_received',
+        meaningfulItemsCount: meaningfulCount,
+        lastEvaluatedCount: lastEvaluated,
+        usedFallback: !response.ok || !payload || payload.ok !== true,
+      })
+      if (!response.ok || !payload || payload.ok !== true) {
+        setActionPlanReadinessLlmCache((prev) => ({
+          ...prev,
+          lastLLMResult: null,
+          loading: false,
+        }))
+        return
+      }
+      const normalized = normalizeReadinessLlmResult(payload)
+      if (!normalized) {
+        setActionPlanReadinessLlmCache((prev) => ({
+          ...prev,
+          lastLLMResult: null,
+          loading: false,
+        }))
+        return
+      }
+      setActionPlanReadinessLlmCache((prev) => ({
+        ...prev,
+        lastEvaluatedCount: meaningfulCount,
+        lastEvaluatedCoverage: currentCoverage,
+        lastLLMResult: normalized,
+        loading: false,
+      }))
+    } catch {
+      if (seq !== actionPlanReadinessLlmSeqRef.current) return
+      logActionPlanReadinessLlm({
+        triggered: true,
+        reason: 'fallback_exception',
+        meaningfulItemsCount: meaningfulCount,
+        lastEvaluatedCount: lastEvaluated,
+        usedFallback: true,
+      })
+      setActionPlanReadinessLlmCache((prev) => ({
+        ...prev,
+        lastLLMResult: null,
+        loading: false,
+      }))
+    } finally {
+      actionPlanReadinessLlmInFlightRef.current = false
+    }
+  })
+
+	  useEffect(() => {
+	    if (!actionPlanReadinessEnabled) return
+	    if (!actionPlanReadinessLlmEnabled) return
+    if (actionPlanReadinessLlmCache.loading) {
+      logActionPlanReadinessLlm({
+        triggered: false,
+        reason: 'skip_loading',
+        meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
+        lastEvaluatedCount: actionPlanReadinessLlmCache.lastEvaluatedCount || 0,
+        usedFallback: false,
+      })
+      return
+    }
+    if (actionPlanReadinessLlmInFlightRef.current) {
+      logActionPlanReadinessLlm({
+        triggered: false,
+        reason: 'skip_in_flight',
+        meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
+        lastEvaluatedCount: actionPlanReadinessLlmCache.lastEvaluatedCount || 0,
+        usedFallback: false,
+      })
+      return
+    }
+	    if (actionPlanReadinessMeaningfulCount < 3) {
+      logActionPlanReadinessLlm({
+        triggered: false,
+        reason: 'skip_meaningful_lt_3',
+        meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
+        lastEvaluatedCount: actionPlanReadinessLlmCache.lastEvaluatedCount || 0,
+        usedFallback: false,
+      })
+      return
+	    }
+	    const last = actionPlanReadinessLlmCache.lastEvaluatedCount || 0
+      const lastCoverage = actionPlanReadinessLlmCache.lastEvaluatedCoverage
+      const currentCoverage = actionPlanReadinessHeuristic.coverage
+      const lastAttemptedAt = actionPlanReadinessLlmCache.lastAttemptedAt
+      const lastAttemptedCount = actionPlanReadinessLlmCache.lastAttemptedCount || 0
+      const lastAttemptedCoverage = actionPlanReadinessLlmCache.lastAttemptedCoverage
+	    const bootstrap = actionPlanReadinessLlmCache.lastLLMResult == null && last < 3
+      const coverageChanged =
+        typeof lastCoverage === 'number' && Number.isFinite(lastCoverage) ? currentCoverage !== lastCoverage : false
+      const allowByCoverageChange = !bootstrap && coverageChanged
+      const retryWindowMs = 15_000
+      const recentlyAttemptedSameInput =
+        actionPlanReadinessLlmCache.lastLLMResult == null &&
+        typeof lastAttemptedAt === 'number' &&
+        Date.now() - lastAttemptedAt < retryWindowMs &&
+        lastAttemptedCount === actionPlanReadinessMeaningfulCount &&
+        (typeof lastAttemptedCoverage === 'number' ? lastAttemptedCoverage === currentCoverage : true)
+      if (recentlyAttemptedSameInput) {
+        logActionPlanReadinessLlm({
+          triggered: false,
+          reason: 'skip_recent_failed_attempt_same_input',
+          meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
+          lastEvaluatedCount: last,
+          usedFallback: true,
+        })
+        return
+      }
+	    if (!bootstrap && !allowByCoverageChange && actionPlanReadinessMeaningfulCount < last + 2) {
+	      logActionPlanReadinessLlm({
+	        triggered: false,
+	        reason: 'skip_trigger_condition_not_met',
+        meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
+        lastEvaluatedCount: last,
+        usedFallback: false,
+      })
+      return
+    }
+    if (!bootstrap && enginePreviewItems.length <= actionPlanReadinessLastTotalCountRef.current) {
+      logActionPlanReadinessLlm({
+        triggered: false,
+        reason: 'skip_no_new_items_added',
+        meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
+        lastEvaluatedCount: last,
+        usedFallback: false,
+      })
+      return
+    }
+    if (actionPlanReadinessLlmDebounceRef.current) {
+      window.clearTimeout(actionPlanReadinessLlmDebounceRef.current)
+    }
+    actionPlanReadinessLlmDebounceRef.current = window.setTimeout(() => {
+      setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: false }))
+      void fetchActionPlanReadinessLlm(actionPlanReadinessMeaningfulCount)
+    }, 650)
+    setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: true }))
+    logActionPlanReadinessLlm({
+      triggered: true,
+      reason: bootstrap ? 'debounce_scheduled_bootstrap' : 'debounce_scheduled_increment',
+      meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
+      lastEvaluatedCount: last,
+      usedFallback: false,
+    })
+    return () => {
+      if (actionPlanReadinessLlmDebounceRef.current) {
+        window.clearTimeout(actionPlanReadinessLlmDebounceRef.current)
+        actionPlanReadinessLlmDebounceRef.current = null
+      }
+      setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: false }))
+    }
+  }, [
+    actionPlanReadinessEnabled,
+    actionPlanReadinessLlmEnabled,
+    actionPlanReadinessMeaningfulCount,
+    actionPlanReadinessLlmCache.lastEvaluatedCount,
+    actionPlanReadinessLlmCache.lastEvaluatedCoverage,
+    actionPlanReadinessLlmCache.lastAttemptedAt,
+    actionPlanReadinessLlmCache.lastAttemptedCount,
+    actionPlanReadinessLlmCache.lastAttemptedCoverage,
+    actionPlanReadinessLlmCache.lastLLMResult,
+    actionPlanReadinessHeuristic.coverage,
+    enginePreviewItems.length,
+    fetchActionPlanReadinessLlm,
+  ])
+
   const missingLabelModal = missingLabelModalOpen ? (
     <div className="modal" role="dialog" aria-modal="true">
       <div className="modal-content">
@@ -7886,7 +8888,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
               className="ghost"
               onClick={() => {
                 setMissingLabelModalOpen(false)
-                openReportView()
+                void handleReportNavigation()
               }}
             >
               {copy.missingLabelSecondary}
@@ -7904,7 +8906,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setHighlightMissingLabels(false)
   }, [highlightMissingLabels, missingLabelCount])
 
-  const openReportView = async () => {
+  // Generates (or rebuilds) the report via backend flow and then opens `/report`.
+  const generateActionPlan = async () => {
     if (typeof window === 'undefined') return
     const returnPath = window.location.pathname + window.location.search
     const sessionId = enginePreviewSessionId || ''
@@ -7941,6 +8944,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
         } catch (error) {
           const message = error instanceof Error ? error.message : 'unknown'
           console.error('[report] ensure failed', { sessionId, message })
+          try {
+            const retryRecord = await fetchReportBySessionId(sessionId)
+            if (retryRecord?.id) {
+              setReportRecords((prev) => ({ ...prev, [sessionId]: retryRecord }))
+              window.history.pushState({ newlyCreated: false }, '', '/report')
+              setReportViewOpen(true)
+              return
+            }
+          } catch {
+            // Ignore retry lookup errors and fall through to the regular notice path.
+          }
           if (message === 'INSUFFICIENT_BALANCE') {
             triggerInsufficientBalance()
           } else {
@@ -7968,8 +8982,27 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setReportViewOpen(true)
   }
 
+  // Navigates to `/report` for an already existing report.
+  // Must NOT trigger any generate/update flow.
+  const goToActionPlan = () => {
+    if (typeof window === 'undefined') return
+    const sessionId = enginePreviewSessionId || ''
+    if (!sessionId) return
+    const returnPath = window.location.pathname + window.location.search
+    window.sessionStorage.setItem('reportReturnPath', returnPath)
+    window.sessionStorage.setItem('reportReturnSessionId', sessionId)
+    window.history.pushState({ newlyCreated: false }, '', '/report')
+    setReportViewOpen(true)
+  }
+
   const handleReportNavigation = async () => {
-    await openReportView()
+    if (reportNavigationLoading) return
+    setReportNavigationLoading(true)
+    try {
+      await generateActionPlan()
+    } finally {
+      setReportNavigationLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -8466,17 +9499,27 @@ const isMissingLabel = (item: EngineBoardItem) => {
         }
         const { data: us, error: use } = await client
           .from('user_sessions')
-          .select('session_id')
+          .select('session_id,payload')
           .eq('user_id', userId)
         if (use) {
           const message = (use as { message?: string | null })?.message ?? 'Request failed'
           setEngineSessionsError(notices.sessionsListFailed(message))
           return
         }
-        const sessionIds = (us || [])
-          .map((row) => String((row as { session_id?: string | null }).session_id || '').trim())
+        const sessionRows = (us || []) as Array<{
+          session_id?: string | null
+          payload?: CloudSessionPayload | null
+        }>
+        const sessionIds = sessionRows
+          .map((row) => String(row.session_id || '').trim())
           .filter(Boolean)
         const uniqueIds = Array.from(new Set(sessionIds))
+        const nextCloudPayloads = sessionRows.reduce<Record<string, CloudSessionPayload>>((acc, row) => {
+          const sessionId = String(row.session_id || '').trim()
+          if (!sessionId || !row.payload) return acc
+          acc[sessionId] = row.payload
+          return acc
+        }, {})
         let sessionsFound: EngineSessionSummary[] = []
         if (uniqueIds.length) {
           const { data: sessionsData, error: se } = await client
@@ -8508,7 +9551,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         console.log('[sessionsList] sessionsFoundCount', sessionsFound.length)
         console.log('[sessionsList] missingSessionsCount', missingSessionsCount)
         console.log('[sessionsList] sessionsCount', sessionsFound.length)
-        setCloudSessionPayloads({})
+        setCloudSessionPayloads(nextCloudPayloads)
         setEngineSessions(sessionsFound)
       } else {
         setCloudSessionPayloads({})
@@ -8568,29 +9611,72 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   }, [enginePreviewSessionId, authSession?.user?.id, reportRecords])
 
+  const mergeExecutionReportSelections = (
+    primary: ReportExecutionReport | null | undefined,
+    fallback: ReportExecutionReport | null | undefined
+  ): ReportExecutionReport | null => {
+    if (!primary) return fallback ?? null
+    if (!fallback?.decisions?.length) return primary
+    const fallbackByTradeoff = new Map(
+      fallback.decisions.map((item, index) => [String(item.tradeoff || '').trim() || `idx:${index}`, item])
+    )
+    return {
+      ...primary,
+      decisions: primary.decisions.map((item, index) => {
+        if (item.selected_option === 'a' || item.selected_option === 'b') return item
+        const fallbackItem =
+          fallbackByTradeoff.get(String(item.tradeoff || '').trim() || `idx:${index}`) ||
+          fallback.decisions[index] ||
+          null
+        return fallbackItem?.selected_option
+          ? { ...item, selected_option: fallbackItem.selected_option }
+          : item
+      }),
+    }
+  }
+
+  const mergeReportMeta = (
+    primary: ReportMeta | null | undefined,
+    fallback: ReportMeta | null | undefined
+  ): ReportMeta | null => {
+    if (!primary) return fallback ?? null
+    if (!fallback) return primary
+    return {
+      ...fallback,
+      ...primary,
+      execution_report: mergeExecutionReportSelections(
+        primary.execution_report ?? null,
+        fallback.execution_report ?? null
+      ),
+    }
+  }
+
   const getReportMetaForSession = (sessionId: string | null) => {
     if (!sessionId) return null
+    const localMeta =
+      engineSessionDetail?.session?.id === sessionId && engineSessionDetail?.report
+        ? engineSessionDetail.report
+        : null
+    const cloudMeta = cloudSessionPayloads[sessionId]?.report || null
     if (authSession?.user?.id) {
       const dbReport = reportRecords[sessionId]
-      if (!dbReport) return null
-      return {
-        id: dbReport.id,
-        created_at: dbReport.createdAt,
-        updated_at: dbReport.updatedAt,
-        lang: dbReport.lang ?? null,
-        lastSummaryTextHash: dbReport.lastSummaryTextHash ?? null,
-        summary: dbReport.summary ?? null,
-        ideas: dbReport.ideas ?? null,
-        recommendations: dbReport.recommendations ?? null,
-        triz: dbReport.triz ?? null,
-      }
+      const dbMeta = dbReport
+        ? {
+            id: dbReport.id,
+            created_at: dbReport.createdAt,
+            updated_at: dbReport.updatedAt,
+            lang: dbReport.lang ?? null,
+            lastSummaryTextHash: dbReport.lastSummaryTextHash ?? null,
+            summary: dbReport.summary ?? null,
+            ideas: dbReport.ideas ?? null,
+            recommendations: dbReport.recommendations ?? null,
+            triz: dbReport.triz ?? null,
+            execution_report: dbReport.executionReport ?? null,
+          }
+        : null
+      return mergeReportMeta(mergeReportMeta(localMeta, cloudMeta), dbMeta)
     }
-    if (engineSessionDetail?.session?.id === sessionId && engineSessionDetail?.report) {
-      return engineSessionDetail.report
-    }
-    const cloudMeta = cloudSessionPayloads[sessionId]?.report
-    if (cloudMeta) return cloudMeta
-    return null
+    return mergeReportMeta(localMeta, cloudMeta)
   }
 
   const markReportCreated = async (
@@ -8631,6 +9717,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         lang: existing?.lang ?? reportLang,
         lastSummaryTextHash: existing?.lastSummaryTextHash ?? null,
         summary: existing?.summary ?? null,
+        execution_report: existing?.execution_report ?? null,
       },
       session: { ...detail.session, updated_at: now },
     }
@@ -8811,7 +9898,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
         sourceItems = cloudPayload.boardItems
       }
       const normalizedItems = normalizeBoardItems(sourceItems)
-      setEngineSessionDetail({ ...data, boardItems: normalizedItems })
+      setEngineSessionDetail({
+        ...data,
+        boardItems: normalizedItems,
+        report: data.report ?? cloudPayload?.report ?? null,
+      })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(notices.saveChangesFailed(message))
@@ -9559,7 +10650,31 @@ const isMissingLabel = (item: EngineBoardItem) => {
   const modelUsageEntries = Object.entries(sessionUsage.perModel)
     .filter(([, usage]) => (usage?.inputTokens || 0) + (usage?.outputTokens || 0) > 0)
     .sort((a, b) => (b[1]?.totalUSD || 0) - (a[1]?.totalUSD || 0))
-  const showSessionUsage = showDiagnostics && Boolean(activeUsageSessionId) && isAuthed
+  const activeUsageSessionIdNormalized = String(activeUsageSessionId || '').trim() || null
+  const sessionUsageHasReadError =
+    showDiagnostics &&
+    Boolean(activeUsageSessionIdNormalized) &&
+    sessionUsageDiagnostics.sessionId === activeUsageSessionIdNormalized &&
+    (sessionUsageDiagnostics.summaryQueryStatus === 'error' ||
+      sessionUsageDiagnostics.eventsQueryStatus === 'error')
+  const showSessionUsage =
+    showDiagnostics && Boolean(activeUsageSessionId) && isAuthed && !sessionUsageHasReadError
+  const reportHydrationAttemptedRef = useRef(false)
+
+  useEffect(() => {
+    if (!isReport) {
+      reportHydrationAttemptedRef.current = false
+      return
+    }
+    if (reportHydrationAttemptedRef.current) return
+    if (typeof window === 'undefined') return
+    if (enginePreviewSessionId) return
+    const storedSessionId = window.sessionStorage.getItem('reportReturnSessionId')
+    const sessionId = String(storedSessionId || '').trim()
+    if (!sessionId) return
+    reportHydrationAttemptedRef.current = true
+    void openEngineSession(sessionId)
+  }, [isReport, enginePreviewSessionId])
 
   if (isReport && !isTopup) {
     const snapshot = getReportSessionSnapshot()
@@ -9607,7 +10722,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return withDevOverlay(
       <ReportPage
         snapshot={snapshot}
-        language={uiLanguage === 'Polish' ? 'pl' : 'en'}
+        language={reportLanguage}
         userId={authSession?.user?.id ?? null}
         onBack={handleReportBack}
         onLogout={handleReportLogout}
@@ -9638,6 +10753,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         llmUsageIndicatorLabel={copy.llmUsageIndicatorLabel}
         llmUsageValue={showSessionUsage ? `${formatTokenTotal(currentTokensTotal)} tok` : null}
         llmUsageClassName={llmUsageClass}
+        sessionUsageDiagnostics={showDiagnostics ? sessionUsageDiagnostics : null}
         llmCostLines={
           showSessionUsage
             ? [
@@ -9688,6 +10804,62 @@ const isMissingLabel = (item: EngineBoardItem) => {
         onReportMetaChange={async (meta) => {
           const sessionId = snapshot.sessionId || enginePreviewSessionId
           if (!sessionId) return
+          const now = Date.now()
+          setReportRecords((prev) => {
+            const existingRecord = prev[sessionId]
+            const snapshotRecordId =
+              typeof snapshot.reportMeta === 'object' && snapshot.reportMeta && 'id' in snapshot.reportMeta
+                ? String(snapshot.reportMeta.id || '')
+                : ''
+            return {
+              ...prev,
+              [sessionId]: {
+                id: existingRecord?.id || snapshotRecordId || sessionId,
+                sessionId,
+                createdAt:
+                  meta.createdAt ??
+                  existingRecord?.createdAt ??
+                  snapshot.reportMeta?.createdAt ??
+                  now,
+                updatedAt: meta.updatedAt ?? now,
+                summary:
+                  meta.summary ??
+                  existingRecord?.summary ??
+                  snapshot.reportMeta?.summary ??
+                  null,
+                ideas:
+                  meta.ideas ??
+                  existingRecord?.ideas ??
+                  snapshot.reportMeta?.ideas ??
+                  null,
+                recommendations:
+                  meta.recommendations ??
+                  existingRecord?.recommendations ??
+                  snapshot.reportMeta?.recommendations ??
+                  null,
+                triz:
+                  meta.triz ??
+                  existingRecord?.triz ??
+                  snapshot.reportMeta?.triz ??
+                  null,
+                executionReport:
+                  meta.execution_report ??
+                  existingRecord?.executionReport ??
+                  snapshot.reportMeta?.execution_report ??
+                  null,
+                lang:
+                  existingRecord?.lang ??
+                  snapshot.reportMeta?.lang ??
+                  reportLanguage,
+                lastSummaryTextHash:
+                  meta.lastSummaryTextHash ??
+                  existingRecord?.lastSummaryTextHash ??
+                  snapshot.reportMeta?.lastSummaryTextHash ??
+                  null,
+                sourceUpdatedAt: existingRecord?.sourceUpdatedAt ?? 0,
+              },
+            }
+          })
           const detail = await getSession(sessionId)
           if (!detail?.session) return
           const existing = detail.report || null
@@ -9703,49 +10875,19 @@ const isMissingLabel = (item: EngineBoardItem) => {
             ideas: meta.ideas ?? existing?.ideas ?? null,
             recommendations: meta.recommendations ?? existing?.recommendations ?? null,
             triz: meta.triz ?? existing?.triz ?? null,
+            execution_report: meta.execution_report ?? existing?.execution_report ?? null,
           }
           const updatedDetail: EngineSessionDetail = {
             ...detail,
             report: nextReport,
-            session: { ...detail.session, updated_at: Date.now() },
+            session: { ...detail.session, updated_at: now },
           }
-          await updateSession(updatedDetail)
           if (engineSessionDetail?.session?.id === sessionId) {
             setEngineSessionDetail(updatedDetail)
           }
+          await updateSession(updatedDetail)
           if (authSession?.user?.id) {
             await saveSessionToCloud(authSession.user.id, updatedDetail, uiLanguage)
-            setReportRecords((prev) => {
-              const existingRecord = prev[sessionId]
-              return {
-                ...prev,
-                [sessionId]: {
-                  id: existingRecord?.id ?? existing?.id ?? sessionId,
-                  sessionId,
-                  createdAt:
-                    meta.createdAt ??
-                    existingRecord?.createdAt ??
-                    existing?.created_at ??
-                    Date.now(),
-                  updatedAt: meta.updatedAt ?? Date.now(),
-                  summary: meta.summary ?? existingRecord?.summary ?? existing?.summary ?? null,
-                  ideas: meta.ideas ?? existingRecord?.ideas ?? existing?.ideas ?? null,
-                  recommendations:
-                    meta.recommendations ??
-                    existingRecord?.recommendations ??
-                    existing?.recommendations ??
-                    null,
-                  triz: meta.triz ?? existingRecord?.triz ?? existing?.triz ?? null,
-                  lang: existingRecord?.lang ?? existing?.lang ?? reportLanguage,
-                  lastSummaryTextHash:
-                    meta.lastSummaryTextHash ??
-                    existingRecord?.lastSummaryTextHash ??
-                    existing?.lastSummaryTextHash ??
-                    null,
-                  sourceUpdatedAt: existingRecord?.sourceUpdatedAt ?? 0,
-                },
-              }
-            })
           }
         }}
         onAiUsage={(meta) => {
@@ -10531,39 +11673,46 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 )}
                 {enginePreviewSessionId && hasEngineBoardEntries && (
                   <div className="engine-actions-group">
-                    {enginePreviewSessionId &&
-                    (authSession?.user?.id
-                      ? Boolean(reportRecords[enginePreviewSessionId]?.id)
-                      : typeof window !== 'undefined' &&
-                        window.sessionStorage.getItem(
-                          `report_exists::${enginePreviewSessionId}`
-                        ) === 'true') ? (
-                      <button
-                        type="button"
-                        className="primary"
-                        data-testid="session-report"
-                        onClick={() => {
-                          markUserInitiatedInteraction('pointer')
-                          setEngineLastInputActivityAt(Date.now())
-                          void handleReportNavigation()
-                        }}
-                      >
-                        {copy.enginePreviewOpenReport}
-                      </button>
-                    ) : (
-                      <AiCostButton
-                        label={copy.enginePreviewCreateReport}
-                        lang={uiLanguage === 'Polish' ? 'pl' : 'en'}
-                        priceMinor={reportCreatePriceMinor}
-                        currency={balanceCurrency}
-                        priceLoading={reportCreatePriceLoading}
-                        onClick={() => {
-                          markUserInitiatedInteraction('pointer')
-                          setEngineLastInputActivityAt(Date.now())
-                          void handleReportNavigation()
-                        }}
-                      />
-                    )}
+                    {(() => {
+                      const currentSessionId = enginePreviewSessionId
+                      const hasReport = Boolean(
+                        currentSessionId && reportRecords[currentSessionId]?.id
+                      )
+                      if (hasReport) {
+                        return (
+                          <button
+                            type="button"
+                            className="primary"
+                            data-testid="session-report"
+                            onClick={() => {
+                              markUserInitiatedInteraction('pointer')
+                              setEngineLastInputActivityAt(Date.now())
+                              goToActionPlan()
+                            }}
+                          >
+                            {copy.enginePreviewOpenReport}
+                          </button>
+                        )
+                      }
+                      return (
+                        <AiCostButton
+                          label={copy.enginePreviewCreateReport}
+                          lang={uiLanguage === 'Polish' ? 'pl' : 'en'}
+                          priceMinor={reportCreatePriceMinor}
+                          currency={balanceCurrency}
+                          priceLoading={reportCreatePriceLoading}
+                          loading={reportNavigationLoading}
+                          disabled={reportNavigationLoading}
+                          className="engine-create-report-btn"
+                          metaLayout="below"
+                          onClick={() => {
+                            markUserInitiatedInteraction('pointer')
+                            setEngineLastInputActivityAt(Date.now())
+                            void handleReportNavigation()
+                          }}
+                        />
+                      )
+                    })()}
                   </div>
                 )}
                 {!enginePreviewSessionId &&
@@ -10785,6 +11934,59 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   onChange={handleImportSessions}
                 />
               </div>
+            </div>
+            <div className="engine-helper">
+              <strong>Session usage diagnostics</strong>
+              <div className="engine-meta">
+                <span>sessionId:</span>
+                <span className="engine-meta-value">{activeUsageSessionIdNormalized || '—'}</span>
+              </div>
+              <div className="engine-meta">
+                <span>summary query:</span>
+                <span className="engine-meta-value">{sessionUsageDiagnostics.summaryQueryStatus}</span>
+              </div>
+              <div className="engine-meta">
+                <span>events query:</span>
+                <span className="engine-meta-value">{sessionUsageDiagnostics.eventsQueryStatus}</span>
+              </div>
+              <div className="engine-meta">
+                <span>realtime:</span>
+                <span className="engine-meta-value">{sessionUsageDiagnostics.realtimeStatus || '—'}</span>
+              </div>
+              <div className="engine-meta">
+                <span>last checked:</span>
+                <span className="engine-meta-value">
+                  {sessionUsageDiagnostics.lastCheckedAt
+                    ? new Date(sessionUsageDiagnostics.lastCheckedAt).toLocaleString()
+                    : '—'}
+                </span>
+              </div>
+              <div className="engine-meta">
+                <span>gpt-image-1:</span>
+                <span className="engine-meta-value">
+                  {sessionUsage.perModel['gpt-image-1']
+                    ? `${sessionUsage.perModel['gpt-image-1'].eventsCount} ev, ${formatTokenTotal(
+                        sessionUsage.perModel['gpt-image-1'].inputTokens
+                      )} in / ${formatTokenTotal(
+                        sessionUsage.perModel['gpt-image-1'].outputTokens
+                      )} out, $${formatUsd(sessionUsage.perModel['gpt-image-1'].totalUSD)}`
+                    : '—'}
+                </span>
+              </div>
+              {(sessionUsageDiagnostics.summaryError || sessionUsageDiagnostics.eventsError) && (
+                <div className="engine-meta">
+                  <span>error:</span>
+                  <span className="engine-meta-value">
+                    {sessionUsageDiagnostics.summaryError
+                      ? `summary ${sessionUsageDiagnostics.summaryError.code || '—'}: ${sessionUsageDiagnostics.summaryError.message}`
+                      : ''}
+                    {sessionUsageDiagnostics.summaryError && sessionUsageDiagnostics.eventsError ? ' | ' : ''}
+                    {sessionUsageDiagnostics.eventsError
+                      ? `events ${sessionUsageDiagnostics.eventsError.code || '—'}: ${sessionUsageDiagnostics.eventsError.message}`
+                      : ''}
+                  </span>
+                </div>
+              )}
             </div>
           </section>
         )}
@@ -11079,40 +12281,200 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       ? copy.engineInitialBriefWordLimitReached
                       : copy.engineInitialBriefWordCountRemaining(engineInitialBriefRemainingWords)}
                   </span>
-                  <span className="triz-image-button-wrap">
-                    <button
-                      type="button"
-                      className="primary"
-                      data-testid="engine-initial-brief-submit"
-                      onClick={() => {
-                        void submitEngineInitialBrief()
-                      }}
-                      disabled={
-                        !engineInitialBriefText.trim() ||
-                        engineInitialBriefSubmitting ||
-                        engineInitialBriefWords > INITIAL_BRIEF_WORD_LIMIT
-                      }
-                    >
-                      {engineInitialBriefSubmitting
-                        ? copy.engineInitialBriefSubmitting
-                        : copy.engineInitialBriefSubmit}
-                    </button>
+                  <button
+                    type="button"
+                    className="primary"
+                    data-testid="engine-initial-brief-submit"
+                    onClick={() => {
+                      void submitEngineInitialBrief()
+                    }}
+                    disabled={
+                      !engineInitialBriefText.trim() ||
+                      engineInitialBriefSubmitting ||
+                      engineInitialBriefWords > INITIAL_BRIEF_WORD_LIMIT
+                    }
+                  >
                     {engineInitialBriefSubmitting && (
-                      <span
-                        className="report-updating-indicator triz-image-spinner"
-                        role="status"
-                        aria-label={copy.engineInitialBriefSubmitting}
-                        title={copy.engineInitialBriefSubmitting}
-                      />
+                      <span className="button-spinner" aria-hidden="true" />
                     )}
-                  </span>
+                    {engineInitialBriefSubmitting
+                      ? copy.engineInitialBriefSubmitting
+                      : copy.engineInitialBriefSubmit}
+                  </button>
                 </div>
               </div>
             </section>
           )}
 
           {enginePreviewSessionId && !engineInitialBriefOpen && (
-            <section className="engine-panel">
+            <>
+              {actionPlanReadinessEnabled && (
+                <section className="engine-panel">
+                  <div className="engine-panel-header">
+                    <div className="action-plan-readiness-title-row">
+                      <h2>
+                        {uiLanguage === 'Polish'
+                          ? 'Jak zwiększyć gotowość planu działania'
+                          : 'Action plan readiness guide'}
+                      </h2>
+                      {actionPlanReadinessLlmCache.loading && (
+                        <span
+                          className="button-spinner button-spinner--dark action-plan-readiness-title-spinner"
+                          aria-hidden="true"
+                        />
+                      )}
+                    </div>
+                  </div>
+                  <div className="engine-helper">
+                    {(() => {
+                      if (!enginePreviewItems.length) {
+                        return (
+                          <div className="action-plan-readiness-layout">
+                            <div className="action-plan-readiness-layout__content" />
+                            <div className="action-plan-readiness-layout__gauge">
+                              <ActionPlanReadinessGauge
+                                score={0}
+                                level="not_ready"
+                                language={uiLanguage === 'Polish' ? 'pl' : 'en'}
+                              />
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      // Only block content while the request is actually in-flight.
+                      // `pending` is a debounce marker and can stay true while items keep changing.
+                      const readinessLlmLoading = actionPlanReadinessLlmCache.loading
+                      const finalScore = actionPlanReadinessHeuristic.score
+                      if (readinessLlmLoading) {
+                        return (
+                          <div className="action-plan-readiness-layout">
+                            <div className="action-plan-readiness-layout__content" />
+                            <div className="action-plan-readiness-layout__gauge">
+                              <ActionPlanReadinessGauge
+                                score={finalScore}
+                                level={
+                                  actionPlanReadinessHeuristic.level === 'weak'
+                                    ? 'not_ready'
+                                    : actionPlanReadinessHeuristic.level === 'strong'
+                                      ? 'strong_material'
+                                      : 'can_proceed'
+                                }
+                                language={uiLanguage === 'Polish' ? 'pl' : 'en'}
+                              />
+                            </div>
+                          </div>
+                        )
+                      }
+
+                      const description = (() => {
+                        if (uiLanguage === 'Polish') {
+                          if (actionPlanReadinessMeaningfulCount < 3) {
+                            return 'Masz jeszcze za mało wpisów, żeby plan działania był konkretny.'
+                          }
+                          if (
+                            actionPlanReadinessMeaningfulCount >= 3 &&
+                            actionPlanReadinessHeuristic.notWorkingMeaningfulCount < 3
+                          ) {
+                            return 'Twój materiał jest jeszcze jednostronny — skupia się na tym, jak powinno być, ale brakuje tego, co nie działa.'
+                          }
+                          if (actionPlanReadinessHeuristic.coverage < 2) {
+                            return 'Materiał jest jeszcze wąski (brakuje perspektyw). Uzupełnij go, aby decyzje były lepiej ugruntowane.'
+                          }
+                          if (actionPlanReadinessHeuristic.coverage === 3) {
+                            return 'Materiał jest zbalansowany i powinien dać sensowne priorytety, decyzje i kolejne kroki.'
+                          }
+                          return 'Materiał wygląda wystarczająco, ale można go jeszcze wzmocnić, żeby plan działania był bardziej trafny.'
+                        }
+                        if (actionPlanReadinessMeaningfulCount < 3) {
+                          return 'There are not enough entries yet for a concrete action plan.'
+                        }
+                        if (
+                          actionPlanReadinessMeaningfulCount >= 3 &&
+                          actionPlanReadinessHeuristic.notWorkingMeaningfulCount < 3
+                        ) {
+                          return 'The material is still one-sided — it focuses on what should be, but misses what is not working.'
+                        }
+                        if (actionPlanReadinessHeuristic.coverage < 2) {
+                          return 'The material is still narrow (missing perspectives). Add more for better grounded decisions.'
+                        }
+                        if (actionPlanReadinessHeuristic.coverage === 3) {
+                          return 'The material is balanced and should yield clearer priorities, decisions, and next steps.'
+                        }
+                        return 'The material looks sufficient, but you can still strengthen it to make the action plan more grounded.'
+                      })()
+
+                      const llmSummary = actionPlanReadinessLlmCache.lastLLMResult?.summary || ''
+                      const llmHowToBoost = actionPlanReadinessLlmCache.lastLLMResult?.howToBoost || ''
+                      const llmBiggestBoostRightNow =
+                        actionPlanReadinessLlmCache.lastLLMResult?.biggestBoostRightNow || ''
+
+                      const summaryText = llmSummary || description
+                      const howToBoostText =
+                        llmHowToBoost ||
+                        actionPlanReadinessHeuristic.improvements.slice(0, 3).join(' · ')
+                      const biggestBoostRightNowText =
+                        llmBiggestBoostRightNow || actionPlanReadinessHeuristic.nextBestAction || ''
+                      const normalizeReadinessLine = (value: string) =>
+                        String(value || '').replace(/\s+/g, ' ').trim()
+                      const shouldShowHowToBoost = Boolean(
+                        normalizeReadinessLine(howToBoostText) &&
+                          normalizeReadinessLine(howToBoostText) !==
+                            normalizeReadinessLine(biggestBoostRightNowText)
+                      )
+                      return (
+                        <div className="action-plan-readiness-layout">
+                          <div className="action-plan-readiness-layout__content">
+                            <div className="action-plan-readiness-field">
+                              <div className="engine-meta">
+                                <span>{uiLanguage === 'Polish' ? 'Opis' : 'Summary'}</span>
+                                <span className="engine-meta-value">{summaryText}</span>
+                              </div>
+                            </div>
+                            {shouldShowHowToBoost && (
+                              <div className="action-plan-readiness-field">
+                                <div className="engine-meta">
+                                  <span>
+                                    {uiLanguage === 'Polish' ? 'Jak podnieść wynik' : 'How to boost'}
+                                  </span>
+                                  <span className="engine-meta-value">{howToBoostText}</span>
+                                </div>
+                              </div>
+                            )}
+                            {biggestBoostRightNowText && (
+                              <div className="action-plan-readiness-field is-boost-now">
+                                <div className="engine-meta">
+                                  <span>
+                                    {uiLanguage === 'Polish'
+                                      ? 'Najbardziej pomoże teraz'
+                                      : 'Biggest boost right now'}
+                                  </span>
+                                  <span className="engine-meta-value">{biggestBoostRightNowText}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                          <div className="action-plan-readiness-layout__gauge">
+                            <ActionPlanReadinessGauge
+                              score={finalScore}
+                              level={
+                                actionPlanReadinessHeuristic.level === 'weak'
+                                  ? 'not_ready'
+                                  : actionPlanReadinessHeuristic.level === 'strong'
+                                    ? 'strong_material'
+                                    : 'can_proceed'
+                              }
+                              language={uiLanguage === 'Polish' ? 'pl' : 'en'}
+                            />
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+                </section>
+              )}
+
+              <section className="engine-panel">
               <div className="engine-panel-header">
                 <h2>{copy.enginePreviewBoardItemsTitle}</h2>
                 {showDiagnostics && (
@@ -11189,12 +12551,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     <span className="text-sm text-red-600">{engineFacilitationInlineError}</span>
                   )}
                   {facilitationPerspectiveActions.map((action) => {
-                    const requestType = resolveFacilitationRequestType(action.key)
-                    const isLoading =
-                      showEngineFacilitationLoadingUI &&
-                      engineFacilitationLoading &&
-                      engineFacilitationLoadingType === requestType &&
-                      lastFacilitationPerspective === action.key
                     const isActive = engineActiveFacilitationPerspective === action.key
                     return (
                       <button
@@ -11222,14 +12578,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                           !showFacilitationOffer || engineFacilitationLoading || facilitationDisabled
                         }
                       >
-                        {isLoading ? (
-                          <>
-                            <span className="button-spinner" aria-hidden="true" />
-                            {copy.engineFacilitationLoadingLabel}
-                          </>
-                        ) : (
-                          action.label
-                        )}
+                        {action.label}
                       </button>
                     )
                   })}
@@ -11272,18 +12621,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     <div className="engine-facilitation-question">
                       {engineFacilitationLoading && showEngineFacilitationLoadingUI ? (
                         <span className="engine-facilitation-loading-row">
+                          <span className="button-spinner" aria-hidden="true" />
                           <span className="engine-facilitation-loading-text">
                             {engineFacilitationLoadingType === 'DEEPEN'
                               ? copy.engineFacilitationLoadingDeepen
                               : copy.engineFacilitationLoadingPerspective}
-                          </span>
-                          <span className="report-updating-slot" aria-hidden="true">
-                            <span
-                              className="report-updating-indicator"
-                              role="status"
-                              aria-label={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
-                              title={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
-                            />
                           </span>
                         </span>
                       ) : (
@@ -11454,16 +12796,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       }}
                       disabled={!enginePreviewInput.trim() || engineAddEntryLoading}
                     >
-                      {engineAddEntryLoading && (
-                        <span className="report-updating-slot" aria-hidden="true">
-                          <span
-                            className="report-updating-indicator"
-                            role="status"
-                            aria-label={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
-                            title={uiLanguage === 'Polish' ? 'Aktualizowanie…' : 'Updating…'}
-                          />
-                        </span>
-                      )}
+                      {engineAddEntryLoading && <span className="button-spinner" aria-hidden="true" />}
                       {copy.enginePreviewAddItem}
                     </button>
                   </div>
@@ -11472,7 +12805,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
               {enginePreviewItems.length === 0 ? (
                 <div className="engine-empty">{copy.enginePreviewBoardItemsEmpty}</div>
               ) : (
-                <div className="engine-perspective-board">
+                <div className="engine-perspective-board" key={`engine-board-${engineBoardLayoutVersion}`}>
                   {enginePerspectiveSections.map((section) => (
                     <section
                       key={section.key}
@@ -11558,12 +12891,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
                                   key={rendered.key}
                                   className={`engine-entry engine-entry-placeholder ${rendered.layoutClass}`}
                                   aria-hidden="true"
-                                  style={{
-                                    gridRowEnd: `span ${estimateEngineEntryRowSpan(
-                                      { id: rendered.key, type: 'idea', text: 'placeholder' },
-                                      rendered.layoutClass
-                                    )}`,
-                                  }}
                                 />
                               )
                             }
@@ -11583,11 +12910,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
                                 data-testid={`entry-row-${item.id}`}
                                 data-entry-id={item.id}
                                 draggable={enginePreviewEditId !== item.id && engineMovingEntryId !== item.id}
-                                style={{
-                                  gridRowEnd: `span ${
-                                    engineEntryRowSpans[item.id] ?? estimateEngineEntryRowSpan(item, layoutClass)
-                                  }`,
-                                }}
                                 onDragStart={(event) => handleEngineEntryDragStart(event, item)}
                                 onDragEnd={handleEngineEntryDragEnd}
                                 onDragOver={(event) =>
@@ -11809,7 +13131,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   ))}
                 </div>
               )}
-            </section>
+              </section>
+            </>
           )}
         </main>
           {feedbackPanel}
@@ -11959,9 +13282,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
               <div className="landing-inner">
                 <h1>{copy.landingHeroTitle}</h1>
                 <p>{copy.landingHeroSubtitle}</p>
+                {copy.landingHeroBullets.length > 0 && (
+                  <ul className="landing-hero-bullets">
+                    {copy.landingHeroBullets.map((line) => (
+                      <li key={line}>{line}</li>
+                    ))}
+                  </ul>
+                )}
                 {uiLanguage === 'Polish' && (
                   <a
-                    className="primary landing-cta"
+                    className="primary landing-cta landing-cta-video"
                     href="https://youtu.be/2mLESqZKDj0"
                     target="_blank"
                     rel="noreferrer"
@@ -12002,28 +13332,31 @@ const isMissingLabel = (item: EngineBoardItem) => {
               <div className="landing-inner">
                 <div className="intro-title">
                   <span className="title-brand">{copy.landingIntroTitleLines[0]}</span>
-                  <span className="title-subline">
-                    {copy.landingIntroTitleLines.slice(1).join(' ').trim()}
-                  </span>
+                  {copy.landingIntroTitleLines.slice(1).map((line) => (
+                    <span key={line} className="title-line">
+                      {line}
+                    </span>
+                  ))}
                 </div>
                 <p className="intro-subtext">
-                  <span>{copy.landingIntroSubtextLines[0]}</span>
-                  <span>{copy.landingIntroSubtextLines[1]}</span>
-                  <span>{copy.landingIntroSubtextLines[2]}</span>
-                  <span>
-                    {copy.landingIntroSubtextLines[3]
-                      .split('{emphasis}')
-                      .map((part, index) =>
-                        index === 0 ? (
-                          part
-                        ) : (
-                          <span key={`emphasis-${index}`}>
-                            <strong>{copy.landingIntroSubtextEmphasis}</strong>
-                            {part}
-                          </span>
-                        )
-                      )}
-                  </span>
+                  {copy.landingIntroSubtextLines
+                    .filter((line) => line.trim().length > 0)
+                    .map((line, index) => (
+                      <span key={`intro-subtext-${index}`}>
+                        {line.includes('{emphasis}')
+                          ? line.split('{emphasis}').map((part, partIndex) =>
+                              partIndex === 0 ? (
+                                part
+                              ) : (
+                                <span key={`emphasis-${index}-${partIndex}`}>
+                                  <strong>{copy.landingIntroSubtextEmphasis}</strong>
+                                  {part}
+                                </span>
+                              )
+                            )
+                          : line}
+                      </span>
+                    ))}
                 </p>
                 <div className="intro-cta">
                   <a
@@ -12041,29 +13374,101 @@ const isMissingLabel = (item: EngineBoardItem) => {
             <div className="landing-section before">
               <div className="landing-inner">
                 <p className="before-lead">
-                  {copy.landingBeforeLead}
+                  {copy.landingBeforeLead.split('\n').map((line, index) =>
+                    index === 0 ? (
+                      <span key="before-lead-primary">{line}</span>
+                    ) : (
+                      <span key={`before-lead-${index}`} className="before-lead-secondary">
+                        {line}
+                      </span>
+                    )
+                  )}
                 </p>
                 <ul className="icon-list negative">
-                  {copy.landingBeforeList.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
+                  {copy.landingBeforeList.map((item, index) =>
+                    item.trim().length === 0 ? (
+                      <li key={`spacer-${index}`} className="icon-list-spacer" aria-hidden="true" />
+                    ) : (
+                      <li
+                        key={`${item}-${index}`}
+                        className={item.trim().endsWith('?') ? 'before-final' : undefined}
+                      >
+                        {item}
+                      </li>
+                    )
+                  )}
                 </ul>
-                <div className="landing-emphasis">
-                  <span className="emphasis-strong">{copy.landingBeforeEmphasis.strong}</span>{' '}
-                  <span className="emphasis-medium">{copy.landingBeforeEmphasis.medium}</span>{' '}
-                  {copy.landingBeforeEmphasis.rest}
-                </div>
+                {(copy.landingBeforeEmphasis.strong ||
+                  copy.landingBeforeEmphasis.medium ||
+                  copy.landingBeforeEmphasis.rest) && (
+                  <div className="landing-emphasis">
+                    <span className="emphasis-strong">{copy.landingBeforeEmphasis.strong}</span>{' '}
+                    <span className="emphasis-medium">{copy.landingBeforeEmphasis.medium}</span>{' '}
+                    {copy.landingBeforeEmphasis.rest}
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="landing-section after">
               <div className="landing-inner">
-                <p className="before-lead">{copy.landingAfterLead}</p>
+                <p className="before-lead">
+                  {copy.landingAfterLead.split('\n').map((line, index) =>
+                    index === 0 ? (
+                      <span key="after-lead-primary">{line}</span>
+                    ) : (
+                      <span key={`after-lead-${index}`} className="after-lead-secondary">
+                        {line}
+                      </span>
+                    )
+                  )}
+                </p>
                 <ul className="icon-list positive">
-                  {copy.landingAfterList.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
+                  {copy.landingAfterList.map((item, index) =>
+                    item.trim().length === 0 ? (
+                      <li key={`after-spacer-${index}`} className="icon-list-spacer" aria-hidden="true" />
+                    ) : (
+                      <li
+                        key={`${item}-${index}`}
+                        className={
+                          index === copy.landingAfterList.length - 1
+                            ? 'after-final'
+                            : item.trim().endsWith(':') || item.trim().startsWith('✅')
+                              ? 'after-muted'
+                              : undefined
+                        }
+                      >
+                        {item}
+                      </li>
+                    )
+                  )}
                 </ul>
+              </div>
+            </div>
+
+            <div className="landing-section how">
+              <div className="landing-inner">
+                <h3>{copy.landingHowTitle}</h3>
+                {copy.landingHowSteps.length > 0 ? (
+                  <ol className="how-steps">
+                    {copy.landingHowSteps.map((step) => (
+                      <li key={step.title} className="how-step">
+                        <div className="how-step-title">{step.title}</div>
+                        <div className="how-step-body">
+                          {step.lines.map((line) => (
+                            <div key={`${step.title}-${line}`}>{line}</div>
+                          ))}
+                        </div>
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  <div className="how-lines">
+                    {copy.landingHowLines.map((line, index) => (
+                      <div key={`${line}-${index}`}>{line}</div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -12124,28 +13529,31 @@ const isMissingLabel = (item: EngineBoardItem) => {
               <div className="landing-inner">
                 <div className="intro-title">
                   <span className="title-brand">{copy.landingIntroTitleLines[0]}</span>
-                  <span className="title-subline">
-                    {copy.landingIntroTitleLines.slice(1).join(' ').trim()}
-                  </span>
+                  {copy.landingIntroTitleLines.slice(1).map((line) => (
+                    <span key={line} className="title-line">
+                      {line}
+                    </span>
+                  ))}
                 </div>
                 <p className="intro-subtext">
-                  <span>{copy.landingIntroSubtextLines[0]}</span>
-                  <span>{copy.landingIntroSubtextLines[1]}</span>
-                  <span>{copy.landingIntroSubtextLines[2]}</span>
-                  <span>
-                    {copy.landingIntroSubtextLines[3]
-                      .split('{emphasis}')
-                      .map((part, index) =>
-                        index === 0 ? (
-                          part
-                        ) : (
-                          <span key={`emphasis-three-${index}`}>
-                            <strong>{copy.landingIntroSubtextEmphasis}</strong>
-                            {part}
-                          </span>
-                        )
-                      )}
-                  </span>
+                  {copy.landingIntroSubtextLines
+                    .filter((line) => line.trim().length > 0)
+                    .map((line, index) => (
+                      <span key={`intro-subtext-three-${index}`}>
+                        {line.includes('{emphasis}')
+                          ? line.split('{emphasis}').map((part, partIndex) =>
+                              partIndex === 0 ? (
+                                part
+                              ) : (
+                                <span key={`emphasis-three-${index}-${partIndex}`}>
+                                  <strong>{copy.landingIntroSubtextEmphasis}</strong>
+                                  {part}
+                                </span>
+                              )
+                            )
+                          : line}
+                      </span>
+                    ))}
                 </p>
                 <a
                   className="primary landing-cta"
@@ -12159,16 +13567,62 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
             <div className="landing-section before">
               <div className="landing-inner">
-                <p className="before-lead">{copy.landingBeforeLead}</p>
+                <p className="before-lead">
+                  {copy.landingBeforeLead.split('\n').map((line, index) =>
+                    index === 0 ? (
+                      <span key="before-lead-primary">{line}</span>
+                    ) : (
+                      <span key={`before-lead-${index}`} className="before-lead-secondary">
+                        {line}
+                      </span>
+                    )
+                  )}
+                </p>
                 <ul className="icon-list negative">
-                  {copy.landingBeforeList.map((item) => (
+                  {copy.landingBeforeList.map((item, index) =>
+                    item.trim().length === 0 ? (
+                      <li key={`spacer-${index}`} className="icon-list-spacer" aria-hidden="true" />
+                    ) : (
+                      <li
+                        key={`${item}-${index}`}
+                        className={item.trim().endsWith('?') ? 'before-final' : undefined}
+                      >
+                        {item}
+                      </li>
+                    )
+                  )}
+                </ul>
+                {(copy.landingBeforeEmphasis.strong ||
+                  copy.landingBeforeEmphasis.medium ||
+                  copy.landingBeforeEmphasis.rest) && (
+                  <div className="landing-emphasis">
+                    <span className="emphasis-strong">{copy.landingBeforeEmphasis.strong}</span>{' '}
+                    <span className="emphasis-medium">{copy.landingBeforeEmphasis.medium}</span>{' '}
+                    {copy.landingBeforeEmphasis.rest}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="landing-section who">
+              <div className="landing-inner">
+                <h2>{copy.landingWhoTitle}</h2>
+                <ul className="icon-list neutral">
+                  {copy.landingWhoList.map((item) => (
                     <li key={item}>{item}</li>
                   ))}
                 </ul>
-                <div className="landing-emphasis">
-                  <span className="emphasis-strong">{copy.landingBeforeEmphasis.strong}</span>{' '}
-                  <span className="emphasis-medium">{copy.landingBeforeEmphasis.medium}</span>{' '}
-                  {copy.landingBeforeEmphasis.rest}
+                <div className="landing-final">
+                  <p>{copy.landingFinalLines[0]}</p>
+                  <p className="final-shift">{copy.landingFinalLines[1]}</p>
+                  <a
+                    className="primary landing-cta"
+                    href="/login"
+                    onClick={handleLandingCtaClick}
+                  >
+                    {copy.landingCta}
+                  </a>
+                  <div className="landing-microcopy">{copy.landingCtaNote}</div>
                 </div>
               </div>
             </div>

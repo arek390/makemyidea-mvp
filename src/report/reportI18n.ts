@@ -21,6 +21,7 @@ export const reportCopy: Record<
     summaryProduct: string
     trizTitle: string
     trizIntro: string
+    trizSelectionHint: string
     trizExplanation: string
     trizDirections: string
     trizApproaches: string
@@ -74,7 +75,35 @@ export const reportCopy: Record<
     recommendationsTrendsTitle: string
     updatingAria: string
     reportOutdatedNotice: string
+    reportOutdatedTooltip: string
+    reportUpdateDisabledTooltip: string
     reportOutdatedPrint: string
+    classicReportView: string
+    actionPlanView: string
+    yourDataTitle: string
+    whereYouAreTitle: string
+    prioritiesTitle: string
+    actionPlanSectionTitle: string
+    actionPlanOtherLabel: string
+    decisionsTitle: string
+    validationTitle: string
+    whatNextTitle: string
+    actionPlanEmpty: string
+    mapContextTitle: string
+    strongestArea: string
+    weakestArea: string
+    decisionRiskNote: string
+    whyItMatters: string
+    riskOfIgnoring: string
+    whyNow: string
+    expectedResult: string
+    chooseAWhen: string
+    chooseBWhen: string
+    consequenceA: string
+    consequenceB: string
+    howToCheck: string
+    positiveMeans: string
+    negativeMeans: string
   }
 > = {
   en: {
@@ -97,6 +126,8 @@ export const reportCopy: Record<
     trizTitle: 'Key trade-offs in your project',
     trizIntro:
       'This section highlights the most important trade-offs in your idea and helps you make deliberate design decisions instead of defaulting to accidental compromises.',
+    trizSelectionHint:
+      'Select the solutions you want to include in your action plan.',
     trizExplanation: 'Why this trade-off matters',
     trizDirections: 'Solution directions',
     trizApproaches: 'Possible approaches',
@@ -153,8 +184,36 @@ export const reportCopy: Record<
     updatingAria: 'Updating…',
     reportOutdatedNotice:
       'Due to new board entries, the Executive summary, Key trade-offs in your project, Perspective / questions map, and\nRecommendations / next steps sections\nrequire an update.',
+    reportOutdatedTooltip: 'The plan requires an update after new entries.',
+    reportUpdateDisabledTooltip: 'Add entries to the Idea Studio to update the action plan.',
     reportOutdatedPrint:
       'The report does not yet reflect the latest board entries. This applies to the Executive summary, Key trade-offs in your project, Perspective / questions map, and Recommendations / next steps sections.',
+    classicReportView: 'Classic report',
+    actionPlanView: 'Action Plan',
+    yourDataTitle: 'Your input',
+    whereYouAreTitle: 'Where you are now',
+    prioritiesTitle: 'Priorities',
+    actionPlanSectionTitle: 'Action plan',
+    actionPlanOtherLabel: 'Other',
+    decisionsTitle: 'Key decisions to make',
+    validationTitle: 'What to validate',
+    whatNextTitle: 'What next',
+    actionPlanEmpty: 'This action-focused variant is not available for this report yet. Update the report to generate it.',
+    mapContextTitle: 'Current interpretation',
+    strongestArea: 'Strongest area',
+    weakestArea: 'Weakest area',
+    decisionRiskNote: 'Decision risk note',
+    whyItMatters: 'Why it matters',
+    riskOfIgnoring: 'Risk of ignoring',
+    whyNow: 'Why now',
+    expectedResult: 'Expected result',
+    chooseAWhen: 'Choose A when',
+    chooseBWhen: 'Choose B when',
+    consequenceA: 'Consequence A',
+    consequenceB: 'Consequence B',
+    howToCheck: 'How to check',
+    positiveMeans: 'A positive result means',
+    negativeMeans: 'A negative result means',
   },
   pl: {
     title: 'Plan działania',
@@ -176,6 +235,8 @@ export const reportCopy: Record<
     trizTitle: 'Kluczowe kompromisy w Twoim projekcie',
     trizIntro:
       'Ta sekcja pokazuje najważniejsze kompromisy projektowe w Twoim pomyśle i pomaga podejmować świadome decyzje zamiast przypadkowych wyborów.',
+    trizSelectionHint:
+      'Zaznacz te rozwiązania, które chcesz uwzględnić w planie działania.',
     trizExplanation: 'Dlaczego ten kompromis ma znaczenie',
     trizDirections: 'Kierunki rozwiązań',
     trizApproaches: 'Możliwe podejścia',
@@ -232,7 +293,36 @@ export const reportCopy: Record<
     updatingAria: 'Aktualizowanie…',
     reportOutdatedNotice:
       'Ze względu na nowe wpisy na tablicy, rozdziały Podsumowanie, Kluczowe kompromisy w Twoim projekcie, Mapa perspektyw / pytań oraz Rekomendacje / następne kroki wymagają aktualizacji.',
+    reportOutdatedTooltip: 'Plan wymaga aktualizacji po nowych wpisach.',
+    reportUpdateDisabledTooltip:
+      'Dodaj wpisy do Pracowni pomysłu, aby zaktualizować plan działania.',
     reportOutdatedPrint:
       'Raport nie odzwierciedla jeszcze najnowszych wpisów na tablicy. Dotyczy to rozdziałów Podsumowanie, Kluczowe kompromisy w Twoim projekcie, Mapa perspektyw / pytań oraz Rekomendacje / następne kroki.',
+    classicReportView: 'Raport klasyczny',
+    actionPlanView: 'Plan działania',
+    yourDataTitle: 'Twoje dane',
+    whereYouAreTitle: 'Gdzie jesteś teraz',
+    prioritiesTitle: 'Priorytety',
+    actionPlanSectionTitle: 'Plan działania',
+    actionPlanOtherLabel: 'Inne',
+    decisionsTitle: 'Kluczowe decyzje do podjęcia',
+    validationTitle: 'Co zweryfikować',
+    whatNextTitle: 'Co dalej',
+    actionPlanEmpty: 'Ten wariant nastawiony na działanie nie jest jeszcze dostępny dla tego raportu. Zaktualizuj raport, aby go wygenerować.',
+    mapContextTitle: 'Obecna interpretacja',
+    strongestArea: 'Najsilniej opisany obszar',
+    weakestArea: 'Najsłabiej opisany obszar',
+    decisionRiskNote: 'Ryzyko decyzyjne',
+    whyItMatters: 'Dlaczego to ważne',
+    riskOfIgnoring: 'Co ryzykujesz, jeśli to zignorujesz',
+    whyNow: 'Dlaczego teraz',
+    expectedResult: 'Oczekiwany rezultat',
+    chooseAWhen: 'Wybierz A, gdy',
+    chooseBWhen: 'Wybierz B, gdy',
+    consequenceA: 'Konsekwencja A',
+    consequenceB: 'Konsekwencja B',
+    howToCheck: 'Jak to sprawdzić',
+    positiveMeans: 'Pozytywny wynik oznacza',
+    negativeMeans: 'Negatywny wynik oznacza',
   },
 }

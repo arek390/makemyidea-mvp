@@ -1,5 +1,5 @@
 import type { ReportLang } from './reportI18n'
-import type { ReportTrizSection } from '../storage/sessionStore'
+import type { ReportExecutionReport, ReportRecommendations, ReportTrizSection } from '../storage/sessionStore'
 
 export type ReportIdea = {
   id: string
@@ -24,10 +24,17 @@ export type ReportSnapshot = {
     createdAt?: number | null
     updatedAt?: number | null
     lastSummaryTextHash?: string | null
-    summary?: { today: string; change: string; product: string } | null
+    summary?: {
+      headline?: string
+      narrative?: string
+      today: string
+      change: string
+      product: string
+    } | null
     ideas?: ReportIdea[] | null
-    recommendations?: unknown
+    recommendations?: ReportRecommendations | unknown
     triz?: ReportTrizSection | null
+    execution_report?: ReportExecutionReport | null
     lang?: 'pl' | 'en' | null
   } | null
 }
@@ -81,9 +88,9 @@ export const downloadReportCsv = (
     })
   }
 
-  const fileName = `${sanitizeFilenamePart(snapshot.sessionName)}_${formatDate(
-    snapshot.reportMeta?.createdAt ?? null
-  )}.csv`
+  const downloadedDate = new Date().toISOString().slice(0, 10)
+  const kindLabel = language === 'pl' ? 'wpisy-idea-studio' : 'idea-studio-items'
+  const fileName = `${sanitizeFilenamePart(snapshot.sessionName)}-${downloadedDate}-${kindLabel}.csv`
   const blob = new Blob([rows.join('\n')], { type: 'text/csv;charset=utf-8' })
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')

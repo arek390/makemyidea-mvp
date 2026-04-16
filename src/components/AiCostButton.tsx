@@ -6,8 +6,12 @@ type AiCostButtonProps = {
   priceMinor: number | null
   currency: 'PLN' | 'USD'
   priceLoading?: boolean
+  loading?: boolean
+  disabled?: boolean
+  disabledTooltip?: string
   onClick?: MouseEventHandler<HTMLButtonElement>
   className?: string
+  metaLayout?: 'inside' | 'below'
 }
 
 const formatCurrency = (value: number, currency: 'PLN' | 'USD') => {
@@ -21,35 +25,68 @@ export const AiCostButton = ({
   priceMinor,
   currency,
   priceLoading = false,
+  loading = false,
+  disabled = false,
+  disabledTooltip,
   onClick,
   className,
+  metaLayout = 'inside',
 }: AiCostButtonProps) => {
   const amountText = (() => {
     if (priceLoading || priceMinor == null) return '—'
     const amount = priceMinor / 100
     return formatCurrency(amount, currency)
   })()
-  return (
+  const metaLine = (
+    <span className={`report-ai-inline${metaLayout === 'below' ? ' report-ai-inline--below' : ''}`}>
+      <span className="report-ai-text report-ai-text--single">
+        {lang === 'pl' ? 'wspierane przez AI' : 'AI-assisted'}
+      </span>
+      <span className="report-ai-text report-ai-text--single">
+        {lang === 'pl' ? 'koszt ' : 'cost '}
+        {amountText}
+      </span>
+      <span className="report-ai-icon" aria-hidden="true">
+        ✨
+      </span>
+    </span>
+  )
+
+  const button = (
     <button
       type="button"
       className={`primary report-update-btn${className ? ` ${className}` : ''}`}
+      disabled={disabled || loading}
       onClick={onClick}
     >
-      <span>{label}</span>
-      <span className="report-ai-inline">
-        <span className="report-ai-text report-ai-text--stack">
-          <span className="report-ai-text-line">
-            {lang === 'pl' ? 'wspierane przez AI' : 'AI-assisted'}
-          </span>
-          <span className="report-ai-text-line">
-            {lang === 'pl' ? 'koszt ' : 'cost '}
-            {amountText}
-          </span>
-        </span>
-        <span className="report-ai-icon" aria-hidden="true">
-          ✨
-        </span>
+      <span className="report-update-btn__label">
+        {loading && <span className="button-spinner report-update-btn__spinner" aria-hidden="true" />}
+        <span>{label}</span>
       </span>
+      {metaLayout === 'inside' ? metaLine : null}
     </button>
   )
+
+  const content =
+    metaLayout === 'below' ? (
+      <span className={`report-update-btn-stack${className ? ` report-update-btn-stack--${className}` : ''}`}>
+        {button}
+        {metaLine}
+      </span>
+    ) : (
+      button
+    )
+
+  if (disabled && disabledTooltip) {
+    return (
+      <span className="report-update-btn-tooltip-wrap" aria-label={disabledTooltip}>
+        {content}
+        <span className="report-update-cta-tooltip" role="tooltip">
+          {disabledTooltip}
+        </span>
+      </span>
+    )
+  }
+
+  return content
 }

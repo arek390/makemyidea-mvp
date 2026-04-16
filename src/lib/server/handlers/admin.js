@@ -841,9 +841,25 @@ export const handleAdminReportList = async (req, res) => {
       return
     }
 
+    const rows = reportRes.data || []
+    const sample = rows[0] || null
+    console.log('[admin.report.list][db] raw rows sample', {
+      count: rows.length,
+      sample: sample
+        ? {
+            session_id: sample.session_id ?? null,
+            total_tokens_input: sample.total_tokens_input ?? null,
+            total_tokens_output: sample.total_tokens_output ?? null,
+            tokens_input_total: sample.tokens_input_total ?? null,
+            tokens_output_total: sample.tokens_output_total ?? null,
+            tokens_total: sample.tokens_total ?? null,
+          }
+        : null,
+    })
+
     res.status(200).json({
       ok: true,
-      rows: reportRes.data || [],
+      rows,
       pricing: {
         latestSync: pricingStatus?.latestSync ?? null,
         latestFetchedAt: pricingStatus?.latestFetchedAt ?? null,
@@ -854,6 +870,20 @@ export const handleAdminReportList = async (req, res) => {
           : 0,
         isFresh: Boolean(pricingStatus?.isFresh),
       },
+    })
+    const responseSample = rows[0] || null
+    console.log('[admin.report.list][response] payload sample', {
+      count: rows.length,
+      sample: responseSample
+        ? {
+            session_id: responseSample.session_id ?? null,
+            total_tokens_input: responseSample.total_tokens_input ?? null,
+            total_tokens_output: responseSample.total_tokens_output ?? null,
+            tokens_input_total: responseSample.tokens_input_total ?? null,
+            tokens_output_total: responseSample.tokens_output_total ?? null,
+            tokens_total: responseSample.tokens_total ?? null,
+          }
+        : null,
     })
   } catch (error) {
     res.status(500).json({ ok: false, error: 'SERVER_ERROR' })

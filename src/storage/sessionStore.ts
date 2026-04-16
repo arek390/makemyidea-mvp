@@ -46,9 +46,72 @@ export type StoredSession = {
 }
 
 export type ReportSummary = {
+  headline?: string
+  narrative?: string
   today: string
   change: string
   product: string
+}
+
+export type ReportExecutionMapContext = {
+  coverage_summary: string
+  strongest_area?: string | null
+  weakest_area?: string | null
+  decision_risk_note?: string | null
+}
+
+export type ReportExecutionPriority = {
+  title: string
+  why_it_matters: string
+  impact?: 'high' | 'medium' | 'low'
+  risk_of_ignoring: string
+}
+
+export type ReportExecutionAction = {
+  title: string
+  what_to_do: string
+  why_now: string
+  expected_result: string
+  source_type?: 'decision' | 'triz' | 'analysis' | null
+  source_ref?: string | null
+  derived_from_user_choice?: boolean | null
+}
+
+export type ReportExecutionDecision = {
+  contradiction_index?: number | null
+  tradeoff: string
+  option_a: string
+  option_b: string
+  consequence_a?: string
+  consequence_b?: string
+  choose_a_when: string
+  choose_b_when: string
+  selected_option?: 'a' | 'b' | null
+}
+
+export type ReportExecutionValidation = {
+  check: string
+  how_to_check: string
+  positive_result_means: string
+  negative_result_means: string
+}
+
+export type ReportExecutionReport = {
+  stage?: 'awaiting_decisions' | 'plan_generated' | null
+  headline: string
+  goal: string
+  map_context: ReportExecutionMapContext
+  priorities: ReportExecutionPriority[]
+  action_plan: ReportExecutionAction[]
+  decisions: ReportExecutionDecision[]
+  validation_loop: ReportExecutionValidation[]
+  next_session_focus: string
+  supporting_items?: ReportIdea[] | null
+  source_snapshot?: {
+    board_items_count?: number | null
+    latest_board_item_at?: number | null
+    content_hash?: string | null
+  } | null
 }
 
 export type RecommendationItem = {
@@ -98,6 +161,10 @@ export type ReportTrizContradiction = {
   explanation?: string
   solution_directions?: string[]
   approaches?: ReportTrizApproach[]
+  selected_approach_indices?: number[] | null
+  selected_approach_titles?: string[] | null
+  selected_approach_index?: number | null
+  selected_approach_title?: string | null
   reflections?: string[]
   description?: string
   improving?: string
@@ -133,6 +200,7 @@ export type ReportMeta = {
   ideas?: ReportIdea[] | null
   recommendations?: ReportRecommendations | null
   triz?: ReportTrizSection | null
+  execution_report?: ReportExecutionReport | null
 }
 
 export const STORAGE_KEY = 'engine-sessions-v1'

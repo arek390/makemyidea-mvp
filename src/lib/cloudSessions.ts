@@ -81,6 +81,7 @@ export const saveSessionToCloud = async (
     boardItems: detail.boardItems || [],
     askedQuestionIds: detail.askedQuestionIds || [],
     uiLanguage,
+    report: detail.report ?? null,
   }
   const record: UserSessionsInsert = {
     user_id: userId,

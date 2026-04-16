@@ -2,6 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from './supabase/types'
 import { supabase } from './supabase/client'
 import type {
+  ReportExecutionReport,
   ReportIdea,
   ReportRecommendations,
   ReportSummary,
@@ -19,6 +20,7 @@ export type ReportRecord = {
   ideas: ReportIdea[] | null
   recommendations: ReportRecommendations | null
   triz: ReportTrizSection | null
+  executionReport: ReportExecutionReport | null
   lang?: 'pl' | 'en' | null
   lastSummaryTextHash: string | null
   sourceUpdatedAt: number
@@ -44,22 +46,30 @@ const parseSummaryJson = (
   ideas: ReportIdea[] | null
   recommendations: ReportRecommendations | null
   triz: ReportTrizSection | null
+  executionReport: ReportExecutionReport | null
   lang?: 'pl' | 'en' | null
 } => {
   if (!value || typeof value !== 'object') {
-    return { summary: null, ideas: null, recommendations: null, triz: null, lang: null }
+    return { summary: null, ideas: null, recommendations: null, triz: null, executionReport: null, lang: null }
   }
   const maybeSummary = value as {
     summary?: ReportSummary
     ideas?: unknown
     recommendations?: unknown
     triz?: unknown
+    execution_report?: unknown
     lang?: unknown
   }
   const rawLang = typeof maybeSummary.lang === 'string' ? maybeSummary.lang.toLowerCase() : ''
   const lang =
     rawLang === 'pl' || rawLang === 'polish' ? 'pl' : rawLang === 'en' || rawLang === 'english' ? 'en' : null
-  if (maybeSummary.summary || maybeSummary.ideas || maybeSummary.recommendations || maybeSummary.triz) {
+  if (
+    maybeSummary.summary ||
+    maybeSummary.ideas ||
+    maybeSummary.recommendations ||
+    maybeSummary.triz ||
+    maybeSummary.execution_report
+  ) {
     return {
       summary: (maybeSummary.summary as ReportSummary | null) ?? null,
       ideas: Array.isArray(maybeSummary.ideas) ? (maybeSummary.ideas as ReportIdea[]) : null,
@@ -71,6 +81,10 @@ const parseSummaryJson = (
         maybeSummary.triz && typeof maybeSummary.triz === 'object'
           ? (maybeSummary.triz as ReportTrizSection)
           : null,
+      executionReport:
+        maybeSummary.execution_report && typeof maybeSummary.execution_report === 'object'
+          ? (maybeSummary.execution_report as ReportExecutionReport)
+          : null,
       lang,
     }
   }
@@ -80,9 +94,9 @@ const parseSummaryJson = (
     typeof legacy.change === 'string' ||
     typeof legacy.product === 'string'
   ) {
-    return { summary: legacy as ReportSummary, ideas: null, recommendations: null, triz: null, lang }
+    return { summary: legacy as ReportSummary, ideas: null, recommendations: null, triz: null, executionReport: null, lang }
   }
-  return { summary: null, ideas: null, recommendations: null, triz: null, lang }
+  return { summary: null, ideas: null, recommendations: null, triz: null, executionReport: null, lang }
 }
 
 const normalizeReportRow = (row: ReportRow): ReportRecord => {
@@ -97,6 +111,7 @@ const normalizeReportRow = (row: ReportRow): ReportRecord => {
     ideas: parsed.ideas,
     recommendations: parsed.recommendations,
     triz: parsed.triz,
+    executionReport: parsed.executionReport,
     lang: parsed.lang ?? null,
     lastSummaryTextHash: row.last_summary_text_hash ?? null,
     sourceUpdatedAt: toNumber(row.source_updated_at, 0),
@@ -133,17 +148,16 @@ export const ensureReportExists = async (
   if (!sessionId) {
     throw new Error('Missing session id.')
   }
-  const existing = await fetchReportBySessionId(sessionId)
-  if (existing) return existing
   const sessionRes = await supabase.auth.getSession()
   const token = sessionRes?.data?.session?.access_token || ''
   const response = await fetch('/api/report?action=generate', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      ...(import.meta.env.DEV ? { 'x-diagnostics': '1' } : {}),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify({ sessionId }),
+    body: JSON.stringify({ sessionId, lang: _lang || undefined }),
   })
   const payload = await response.json().catch(() => null)
   if (response.status === 402 || payload?.error === 'INSUFFICIENT_BALANCE') {
@@ -152,8 +166,6 @@ export const ensureReportExists = async (
   if (!response.ok || !payload?.ok || !payload?.report) {
     const message = payload?.error || 'REPORT_GENERATE_FAILED'
     console.error('[report] ensure failed', { sessionId, message })
-    const retry = await fetchReportBySessionId(sessionId)
-    if (retry) return retry
     throw new Error(message)
   }
   return normalizeReportRow(payload.report as ReportRow)

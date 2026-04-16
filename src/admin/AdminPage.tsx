@@ -322,12 +322,13 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     setBillingNotice(null)
   }, [uiLanguage])
 
-  useEffect(() => {
-    if (!authReady || !authUserId) return
-    if (adminAllowed === 'no') return
-    let cancelled = false
-    const load = async () => {
-      setLoading(true)
+  const fetchReportRows = useCallback(
+    async (options?: { silent?: boolean }) => {
+      if (!authReady || !authUserId) return
+      if (adminAllowed === 'no') return
+      if (!options?.silent) {
+        setLoading(true)
+      }
       setError(null)
       try {
         if (!supabase) throw new Error('AUTH_REQUIRED')
@@ -340,33 +341,86 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         const payload = await response.json().catch(() => null)
         if (!response.ok || !payload?.ok) {
           if (response.status === 403 || payload?.error === 'FORBIDDEN') {
-            if (!cancelled) {
-              setAdminAllowed('no')
-              setError(t.noAccess)
-            }
+            setAdminAllowed('no')
+            setError(t.noAccess)
             return
           }
           throw new Error(payload?.error || 'LOAD_FAILED')
         }
-        if (!cancelled) {
-          setAdminAllowed('yes')
-          setRows(Array.isArray(payload.rows) ? payload.rows : [])
-          setPricingInfo(payload?.pricing ?? null)
-        }
+        setAdminAllowed('yes')
+        setRows(Array.isArray(payload.rows) ? payload.rows : [])
+        setPricingInfo(payload?.pricing ?? null)
       } catch (err) {
-        if (!cancelled) {
-          const message = err instanceof Error ? err.message : 'LOAD_FAILED'
-          setError(message === 'AUTH_REQUIRED' ? t.authRequired : message)
-        }
+        const message = err instanceof Error ? err.message : 'LOAD_FAILED'
+        setError(message === 'AUTH_REQUIRED' ? t.authRequired : message)
       } finally {
-        if (!cancelled) setLoading(false)
+        if (!options?.silent) setLoading(false)
       }
+    },
+    [adminAllowed, authReady, authUserId, t.authRequired, t.noAccess]
+  )
+
+  useEffect(() => {
+    if (!authReady || !authUserId) return
+    if (adminAllowed === 'no') return
+    void fetchReportRows()
+  }, [authReady, authUserId, adminAllowed, fetchReportRows])
+
+  useEffect(() => {
+    if (!authReady || !authUserId || adminAllowed !== 'yes' || !supabase) return
+    let delayedRefreshTimer: number | null = null
+    const scheduleRefresh = () => {
+      if (delayedRefreshTimer) {
+        window.clearTimeout(delayedRefreshTimer)
+      }
+      delayedRefreshTimer = window.setTimeout(() => {
+        void fetchReportRows({ silent: true })
+      }, 250)
     }
-    void load()
+
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return
+      scheduleRefresh()
+    }
+
+    const channel = supabase
+      .channel('admin-session-costs')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'session_ai_cost_events',
+        },
+        () => {
+          scheduleRefresh()
+        }
+      )
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'session_ai_cost_summary',
+        },
+        () => {
+          scheduleRefresh()
+        }
+      )
+      .subscribe()
+
+    window.addEventListener('focus', handleVisibilityOrFocus)
+    document.addEventListener('visibilitychange', handleVisibilityOrFocus)
+
     return () => {
-      cancelled = true
+      if (delayedRefreshTimer) {
+        window.clearTimeout(delayedRefreshTimer)
+      }
+      window.removeEventListener('focus', handleVisibilityOrFocus)
+      document.removeEventListener('visibilitychange', handleVisibilityOrFocus)
+      void supabase.removeChannel(channel)
     }
-  }, [authReady, authUserId, adminAllowed])
+  }, [adminAllowed, authReady, authUserId, fetchReportRows])
 
   const fetchBillingRows = useCallback(
     async (options?: { silent?: boolean }) => {
@@ -443,6 +497,24 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     })
     return sorted
   }, [filteredRows, sortKey, sortDir])
+
+  useEffect(() => {
+    const sample = sortedRows[0] || null
+    console.log('[admin.ui] row sample', {
+      sample: sample
+        ? {
+            session_id: sample.session_id ?? null,
+            tokens_input_total: sample.tokens_input_total ?? null,
+            tokens_output_total: sample.tokens_output_total ?? null,
+            tokens_total: sample.tokens_total ?? null,
+            total_tokens_input: (sample as unknown as { total_tokens_input?: number | null })
+              .total_tokens_input ?? null,
+            total_tokens_output: (sample as unknown as { total_tokens_output?: number | null })
+              .total_tokens_output ?? null,
+          }
+        : null,
+    })
+  }, [sortedRows])
 
   const filteredBillingRows = useMemo(() => {
     const query = billingSearch.trim().toLowerCase()

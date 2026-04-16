@@ -16,7 +16,7 @@ import {
 let cachedDataset = null
 const limiter = createRateLimiter({ windowMs: 60_000, max: 20 })
 
-const recordCoachUsageEvent = async ({ sessionId, currentUserId, actionKey, meta }) => {
+const recordCoachUsageEvent = async ({ sessionId, currentUserId, actionKey, requestId, meta }) => {
   if (!sessionId || !meta) return
   await recordSessionAiUsageEvent(getSupabaseAdmin(), {
     sessionId,
@@ -24,6 +24,8 @@ const recordCoachUsageEvent = async ({ sessionId, currentUserId, actionKey, meta
     actionKey,
     sourceTask: actionKey,
     referenceId: sessionId,
+    requestId: requestId || null,
+    feature: actionKey,
     meta,
   })
 }
@@ -462,6 +464,8 @@ const normalizeSeedText = (value) =>
     .replace(/\s+/g, ' ')
     .trim()
 
+// Near-exact dedupe only: lowercase + normalize whitespace + drop punctuation.
+// Avoid fuzzy/semantic dedupe here to preserve recall for seed_from_brief.
 const seedDedupKey = (value) =>
   normalizeSeedText(value)
     .toLowerCase()
@@ -469,35 +473,161 @@ const seedDedupKey = (value) =>
     .replace(/\s+/g, ' ')
     .trim()
 
-const normalizeSeedEntries = (items, maxEntries = 16) => {
+const resolveSeedMaxEntries = () => {
+  const raw = Number(process.env.SEED_MAX_ENTRIES ?? 64)
+  if (!Number.isFinite(raw) || raw <= 0) return 64
+  return Math.min(256, Math.floor(raw))
+}
+
+const resolveSeedClassificationMode = () => {
+  const raw = String(process.env.SEED_CLASSIFICATION_MODE || '').trim()
+  if (raw === 'column_first') return 'column_first'
+  return 'full_3x3'
+}
+
+const normalizeSeedEntries = (items, maxEntries = resolveSeedMaxEntries()) => {
   if (!Array.isArray(items)) return []
   const seen = new Set()
   const normalized = []
   for (const item of items) {
     if (normalized.length >= maxEntries) break
-    const text = normalizeSeedText(item?.text)
+    const text =
+      typeof item === 'string'
+        ? normalizeSeedText(item)
+        : normalizeSeedText(item?.text)
     if (!text) continue
     const dedupKey = seedDedupKey(text)
     if (!dedupKey || seen.has(dedupKey)) continue
     seen.add(dedupKey)
     normalized.push({
       text,
-      cellCode: coerceCellId(item?.cellCode),
-      confidence: clampConfidence(item?.confidence),
-      kind: normalizeSeedKind(item?.kind),
+      cellCode: typeof item === 'string' ? null : coerceCellId(item?.cellCode),
+      confidence: typeof item === 'string' ? null : clampConfidence(item?.confidence),
+      kind: typeof item === 'string' ? null : normalizeSeedKind(item?.kind),
     })
   }
   return normalized
 }
 
-const parseSeedEntriesPayload = (payload, maxEntries = 16) => {
+const parseSeedEntriesPayload = (payload, maxEntries = resolveSeedMaxEntries()) => {
   if (!payload) return null
   const source = Array.isArray(payload)
     ? payload
-    : payload?.entries || payload?.items || payload?.data?.entries || payload?.result?.entries
+    : payload?.entries ||
+      payload?.items ||
+      payload?.seeds ||
+      payload?.ideas ||
+      payload?.data?.entries ||
+      payload?.data?.items ||
+      payload?.result?.entries ||
+      payload?.result?.items
   const entries = normalizeSeedEntries(source, maxEntries)
   if (!entries.length) return null
   return entries
+}
+
+const coerceSeedColumnCode = (value) => {
+  const raw = String(value ?? '').trim().toUpperCase()
+  if (raw === '1' || raw === '2' || raw === '3') return raw
+  if (raw === 'B1') return '1'
+  if (raw === 'B2') return '2'
+  if (raw === 'B3') return '3'
+  return null
+}
+
+const coerceSeedColumnCodeLoose = (value) => {
+  const raw = String(value ?? '').trim().toUpperCase()
+  const direct = coerceSeedColumnCode(raw)
+  if (direct) return direct
+  const bMatch = raw.match(/B\s*([123])\b/)
+  if (bMatch) return bMatch[1]
+  const digitMatch = raw.match(/\b([123])\b/)
+  if (digitMatch) return digitMatch[1]
+  const fallbackDigit = raw.match(/([123])/)
+  if (fallbackDigit) return fallbackDigit[1]
+  return null
+}
+
+function mapColumnToLegacyCellCode(column) {
+  switch (String(column || '').trim()) {
+    case '1':
+      return 'B1'
+    case '2':
+      return 'B2'
+    case '3':
+      return 'B3'
+    default:
+      return null
+  }
+}
+
+const normalizeColumnFirstComparableText = (value) =>
+  String(value || '')
+    .trim()
+    .replace(/\s+/g, ' ')
+
+const columnFirstMatchKey = (value) =>
+  normalizeColumnFirstComparableText(value)
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+const buildColumnFirstClassificationFromLlm = ({ inputEntries, llmPayload }) => {
+  const raw =
+    llmPayload?.entries ||
+    llmPayload?.items ||
+    llmPayload?.data?.entries ||
+    llmPayload?.result?.entries ||
+    null
+  const safeList = Array.isArray(raw) ? raw : []
+  const byId = new Map()
+  const byKey = new Map()
+  for (const item of safeList) {
+    const safeId = String(item?.id ?? '').trim()
+    if (safeId && !byId.has(safeId)) {
+      byId.set(safeId, {
+        llmRawColumn: item?.column ?? item?.col ?? item?.cellCode ?? null,
+        column: coerceSeedColumnCodeLoose(item?.column ?? item?.col ?? item?.cellCode),
+        confidence: item?.confidence ?? null,
+        kind: item?.kind ?? null,
+      })
+    }
+    const key = columnFirstMatchKey(item?.text)
+    if (!key) continue
+    if (byKey.has(key)) continue
+    byKey.set(key, {
+      llmRawColumn: item?.column ?? item?.col ?? item?.cellCode ?? null,
+      column: coerceSeedColumnCodeLoose(item?.column ?? item?.col ?? item?.cellCode),
+      confidence: item?.confidence ?? null,
+      kind: item?.kind ?? null,
+    })
+  }
+
+  const mapped = (Array.isArray(inputEntries) ? inputEntries : []).map((entry) => {
+    const safeId = String(entry?.id ?? '').trim()
+    const text = normalizeColumnFirstComparableText(entry?.text)
+    const picked = (safeId ? byId.get(safeId) : null) || byKey.get(columnFirstMatchKey(text)) || null
+    const column = picked?.column ?? null
+    return {
+      text,
+      column,
+      cellCode: mapColumnToLegacyCellCode(column),
+      confidence: clampConfidence(picked?.confidence),
+      kind: normalizeSeedKind(picked?.kind),
+    }
+  })
+
+  const total = mapped.length
+  const classified = mapped.filter((entry) => entry.cellCode != null).length
+  const c1 = mapped.filter((entry) => entry.cellCode === 'B1').length
+  const c2 = mapped.filter((entry) => entry.cellCode === 'B2').length
+  const c3 = mapped.filter((entry) => entry.cellCode === 'B3').length
+  const nullCount = total - classified
+  return {
+    entries: normalizeSeedEntries(mapped, resolveSeedMaxEntries()),
+    stats: { total, classified, nullCount, byColumn: { 1: c1, 2: c2, 3: c3 } },
+  }
 }
 
 const inferCellMeaning = (cellCode) => {
@@ -523,26 +653,247 @@ const buildSeedDiagnosticFlags = (value) => {
   const text = String(value || '').toLowerCase()
   return {
     hasShouldSignal:
-      /powin|ma mieć|musi|warto żeby|docelowo/.test(text),
+      /powin|mógłby|mogłaby|miałby|pozw|ułatw|pomóc|cecha|łatwa do|should|could|allow|make it easier|feature|easy to|must remain|needs to|has to|ideally|target state|i want it to|i would like it to/.test(
+        text
+      ),
     hasProblemSignal:
-      /problem|nie działa|trudno|ciężk|brak|utrudnia/.test(text),
+      /problem|niszc|zgniec|uszkodz|utrud|trzeba|musi|dodatkowa czynność|niepotrzebna|ryzyko|przykryw|nie działa|trudno|ciężk|brak|problem|damage|crush|crushed|harm|friction|must|have to|extra step|unnecessary|risk|difficult|doesn't work|does not work|hard to|lack|missing|prevents|gets in the way/.test(
+        text
+      ),
     hasAsIsSignal:
-      /jest|obecnie|dzisiejsze|teraz/.test(text),
+      /obecne|dzisiaj|używane|występuje|jest|są|currently|today|existing|current|are|is|used/.test(
+        text
+      ),
+    looksLikeMarketStatement: /market|rynek|konkur|competition|pricing|cena|prices|price|availability|dostępn|saturated|nasycon|selection|wyb[oó]r|trend|trends|category|kategoria/.test(
+      text
+    ),
   }
+}
+
+const normalizeSeedSentenceStart = (value, maxChars = 60) =>
+  String(value || '')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ')
+    .slice(0, maxChars)
+
+const detectLeadingSeedIntent = (value) => {
+  const start = normalizeSeedSentenceStart(value, 60)
+  // Inspect the first clause to reduce false positives from later "because/so that" parts.
+  const head = start.split(/[.;:—–-]/)[0] || start
+
+  // If the entry begins with a human/user actor, obligation language is usually PROBLEM (extra effort / friction).
+  if (/^(klient|klienci|użytkownik|użytkownicy|customer|customers|user|users|i|we|you|they)\b/.test(head)) {
+    if (/\b(musi|muszą|must|have to|has to|needs to|need to)\b/.test(head)) return '2'
+  }
+
+  // Requirement framing: "X must be ..." / "X musi być ..." is typically SHOULD_BE (expected property).
+  if (/^(musi|must)\s+(być|be)\b/.test(head)) return '3'
+  if (/^\S.{0,32}\b(musi|must)\s+(być|be)\b/.test(head)) return '3'
+
+  const leadDesired =
+    /^(powin|mógłby|mogłaby|miałby|warto|dobrze gdyby|pozwol|należy|it would help if|should|could|could help|should be)\b/.test(head) ||
+    // Noun-led proposal (e.g. "Produkt powinien…", "The system should…", "Divider could…")
+    /^\S.{0,28}\b(powin|mógłby|mogłaby|miałby|pozwol|should|could|should be|could help)\b/.test(head)
+  if (leadDesired) return '3'
+
+  const leadProblem =
+    /^(problem|kłopot|trudność|utrudnia|powoduje|niszczy|uszkadza|trzeba|musi|muszą|musisz|musimy|nie działa|nie da się|issue|difficulty|friction|causes|damages|breaks|must|have to|needs to|does not work|cannot)\b/.test(
+      head
+    )
+  if (leadProblem) return '2'
+
+  const leadAsIs =
+    /^(obecnie|dzisiaj|teraz|obecne|aktualnie|są|jest|w innych|inne|currently|today|now|current|existing|is|are|in other|other)\b/.test(
+      head
+    )
+  if (leadAsIs) return '1'
+
+  return null
+}
+
+const hasSeedShouldBeSignals = (value) => {
+  const text = String(value || '').toLowerCase()
+  // Desired / proposal / requirement markers. Should dominate over burden/problem when present.
+  return /powin|mógłby|mogłaby|miałby|warto|dobrze gdyby|pozw|ułatw|pomóc|cecha|łatwa do|stabiln|nie może się|należy|wymaga|wymagane|should|could|could help|should be|allow|make it easier|feature|stable|easy to|must be|require|requires|required/.test(
+    text
+  )
+}
+
+const hasSeedNotWorkingSignals = (value) => {
+  const text = String(value || '').toLowerCase()
+
+  // User burden / friction / forced actions / extra steps.
+  const burden =
+    /musi|muszą|musisz|musimy|trzeba|należy|wymaga|wymagane|dodatkow|niepotrzebn|utrud|problem|kłopot|trudno|nie da się|ponownie|za każdym razem|must|have to|has to|need to|needs to|requires|extra|unnecessary|difficult|problem|issue|hard to|each time|again/.test(
+      text
+    )
+
+  // Harm / risk / negative outcomes.
+  const harm =
+    /zniszcz|uszkodz|zgni|zgniec|ryzyko|szkoda|strat|damage|break|crush|crushed|risk|harm/.test(text)
+
+  // Workaround phrasing ("aby/żeby/in order to") should only count when combined with burden signals.
+  const workaroundJoiner = /\b(aby|żeby|in order to)\b/.test(text)
+  const workaroundAmplifier = /\b(musi|muszą|trzeba|należy|must|have to|need to|needs to|again|ponownie|za każdym razem)\b/.test(
+    text
+  )
+
+  return harm || burden || (workaroundJoiner && workaroundAmplifier)
+}
+
+const deriveSeedColumnFromMarkersV2 = (value) => {
+  const text = String(value || '').trim()
+  const lower = text.toLowerCase()
+  const leading = detectLeadingSeedIntent(lower)
+
+  // Column 1 should NOT be a technical fallback. We only assign "1" when we have
+  // positive observation/benchmark evidence and no dominant problem/solution intent.
+  const observationSignals =
+    /^(obecnie|dzisiaj|teraz|obecne|aktualnie|w innych|inne|currently|today|now|current|existing|in other|other)\b/.test(
+      lower.trim()
+    ) ||
+    /\b(obecne|dzisiaj|używa|używane|występuje|jest|są|current|currently|today|existing|are|is|used)\b/.test(lower)
+
+  const benchmarkSignals =
+    /\b(w innych|inne|porówn|lepsz|gorsz|mniejsz|większ|szersz|wyższ|better|worse|smaller|larger|wider|taller|in other|other)\b/.test(
+      lower
+    )
+
+  const desired = hasSeedShouldBeSignals(lower)
+  const notWorking = hasSeedNotWorkingSignals(lower)
+
+  const scores = { 1: 0, 2: 0, 3: 0 }
+  const reasons = { 1: [], 2: [], 3: [] }
+
+  // Leading intent is the strongest signal.
+  if (leading === '3') {
+    scores[3] += 4
+    reasons[3].push('leading_desired')
+  } else if (leading === '2') {
+    scores[2] += 4
+    reasons[2].push('leading_problem')
+  } else if (leading === '1') {
+    scores[1] += 3
+    reasons[1].push('leading_observation')
+  }
+
+  // Global semantic signals (weaker than leading intent, but consistent).
+  if (desired) {
+    scores[3] += 3
+    reasons[3].push('desired_markers')
+  }
+  if (notWorking) {
+    scores[2] += 3
+    reasons[2].push('not_working_markers')
+  }
+
+  // Observation/benchmark signals only help column 1 if problem/solution intent is not dominant.
+  if (observationSignals) {
+    scores[1] += 2
+    reasons[1].push('observation_markers')
+  }
+  if (benchmarkSignals) {
+    scores[1] += 1
+    reasons[1].push('benchmark_markers')
+  }
+
+  const ordered = [
+    { col: 1, score: scores[1] },
+    { col: 2, score: scores[2] },
+    { col: 3, score: scores[3] },
+  ].sort((a, b) => b.score - a.score)
+  const best = ordered[0]
+  const second = ordered[1]
+  const gap = (best?.score ?? 0) - (second?.score ?? 0)
+
+  // No neutral fallback to 1: if we don't have real evidence, keep null and let LLM decide.
+  // Small recall boost for AS_IS: allow clear observations/benchmarks to land in 1 with weaker evidence.
+  // This prevents obvious "as-is" statements from becoming N/A when LLM output is missing/unparseable.
+  if (!best) return { column: null, confidence: 'low', scores, reasons }
+  if (best.score < 3) {
+    const canBeAsIs =
+      best.col === 1 &&
+      best.score >= 2 &&
+      (observationSignals || benchmarkSignals || leading === '1') &&
+      scores[2] === 0 &&
+      scores[3] === 0
+    if (canBeAsIs) {
+      return { column: 1, confidence: 'medium', scores, reasons }
+    }
+    return { column: null, confidence: 'low', scores, reasons }
+  }
+
+  // Prevent column 1 from winning when there is a clear problem/solution signal.
+  if (best.col === 1 && (scores[2] >= 3 || scores[3] >= 3)) {
+    return { column: null, confidence: 'low', scores, reasons }
+  }
+
+  const confidence =
+    best.score >= 6 && gap >= 2 ? 'high' : best.score >= 4 && gap >= 1 ? 'medium' : 'low'
+  return { column: best.col, confidence, scores, reasons }
+}
+
+const resolveSeedColumn = ({ llmColumn, derived }) => {
+  const llm = coerceSeedColumnCode(llmColumn)
+  const safeDerivedColumn =
+    derived && (derived.column === 1 || derived.column === 2 || derived.column === 3)
+      ? String(derived.column)
+      : null
+
+  // Backend heuristic is a sanity-check: override LLM only when we are highly confident.
+  // Why: LLM remains the primary classifier; heuristics are brittle and should not flatten semantics.
+  if (derived?.confidence === 'high' && safeDerivedColumn) return safeDerivedColumn
+  if (llm) return llm
+  if ((derived?.confidence === 'medium' || derived?.confidence === 'high') && safeDerivedColumn) return safeDerivedColumn
+  // No technical fallback to "1": column 1 means "observation/benchmark", not "nothing detected".
+  return null
+}
+
+const applySeedColumnFirstSafetyCheck = (entries) => {
+  if (!Array.isArray(entries)) return []
+  return entries.map((entry) => {
+    const llmColumn = coerceSeedColumnCode(entry?.column)
+    const derived = deriveSeedColumnFromMarkersV2(entry?.text)
+    const column = resolveSeedColumn({ llmColumn, derived })
+    if (process.env.NODE_ENV !== 'production') {
+      console.log('[seed][column_first][resolve]', {
+        text: String(entry?.text || '').trim(),
+        llmRawColumn: entry?.llmRawColumn ?? null,
+        llmNormalizedColumn: llmColumn,
+        derivedColumn: derived?.column ?? null,
+        derivedConfidence: derived?.confidence ?? null,
+        derivedScores: derived?.scores ?? null,
+        resolvedColumn: column,
+      })
+    }
+    return { ...entry, column }
+  })
 }
 
 const shouldNullConflictingSeedCellCode = (entry) => {
   const confidence = clampConfidence(entry?.confidence)
   const inferred = inferCellMeaning(entry?.cellCode)
   const flags = buildSeedDiagnosticFlags(entry?.text)
+  // If text contains both strong problem and strong desired/requirement signals, prefer null (mixed semantics).
+  if (flags.hasProblemSignal && flags.hasShouldSignal) {
+    return confidence == null || confidence < 0.995
+  }
   if (flags.hasShouldSignal && inferred.col && inferred.col !== 'should_be') {
-    return confidence == null || confidence < 0.98
+    return confidence == null || confidence < 0.995
   }
   if (flags.hasProblemSignal && inferred.col && inferred.col !== 'not_working') {
-    return confidence == null || confidence < 0.98
+    return confidence == null || confidence < 0.995
   }
-  if (flags.hasAsIsSignal && inferred.col && inferred.col !== 'as_is' && !flags.hasProblemSignal) {
-    return confidence == null || confidence < 0.98
+  // Do not overcorrect neutral/market/context facts: avoid nulling cellCode for them.
+  if (
+    flags.hasAsIsSignal &&
+    inferred.col &&
+    inferred.col !== 'as_is' &&
+    !flags.hasProblemSignal &&
+    !flags.looksLikeMarketStatement
+  ) {
+    return confidence == null || confidence < 0.995
   }
   return false
 }
@@ -557,6 +908,55 @@ const applySeedClassificationSafetyCheck = (entries) => {
       cellCode: null,
     }
   })
+}
+
+const normalizeSeedEntriesForClassification = (entries) => {
+  if (!Array.isArray(entries)) return []
+  const seen = new Set()
+  const out = []
+  const normalize = (value) =>
+    String(value || '')
+      .trim()
+      .replace(/\s+/g, ' ')
+      .replace(/^[\s\-–—•*]+/, '')
+      .replace(/[\s\-–—•*]+$/, '')
+      .replace(/^[\s"'“”‘’]+/, '')
+      .replace(/[\s"'“”‘’]+$/, '')
+      .trim()
+  const dedupKey = (value) =>
+    normalize(value)
+      .toLowerCase()
+      .replace(/[^\p{L}\p{N}\s]/gu, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  const safeShorten = (value, maxLen = 160) => {
+    const trimmed = normalize(value)
+    if (trimmed.length <= maxLen) return trimmed
+    const slice = trimmed.slice(0, maxLen + 1)
+    const cutAt =
+      Math.max(
+        slice.lastIndexOf('.'),
+        slice.lastIndexOf(';'),
+        slice.lastIndexOf(','),
+        slice.lastIndexOf('—'),
+        slice.lastIndexOf('-')
+      ) || 0
+    const candidate = cutAt >= Math.floor(maxLen * 0.7) ? slice.slice(0, cutAt) : slice.slice(0, maxLen)
+    return candidate.trim().replace(/[,\-–—;:.]+$/, '').trim()
+  }
+
+  for (const item of entries) {
+    if (typeof item !== 'string') continue
+    let text = normalize(item)
+    if (text.length < 3) continue
+    if (text.length > 220) continue
+    if (text.length > 180) text = safeShorten(text, 160)
+    const key = dedupKey(text)
+    if (!key || seen.has(key)) continue
+    seen.add(key)
+    out.push(text)
+  }
+  return out
 }
 
 const buildSeedFallbackEntries = (text, maxEntries = 8) => {
@@ -979,95 +1379,374 @@ export const handleCoachSuggest = async (req, res) => {
         })
         return
       }
-      const instructions = [
-        'You are extracting starter board entries from a user brief.',
-        'Split the text into short, distinct entries suitable for a workshop board.',
-        'Allowed kinds: idea, observation, problem, need, conclusion, question, note.',
-        'Do not add new facts. Do not duplicate entries.',
-        'Each entry should be one concise thought.',
-        'Classify in two steps. Step 1: choose the COLUMN based on semantics. Step 2: choose the ROW.',
-        'Column semantics have priority over row semantics.',
-        'as_is = current state, present observation, what exists now.',
-        'not_working = problem, pain point, limitation, friction, something missing or making work harder.',
-        'should_be = desired future state, requirement, intended feature, expected property, what should exist.',
-        'Language-specific signals for column selection:',
-        'For Polish: signals like "powin", "powinna", "powinno", "ma mieć", "musi", "docelowo", "warto żeby", "chciałbym, żeby" usually indicate should_be.',
-        'For Polish: signals like "problem", "nie działa", "trudno", "ciężkie", "brak", "utrudnia", "za wolne", "za ciężkie", "przeszkadza" usually indicate not_working.',
-        'For Polish: signals like "jest", "obecnie", "dzisiejsze", "teraz", "aktualnie" usually indicate as_is.',
-        'For English: signals like "should", "should be", "must", "needs to", "has to", "ideally", "target state", "I want it to", "I would like it to" usually indicate should_be.',
-        'For English: signals like "problem", "doesn\'t work", "does not work", "hard to", "difficult to", "too heavy", "lack", "missing", "prevents", "gets in the way" usually indicate not_working.',
-        'For English: signals like "is", "are", "currently", "today", "now", "at the moment", "existing", "currently it" usually indicate as_is.',
-        'These signals are helpful hints, not absolute rules. Use semantic meaning, not just a single word without context.',
-        'Do not spread entries across columns just to fill the matrix. Classification must be semantic, not distribution-based.',
-        'If you are confident about the column but less sure about the row, choose the most likely row.',
-        'If you are not confident even about the column, return null cellCode instead of guessing.',
-        'Rows mean: world = usage context, user, environment, surroundings, situation; product = the whole product/system as one object; elements = specific parts, components, mechanisms, interfaces, power sources, light sources, wires, controls.',
-        'Exact cell meanings: A1=world+as_is, A2=world+not_working, A3=world+should_be, B1=product+as_is, B2=product+not_working, B3=product+should_be, C1=elements+as_is, C2=elements+not_working, C3=elements+should_be.',
-        'Few-shot examples:',
-        '"Dzisiejsze lampy są ciężkie i niełatwo je przenosić." -> not_working, C2',
-        '"Lampa powinna mieć regulowany kolor światła." -> should_be, B3',
-        '"Obecnie lampa stoi na biurku i świeci tylko w jednym kierunku." -> as_is, B1',
-        '"Przewód zasilający przeszkadza w przesuwaniu lampy." -> not_working, C2',
-        '"Lampa powinna umożliwiać sterowanie głosem." -> should_be, B3',
-        '"The lamp should have adjustable light color." -> should_be, B3',
-        '"The power cable gets in the way when moving the lamp." -> not_working, C2',
-        '"Currently the lamp lights only one part of the desk." -> as_is, B1',
-        '"The lamp should support voice control." -> should_be, B3',
-        '"Existing desk lamps are too heavy to move easily." -> not_working, C2',
-        'If unsure about matrix placement, use null cellCode and lower confidence.',
-        'Return STRICT JSON ONLY:',
-        '{"entries":[{"text":"...","cellCode":"A1|null","confidence":0.84,"kind":"idea"}]}',
-        'Use cellCode only from A1..C3 when confident.',
-        locale === 'pl' ? 'Write entries in Polish.' : 'Write entries in English.',
-      ].join(' ')
-      const callSeed = async (modelSet) =>
-        runLlmTask({
-          apiKey: process.env.OPENAI_API_KEY,
-          aiSupportEnabled: true,
-          task: 'seed-from-brief',
-          input: text,
-          sessionId,
-          language: locale === 'pl' ? 'Polish' : 'English',
-          taskInstructions: instructions,
-          parseResponse: (value) => {
-            try {
-              const parsed = JSON.parse(value)
-              return parsed ?? null
-            } catch {
-              return null
-            }
-          },
-          fallbackData: null,
-          models: modelSet,
-          maxOutputTokens: 900,
-          rateLimiter: limiter,
-          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
-        })
-      const defaultModels = {
+      const extractionInstructions = `
+Extract ALL distinct atomic ideas from the user's brief.
+
+Goal:
+- HIGH RECALL: capture all important ideas.
+- HIGH PRECISION OF ATOMS: each entry must express exactly ONE idea.
+
+Semantic purity rules:
+- Do NOT combine current state, problem, desired state, solution concept, or requirement in one entry.
+- Split mixed sentences into separate entries whenever they contain more than one of these:
+  1. observation about the current situation,
+  2. user pain / problem / friction / damage / inefficiency,
+  3. proposed solution or feature idea,
+  4. requirement or constraint for the solution.
+- Keep the user's meaning, but rewrite into short, explicit, single-idea statements when needed.
+- Do not summarize multiple ideas into one sentence.
+- Do not invent facts that are not present in the brief.
+
+Semantic distinctions:
+- CURRENT STATE = what exists today, what is observed now.
+- PROBLEM = what causes harm, friction, inefficiency, confusion, damage, risk, or extra effort.
+- DESIRED / SOLUTION = what could help, what should exist, what feature is proposed.
+- REQUIREMENT / CONSTRAINT = what the proposed solution must satisfy.
+
+Length rule:
+- Prefer short entries.
+- Each entry should usually stay under 160 characters unless a longer phrasing is necessary for clarity.
+
+Good examples:
+- "Obecne koszyki ciągnięte za uchwyt są głębokie."
+- "Delikatne produkty na dole mogą zostać zgniecione przez cięższe produkty."
+- "Klient musi przekładać delikatne produkty na górę."
+- "To dodaje niepotrzebną czynność podczas zakupów."
+- "Koszyk mógłby mieć pionową przegrodę."
+- "Przegroda powinna być łatwa do przestawienia."
+- "The current pull-behind baskets are deep."
+- "Fragile products at the bottom can be crushed by heavier items."
+- "Customers must move fragile items to the top."
+- "This adds an unnecessary action during shopping."
+- "The basket could include a vertical divider."
+- "The divider should be easy to reposition."
+
+Bad examples:
+- "Deep baskets crush fragile items, so a divider would help."
+- "Customers move fragile items because baskets are deep and should have a divider."
+- "A stable movable divider would solve the problem."
+
+Return STRICT JSON ONLY:
+{"entries":[{"text":"..."}]}
+
+Write entries in Polish when locale is "pl". Write entries in English when locale is "en".
+`.trim()
+
+      const classificationInstructions = `
+Classify each entry into a 3x3 matrix cell A1..C3 or null.
+
+Columns:
+- A = AS_IS: current reality, existing state, observed facts, comparisons describing how things work today.
+- B = NOT_WORKING: pain, friction, failure, inefficiency, risk, damage, unnecessary effort, negative consequence.
+- C = SHOULD_BE: desired future state, proposal, feature idea, design requirement, expected property.
+
+Rows:
+- 1 = WORLD / CONTEXT: shopping context, store process, customer behavior, checkout flow, general usage situation.
+- 2 = PRODUCT / SYSTEM: the basket as a whole, basket type, overall product structure or form.
+- 3 = ELEMENT / COMPONENT: divider, handle, wheel, compartment, specific part or internal feature.
+
+Hard rules:
+- Do not rewrite text.
+- Do not drop entries.
+- If an entry expresses pain, risk, damage, friction, or unnecessary effort, prefer column B.
+- If an entry expresses a proposal, desired capability, requirement, or expected property, prefer column C.
+- If an entry only describes what exists today, prefer column A.
+- If an entry describes another existing product variant that works better today, classify it as A unless it explicitly proposes adopting that variant.
+- Requirements and constraints for a proposed solution belong to column C, not B.
+- If an entry mixes multiple semantic roles and cannot be classified safely, return null.
+
+Return STRICT JSON ONLY:
+{"entries":[{"text":"...","cellCode":"A1","confidence":0.92,"kind":"idea"}]}
+`.trim()
+
+      const classificationInstructionsColumnFirst = `
+Classify each entry into a semantic column 1..3.
+
+Columns:
+- 1 = AS_IS: current reality, existing state, neutral observations, comparisons describing how things work today.
+- 2 = NOT_WORKING: pain, friction, failure, inefficiency, risk, damage, unnecessary effort, negative consequence.
+- 3 = SHOULD_BE: desired future state, proposal, feature idea, requirement, expected property.
+
+Core principle:
+Choose the MOST LIKELY dominant intent of the entry.
+
+Very important rules:
+
+1. ALWAYS assign 1, 2, or 3.
+Do NOT return null unless the text is completely unreadable.
+
+2. Real user statements often mix:
+- observation + problem
+- problem + solution
+- context + consequence
+
+This is NORMAL.
+Your job is NOT to reject them.
+Your job is to choose the dominant meaning.
+
+3. If unsure:
+- make your best guess
+- lower the confidence instead of returning null
+
+4. Confidence scale:
+- 0.9–1.0 → very clear
+- 0.7–0.9 → quite confident
+- 0.5–0.7 → uncertain but best guess
+- <0.5 → only if truly ambiguous
+
+5. Strong signals:
+
+SHOULD_BE (3):
+- "powinien", "musi", "mógłby", "pozwoliłby"
+- "should", "must", "could", "would help"
+- requirements like "must be stable", "easy to move"
+
+NOT_WORKING (2):
+- "problem", "trudno", "muszą", "dodatkowa czynność"
+- "problem", "must", "extra step", "risk", "damage"
+
+AS_IS (1):
+- "obecne", "dzisiaj", "są", "currently", "existing"
+- descriptions of how things work now
+
+6. Benchmark rule:
+If describing an existing alternative that already works better → 1 (NOT 3)
+
+7. Requirements rule:
+Constraints like:
+- "must be stable"
+- "should be easy to reposition"
+→ ALWAYS 3
+
+Hard rules:
+- Do not rewrite text.
+- Do not drop entries.
+- Pain / damage / friction / unnecessary effort -> 2
+- Proposal / idea / requirement / expected property -> 3
+- Pure observation / neutral fact / benchmark about an existing alternative -> 1
+
+Return STRICT JSON ONLY:
+{"entries":[{"id":"1","text":"...","column":"1","confidence":0.82}]}
+
+Output requirements:
+- Return exactly one output item per input item.
+- Preserve every input id (do not reorder ids).
+- Do not rewrite input text (copy it verbatim).
+
+Write entries exactly in the same language as the input entries.
+`.trim()
+
+      const parseJson = (value) => {
+        try {
+          const parsed = JSON.parse(value)
+          return parsed ?? null
+        } catch {
+          return null
+        }
+      }
+
+      const seedRateLimitKey =
+        req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown'
+
+      const seedModelsDefault = {
         default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
         preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
         escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
       }
-      const escalateModels = {
+      const seedModelsEscalate1 = {
         default: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
         preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
         escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
       }
+      const seedModelsEscalate2 = {
+        default:
+          process.env.OPENAI_MODEL_ESCALATION_2 ||
+          process.env.OPENAI_MODEL_ESCALATION ||
+          'gpt-5',
+        preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+        escalation:
+          process.env.OPENAI_MODEL_ESCALATION_2 ||
+          process.env.OPENAI_MODEL_ESCALATION ||
+          'gpt-5',
+      }
+
+      const shouldSkipPreprocess = text.length > 800
+      const forceEscalation = text.length > 800
+
+      const runExtractionPass = async (modelSet) =>
+        runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'seed-extraction',
+          input: text,
+          sessionId,
+          language: locale === 'pl' ? 'Polish' : 'English',
+          taskInstructions: extractionInstructions,
+          parseResponse: parseJson,
+          fallbackData: null,
+          models: modelSet,
+          maxOutputTokens: 1600,
+          temperature: 0.2,
+          skipPreprocess: shouldSkipPreprocess,
+          forceEscalation,
+          rateLimiter: limiter,
+          rateLimitKey: seedRateLimitKey,
+        })
+
+      const seedClassificationMode = resolveSeedClassificationMode()
+      if (process.env.NODE_ENV !== 'production') {
+        console.log('[seed] classificationMode:', seedClassificationMode, {
+          SEED_CLASSIFICATION_MODE: process.env.SEED_CLASSIFICATION_MODE ?? null,
+          NODE_ENV: process.env.NODE_ENV ?? null,
+        })
+      }
+
+      const runClassificationPass = async (extracted, modelSet) =>
+        runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'seed-classification',
+          input: JSON.stringify(extracted ?? {}),
+          sessionId,
+          language: locale === 'pl' ? 'Polish' : 'English',
+          taskInstructions:
+            seedClassificationMode === 'column_first'
+              ? classificationInstructionsColumnFirst
+              : classificationInstructions,
+          parseResponse: parseJson,
+          fallbackData: null,
+          models: modelSet,
+          maxOutputTokens: 1600,
+          temperature: seedClassificationMode === 'column_first' ? 0.3 : 0.1,
+          skipPreprocess: shouldSkipPreprocess,
+          forceEscalation,
+          rateLimiter: limiter,
+          rateLimitKey: seedRateLimitKey,
+        })
       try {
-        let result = await callSeed(defaultModels)
-        let entries = result.ok ? parseSeedEntriesPayload(result.data, 16) : null
-        entries = entries ? applySeedClassificationSafetyCheck(entries) : null
-        if (!entries || entries.length < 2) {
-          const retry = await callSeed(escalateModels)
-          if (retry.ok) {
-            result = retry
-            entries = parseSeedEntriesPayload(retry.data, 16)
-            entries = entries ? applySeedClassificationSafetyCheck(entries) : null
+        let extractionResult = await runExtractionPass(seedModelsDefault)
+        let extractedEntries = extractionResult.ok
+          ? parseSeedEntriesPayload(extractionResult.data, resolveSeedMaxEntries())
+          : null
+        if (!extractedEntries || extractedEntries.length < 2) {
+          const retryExtraction = await runExtractionPass(seedModelsEscalate1)
+          if (retryExtraction.ok) {
+            extractionResult = retryExtraction
+            extractedEntries = parseSeedEntriesPayload(
+              retryExtraction.data,
+              resolveSeedMaxEntries()
+            )
           }
         }
-        if (result.ok && entries && entries.length) {
-          const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
-          await recordCoachUsageEvent({ sessionId, currentUserId, actionKey: 'seed-from-brief', meta })
+
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[seed] extraction_count:', extractedEntries?.length ?? 0)
+        }
+
+        const normalizedExtractedTexts = normalizeSeedEntriesForClassification(
+          (extractedEntries || []).map((entry) => entry?.text).filter((value) => typeof value === 'string')
+        )
+        const extractedPayload =
+          seedClassificationMode === 'column_first'
+            ? { entries: normalizedExtractedTexts.map((text, index) => ({ id: String(index + 1), text })) }
+            : { entries: normalizedExtractedTexts.map((text) => ({ text })) }
+
+        const shouldRetryColumnFirst = (stats) => {
+          const total = Number(stats?.total) || 0
+          const classified = Number(stats?.classified) || 0
+          if (classified < 2) return true
+          if (total >= 2 && classified / total < 0.5) return true
+          return false
+        }
+
+        let classificationResult = null
+        let entries = null
+
+        if (seedClassificationMode === 'column_first') {
+          const attempts = [
+            { attempt: 1, modelSet: seedModelsDefault, label: 'default' },
+            { attempt: 2, modelSet: seedModelsEscalate1, label: 'escalation_1' },
+            { attempt: 3, modelSet: seedModelsEscalate2, label: 'escalation_2' },
+          ]
+
+          let lastStats = { total: normalizedExtractedTexts.length, classified: 0, nullCount: normalizedExtractedTexts.length }
+          for (const { attempt, modelSet, label } of attempts) {
+            classificationResult = await runClassificationPass(extractedPayload, modelSet)
+            if (!classificationResult.ok) {
+              if (process.env.NODE_ENV !== 'production') {
+                console.log('[seed][column_first] classify_attempt_failed', {
+                  attempt,
+                  modelSet: { default: modelSet?.default ?? null, escalation: modelSet?.escalation ?? null, label },
+                  inputCount: normalizedExtractedTexts.length,
+                })
+              }
+              continue
+            }
+
+            const parsed = buildColumnFirstClassificationFromLlm({
+              inputEntries: extractedPayload.entries,
+              llmPayload: classificationResult.data,
+            })
+            entries = parsed.entries
+            lastStats = parsed.stats
+
+            if (process.env.NODE_ENV !== 'production') {
+              console.log('[seed][column_first] classify_attempt', {
+                attempt,
+                modelSet: { default: modelSet?.default ?? null, escalation: modelSet?.escalation ?? null, label },
+                inputCount: normalizedExtractedTexts.length,
+                classifiedCount: lastStats.classified,
+                nullCount: lastStats.nullCount,
+                byColumn: lastStats.byColumn ?? null,
+              })
+            }
+
+            if (!shouldRetryColumnFirst(lastStats)) break
+          }
+
+          if (!entries || !entries.length) {
+            entries = normalizeSeedEntries(
+              normalizedExtractedTexts.map((entryText) => ({
+                text: entryText,
+                cellCode: null,
+                confidence: null,
+                kind: 'note',
+              })),
+              resolveSeedMaxEntries()
+            )
+          }
+        } else {
+          classificationResult = await runClassificationPass(extractedPayload, seedModelsDefault)
+          if (classificationResult.ok) {
+            entries = parseSeedEntriesPayload(classificationResult.data, resolveSeedMaxEntries())
+            entries = entries ? applySeedClassificationSafetyCheck(entries) : null
+          }
+
+          if (!entries || entries.length < 2) {
+            const retryClassify = await runClassificationPass(extractedPayload, seedModelsEscalate1)
+            if (retryClassify.ok) {
+              classificationResult = retryClassify
+              entries = parseSeedEntriesPayload(retryClassify.data, resolveSeedMaxEntries())
+              entries = entries ? applySeedClassificationSafetyCheck(entries) : null
+            }
+          }
+        }
+
+        if (process.env.NODE_ENV !== 'production') {
+          console.log('[seed] final_count:', entries?.length ?? 0)
+        }
+
+        if (classificationResult.ok && entries && entries.length) {
+          const meta = buildMeta(
+            classificationResult.meta || { aiSupportEnabled: true, modelUsed: null }
+          )
+          await recordCoachUsageEvent({
+            sessionId,
+            currentUserId,
+            actionKey: 'seed-from-brief',
+            requestId,
+            meta,
+          })
           const usage = buildUsagePayload(meta)
           sendJson(res, 200, {
             ok: true,
@@ -1214,6 +1893,7 @@ export const handleCoachSuggest = async (req, res) => {
             sessionId,
             currentUserId,
             actionKey: 'speech-transcript-interpret',
+            requestId,
             meta,
           })
           const usage = buildUsagePayload(meta)
@@ -1250,6 +1930,7 @@ export const handleCoachSuggest = async (req, res) => {
       const locale = normalizeLang(body.locale || body.language || 'pl')
       const items = Array.isArray(body.items) ? body.items : []
       const matrixDefinition = body.matrixDefinition
+      const seedClassificationMode = resolveSeedClassificationMode()
       if (!Array.isArray(items) || !items.length || !matrixDefinition) {
         sendJson(res, 200, {
           ok: true,
@@ -1290,17 +1971,30 @@ export const handleCoachSuggest = async (req, res) => {
         .slice(0, 120)
         .map((item) => `- id:${item.id} | text:${String(item.text || '').trim().replace(/\s+/g, ' ')}`)
         .join('\n')
-      const instructions = [
-        'You classify workshop notes into a 3x3 matrix.',
-        'Rows: A=world (otoczenie, rynek, kontekst, ograniczenia zewnętrzne),',
-        'B=product (produkt/system jako całość, architektura, jak działa),',
-        'C=elements (konstrukcja, budowa, podzespoły, elementy składowe).',
-        'Cols: 1=as_is (stan obecny), 2=not_working (problemy, tarcia, co zmienić), 3=should_be (pożądany stan / pomysł).',
-        'Return STRICT JSON ONLY:',
-        '{"assignments":[{"id":"...","cellCode":"B2","confidence":0.72}]}',
-        'Only use cellCode A1..C3.',
-        locale === 'pl' ? 'Write in Polish.' : 'Write in English.',
-      ].join(' ')
+      const instructions =
+        seedClassificationMode === 'column_first'
+          ? [
+              'You assign each note to a semantic column ONLY (as_is / not_working / should_be), while keeping a fixed default row.',
+              'IMPORTANT: Use ONLY these cell codes: B1, B2, B3.',
+              'B1 = as_is (stan obecny / neutralny fakt).',
+              'B2 = not_working (problem / tarcie / ryzyko / szkoda / niepotrzebny wysiłek).',
+              'B3 = should_be (pomysł / propozycja / wymaganie / cecha docelowa).',
+              'If a note mixes problem and solution in one sentence and you cannot choose safely, omit it (do not include it in assignments).',
+              'Return STRICT JSON ONLY:',
+              '{"assignments":[{"id":"...","cellCode":"B2","confidence":0.72}]}',
+              locale === 'pl' ? 'Write in Polish.' : 'Write in English.',
+            ].join(' ')
+          : [
+              'You classify workshop notes into a 3x3 matrix.',
+              'Rows: A=world (otoczenie, rynek, kontekst, ograniczenia zewnętrzne),',
+              'B=product (produkt/system jako całość, architektura, jak działa),',
+              'C=elements (konstrukcja, budowa, podzespoły, elementy składowe).',
+              'Cols: 1=as_is (stan obecny), 2=not_working (problemy, tarcia, co zmienić), 3=should_be (pożądany stan / pomysł).',
+              'Return STRICT JSON ONLY:',
+              '{"assignments":[{"id":"...","cellCode":"B2","confidence":0.72}]}',
+              'Only use cellCode A1..C3.',
+              locale === 'pl' ? 'Write in Polish.' : 'Write in English.',
+            ].join(' ')
       const parseAssignments = (payload) => {
         if (!payload || typeof payload !== 'object' || !Array.isArray(payload.assignments)) return null
         const normalized = payload.assignments
@@ -1309,7 +2003,11 @@ export const handleCoachSuggest = async (req, res) => {
             cellCode: coerceCellId(entry?.cellCode),
             confidence: Number(entry?.confidence ?? 0),
           }))
-          .filter((entry) => entry.id && entry.cellCode)
+          .filter((entry) => {
+            if (!entry.id || !entry.cellCode) return false
+            if (seedClassificationMode !== 'column_first') return true
+            return entry.cellCode === 'B1' || entry.cellCode === 'B2' || entry.cellCode === 'B3'
+          })
         if (!normalized.length) return null
         return normalized
       }
@@ -1363,7 +2061,13 @@ export const handleCoachSuggest = async (req, res) => {
         }
         if (result.ok && assignments) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
-          await recordCoachUsageEvent({ sessionId, currentUserId, actionKey: 'assign-na', meta })
+          await recordCoachUsageEvent({
+            sessionId,
+            currentUserId,
+            actionKey: 'assign-na',
+            requestId,
+            meta,
+          })
           const usage = buildUsagePayload(meta)
           sendJson(res, 200, {
             ok: true,
@@ -1495,7 +2199,13 @@ export const handleCoachSuggest = async (req, res) => {
         })
         if (result.ok && result.data?.classifications) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
-          await recordCoachUsageEvent({ sessionId, currentUserId, actionKey: 'report-reclass', meta })
+          await recordCoachUsageEvent({
+            sessionId,
+            currentUserId,
+            actionKey: 'report-reclass',
+            requestId,
+            meta,
+          })
           const allowedSet = new Set(allowedCellIds)
           const classifications = result.data.classifications
             .map((entry) => ({
@@ -1627,6 +2337,7 @@ export const handleCoachSuggest = async (req, res) => {
             sessionId,
             currentUserId,
             actionKey: 'report-preprocess',
+            requestId,
             meta: buildMeta(preprocessResult.meta || { aiSupportEnabled: true, modelUsed: null }),
           })
           analysisJson = preprocessResult.data
@@ -1702,7 +2413,13 @@ export const handleCoachSuggest = async (req, res) => {
       }
       if (result.ok && result.data) {
         const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
-        await recordCoachUsageEvent({ sessionId, currentUserId, actionKey: 'report-full', meta })
+        await recordCoachUsageEvent({
+          sessionId,
+          currentUserId,
+          actionKey: 'report-full',
+          requestId,
+          meta,
+        })
         const usage = buildUsagePayload(meta)
         sendJson(res, 200, {
           ok: true,
@@ -1790,7 +2507,13 @@ export const handleCoachSuggest = async (req, res) => {
         })
         if (result.ok && result.data) {
           const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
-          await recordCoachUsageEvent({ sessionId, currentUserId, actionKey: 'report-summary', meta })
+          await recordCoachUsageEvent({
+            sessionId,
+            currentUserId,
+            actionKey: 'report-summary',
+            requestId,
+            meta,
+          })
           const usage = buildUsagePayload(meta)
           if (entries.length && result.data.summary && result.data.classifications) {
             const classifications = result.data.classifications

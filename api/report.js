@@ -4,7 +4,6 @@ import {
   handleReportUpdate,
   handleReportTrizImageGenerate,
   handleReportTrizImageDelete,
-  isFullReportGenerated,
 } from '../src/lib/server/handlers/reportUpdate.js'
 import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
 import { normalizeBillingError } from '../src/lib/server/billing.js'
@@ -123,11 +122,8 @@ const handleReportGenerate = async (req, res) => {
     return
   }
   if (existingRes.data) {
-    const hasGeneratedContent = isFullReportGenerated(existingRes.data.summary_json)
-    if (hasGeneratedContent) {
-      sendJson(res, 200, { ok: true, report: existingRes.data })
-      return
-    }
+    // Report exists already: do NOT charge `report_generate` again,
+    // but ALWAYS rebuild the content via the shared update flow.
     req.reportOptions = { skipBilling: true, returnReport: true, actionKey: 'report_generate' }
     await handleReportUpdate(req, res)
     return
