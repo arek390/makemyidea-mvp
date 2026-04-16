@@ -3087,6 +3087,7 @@ function App() {
   const facilitationIntroRef = useRef<string | null>(null)
   const [feedbackCooldown, setFeedbackCooldown] = useState(0)
   const [feedbackNotice, setFeedbackNotice] = useState<{ message: string; variant: 'success' | 'error' } | null>(null)
+  const [engineEntryRowSpans, setEngineEntryRowSpans] = useState<Record<string, number>>({})
   const [engineDraggingEntryId, setEngineDraggingEntryId] = useState<string | null>(null)
   const [engineDragOverSection, setEngineDragOverSection] = useState<EnginePerspectiveKey | null>(null)
   const [engineDragTargetIndex, setEngineDragTargetIndex] = useState<number | null>(null)
@@ -12949,6 +12950,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
                                 ref={(node) => {
                                   engineEntryNodesRef.current[item.id] = node
                                 }}
+                                style={
+                                  engineEntryRowSpans[item.id]
+                                    ? { gridRowEnd: `span ${engineEntryRowSpans[item.id]}` }
+                                    : undefined
+                                }
                                 className={`engine-entry ${layoutClass} ${
                                   engineDraggingEntryId === item.id ? 'is-dragging' : ''
                                 } ${engineMovingEntryId === item.id ? 'is-moving' : ''} ${
