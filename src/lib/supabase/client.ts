@@ -65,7 +65,7 @@ if (supabaseUrl && supabaseAnonKey) {
       supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey, {
         auth: {
           flowType: 'pkce',
-          detectSessionInUrl: true,
+          detectSessionInUrl: false,
           persistSession: true,
           autoRefreshToken: true,
           ...(authStorage ? { storage: authStorage } : {}),

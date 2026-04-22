@@ -3007,6 +3007,7 @@ function App() {
   const engineIdleTimer = useRef<number | null>(null)
   const engineNoticeTimer = useRef<number | null>(null)
   const oauthStartOnceRef = useRef(false)
+  const authCallbackOnceRef = useRef(false)
   const authRedirectedRef = useRef(false)
   const initialRouteResolvedRef = useRef(false)
   const engineIdleTriggered = useRef(false)
@@ -3868,11 +3869,16 @@ const isAuthFlowInProgress = () => {
   }, [authResolved, canEnterApp, isAuthed, isGuest, hasActiveGuestSession])
 
   useEffect(() => {
-    if (!isAuthCallback) return
+    if (!isAuthCallback) {
+      authCallbackOnceRef.current = false
+      return
+    }
     if (!client) {
       setAuthCallbackError(copy.authCallback.unknownError)
       return
     }
+    if (authCallbackOnceRef.current) return
+    authCallbackOnceRef.current = true
     const auth = client.auth
     let cancelled = false
     const run = async () => {
@@ -3881,6 +3887,9 @@ const isAuthFlowInProgress = () => {
       setAuthCallbackLoading(true)
       setAuthCallbackHint(null)
       const href = typeof window !== 'undefined' ? window.location.href : ''
+      console.info('[auth callback] detected /auth/callback', {
+        origin: typeof window !== 'undefined' ? window.location.origin : '',
+      })
       const params = new URLSearchParams(window.location.search)
       const code = params.get('code')
       const errorParam = params.get('error')
@@ -3921,6 +3930,11 @@ const isAuthFlowInProgress = () => {
         if (cancelled) return
         if (error || !data?.session) {
           const codeValue = (error as { code?: string })?.code
+          console.error('[auth callback] exchangeCodeForSession failed', {
+            message: error?.message,
+            code: codeValue,
+            href,
+          })
           setAuthCallbackError(
             error
               ? `${error.message}${codeValue ? ` (${codeValue})` : ''}`
@@ -3929,6 +3943,10 @@ const isAuthFlowInProgress = () => {
           setAuthCallbackLoading(false)
           return
         }
+        console.info('[auth callback] exchangeCodeForSession success', {
+          href,
+          userId: data.session.user?.id ?? null,
+        })
         clearAuthRedirect()
         const nextParam = normalizeNextPath(
           typeof window !== 'undefined'
@@ -3936,7 +3954,7 @@ const isAuthFlowInProgress = () => {
             : null
         )
         const nextRaw = nextParam || readPostAuthNext()
-        const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
+        const next = nextRaw && nextRaw !== '/' ? nextRaw : '/'
         const lang = readPostAuthLang()
         if (lang) {
           setUiLanguage(lang)
@@ -3946,6 +3964,10 @@ const isAuthFlowInProgress = () => {
         clearPostAuthNext()
         setAuthCallbackLoading(false)
         if (typeof window !== 'undefined') {
+          console.info('[auth callback] redirecting after success', {
+            redirectTo: next,
+            origin: window.location.origin,
+          })
           window.location.replace(next)
         }
       } finally {
@@ -3998,7 +4020,7 @@ const isAuthFlowInProgress = () => {
     setAuthError(null)
     setLoginNotice(null)
     setLoginOauthLoading(true)
-    const redirectTo = `${getOAuthRedirectTo()}?next=/admin`
+    const redirectTo = `${window.location.origin}/auth/callback`
     const next =
       typeof window !== 'undefined'
         ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
@@ -4024,6 +4046,7 @@ const isAuthFlowInProgress = () => {
       origin: window.location.origin,
       redirectTo,
     })
+    console.info('[oauth start] redirectTo', { redirectTo })
     if (import.meta.env.DEV) {
       console.log('[oauth start] before', {
         origin: window.location.origin,

@@ -1,0 +1,22 @@
+RewriteEngine On
+
+# wymuś brak www
+RewriteCond %{HTTP_HOST} ^www\.makemyidea\.work$ [NC]
+RewriteRule ^(.*)$ https://makemyidea.work/$1 [L,R=301]
+
+RewriteBase /
+
+# blokada .builds
+RewriteRule ^\.builds - [F,L]
+
+# NIE ruszaj API
+RewriteCond %{REQUEST_URI} ^/api/
+RewriteRule ^ - [L]
+
+# istniejące pliki
+RewriteCond %{REQUEST_FILENAME} -f [OR]
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteRule ^ - [L]
+
+# SPA fallback
+RewriteRule ^ index.html [L]
