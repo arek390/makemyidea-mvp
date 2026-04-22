@@ -3999,15 +3999,24 @@ const isAuthFlowInProgress = () => {
         return
       }
       try {
-        console.info('[auth callback] exchange started', { href })
-        const { data, error } = await auth.exchangeCodeForSession(href)
+        if (!code) {
+          setAuthCallbackError(copy.authCallback.signInFailed)
+          setAuthCallbackHint('Missing OAuth code in callback URL.')
+          setAuthCallbackLoading(false)
+          cleanAuthParamsFromUrl()
+          console.info('[auth callback] url cleaned (missing code), staying on callback screen')
+          console.error('[auth callback] exchange failed, staying on callback screen')
+          return
+        }
+        console.info('[auth callback] exchange started with code', { code })
+        const { data, error } = await auth.exchangeCodeForSession(code)
         if (cancelled) return
         if (error || !data?.session) {
           const codeValue = (error as { code?: string })?.code
           console.error('[auth callback] exchangeCodeForSession failed', {
             message: error?.message,
             code: codeValue,
-            href,
+            authCodePresent: Boolean(code),
           })
           setAuthCallbackError(
             error
@@ -4021,7 +4030,7 @@ const isAuthFlowInProgress = () => {
           return
         }
         console.info('[auth callback] exchangeCodeForSession success', {
-          href,
+          authCodePresent: Boolean(code),
           userId: data.session.user?.id ?? null,
         })
         clearAuthRedirect()
