@@ -3927,10 +3927,34 @@ const isAuthFlowInProgress = () => {
         })
         if (alreadyHandled) {
           console.info('[auth callback] skipping exchange (already handled code)')
-          setAuthCallbackLoading(false)
           cleanAuthParamsFromUrl()
-          console.info('[auth callback] url cleaned before redirect', { to: '/' })
-          window.location.replace('/')
+          console.info('[auth callback] url cleaned (already handled)')
+          try {
+            const sessionRes = await auth.getSession()
+            const hasSession = Boolean(sessionRes?.data?.session)
+            console.info('[auth callback] already handled -> getSession', {
+              hasSession,
+            })
+            if (hasSession) {
+              const nextParam = normalizeNextPath(
+                typeof window !== 'undefined'
+                  ? new URLSearchParams(window.location.search).get('next')
+                  : null
+              )
+              const nextRaw = nextParam || readPostAuthNext()
+              const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
+              setAuthCallbackLoading(false)
+              console.info('[auth callback] session present, redirecting to app', { redirectTo: next })
+              window.location.replace(next)
+              return
+            }
+          } catch {
+            // ignore getSession failures here
+          }
+          setAuthCallbackError(copy.authCallback.signInFailed)
+          setAuthCallbackHint('OAuth callback already handled, but no session is available.')
+          setAuthCallbackLoading(false)
+          console.error('[auth callback] already handled but no session, staying on callback screen')
           return
         }
         // Mark as handled before exchange to prevent double-consumption on re-render/remount/refresh.
@@ -3970,8 +3994,8 @@ const isAuthFlowInProgress = () => {
         setAuthCallbackHint(params.get('error_description'))
         setAuthCallbackLoading(false)
         cleanAuthParamsFromUrl()
-        console.info('[auth callback] url cleaned before redirect', { to: '/' })
-        if (typeof window !== 'undefined') window.location.replace('/')
+        console.info('[auth callback] url cleaned (oauth error), staying on callback screen')
+        console.error('[auth callback] exchange failed, staying on callback screen')
         return
       }
       try {
@@ -3992,8 +4016,8 @@ const isAuthFlowInProgress = () => {
           )
           setAuthCallbackLoading(false)
           cleanAuthParamsFromUrl()
-          console.info('[auth callback] url cleaned before redirect', { to: '/' })
-          if (typeof window !== 'undefined') window.location.replace('/')
+          console.info('[auth callback] url cleaned (exchange error), staying on callback screen')
+          console.error('[auth callback] exchange failed, staying on callback screen')
           return
         }
         console.info('[auth callback] exchangeCodeForSession success', {
@@ -4007,7 +4031,7 @@ const isAuthFlowInProgress = () => {
             : null
         )
         const nextRaw = nextParam || readPostAuthNext()
-        const next = nextRaw && nextRaw !== '/' ? nextRaw : '/'
+        const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
         const lang = readPostAuthLang()
         if (lang) {
           setUiLanguage(lang)
@@ -4017,6 +4041,13 @@ const isAuthFlowInProgress = () => {
         clearPostAuthNext()
         setAuthCallbackLoading(false)
         if (typeof window !== 'undefined') {
+          const sessionRes = await auth.getSession().catch(() => null)
+          console.info('[auth callback] post-exchange getSession', {
+            hasSession: Boolean(sessionRes?.data?.session),
+            dataSessionPresent: Boolean(data?.session),
+            redirectTo: next,
+          })
+          console.info('[auth callback] exchange success, redirecting to app', { redirectTo: next })
           console.info('[auth callback] redirecting after success', {
             redirectTo: next,
             origin: window.location.origin,
