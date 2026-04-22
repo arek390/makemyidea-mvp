@@ -3893,6 +3893,52 @@ const isAuthFlowInProgress = () => {
       const params = new URLSearchParams(window.location.search)
       const code = params.get('code')
       const errorParam = params.get('error')
+      const handledKey = code ? `sb-auth-handled:${code}` : null
+      console.info('[auth callback] code present', { present: Boolean(code) })
+
+      const cleanAuthParamsFromUrl = () => {
+        if (typeof window === 'undefined') return
+        try {
+          const url = new URL(window.location.href)
+          ;[
+            'code',
+            'error',
+            'error_code',
+            'error_description',
+            'provider',
+            'state',
+            'access_token',
+            'refresh_token',
+            'token_type',
+            'expires_in',
+            'expires_at',
+          ].forEach((key) => url.searchParams.delete(key))
+          window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`)
+        } catch {
+          // ignore URL cleanup failures
+        }
+      }
+
+      if (handledKey && typeof window !== 'undefined') {
+        const alreadyHandled = window.sessionStorage.getItem(handledKey) === '1'
+        console.info('[auth callback] handledKey', {
+          handledKey,
+          alreadyHandled,
+        })
+        if (alreadyHandled) {
+          console.info('[auth callback] skipping exchange (already handled code)')
+          setAuthCallbackLoading(false)
+          cleanAuthParamsFromUrl()
+          console.info('[auth callback] url cleaned before redirect', { to: '/' })
+          window.location.replace('/')
+          return
+        }
+        // Mark as handled before exchange to prevent double-consumption on re-render/remount/refresh.
+        window.sessionStorage.setItem(handledKey, '1')
+      } else {
+        console.info('[auth callback] handledKey', { handledKey: null })
+      }
+
       console.log('[auth callback] location', {
         href,
         origin: typeof window !== 'undefined' ? window.location.origin : '',
@@ -3923,9 +3969,13 @@ const isAuthFlowInProgress = () => {
         setAuthCallbackError(copy.authCallback.signInFailed)
         setAuthCallbackHint(params.get('error_description'))
         setAuthCallbackLoading(false)
+        cleanAuthParamsFromUrl()
+        console.info('[auth callback] url cleaned before redirect', { to: '/' })
+        if (typeof window !== 'undefined') window.location.replace('/')
         return
       }
       try {
+        console.info('[auth callback] exchange started', { href })
         const { data, error } = await auth.exchangeCodeForSession(href)
         if (cancelled) return
         if (error || !data?.session) {
@@ -3941,6 +3991,9 @@ const isAuthFlowInProgress = () => {
               : copy.authCallback.signInFailed
           )
           setAuthCallbackLoading(false)
+          cleanAuthParamsFromUrl()
+          console.info('[auth callback] url cleaned before redirect', { to: '/' })
+          if (typeof window !== 'undefined') window.location.replace('/')
           return
         }
         console.info('[auth callback] exchangeCodeForSession success', {
@@ -3968,6 +4021,8 @@ const isAuthFlowInProgress = () => {
             redirectTo: next,
             origin: window.location.origin,
           })
+          cleanAuthParamsFromUrl()
+          console.info('[auth callback] url cleaned before redirect', { to: next })
           window.location.replace(next)
         }
       } finally {
