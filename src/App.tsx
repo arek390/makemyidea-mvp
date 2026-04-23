@@ -369,6 +369,7 @@ import { fetchFxUsdPlnRate, getFreshFxRate } from './lib/fx'
 type Translations = {
   stepLabel: string
   appTitle: string
+  landingWipBanner: string
   landingHeroTitle: string
   landingHeroSubtitle: string
   landingHeroBullets: string[]
@@ -784,6 +785,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
   English: {
     stepLabel: 'Step',
     appTitle: 'Idea Clarity Grid',
+    landingWipBanner: 'Site under construction — sorry for the inconvenience.',
     landingHeroTitle: 'You have an idea.\nBut do you know what to do next?',
     landingHeroSubtitle: 'Instead of another brainstorming session — move from idea to decisions and an action plan.',
     landingHeroBullets: [
@@ -1348,6 +1350,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
   Polish: {
     stepLabel: 'Krok',
     appTitle: 'Idea Clarity Grid',
+    landingWipBanner: 'Strona w przebudowie — przepraszamy.',
     landingHeroTitle: 'Masz pomysł.\nAle czy wiesz, co z nim zrobić dalej?',
     landingHeroSubtitle: 'Zamiast kolejnej burzy mózgów — przejdź od pomysłu do decyzji i planu działania.',
     landingHeroBullets: [
@@ -13456,6 +13459,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
           <section className="landing">
             <div className="landing-section hero in-view">
               <div className="landing-inner">
+                <div className="landing-wip-banner" role="status" aria-live="polite">
+                  {copy.landingWipBanner}
+                </div>
                 <h1>{copy.landingHeroTitle}</h1>
                 <p>{copy.landingHeroSubtitle}</p>
                 {copy.landingHeroBullets.length > 0 && (

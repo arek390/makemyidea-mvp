@@ -315,6 +315,21 @@
   justify-items: center;
 }
 
+.landing-wip-banner {
+  width: min(900px, 100%);
+  margin: 0 0 1.5rem;
+  padding: 0.9rem 1.1rem;
+  border-radius: 16px;
+  border: 1px solid rgba(193, 120, 0, 0.45);
+  background: linear-gradient(180deg, rgba(255, 244, 214, 0.95), rgba(255, 236, 191, 0.95));
+  color: #5a3a00;
+  font-weight: 800;
+  text-align: center;
+  font-size: clamp(1.05rem, 1.6vw, 1.35rem);
+  letter-spacing: 0.01em;
+  box-shadow: 0 18px 45px rgba(0, 0, 0, 0.08);
+}
+
 .landing-section.hero h1 {
   font-size: clamp(2.4rem, 4vw, 3.4rem);
   font-weight: 700;
