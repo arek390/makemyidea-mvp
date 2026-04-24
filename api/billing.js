@@ -223,6 +223,13 @@ const handleCreatePayment = async (req, res) => {
   }
 
   const hash = sha256([serviceId, orderId, amountStr, sharedKey].join('|'))
+  console.log('[AUTOPAY CREATE] form_payload', {
+    serviceId,
+    orderId,
+    amountStr,
+    gatewayUrl,
+    hashPrefix: hash.slice(0, 8),
+  })
 
   const html = `<!doctype html>
 <html lang="pl">
