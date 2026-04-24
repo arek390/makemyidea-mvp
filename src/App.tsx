@@ -3593,70 +3593,6 @@ const isAuthFlowInProgress = () => {
     }
     return { currency: 'PLN' as const, amountMinor: tier === 'S' ? 2000 : tier === 'M' ? 5000 : 10000 }
   }
-  const handleDevTestTopup = async (tier: 'S' | 'M' | 'L') => {
-    if (topupLoadingTier) return
-    if (!authSession?.user?.id) {
-      showEngineNotice(notices.topupUnauthorized, 'error')
-      return
-    }
-    setTopupLoadingTier(tier)
-    if (typeof window !== 'undefined') {
-      console.log('[TOPUP DEV] test_topup called', { tier })
-    }
-    try {
-      const response = await apiFetch('/api/billing?action=test_topup', {
-        method: 'POST',
-        body: JSON.stringify({ tier, language: uiLanguage }),
-      })
-      const payload = await response.json().catch(() => null)
-      if (!response.ok || !payload?.ok) {
-        if (response.status === 401 || payload?.error === 'UNAUTHORIZED') {
-          showEngineNotice(notices.topupUnauthorized, 'error')
-        } else if (response.status === 400 || payload?.error === 'INVALID_TIER') {
-          showEngineNotice(notices.topupInvalidTier, 'error')
-        } else {
-          showEngineNotice(notices.topupTestFailed, 'error')
-        }
-        return
-      }
-      const balanceMinor = Number(payload?.balance?.amountMinor ?? payload?.newBalance?.amountMinor ?? NaN)
-      if (Number.isFinite(balanceMinor)) {
-        setBillingBalanceOverrideMinor(balanceMinor)
-      } else {
-        await refreshBillingBalance()
-      }
-      const added = payload?.added
-      const fallback = resolveTopupMinor(tier)
-      const label = formatTopupAmount(
-        added?.currency || fallback.currency,
-        typeof added?.amountMinor === 'number' ? added.amountMinor : fallback.amountMinor
-      )
-      showEngineNotice(notices.topupTestSuccess(label), 'success')
-      if (typeof window !== 'undefined') {
-        const stored = window.sessionStorage.getItem(TOPUP_RETURN_TO_KEY)
-        if (stored) {
-          window.sessionStorage.removeItem(TOPUP_RETURN_TO_KEY)
-          const normalized = stored.startsWith('#') ? stored.slice(1) : stored
-          if (normalized === normalizedPath) {
-            window.location.hash = ''
-            setHashPath(normalized)
-          } else if (normalized.startsWith('/')) {
-            window.location.hash = `#${normalized}`
-            setHashPath(normalized)
-          } else {
-            window.location.hash = stored
-            setHashPath(getAppPath())
-          }
-        } else if (window.history.length > 1) {
-          window.history.back()
-        }
-      }
-    } catch {
-      showEngineNotice(notices.topupTestFailed, 'error')
-    } finally {
-      setTopupLoadingTier(null)
-    }
-  }
 
   const handleAutopayTopup = async (tier: 'S' | 'M' | 'L') => {
     if (topupLoadingTier) return
@@ -3711,10 +3647,6 @@ const isAuthFlowInProgress = () => {
         location: window.location.href,
       })
       console.log('[TOPUP PATH]', isDiagMode ? 'TEST_TOPUP' : 'AUTOPAY')
-    }
-    if (isDiagEnabled()) {
-      await handleDevTestTopup(tier)
-      return
     }
     await handleAutopayTopup(tier)
   }
@@ -4023,23 +3955,10 @@ const isAuthFlowInProgress = () => {
   }, [isAuthCallback])
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (import.meta.env.DEV) return
-    if (isAuthCallback || authCallbackLoading) return
-    if (window.location.pathname.startsWith('/auth/callback')) return
-    if (isAuthFlowInProgress()) return
-    if (!authSession?.user || !client) return
-    const auth = client.auth
-    const handlePageHide = () => {
-      // Best-effort sign-out on tab/window close.
-      void auth.signOut()
-    }
-    window.addEventListener('pagehide', handlePageHide)
-    window.addEventListener('beforeunload', handlePageHide)
-    return () => {
-      window.removeEventListener('pagehide', handlePageHide)
-      window.removeEventListener('beforeunload', handlePageHide)
-    }
+    // Intentionally disabled: auto-sign-out on pagehide/beforeunload.
+    // These events can fire during normal navigations/redirects (incl. OAuth),
+    // causing sessions to be cleared and forcing "login twice" behavior.
+    return
   }, [authSession?.user?.id])
 
   useEffect(() => {
@@ -11067,11 +10986,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
               tabIndex={0}
               aria-disabled={isTopupBusy}
               aria-busy={topupLoadingTier === 'S'}
-              onClick={() => handleTopupClick('S')}
+              onClick={() => {
+                console.log('[TOPUP RAW CLICK] S')
+                void handleTopupClick('S')
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
-                  handleTopupClick('S')
+                  console.log('[TOPUP RAW CLICK] S')
+                  void handleTopupClick('S')
                 }
               }}
             >
