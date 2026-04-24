@@ -3602,12 +3602,20 @@ const isAuthFlowInProgress = () => {
     setTopupLoadingTier(tier)
     try {
       const amountPln = (topup.amountMinor / 100).toFixed(2)
+      const supabaseClient = client
+      const { data: sessionData } = supabaseClient
+        ? await supabaseClient.auth.getSession()
+        : { data: { session: null } as { session: null } }
+      const accessToken = sessionData?.session?.access_token
+      console.log('[TOPUP AUTOPAY] auth header', { hasAccessToken: Boolean(accessToken) })
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+      }
       const response = await fetch('/api/billing?action=create_payment', {
         method: 'POST',
         credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers,
         body: JSON.stringify({ amountPln }),
       })
       if (typeof window !== 'undefined') {

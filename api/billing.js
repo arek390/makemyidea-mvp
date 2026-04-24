@@ -178,9 +178,21 @@ const handleCreatePayment = async (req, res) => {
     return
   }
 
+  const supabaseAdmin = getSupabaseAdmin()
   const supabase = createSupabaseServerClient(req, res)
   const { data, error } = await supabase.auth.getUser()
-  if (error || !data?.user?.id) {
+  let userId = data?.user?.id ?? null
+  if (!userId) {
+    const authHeader = req?.headers?.authorization || req?.headers?.Authorization || ''
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : ''
+    if (token) {
+      const { data: tokenData, error: tokenError } = await supabaseAdmin.auth.getUser(token)
+      if (!tokenError && tokenData?.user?.id) {
+        userId = tokenData.user.id
+      }
+    }
+  }
+  if (!userId) {
     res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
     return
   }
@@ -189,11 +201,10 @@ const handleCreatePayment = async (req, res) => {
   const amountStr = amountPln.toFixed(2)
   const amountGrosze = Math.round(amountPln * 100)
 
-  const supabaseAdmin = getSupabaseAdmin()
   const insertRes = await supabaseAdmin
     .from('payments')
     .insert({
-      user_id: data.user.id,
+      user_id: userId,
       provider: 'autopay',
       order_id: orderId,
       amount_pln_grosze: amountGrosze,
