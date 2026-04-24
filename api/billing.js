@@ -211,6 +211,12 @@ const handleCreatePayment = async (req, res) => {
       status: 'pending',
     })
   if (insertRes.error) {
+    console.error('[AUTOPAY CREATE] payment_insert_failed', {
+      message: insertRes.error.message,
+      code: insertRes.error.code,
+      details: insertRes.error.details,
+      hint: insertRes.error.hint,
+    })
     res.status(500).json({ ok: false, error: 'PAYMENT_CREATE_FAILED' })
     return
   }
