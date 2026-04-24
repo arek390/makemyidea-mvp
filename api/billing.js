@@ -16,6 +16,8 @@ const readRawBody = async (req) => {
 
 const sha256 = (value) => createHash('sha256').update(value, 'utf8').digest('hex')
 
+const buildHashPayload = (values) => values.map((value) => String(value ?? '').trim()).filter(Boolean).join('|')
+
 const buildConfirmXml = ({ serviceID, orderID, confirmation, sharedKey }) => {
   const hash = sha256([serviceID, orderID, confirmation, sharedKey].join('|'))
   return `<?xml version="1.0" encoding="UTF-8"?>\n` +
@@ -182,6 +184,7 @@ const handleCreatePayment = async (req, res) => {
   const supabase = createSupabaseServerClient(req, res)
   const { data, error } = await supabase.auth.getUser()
   let userId = data?.user?.id ?? null
+  let userEmail = data?.user?.email ?? null
   if (!userId) {
     const authHeader = req?.headers?.authorization || req?.headers?.Authorization || ''
     const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : ''
@@ -189,6 +192,7 @@ const handleCreatePayment = async (req, res) => {
       const { data: tokenData, error: tokenError } = await supabaseAdmin.auth.getUser(token)
       if (!tokenError && tokenData?.user?.id) {
         userId = tokenData.user.id
+        userEmail = tokenData.user.email || null
       }
     }
   }
@@ -222,11 +226,34 @@ const handleCreatePayment = async (req, res) => {
     return
   }
 
-  const hash = sha256([serviceId, orderId, amountStr, sharedKey].join('|'))
+  const descriptionHost = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').trim()
+  const description = `Top up ${descriptionHost || 'makemyidea.work'}`
+  const currency = 'PLN'
+  const returnUrl = (() => {
+    const proto = req?.headers?.['x-forwarded-proto'] || 'https'
+    const host = req?.headers?.['x-forwarded-host'] || req?.headers?.host || ''
+    if (!host) return ''
+    return `${proto}://${host}/engine#/topup`
+  })()
+  const hashPayload = buildHashPayload([
+    serviceId,
+    orderId,
+    amountStr,
+    description,
+    null, // GatewayID (optional)
+    currency,
+    userEmail,
+    returnUrl, // ReturnURL (optional, order 45 in docs)
+  ])
+  const hash = sha256(`${hashPayload}|${sharedKey}`)
   console.log('[AUTOPAY CREATE] form_payload', {
     serviceId,
     orderId,
     amountStr,
+    description,
+    currency,
+    hasCustomerEmail: Boolean(userEmail),
+    hasReturnUrl: Boolean(returnUrl),
     gatewayUrl,
     hashPrefix: hash.slice(0, 8),
   })
@@ -242,6 +269,10 @@ const handleCreatePayment = async (req, res) => {
       <input type="hidden" name="ServiceID" value="${serviceId}" />
       <input type="hidden" name="OrderID" value="${orderId}" />
       <input type="hidden" name="Amount" value="${amountStr}" />
+      <input type="hidden" name="Description" value="${description}" />
+      <input type="hidden" name="Currency" value="${currency}" />
+      ${userEmail ? `<input type="hidden" name="CustomerEmail" value="${userEmail}" />` : ''}
+      ${returnUrl ? `<input type="hidden" name="ReturnURL" value="${returnUrl}" />` : ''}
       <input type="hidden" name="Hash" value="${hash}" />
       <noscript>
         <button type="submit">Kontynuuj</button>
