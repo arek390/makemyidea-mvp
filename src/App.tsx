@@ -3600,6 +3600,9 @@ const isAuthFlowInProgress = () => {
       return
     }
     setTopupLoadingTier(tier)
+    if (typeof window !== 'undefined') {
+      console.log('[TOPUP DEV] test_topup called', { tier })
+    }
     try {
       const response = await apiFetch('/api/billing?action=test_topup', {
         method: 'POST',
@@ -3661,6 +3664,9 @@ const isAuthFlowInProgress = () => {
       showEngineNotice(notices.topupUnauthorized, 'error')
       return
     }
+    if (typeof window !== 'undefined') {
+      console.log('[TOPUP AUTOPAY] start', { tier })
+    }
     const topup = resolveTopupMinor(tier)
     if (topup.currency !== 'PLN') {
       showEngineNotice(notices.topupTestFailed, 'error')
@@ -3675,6 +3681,10 @@ const isAuthFlowInProgress = () => {
         credentials: 'include',
         body: JSON.stringify({ amountPln: selectedAmount }),
       })
+      if (typeof window !== 'undefined') {
+        console.log('[TOPUP AUTOPAY] response status', response.status)
+        console.log('[TOPUP AUTOPAY] content-type', response.headers.get('content-type'))
+      }
       if (!response.ok) {
         const text = await response.text().catch(() => '')
         throw new Error(text || 'Payment initialization failed')
@@ -3692,6 +3702,16 @@ const isAuthFlowInProgress = () => {
   }
 
   const handleTopupClick = async (tier: 'S' | 'M' | 'L') => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search)
+      const isDiagMode = params.get('diag') === '1'
+      console.log('[TOPUP CLICK]', {
+        tier,
+        isDiagMode,
+        location: window.location.href,
+      })
+      console.log('[TOPUP PATH]', isDiagMode ? 'TEST_TOPUP' : 'AUTOPAY')
+    }
     if (isDiagEnabled()) {
       await handleDevTestTopup(tier)
       return
