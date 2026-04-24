@@ -10951,6 +10951,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const topupAmountM = resolveTopupMinor('M').amountMinor
     const topupAmountL = resolveTopupMinor('L').amountMinor
     const isTopupBusy = topupLoadingTier !== null
+    if (typeof window !== 'undefined') {
+      console.log('[TOPUP REAL COMPONENT LOADED]')
+    }
     return withDevOverlay(
       <div className="app auth-screen">
         <div className="topup-stack">
@@ -10978,12 +10981,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
               aria-disabled={isTopupBusy}
               aria-busy={topupLoadingTier === 'S'}
               onClick={() => {
+                console.log('[TOPUP REAL CLICK] S')
                 console.log('[TOPUP RAW CLICK] S')
                 void handleTopupClick('S')
               }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
+                  console.log('[TOPUP REAL CLICK] S')
                   console.log('[TOPUP RAW CLICK] S')
                   void handleTopupClick('S')
                 }
@@ -11020,11 +11025,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
               tabIndex={0}
               aria-disabled={isTopupBusy}
               aria-busy={topupLoadingTier === 'M'}
-              onClick={() => handleTopupClick('M')}
+              onClick={() => {
+                console.log('[TOPUP REAL CLICK] M')
+                void handleTopupClick('M')
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
-                  handleTopupClick('M')
+                  console.log('[TOPUP REAL CLICK] M')
+                  void handleTopupClick('M')
                 }
               }}
             >
@@ -11059,11 +11068,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
               tabIndex={0}
               aria-disabled={isTopupBusy}
               aria-busy={topupLoadingTier === 'L'}
-              onClick={() => handleTopupClick('L')}
+              onClick={() => {
+                console.log('[TOPUP REAL CLICK] L')
+                void handleTopupClick('L')
+              }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
-                  handleTopupClick('L')
+                  console.log('[TOPUP REAL CLICK] L')
+                  void handleTopupClick('L')
                 }
               }}
             >
