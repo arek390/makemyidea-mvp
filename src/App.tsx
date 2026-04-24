@@ -3601,12 +3601,14 @@ const isAuthFlowInProgress = () => {
     }
     setTopupLoadingTier(tier)
     try {
-      const selectedAmount = (topup.amountMinor / 100).toFixed(2)
+      const amountPln = (topup.amountMinor / 100).toFixed(2)
       const response = await fetch('/api/billing?action=create_payment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ amountPln: selectedAmount }),
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ amountPln }),
       })
       if (typeof window !== 'undefined') {
         console.log('[TOPUP AUTOPAY] response status', response.status)
