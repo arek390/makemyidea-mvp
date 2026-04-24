@@ -3593,7 +3593,7 @@ const isAuthFlowInProgress = () => {
     }
     return { currency: 'PLN' as const, amountMinor: tier === 'S' ? 2000 : tier === 'M' ? 5000 : 10000 }
   }
-  const handleTestTopup = async (tier: 'S' | 'M' | 'L') => {
+  const handleDevTestTopup = async (tier: 'S' | 'M' | 'L') => {
     if (topupLoadingTier) return
     if (!authSession?.user?.id) {
       showEngineNotice(notices.topupUnauthorized, 'error')
@@ -3653,6 +3653,50 @@ const isAuthFlowInProgress = () => {
     } finally {
       setTopupLoadingTier(null)
     }
+  }
+
+  const handleAutopayTopup = async (tier: 'S' | 'M' | 'L') => {
+    if (topupLoadingTier) return
+    if (!authSession?.user?.id) {
+      showEngineNotice(notices.topupUnauthorized, 'error')
+      return
+    }
+    const topup = resolveTopupMinor(tier)
+    if (topup.currency !== 'PLN') {
+      showEngineNotice(notices.topupTestFailed, 'error')
+      return
+    }
+    setTopupLoadingTier(tier)
+    try {
+      const selectedAmount = (topup.amountMinor / 100).toFixed(2)
+      const response = await fetch('/api/billing?action=create_payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ amountPln: selectedAmount }),
+      })
+      if (!response.ok) {
+        const text = await response.text().catch(() => '')
+        throw new Error(text || 'Payment initialization failed')
+      }
+      const html = await response.text()
+      if (typeof document !== 'undefined') {
+        document.open()
+        document.write(html)
+        document.close()
+      }
+    } catch {
+      showEngineNotice(notices.topupTestFailed, 'error')
+      setTopupLoadingTier(null)
+    }
+  }
+
+  const handleTopupClick = async (tier: 'S' | 'M' | 'L') => {
+    if (isDiagEnabled()) {
+      await handleDevTestTopup(tier)
+      return
+    }
+    await handleAutopayTopup(tier)
   }
   const [insufficientBalanceState, setInsufficientBalanceState] = useState<{
     active: boolean
@@ -11003,11 +11047,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
               tabIndex={0}
               aria-disabled={isTopupBusy}
               aria-busy={topupLoadingTier === 'S'}
-              onClick={() => handleTestTopup('S')}
+              onClick={() => handleTopupClick('S')}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
-                  handleTestTopup('S')
+                  handleTopupClick('S')
                 }
               }}
             >
@@ -11042,11 +11086,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
               tabIndex={0}
               aria-disabled={isTopupBusy}
               aria-busy={topupLoadingTier === 'M'}
-              onClick={() => handleTestTopup('M')}
+              onClick={() => handleTopupClick('M')}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
-                  handleTestTopup('M')
+                  handleTopupClick('M')
                 }
               }}
             >
@@ -11081,11 +11125,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
               tabIndex={0}
               aria-disabled={isTopupBusy}
               aria-busy={topupLoadingTier === 'L'}
-              onClick={() => handleTestTopup('L')}
+              onClick={() => handleTopupClick('L')}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
-                  handleTestTopup('L')
+                  handleTopupClick('L')
                 }
               }}
             >
