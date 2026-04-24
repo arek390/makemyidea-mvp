@@ -3569,15 +3569,6 @@ const isAuthFlowInProgress = () => {
       // ignore refresh failures
     }
   }
-  const formatTopupAmount = (currency: 'PLN' | 'USD', amountMinor: number) => {
-    const amount = amountMinor / 100
-    const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
-    const formatted = new Intl.NumberFormat(locale, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount)
-    return `${formatted} ${currency}`
-  }
   const formatTopupAmountValue = (currency: 'PLN' | 'USD', amountMinor: number) => {
     const amount = amountMinor / 100
     const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
