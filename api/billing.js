@@ -38,6 +38,13 @@ const normalizeAmountPln = (value) => {
   return Math.round(num * 100) / 100
 }
 
+const parsePlnToGrosze = (value) => {
+  if (value == null) return null
+  const num = typeof value === 'string' ? Number(value.replace(',', '.').trim()) : Number(value)
+  if (!Number.isFinite(num)) return null
+  return Math.round(num * 100)
+}
+
 const normalizeLang = (value, req) => {
   const raw = String(value || '').toLowerCase()
   if (raw.startsWith('pl')) return 'pl'
@@ -189,7 +196,6 @@ const handleCreatePayment = async (req, res) => {
       user_id: data.user.id,
       provider: 'autopay',
       order_id: orderId,
-      amount_pln: amountStr,
       amount_pln_grosze: amountGrosze,
       status: 'pending',
     })
@@ -368,9 +374,32 @@ const handleAutopayItn = async (req, res) => {
     if (paymentStatus === 'SUCCESS') {
       try {
         const supabaseAdmin = getSupabaseAdmin()
-        await supabaseAdmin.rpc('apply_payment', { order_id_in: orderID })
-        console.log('[AUTOPAY ITN] applied orderID=%s', orderID)
-        confirmation = 'CONFIRMED'
+        const { data: payment, error: paymentError } = await supabaseAdmin
+          .from('payments')
+          .select('amount_pln_grosze,status')
+          .eq('order_id', orderID)
+          .maybeSingle()
+        if (paymentError) {
+          console.error('[AUTOPAY ITN] payment_lookup_failed', { orderID, message: paymentError.message })
+          confirmation = 'NOTCONFIRMED'
+        } else if (!payment) {
+          console.log('[AUTOPAY ITN] payment_missing orderID=%s', orderID)
+          confirmation = 'NOTCONFIRMED'
+        } else {
+          const itnAmountGrosze = parsePlnToGrosze(amount)
+          const expectedAmountGrosze = Number(payment.amount_pln_grosze ?? NaN)
+          if (itnAmountGrosze == null || !Number.isFinite(expectedAmountGrosze)) {
+            console.log('[AUTOPAY ITN] amount_mismatch orderID=%s itn=%s expected=%s', orderID, amount, payment.amount_pln_grosze)
+            confirmation = 'NOTCONFIRMED'
+          } else if (itnAmountGrosze !== expectedAmountGrosze) {
+            console.log('[AUTOPAY ITN] amount_mismatch orderID=%s itn=%s expected=%s', orderID, amount, expectedAmountGrosze)
+            confirmation = 'NOTCONFIRMED'
+          } else {
+            await supabaseAdmin.rpc('apply_payment', { order_id_in: orderID })
+            console.log('[AUTOPAY ITN] applied orderID=%s amount=%s', orderID, amount)
+            confirmation = 'CONFIRMED'
+          }
+        }
       } catch (error) {
         console.error('[AUTOPAY ITN] apply_failed', { orderID, message: error?.message })
         confirmation = 'NOTCONFIRMED'
