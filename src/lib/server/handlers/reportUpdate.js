@@ -3523,9 +3523,8 @@ export const handleReportUpdate = async (req, res) => {
                 action_plan: [
                   {
                     title: 'string',
-                    what_to_do: 'string',
-                    why_now: 'string',
                     expected_result: 'string',
+                    what_to_do: 'string',
                   },
                 ],
                 decisions: [
@@ -3561,21 +3560,34 @@ export const handleReportUpdate = async (req, res) => {
               'For map_context.strongest_area: explain (plain language) what the user understands best right now / what is clearest.',
               'For map_context.weakest_area: explain what is still unclear, missing, or weakly understood.',
               'For map_context.decision_risk_note: describe the practical risk of jumping into a solution too fast.',
-              'If triz.contradictions is present and supported, derive decisions directly from those contradictions.',
-              'When triz.contradictions is present and supported, create exactly one decision per contradiction when the material supports it.',
-              'When triz.contradictions is present and supported, preserve the same order as triz.contradictions.',
-              'When triz.contradictions is present and supported, do not merge multiple contradictions into one decision.',
-              'When triz.contradictions is present and supported, do not omit a contradiction if the material supports a concrete decision for it.',
-              'Treat each contradiction title as the anchor for the corresponding decision tradeoff.',
-              'Keep each decisions[i].tradeoff semantically and textually as close as possible to triz.contradictions[i].title.',
-              'option_a and option_b must be two concrete alternative decision directions for that same contradiction (not a new topic).',
-              'When contradictions are present, prefer alignment with TRIZ over generating independent decision themes.',
+              'If triz.contradictions is present and supported, let selected/supported contradictions visibly continue into decisions and/or the action plan when the material supports it.',
+              'Treat contradiction titles as anchors for decision tradeoffs (when used), but do not force one decision per contradiction.',
+              'Preserve TRIZ-derived order where natural, but prefer clarity and usefulness over rigid ordering.',
+              'Do not invent weak decisions or weak A/B options just to cover every contradiction.',
+              'When you create a TRIZ-aligned decision, keep decisions[i].tradeoff semantically close to the relevant contradiction title.',
+              'When you include option_a and option_b, they must be two concrete alternative directions for that same tradeoff (not a new topic).',
               'Use exactly these field names and no aliases.',
               'Do not use string shortcuts instead of objects inside priorities, action_plan, decisions, or validation_loop.',
-              'Lean shape only. Prioritize durable fields that will be persisted and displayed: priorities.title, action_plan.title, action_plan.what_to_do, decisions.tradeoff, decisions.option_a, decisions.option_b, decisions.consequence_a, decisions.consequence_b, validation_loop.check, next_session_focus, map_context.coverage_summary, goal, headline.',
+              'Lean shape only. Prioritize durable fields that will be persisted and displayed: priorities.title, action_plan.title, action_plan.what_to_do, action_plan.expected_result, decisions.tradeoff, decisions.option_a, decisions.option_b, decisions.consequence_a, decisions.consequence_b, validation_loop.check, next_session_focus, map_context.coverage_summary, goal, headline.',
               'Make titles specific and project-grounded, not generic labels.',
               'Each priorities item must contain exactly: title.',
-              'Each action_plan item must contain exactly: title.',
+              'Action plan must have two conceptual layers.',
+              'Layer 1: contradiction-linked actions. Start from the selected or strongly supported contradictions that the user chose to work with. For each selected contradiction, create one or more concrete actions only when the material supports it.',
+              'Layer 2: broader synthesis actions. After contradiction-linked actions, add actions derived from the full board material, summary, recommendations, perspective map, supporting items, and the user’s choices in Key decisions to make.',
+              'The user must be able to see why actions were created: actions should visibly connect either to a selected contradiction or to a concrete decision/user choice.',
+              'Use contradictions as visible anchors, not as cages. Do not limit the content of actions to the contradiction title.',
+              'For contradiction-linked actions, include the contradiction title or a short recognizable version of it in the action title.',
+              'For broader synthesis actions, ground them in selected decision directions, unresolved risks, repeated patterns, missing validation steps, or practical constraints from the material.',
+              'Order the action plan as follows: first actions linked to selected/supported contradictions, then broader synthesis actions.',
+              'Each action must be concrete enough that the user knows what to do next, on what object/scope, and what practical result it should produce.',
+              'Avoid generic action titles such as "Analyze options", "Define priorities", "Validate assumptions", unless the title includes a concrete project-specific object.',
+              'Do not force one action per contradiction. Prefer fewer useful actions over mechanical coverage.',
+              'Do not create artificial actions only to match the number of contradictions.',
+              'If a contradiction is selected but the material does not support a concrete action, reflect it through a broader validation or decision action instead of inventing a weak action.',
+              'Use Key decisions to make as decision context. If the user has already chosen a direction, the action should operationalize that choice instead of reopening the decision.',
+              'If a key decision is still unresolved, create an action that helps resolve it through a small test, comparison, prototype, or constraint check.',
+              'Validation loop should test the most important assumptions behind the selected contradictions and key decisions, not generic product quality.',
+              'Each action_plan item must contain exactly: title, what_to_do, expected_result.',
               'Each decisions item must contain tradeoff and may optionally contain option_a, option_b, consequence_a, and consequence_b.',
               'For each decision, try to provide option_a and option_b as short alternative decision directions grounded in the project material.',
               'If option_a or option_b cannot be supported from the material, omit them instead of inventing weak or generic options.',
@@ -3583,7 +3595,7 @@ export const handleReportUpdate = async (req, res) => {
               'If consequence_a or consequence_b cannot be supported from the material, omit them instead of inventing generic consequences.',
               'It is better to return fewer decisions with meaningful A/B and consequences than more decisions with low-quality enrichment.',
               'Each validation_loop item must contain exactly: check.',
-              'Do not include helper fields such as why_it_matters, risk_of_ignoring, why_now, expected_result, choose_a_when, choose_b_when, how_to_check, positive_result_means, or negative_result_means.',
+              'Do not include helper fields such as why_it_matters, risk_of_ignoring, why_now, choose_a_when, choose_b_when, how_to_check, positive_result_means, or negative_result_means.',
               'Do not include choose_a_when or choose_b_when.',
               'Do not use alternative keys such as task, krok, output, responsible, deadline, decyzja, cel, metoda, nextSessionFocus, or coverageSummary.',
               'Do not translate keys. Keep JSON keys exactly as specified in English.',
@@ -3614,8 +3626,8 @@ export const handleReportUpdate = async (req, res) => {
 
       const buildExecutionReportTaskInstructions = (strictJson = false) =>
         reportLang === 'en'
-          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report. Build a lean action-oriented report focused on priorities, ordered action steps, decisions, validation, and next session focus. Be concrete, concise, project-specific, and grounded in the provided material. Use only the minimal lean schema. In decisions, try to include option_a and option_b as short alternative directions when the material supports them; otherwise keep only tradeoff. If the material clearly supports it, also include consequence_a and consequence_b as short practical consequences of choosing option A or B. Do not invent generic consequences. Avoid generic filler, template phrasing, and meta-instruction wording.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, do not translate keys, do not use aliases or synonyms such as krok, decyzja, cel, metoda, task, output, and omit incomplete items rather than returning malformed ones.' : ''}`
-          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report. Zbuduj lean raport nastawiony na działanie: priorytety, uporządkowany plan działania, decyzje, walidację i fokus kolejnej sesji. Pisz konkretnie, zwięźle, projektowo i wyłącznie na podstawie dostarczonego materiału. Używaj tylko minimalnego lean schema. W sekcji decisions spróbuj dodać option_a i option_b jako krótkie alternatywne kierunki decyzji, ale tylko jeśli wynikają z materiału; w przeciwnym razie zostaw samo tradeoff. Jeśli materiał to uzasadnia, dodaj też consequence_a i consequence_b jako krótkie, praktyczne konsekwencje wyboru opcji A lub B. Nie wymyślaj generycznych konsekwencji. Unikaj generycznych wypełniaczy, szablonowych sformułowań i meta-instrukcji.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, nie tłumacz kluczy, nie używaj aliasów ani synonimów takich jak krok, decyzja, cel, metoda, task, output i pomijaj niekompletne elementy zamiast zwracać błędne.' : ''}`
+          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report. Build an action-oriented execution report with priorities, decisions, a two-layer action plan, validation, and next session focus. The action plan must first include actions visibly linked to selected/supported contradictions, using the contradiction title or a short recognizable version of it in the action title. Then add broader synthesis actions derived from the full material and the user’s choices in Key decisions to make. Each action_plan item must contain exactly title, what_to_do, and expected_result. Be concrete, concise, project-specific, and grounded in the provided material. Use contradictions as anchors, not cages. Do not force one action per contradiction and do not invent weak actions just to cover every contradiction. If the user has already chosen a decision direction, operationalize it; if a decision is unresolved, propose a small test, comparison, prototype, or constraint check. Avoid generic filler, template phrasing, and meta-instruction wording.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, do not translate keys, do not use aliases or synonyms such as krok, decyzja, cel, metoda, task, output, and omit incomplete items rather than returning malformed ones.' : ''}`
+          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report. Zbuduj raport nastawiony na działanie: priorytety, decyzje, dwuwarstwowy plan działania, walidację i fokus kolejnej sesji. Plan działania powinien najpierw zawierać akcje wyraźnie powiązane z wybranymi lub dobrze wspartymi sprzecznościami, używając tytułu sprzeczności albo krótkiej rozpoznawalnej wersji tego tytułu w tytule akcji. Następnie dodaj szersze akcje syntetyczne wynikające z całego materiału i wyborów użytkownika w sekcji Key decisions to make. Każdy element action_plan musi zawierać dokładnie: title, what_to_do i expected_result. Pisz konkretnie, zwięźle, projektowo i wyłącznie na podstawie dostarczonego materiału. Traktuj sprzeczności jako kotwice, a nie ograniczenia. Nie wymuszaj jednej akcji na każdą sprzeczność i nie wymyślaj słabych akcji tylko po to, żeby pokryć każdą sprzeczność. Jeśli użytkownik wybrał już kierunek decyzji, przełóż go na działanie; jeśli decyzja pozostaje nierozstrzygnięta, zaproponuj mały test, porównanie, prototyp albo sprawdzenie ograniczenia. Unikaj generycznych wypełniaczy, szablonowych sformułowań i meta-instrukcji.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, nie tłumacz kluczy, nie używaj aliasów ani synonimów takich jak krok, decyzja, cel, metoda, task, output i pomijaj niekompletne elementy zamiast zwracać błędne.' : ''}`
 
       const buildDecisionEnrichmentPrompt = (decisions) =>
         JSON.stringify({
