@@ -10660,11 +10660,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
         <section className="panel auth-panel">
           <h1>{copy.loginCallbackTitle}</h1>
           {authCallbackLoading && <p className="muted">{copy.loginCallbackTitle}</p>}
-          {authCallbackError && <p className="engine-error">{authCallbackError}</p>}
-          {authCallbackError && import.meta.env.DEV && (
+          {!authCallbackLoading && authCallbackError && (
+            <p className="engine-error">{authCallbackError}</p>
+          )}
+          {!authCallbackLoading && authCallbackError && import.meta.env.DEV && (
             <p className="muted">DEV: {authCallbackError}</p>
           )}
-          {authCallbackHint && <p className="muted">{authCallbackHint}</p>}
+          {!authCallbackLoading && authCallbackHint && <p className="muted">{authCallbackHint}</p>}
           {!authCallbackLoading && authCallbackError && (
             <div className="actions">
               <button
