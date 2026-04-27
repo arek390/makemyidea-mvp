@@ -27,7 +27,6 @@ export const AiCostButton = ({
   label,
   lang,
   priceMinor,
-  currency,
   priceLoading = false,
   loading = false,
   disabled = false,
