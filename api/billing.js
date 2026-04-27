@@ -352,6 +352,7 @@ const handleAutopayItn = async (req, res) => {
   console.log('[AUTOPAY ITN] received')
 
   const rawBody = await readRawBody(req)
+  console.log('[AUTOPAY ITN] raw_body_present', Boolean(rawBody))
   let transactions = null
   if (rawBody) {
     const params = new URLSearchParams(rawBody)
@@ -372,6 +373,7 @@ const handleAutopayItn = async (req, res) => {
     sendJson(res, 400, { ok: false, error: 'INVALID_BASE64' })
     return
   }
+  console.log('[AUTOPAY ITN] decoded_xml_prefix', String(xml).slice(0, 160))
   if (!xml || !xml.includes('<')) {
     sendJson(res, 400, { ok: false, error: 'INVALID_XML' })
     return
@@ -379,7 +381,9 @@ const handleAutopayItn = async (req, res) => {
 
   let parsed
   try {
-    const parser = new XMLParser({ ignoreAttributes: false })
+    // Keep values as strings (no number coercion) to avoid breaking hash verification
+    // (e.g. "20.00" -> 20 or leading zeros in dates).
+    const parser = new XMLParser({ ignoreAttributes: false, parseTagValue: false, trimValues: false })
     parsed = parser.parse(xml)
   } catch {
     sendJson(res, 400, { ok: false, error: 'INVALID_XML' })
@@ -387,7 +391,8 @@ const handleAutopayItn = async (req, res) => {
   }
 
   const transactionList = parsed?.transactionList || parsed?.transactionlist
-  const serviceID = String(transactionList?.serviceID || '')
+  const cleanField = (value) => String(value ?? '').trim()
+  const serviceID = cleanField(transactionList?.serviceID || '')
   const transactionNode = transactionList?.transactions?.transaction
   const transaction = Array.isArray(transactionNode) ? transactionNode[0] : transactionNode
   if (!serviceID || !transaction) {
@@ -395,15 +400,30 @@ const handleAutopayItn = async (req, res) => {
     return
   }
 
-  const orderID = String(transaction?.orderID || '')
-  const remoteID = String(transaction?.remoteID || '')
-  const amount = String(transaction?.amount || '')
-  const currency = String(transaction?.currency || '')
-  const gatewayID = String(transaction?.gatewayID || '')
-  const paymentDate = String(transaction?.paymentDate || '')
-  const paymentStatus = String(transaction?.paymentStatus || '')
-  const paymentStatusDetails = String(transaction?.paymentStatusDetails || '')
-  const receivedHash = String(transactionList?.hash || transaction?.hash || '')
+  const orderID = cleanField(transaction?.orderID || '')
+  const remoteID = cleanField(transaction?.remoteID || '')
+  const amount = cleanField(transaction?.amount || '')
+  const currency = cleanField(transaction?.currency || '')
+  const gatewayID = cleanField(transaction?.gatewayID || '')
+  const paymentDate = cleanField(transaction?.paymentDate || '')
+  const paymentStatus = cleanField(transaction?.paymentStatus || '')
+  const paymentStatusDetails = cleanField(transaction?.paymentStatusDetails || '')
+  const receivedHash = cleanField(transactionList?.hash || transaction?.hash || '')
+  const receivedHashPrefix = receivedHash ? receivedHash.slice(0, 8) : ''
+
+  console.log('[AUTOPAY ITN] parsed_fields', {
+    serviceID,
+    orderID,
+    remoteID,
+    amount,
+    currency,
+    gatewayID,
+    paymentDate,
+    paymentStatus,
+    paymentStatusDetails,
+    receivedHashPrefix,
+  })
+  console.log('[AUTOPAY ITN] received_hash_prefix', receivedHashPrefix)
 
   const sharedKey = process.env.AUTOPAY_SHARED_KEY || ''
   if (!sharedKey) {
@@ -411,20 +431,23 @@ const handleAutopayItn = async (req, res) => {
     return
   }
 
-  const expectedHash = sha256(
-    [
-      serviceID,
-      orderID,
-      remoteID,
-      amount,
-      currency,
-      gatewayID,
-      paymentDate,
-      paymentStatus,
-      paymentStatusDetails,
-      sharedKey,
-    ].join('|')
-  )
+  const hashValues = [
+    serviceID,
+    orderID,
+    remoteID,
+    amount,
+    currency,
+    gatewayID,
+    paymentDate,
+    paymentStatus,
+    paymentStatusDetails,
+  ]
+  // Log without shared key.
+  const hashInputStringPrefix = `${hashValues.join('|')}|`.slice(0, 200)
+  console.log('[AUTOPAY ITN] hash_input_string_prefix', hashInputStringPrefix)
+
+  const expectedHash = sha256(`${hashValues.join('|')}|${sharedKey}`)
+  console.log('[AUTOPAY ITN] expected_hash_prefix', expectedHash.slice(0, 8))
 
   let confirmation = 'NOTCONFIRMED'
   if (receivedHash && receivedHash.toLowerCase() === expectedHash.toLowerCase()) {
@@ -440,20 +463,46 @@ const handleAutopayItn = async (req, res) => {
           console.error('[AUTOPAY ITN] payment_lookup_failed', { orderID, message: paymentError.message })
           confirmation = 'NOTCONFIRMED'
         } else if (!payment) {
-          console.log('[AUTOPAY ITN] payment_missing orderID=%s', orderID)
+          console.log('[AUTOPAY ITN] payment_lookup_result', { orderID, found: false })
           confirmation = 'NOTCONFIRMED'
         } else {
           const itnAmountGrosze = parsePlnToGrosze(amount)
           const expectedAmountGrosze = Number(payment.amount_pln_grosze ?? NaN)
+          console.log('[AUTOPAY ITN] payment_lookup_result', {
+            orderID,
+            found: true,
+            dbAmountGrosze: Number.isFinite(expectedAmountGrosze) ? expectedAmountGrosze : null,
+            dbStatus: payment.status ?? null,
+          })
+
           if (itnAmountGrosze == null || !Number.isFinite(expectedAmountGrosze)) {
-            console.log('[AUTOPAY ITN] amount_mismatch orderID=%s itn=%s expected=%s', orderID, amount, payment.amount_pln_grosze)
+            console.log('[AUTOPAY ITN] amount_check', {
+              orderID,
+              itnAmountGrosze: itnAmountGrosze ?? null,
+              dbAmountGrosze: Number.isFinite(expectedAmountGrosze) ? expectedAmountGrosze : null,
+              match: false,
+              parseOk: false,
+            })
             confirmation = 'NOTCONFIRMED'
           } else if (itnAmountGrosze !== expectedAmountGrosze) {
-            console.log('[AUTOPAY ITN] amount_mismatch orderID=%s itn=%s expected=%s', orderID, amount, expectedAmountGrosze)
+            console.log('[AUTOPAY ITN] amount_check', {
+              orderID,
+              itnAmountGrosze,
+              dbAmountGrosze: expectedAmountGrosze,
+              match: false,
+              parseOk: true,
+            })
             confirmation = 'NOTCONFIRMED'
           } else {
             await supabaseAdmin.rpc('apply_payment', { order_id_in: orderID })
-            console.log('[AUTOPAY ITN] applied orderID=%s amount=%s', orderID, amount)
+            console.log('[AUTOPAY ITN] amount_check', {
+              orderID,
+              itnAmountGrosze,
+              dbAmountGrosze: expectedAmountGrosze,
+              match: true,
+              parseOk: true,
+            })
+            console.log('[AUTOPAY ITN] applied', { orderID, amount })
             confirmation = 'CONFIRMED'
           }
         }
@@ -472,6 +521,7 @@ const handleAutopayItn = async (req, res) => {
     confirmation,
     sharedKey,
   })
+  console.log('[AUTOPAY ITN] response_confirmation', confirmation)
   res.status(200)
   res.setHeader('Content-Type', 'application/xml; charset=utf-8')
   res.send(responseXml)
