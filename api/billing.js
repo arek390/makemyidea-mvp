@@ -201,7 +201,8 @@ const handleCreatePayment = async (req, res) => {
     return
   }
 
-  const orderId = randomUUID()
+  const orderId = randomUUID().replace(/-/g, '')
+  console.log('[AUTOPAY CREATE] order_id_length', { orderId, length: orderId.length })
   const amountStr = amountPln.toFixed(2)
   const amountGrosze = Math.round(amountPln * 100)
 

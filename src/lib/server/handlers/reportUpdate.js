@@ -3588,6 +3588,28 @@ export const handleReportUpdate = async (req, res) => {
               'If a key decision is still unresolved, create an action that helps resolve it through a small test, comparison, prototype, or constraint check.',
               'Validation loop should test the most important assumptions behind the selected contradictions and key decisions, not generic product quality.',
               'Each action_plan item must contain exactly: title, what_to_do, expected_result.',
+              'A good action changes the project state.',
+              'A good action creates something, tests something, compares something, prototypes something, implements something, removes a constraint, reduces uncertainty, or validates a risky assumption using a concrete artifact or experiment.',
+              'Avoid meta-workshop actions.',
+              'Avoid actions whose only output is discussion, clarification, definition, prioritization, or choosing later.',
+              'Do not write actions that merely ask the user to define acceptance criteria, define success signals, clarify priorities, analyze options, validate assumptions, turn a signal into an experiment, or add kill conditions.',
+              'Forbidden phrases as action titles or main action instructions unless immediately followed by a concrete project-specific object, scope, method, and expected output:',
+              '- Define acceptance criteria',
+              '- Set acceptance criteria',
+              '- Define a success signal',
+              '- Set a success signal',
+              '- Clarify priorities',
+              '- Pick a priority',
+              '- Analyze options',
+              '- Validate assumptions',
+              '- Turn a signal into an experiment',
+              '- Add a kill condition',
+              '- Narrow the MVP',
+              '- Set one hard constraint',
+              'If an action involves validation, specify what will be built/tested, with whom or under what condition, what will be measured, and what concrete decision the result will enable.',
+              'If an action involves a decision, operationalize the decision into a concrete product/prototype/business step; do not reopen the decision.',
+              'If the material is ambiguous, choose the smallest concrete next move supported by the material instead of asking the user to clarify.',
+              'Do not return action_plan items with title only; every action must have title, what_to_do, expected_result.',
               'Each decisions item must contain tradeoff and may optionally contain option_a, option_b, consequence_a, and consequence_b.',
               'For each decision, try to provide option_a and option_b as short alternative decision directions grounded in the project material.',
               'If option_a or option_b cannot be supported from the material, omit them instead of inventing weak or generic options.',
@@ -3626,8 +3648,8 @@ export const handleReportUpdate = async (req, res) => {
 
       const buildExecutionReportTaskInstructions = (strictJson = false) =>
         reportLang === 'en'
-          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report. Build an action-oriented execution report with priorities, decisions, a two-layer action plan, validation, and next session focus. The action plan must first include actions visibly linked to selected/supported contradictions, using the contradiction title or a short recognizable version of it in the action title. Then add broader synthesis actions derived from the full material and the user’s choices in Key decisions to make. Each action_plan item must contain exactly title, what_to_do, and expected_result. Be concrete, concise, project-specific, and grounded in the provided material. Use contradictions as anchors, not cages. Do not force one action per contradiction and do not invent weak actions just to cover every contradiction. If the user has already chosen a decision direction, operationalize it; if a decision is unresolved, propose a small test, comparison, prototype, or constraint check. Avoid generic filler, template phrasing, and meta-instruction wording.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, do not translate keys, do not use aliases or synonyms such as krok, decyzja, cel, metoda, task, output, and omit incomplete items rather than returning malformed ones.' : ''}`
-          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report. Zbuduj raport nastawiony na działanie: priorytety, decyzje, dwuwarstwowy plan działania, walidację i fokus kolejnej sesji. Plan działania powinien najpierw zawierać akcje wyraźnie powiązane z wybranymi lub dobrze wspartymi sprzecznościami, używając tytułu sprzeczności albo krótkiej rozpoznawalnej wersji tego tytułu w tytule akcji. Następnie dodaj szersze akcje syntetyczne wynikające z całego materiału i wyborów użytkownika w sekcji Key decisions to make. Każdy element action_plan musi zawierać dokładnie: title, what_to_do i expected_result. Pisz konkretnie, zwięźle, projektowo i wyłącznie na podstawie dostarczonego materiału. Traktuj sprzeczności jako kotwice, a nie ograniczenia. Nie wymuszaj jednej akcji na każdą sprzeczność i nie wymyślaj słabych akcji tylko po to, żeby pokryć każdą sprzeczność. Jeśli użytkownik wybrał już kierunek decyzji, przełóż go na działanie; jeśli decyzja pozostaje nierozstrzygnięta, zaproponuj mały test, porównanie, prototyp albo sprawdzenie ograniczenia. Unikaj generycznych wypełniaczy, szablonowych sformułowań i meta-instrukcji.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, nie tłumacz kluczy, nie używaj aliasów ani synonimów takich jak krok, decyzja, cel, metoda, task, output i pomijaj niekompletne elementy zamiast zwracać błędne.' : ''}`
+          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report. Build an action-oriented execution report with priorities, decisions, a two-layer action plan, validation, and next session focus.\n\nFor this task, act as a product execution strategist, not a workshop facilitator. Do not moderate discussion, ask the user to clarify, or generate meta-workshop prompts. Generate actions that move the project forward in the real world.\n\nThe action plan must first include actions visibly linked to selected/supported contradictions, using the contradiction title or a short recognizable version of it in the action title. Then add broader synthesis actions derived from the full material and the user’s choices in Key decisions to make.\n\nEach action_plan item must contain exactly title, what_to_do, and expected_result. A good action changes the project state: it creates, tests, compares, prototypes, implements, removes a constraint, reduces uncertainty, or validates a risky assumption using a concrete artifact or experiment.\n\nAvoid meta-workshop actions whose only output is discussion, clarification, definition, prioritization, or choosing later. Do not write actions such as 'Define acceptance criteria', 'Set acceptance criteria', 'Define a success signal', 'Set a success signal', 'Clarify priorities', 'Pick a priority', 'Analyze options', 'Validate assumptions', 'Turn a signal into an experiment', 'Add a kill condition', 'Narrow the MVP', or 'Set one hard constraint' unless the action immediately specifies the concrete project object, scope, method, and expected output.\n\nIf validation is needed, specify what will be built/tested, with whom or under what condition, what will be measured, and what decision the result will enable. If the user has already chosen a decision direction, operationalize it instead of reopening the decision. If the material is ambiguous, choose the smallest concrete next move supported by the material instead of asking the user to clarify.\n\nBe concrete, concise, project-specific, and grounded in the provided material. Use contradictions as anchors, not cages. Do not force one action per contradiction and do not invent weak actions just to cover every contradiction. Avoid generic filler, template phrasing, and meta-instruction wording.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, do not translate keys, do not use aliases or synonyms such as krok, decyzja, cel, metoda, task, output, and omit incomplete items rather than returning malformed ones.' : ''}`
+          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report. Zbuduj raport nastawiony na działanie: priorytety, decyzje, dwuwarstwowy plan działania, walidację i fokus kolejnej sesji.\n\nW tym zadaniu działaj jak strateg wykonania produktu, a nie moderator warsztatu. Nie moderuj dyskusji, nie proś użytkownika o doprecyzowanie i nie generuj promptów warsztatowych. Generuj akcje, które realnie przesuwają projekt do przodu.\n\nPlan działania powinien najpierw zawierać akcje wyraźnie powiązane z wybranymi lub dobrze wspartymi sprzecznościami, używając tytułu sprzeczności albo krótkiej rozpoznawalnej wersji tego tytułu w tytule akcji. Następnie dodaj szersze akcje syntetyczne wynikające z całego materiału i wyborów użytkownika w sekcji Key decisions to make.\n\nKażdy element action_plan musi zawierać dokładnie: title, what_to_do i expected_result. Dobra akcja zmienia stan projektu: tworzy coś, testuje coś, porównuje coś, prototypuje coś, wdraża coś, usuwa ograniczenie, zmniejsza niepewność albo waliduje ryzykowne założenie przez konkretny artefakt lub eksperyment.\n\nUnikaj meta-akcji warsztatowych, których jedynym wynikiem jest dyskusja, doprecyzowanie, definiowanie, priorytetyzowanie albo późniejszy wybór. Nie pisz akcji typu: 'Define acceptance criteria', 'Set acceptance criteria', 'Define a success signal', 'Set a success signal', 'Clarify priorities', 'Pick a priority', 'Analyze options', 'Validate assumptions', 'Turn a signal into an experiment', 'Add a kill condition', 'Narrow the MVP', 'Set one hard constraint', chyba że akcja od razu wskazuje konkretny obiekt projektu, zakres, metodę i oczekiwany rezultat.\n\nJeśli potrzebna jest walidacja, wskaż co ma zostać zbudowane lub przetestowane, z kim albo w jakich warunkach, co będzie mierzone i jaką decyzję umożliwi wynik. Jeśli użytkownik wybrał już kierunek decyzji, przełóż go na działanie zamiast ponownie otwierać decyzję. Jeśli materiał jest niejednoznaczny, wybierz najmniejszy konkretny następny ruch wsparty materiałem zamiast prosić użytkownika o doprecyzowanie.\n\nPisz konkretnie, zwięźle, projektowo i wyłącznie na podstawie dostarczonego materiału. Traktuj sprzeczności jako kotwice, a nie ograniczenia. Nie wymuszaj jednej akcji na każdą sprzeczność i nie wymyślaj słabych akcji tylko po to, żeby pokryć każdą sprzeczność. Unikaj generycznych wypełniaczy, szablonowych sformułowań i meta-instrukcji.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, nie tłumacz kluczy, nie używaj aliasów ani synonimów takich jak krok, decyzja, cel, metoda, task, output i pomijaj niekompletne elementy zamiast zwracać błędne.' : ''}`
 
       const buildDecisionEnrichmentPrompt = (decisions) =>
         JSON.stringify({
@@ -3963,8 +3985,13 @@ export const handleReportUpdate = async (req, res) => {
               'Keep each action semantically aligned with the input action at the same index.',
               'Do NOT include any source labels like "Decyzja:", "Podejście TRIZ:", "Z tablicy:", "From the board:" in titles or text.',
               'Write in one consistent style: concrete, specific, natural language.',
-              'Avoid dry template verbs like "wdroż wybraną opcję", "zweryfikuj", "zrób pierwszy prototyp/test", "z jasnym sygnałem pass/fail". Be specific about what to build, what to test, and how to judge success.',
-              'Across the whole plan, mix action move types (MVP narrowing, variant comparison, acceptance criteria, user behavior test, design constraint, explicit trade-off, simplification, priority pick, success signal, kill condition).',
+              'Act as a product execution strategist, not a workshop facilitator. Do not generate meta-workshop prompts.',
+              'A good rewrite keeps the action concrete and state-changing: build, test, compare, prototype, implement, remove a constraint, reduce uncertainty, or validate a risky assumption with a concrete artifact or experiment.',
+              'Avoid meta-workshop actions whose only output is discussion, clarification, definition, prioritization, or choosing later.',
+              'Do not write or preserve action titles that are only process, such as: "Define acceptance criteria", "Set acceptance criteria", "Define a success signal", "Set a success signal", "Clarify priorities", "Pick a priority", "Analyze options", "Validate assumptions", "Turn a signal into an experiment", "Add a kill condition", "Narrow the MVP", "Set one hard constraint" unless immediately followed by a concrete project object, scope, method, and expected output.',
+              'Be specific about what to build, what to test, with whom/under what conditions, what you measure, and what decision the result enables.',
+              'Avoid dry template verbs like "wdroż wybraną opcję", "zweryfikuj", "zrób pierwszy prototyp/test", or "z jasnym sygnałem pass/fail". Replace with concrete project actions and concrete artifacts.',
+              'Across the whole plan, vary action types by real-world artifacts and steps (prototype build, user test setup, implementation slice, integration, content/spec creation, instrumentation, packaging/ops), not workshop moves.',
               'Avoid repeating the same sentence pattern across actions (especially not one pattern per category).',
               'Do not start most bullets with the same words. Vary phrasing naturally.',
               'Paraphrase input material; do not copy full decision titles or full board sentences as the core of the bullet.',
@@ -3984,8 +4011,8 @@ export const handleReportUpdate = async (req, res) => {
           language: llmLanguage,
           taskInstructions:
             reportLang === 'en'
-              ? 'Return a single valid JSON object only. No markdown. No text before or after JSON. Key: action_plan.'
-              : 'Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: action_plan.',
+              ? 'Return a single valid JSON object only. No markdown. No text before or after JSON. Key: action_plan. Act as a product execution strategist, not a workshop facilitator. Rewrite into concrete, real-world execution actions (build/test/prototype/implement) and avoid meta-workshop phrasing.'
+              : 'Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: action_plan. Działaj jak strateg wykonania produktu, a nie moderator warsztatu. Przepisz na konkretne akcje wykonawcze (zbuduj/przetestuj/prototypuj/wdroż) i unikaj warsztatowych meta-sformułowań.',
           parseResponse: (value) => {
             const parseAttempt = safeParseJson(value)
             const parsed = parseAttempt.parsed
@@ -4262,7 +4289,72 @@ export const handleReportUpdate = async (req, res) => {
               }, 0)
             : 0
           const hasAnySelections = selectedDecisionsCount > 0 || selectedTrizApproachesCount > 0
-          if (hasAnySelections) {
+
+          // "Finalize action plan" uses `execution_mode=plan_from_decisions_only`.
+          // In that mode, once all decisions are selected, we still want a proper `execution_report.action_plan`
+          // generated via the main `report-action-plan` prompt architecture (two-layer plan).
+          console.log('[report:update][exec] finalize_gate', {
+            requestId,
+            executionPlanOnly,
+            allDecisionsSelected,
+            selectedDecisionsCount,
+            selectedTrizApproachesCount,
+            hasAnySelections,
+          })
+          if (executionPlanOnly && allDecisionsSelected) {
+            try {
+              const existingDecisions = Array.isArray(executionReportCandidate?.decisions)
+                ? executionReportCandidate.decisions
+                : []
+              const execResult = await runExecutionReport(undefined, { strictJson: true })
+              if (execResult?.meta) {
+                responseMeta.execution_report_action_plan = execResult.meta
+                await recordAiUsageBestEffort({
+                  sessionId: reportRes.data.session_id ?? sessionId,
+                  reportId: reportRes.data.id ?? null,
+                  userId,
+                  actionKey: reportActionKey,
+                  sourceTask: 'report-action-plan',
+                  referenceId: reportRes.data.id ?? null,
+                  requestId,
+                  feature: 'report-action-plan',
+                  meta: execResult.meta,
+                })
+                logLlmMeta('execution-report', execResult)
+              }
+              if (execResult?.ok && execResult.data && typeof execResult.data === 'object') {
+                const generated = normalizeExecutionReport(execResult.data)
+                executionReportCandidate = normalizeExecutionReport({
+                  ...executionReportDefaults,
+                  ...generated,
+                  stage: 'plan_generated',
+                  // Preserve the user's selected decisions (incl. selected_option) as the committed context.
+                  decisions: existingDecisions,
+                  supporting_items: executionSupportingItems,
+                  source_snapshot: phaseASanitized.source_snapshot ?? null,
+                })
+                executionReportCandidate = ensureExecutionNextSessionFocus(executionReportCandidate, reportLang)
+                executionReportValidation = validateExecutionPlanOnly(executionReportCandidate)
+                responseExecution.planGenerated =
+                  Array.isArray(executionReportCandidate?.action_plan) && executionReportCandidate.action_plan.length > 0
+              }
+            } catch (error) {
+              console.error('[report:update] execution_report after decisions exception:', error)
+            }
+          }
+
+          // If we already generated a plan above (finalize path), skip the legacy plan-from-decisions pipeline.
+          if (responseExecution.planGenerated) {
+            console.log('[report:update][step3] execution_plan_from_decisions_skipped', {
+              requestId,
+              reason: 'FINALIZED_VIA_REPORT_ACTION_PLAN',
+              hasDecisions,
+              allDecisionsSelected,
+              selectedDecisionsCount,
+              selectedTrizApproachesCount,
+            })
+            // Keep responseExecution.planSkippedReason null: this was not "skipped", it used the main generator.
+          } else if (hasAnySelections) {
             const planResult = await runExecutionPlanFromDecisions(undefined, { strictJson: true })
             if (planResult?.meta) {
               responseMeta.execution_plan_from_decisions = planResult.meta
@@ -4279,7 +4371,17 @@ export const handleReportUpdate = async (req, res) => {
               })
               logLlmMeta('execution-plan-from-decisions', planResult)
             }
-            if (planResult?.ok && planResult.data) {
+            const planOk = Boolean(planResult?.ok && planResult.data && typeof planResult.data === 'object')
+            if (!planOk) {
+              console.log('[report:update][exec] execution-plan-from-decisions invalid; using deterministic repairs', {
+                requestId,
+                ok: planResult?.ok ?? false,
+                hasData: Boolean(planResult?.data),
+                error: planResult?.error ?? null,
+              })
+            }
+
+            {
               const selectedTrizApproaches = Array.isArray(trizCandidate?.contradictions)
                 ? trizCandidate.contradictions.flatMap((c, contradiction_index) => {
                     const rendered =
@@ -4328,10 +4430,10 @@ export const handleReportUpdate = async (req, res) => {
                 : []
 
               const requiredChoiceCount = selectedDecisions.length + selectedTrizApproaches.length
-              const llmChoiceActionsRaw = Array.isArray(planResult.data.choice_actions)
+              const llmChoiceActionsRaw = planOk && Array.isArray(planResult.data.choice_actions)
                 ? planResult.data.choice_actions
                 : []
-              const llmAnalysisActionsRaw = Array.isArray(planResult.data.analysis_actions)
+              const llmAnalysisActionsRaw = planOk && Array.isArray(planResult.data.analysis_actions)
                 ? planResult.data.analysis_actions
                 : []
 
@@ -4605,13 +4707,15 @@ export const handleReportUpdate = async (req, res) => {
                 ...executionReportDefaults,
                 ...executionReportCandidate,
                 stage: 'plan_generated',
-                priorities: Array.isArray(planResult.data.priorities) ? planResult.data.priorities : [],
+                priorities: planOk && Array.isArray(planResult.data.priorities) ? planResult.data.priorities : [],
                 action_plan: forcedActionPlan,
-                validation_loop: Array.isArray(planResult.data.validation_loop) ? planResult.data.validation_loop : [],
-                next_session_focus: normalizeExecutionText(planResult.data.next_session_focus),
+                validation_loop:
+                  planOk && Array.isArray(planResult.data.validation_loop) ? planResult.data.validation_loop : [],
+                next_session_focus: planOk ? normalizeExecutionText(planResult.data.next_session_focus) : '',
                 supporting_items: executionSupportingItems,
                 source_snapshot: phaseASanitized.source_snapshot ?? null,
               })
+              executionReportCandidate = ensureExecutionNextSessionFocus(executionReportCandidate, reportLang)
               executionReportValidation = validateExecutionPlanOnly(executionReportCandidate)
               responseExecution.planGenerated = true
             }
