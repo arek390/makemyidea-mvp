@@ -3610,10 +3610,21 @@ const isAuthFlowInProgress = () => {
   const resolveTopupMinor = (tier: 'S' | 'M' | 'L') => {
     const currency = billingAccount.currency || 'PLN'
     if (currency === 'USD') {
-      return { currency: 'USD' as const, amountMinor: tier === 'S' ? 500 : tier === 'M' ? 1500 : 3000 }
+      return {
+        currency: 'USD' as const,
+        amountMinor: tier === 'S' ? 500 : tier === 'M' ? 1500 : 3000,
+      }
     }
-    return { currency: 'PLN' as const, amountMinor: tier === 'S' ? 2000 : tier === 'M' ? 5000 : 10000 }
+    return {
+      currency: 'PLN' as const,
+      amountMinor: tier === 'S' ? 2000 : tier === 'M' ? 5000 : 10000,
+    }
   }
+
+  const resolveAutopayTopupMinor = (tier: 'S' | 'M' | 'L') => ({
+    currency: 'PLN' as const,
+    amountMinor: tier === 'S' ? 2000 : tier === 'M' ? 5000 : 10000,
+  })
 
   const handleAutopayTopup = async (tier: 'S' | 'M' | 'L') => {
     if (topupLoadingTier) return
@@ -3624,11 +3635,7 @@ const isAuthFlowInProgress = () => {
     if (typeof window !== 'undefined') {
       console.log('[TOPUP AUTOPAY] start', { tier })
     }
-    const topup = resolveTopupMinor(tier)
-    if (topup.currency !== 'PLN') {
-      showEngineNotice(notices.topupTestFailed, 'error')
-      return
-    }
+    const topup = resolveAutopayTopupMinor(tier)
     setTopupLoadingTier(tier)
     try {
       const amountPln = (topup.amountMinor / 100).toFixed(2)
@@ -11009,10 +11016,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
       )
     }
     const topupCopy = copy.topupConfig
-    const topupCurrency = balanceCurrency
-    const topupAmountS = resolveTopupMinor('S').amountMinor
-    const topupAmountM = resolveTopupMinor('M').amountMinor
-    const topupAmountL = resolveTopupMinor('L').amountMinor
+    const topupCurrency: 'PLN' = 'PLN'
+    const topupAmountS = resolveAutopayTopupMinor('S').amountMinor
+    const topupAmountM = resolveAutopayTopupMinor('M').amountMinor
+    const topupAmountL = resolveAutopayTopupMinor('L').amountMinor
     const isTopupBusy = topupLoadingTier !== null
     if (typeof window !== 'undefined') {
       console.log('[TOPUP REAL COMPONENT LOADED]')
@@ -11169,6 +11176,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
           <p className="topup-footer">
             {topupCopy.footer}
           </p>
+          {balanceCurrency === 'USD' && (
+            <p className="muted topup-footer">
+              {uiLanguage === 'Polish'
+                ? 'Doładowania Autopay są dostępne tylko w PLN (płatność zostanie przeliczona przez Twój bank/issuer).'
+                : 'Autopay top-ups are available in PLN only (your bank/issuer may convert the amount).'}
+            </p>
+          )}
         </div>
       </div>
     )
