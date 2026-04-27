@@ -3607,20 +3607,6 @@ const isAuthFlowInProgress = () => {
       maximumFractionDigits: 2,
     }).format(amount)
   }
-  const resolveTopupMinor = (tier: 'S' | 'M' | 'L') => {
-    const currency = billingAccount.currency || 'PLN'
-    if (currency === 'USD') {
-      return {
-        currency: 'USD' as const,
-        amountMinor: tier === 'S' ? 500 : tier === 'M' ? 1500 : 3000,
-      }
-    }
-    return {
-      currency: 'PLN' as const,
-      amountMinor: tier === 'S' ? 2000 : tier === 'M' ? 5000 : 10000,
-    }
-  }
-
   const resolveAutopayTopupMinor = (tier: 'S' | 'M' | 'L') => ({
     currency: 'PLN' as const,
     amountMinor: tier === 'S' ? 2000 : tier === 'M' ? 5000 : 10000,
