@@ -233,7 +233,7 @@ const handleCreatePayment = async (req, res) => {
   const returnUrl = (() => {
     const envReturnUrl = String(process.env.AUTOPAY_RETURN_URL || '').trim()
     if (envReturnUrl) return envReturnUrl
-    return 'https://makemyidea.work/engine?payment=success'
+    return 'https://makemyidea.work/api/billing?action=return'
   })()
   console.log('[AUTOPAY CREATE] return_url', { returnUrl })
   const hashPayload = buildHashPayload([
@@ -527,10 +527,24 @@ const handleAutopayItn = async (req, res) => {
   res.send(responseXml)
 }
 
+const handleAutopayReturn = async (req, res) => {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    methodNotAllowed(res, ['GET', 'POST'])
+    return
+  }
+  res.statusCode = 303
+  res.setHeader('Location', '/engine?payment=success')
+  res.end()
+}
+
 export default async function handler(req, res) {
   const actionFromQuery = resolveAction(req, null)
   if (actionFromQuery === 'itn') {
     await handleAutopayItn(req, res)
+    return
+  }
+  if (actionFromQuery === 'return') {
+    await handleAutopayReturn(req, res)
     return
   }
 
