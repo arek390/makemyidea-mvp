@@ -2408,6 +2408,7 @@ function App() {
   const [authCallbackError, setAuthCallbackError] = useState<string | null>(null)
   const [authCallbackLoading, setAuthCallbackLoading] = useState(false)
   const [authCallbackHint, setAuthCallbackHint] = useState<string | null>(null)
+  const [authCallbackErrorVisible, setAuthCallbackErrorVisible] = useState(false)
   const authResolved = authReady
   const [loginEmail, setLoginEmail] = useState('')
   const [loginSending, setLoginSending] = useState(false)
@@ -3007,6 +3008,7 @@ function App() {
   const engineIdleTimer = useRef<number | null>(null)
   const engineNoticeTimer = useRef<number | null>(null)
   const paymentReturnHandledRef = useRef(false)
+  const authCallbackErrorTimerRef = useRef<number | null>(null)
   const oauthStartOnceRef = useRef(false)
   const authRedirectedRef = useRef(false)
   const initialRouteResolvedRef = useRef(false)
@@ -3946,11 +3948,11 @@ const isAuthFlowInProgress = () => {
         if (cancelled) return
         if (error || !data?.session) {
           const codeValue = (error as { code?: string })?.code
-          setAuthCallbackError(
-            error
-              ? `${error.message}${codeValue ? ` (${codeValue})` : ''}`
-              : copy.authCallback.signInFailed
-          )
+          const debugValue = error
+            ? `${error.message}${codeValue ? ` (${codeValue})` : ''}`
+            : null
+          setAuthCallbackError(copy.authCallback.signInFailed)
+          setAuthCallbackHint(import.meta.env.DEV ? debugValue : null)
           setAuthCallbackLoading(false)
           return
         }
@@ -3982,6 +3984,28 @@ const isAuthFlowInProgress = () => {
       cancelled = true
     }
   }, [isAuthCallback])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (authCallbackErrorTimerRef.current) {
+      window.clearTimeout(authCallbackErrorTimerRef.current)
+      authCallbackErrorTimerRef.current = null
+    }
+    setAuthCallbackErrorVisible(false)
+    if (!isAuthCallback) return
+    if (authCallbackLoading) return
+    if (!authCallbackError) return
+    // Prevent brief "flash" of transient callback errors during OAuth/PKCE flows.
+    authCallbackErrorTimerRef.current = window.setTimeout(() => {
+      setAuthCallbackErrorVisible(true)
+    }, 800)
+    return () => {
+      if (authCallbackErrorTimerRef.current) {
+        window.clearTimeout(authCallbackErrorTimerRef.current)
+        authCallbackErrorTimerRef.current = null
+      }
+    }
+  }, [isAuthCallback, authCallbackLoading, authCallbackError])
 
   useEffect(() => {
     // Intentionally disabled: auto-sign-out on pagehide/beforeunload.
@@ -10660,14 +10684,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
         <section className="panel auth-panel">
           <h1>{copy.loginCallbackTitle}</h1>
           {authCallbackLoading && <p className="muted">{copy.loginCallbackTitle}</p>}
-          {!authCallbackLoading && authCallbackError && (
+          {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && (
             <p className="engine-error">{authCallbackError}</p>
           )}
-          {!authCallbackLoading && authCallbackError && import.meta.env.DEV && (
-            <p className="muted">DEV: {authCallbackError}</p>
+          {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && import.meta.env.DEV && (
+            <p className="muted">DEV: {authCallbackHint || authCallbackError}</p>
           )}
-          {!authCallbackLoading && authCallbackHint && <p className="muted">{authCallbackHint}</p>}
-          {!authCallbackLoading && authCallbackError && (
+          {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && (
             <div className="actions">
               <button
                 type="button"
