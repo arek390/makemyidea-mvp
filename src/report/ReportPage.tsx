@@ -74,7 +74,7 @@ type ReportPageProps = {
   onUpdateLabel?: (itemId: string, label: string | null) => Promise<boolean>
   onBillingInsufficient?: () => void
   onBillingRefresh?: () => void
-  billingCurrency?: 'PLN' | 'USD'
+  billingCurrency?: 'PLN'
   balanceMinor?: number
   billingLoading?: boolean
   billingError?: string | null
@@ -872,7 +872,7 @@ export const ReportPage = ({
   const [trizImageDeleting, setTrizImageDeleting] = useState<Record<string, boolean>>({})
   const [trizImageErrors, setTrizImageErrors] = useState<Record<string, string | null>>({})
   const [trizApproachSelecting, setTrizApproachSelecting] = useState<Record<string, boolean>>({})
-  const balanceCurrency: 'PLN' | 'USD' = billingCurrency
+  // Billing is PLN-only.
   const handleDecisionSelect = async (decisionIndex: number, selectedOption: 'a' | 'b') => {
     if (!executionReport?.decisions?.[decisionIndex]) return
     if (executionReport.decisions[decisionIndex]?.selected_option === selectedOption) return
@@ -914,14 +914,13 @@ export const ReportPage = ({
       })
     }
   }
-  const formatBalanceMinor = (currency: 'PLN' | 'USD', minor: number) => {
-    const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency,
+  const formatBalanceMinor = (minor: number) => {
+    const locale = language === 'pl' ? 'pl-PL' : 'en-US'
+    const formatted = new Intl.NumberFormat(locale, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(Math.max(0, minor || 0) / 100)
+    return `${formatted} PLN`
   }
 
   useEffect(() => {
@@ -931,25 +930,22 @@ export const ReportPage = ({
     const loadPrice = async () => {
       setPriceLoading(true)
       try {
-        const { data, error } = await supabaseClient
-          .from('pricing_rules_public')
-          .select('price_grosze,price_cents')
-          .eq('action_key', 'report_update')
-          .maybeSingle()
+	        const { data, error } = await supabaseClient
+	          .from('pricing_rules_public')
+	          .select('price_grosze')
+	          .eq('action_key', 'report_update')
+	          .maybeSingle()
         if (!cancelled) {
           if (error) {
             setPriceMinor(null)
-          } else {
-            const row = data as {
-              price_grosze?: number | string | null
-              price_cents?: number | string | null
-            } | null
-            const raw =
-              billingCurrency === 'USD' ? row?.price_cents : row?.price_grosze
-            const value = Number(raw)
-            setPriceMinor(Number.isFinite(value) ? value : null)
-          }
-        }
+	          } else {
+	            const row = data as {
+	              price_grosze?: number | string | null
+	            } | null
+	            const value = Number(row?.price_grosze)
+	            setPriceMinor(Number.isFinite(value) ? value : null)
+	          }
+	        }
       } catch {
         if (!cancelled) setPriceMinor(null)
       } finally {
@@ -969,10 +965,10 @@ export const ReportPage = ({
     const loadTrizImagePrices = async () => {
       setTrizImagePriceLoading(true)
       try {
-        const { data, error } = await supabaseClient
-          .from('pricing_rules_public')
-          .select('action_key,price_grosze,price_cents')
-          .in('action_key', ['image_generate', 'image_regenerate'])
+	        const { data, error } = await supabaseClient
+	          .from('pricing_rules_public')
+	          .select('action_key,price_grosze')
+	          .in('action_key', ['image_generate', 'image_regenerate'])
         if (cancelled) return
         if (error || !Array.isArray(data)) {
           setTrizImagePrices({ generate: null, regenerate: null })
@@ -980,18 +976,14 @@ export const ReportPage = ({
         }
         const next = { generate: null as number | null, regenerate: null as number | null }
         data.forEach((row) => {
-          const typedRow = row as
-            | {
-                action_key?: string | null
-                price_grosze?: number | string | null
-                price_cents?: number | string | null
-              }
-            | null
-          const raw =
-            billingCurrency === 'USD'
-              ? Number(typedRow?.price_cents ?? NaN)
-              : Number(typedRow?.price_grosze ?? NaN)
-          const value = Number.isFinite(raw) ? raw : null
+	          const typedRow = row as
+	            | {
+	                action_key?: string | null
+	                price_grosze?: number | string | null
+	              }
+	            | null
+	          const raw = Number(typedRow?.price_grosze ?? NaN)
+	          const value = Number.isFinite(raw) ? raw : null
           if (typedRow?.action_key === 'image_generate') next.generate = value
           if (typedRow?.action_key === 'image_regenerate') next.regenerate = value
         })
@@ -1278,7 +1270,7 @@ export const ReportPage = ({
 
   const formatActionPrice = (minor: number | null) => {
     if (!Number.isFinite(minor ?? NaN)) return null
-    return formatBalanceMinor(balanceCurrency, minor || 0)
+    return formatBalanceMinor(minor || 0)
   }
 
   const applyReportRecord = (record: Awaited<ReturnType<typeof fetchReportBySessionId>>) => {
@@ -2105,11 +2097,11 @@ export const ReportPage = ({
               >
                 💰
               </button>
-              <span className="engine-balance-value">
-                {billingLoading || billingError
-                  ? '—'
-                  : formatBalanceMinor(balanceCurrency, balanceMinor)}
-              </span>
+	              <span className="engine-balance-value">
+	                {billingLoading || billingError
+	                  ? '—'
+	                  : formatBalanceMinor(balanceMinor)}
+	              </span>
             </div>
             {showInsufficientBalance && (
               <span className="engine-balance-warning">

@@ -270,7 +270,7 @@ export const recordSessionBillingEvent = async (
     usage_cost_pln: 0,
     billed_minor: toInt(amountMinor),
     billed_cost_grosze: toInt(amountMinor),
-    billed_currency: safeCurrency === 'USD' ? 'USD' : 'PLN',
+    billed_currency: 'PLN',
     price_input_per_1m_usd_used: null,
     price_cached_input_per_1m_usd_used: null,
     price_output_per_1m_usd_used: null,

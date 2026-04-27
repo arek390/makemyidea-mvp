@@ -4,7 +4,7 @@ import { useAuthState } from './authState'
 
 type BillingAccountState = {
   balanceMinor: number
-  currency: 'PLN' | 'USD'
+  currency: 'PLN'
   loading: boolean
   error: string | null
 }
@@ -42,12 +42,8 @@ export const useBillingAccount = (
     setState((prev) => ({ ...prev, loading: true, error: null }))
 
     const run = async () => {
-      const lang =
-        uiLanguage === 'Polish' ? 'pl' : uiLanguage === 'English' ? 'en' : null
-      const url = lang
-        ? `/api/billing?action=balance&lang=${encodeURIComponent(lang)}`
-        : '/api/billing?action=balance'
-      const response = await apiFetch(url, { method: 'GET' })
+      void uiLanguage
+      const response = await apiFetch('/api/billing?action=balance', { method: 'GET' })
       const payload = await response.json().catch(() => null)
 
       if (cancelled) return
@@ -63,10 +59,9 @@ export const useBillingAccount = (
       }
 
       const balance = Number(payload?.balanceMinor ?? 0)
-      const currency = payload?.currency === 'USD' ? 'USD' : 'PLN'
       setState({
         balanceMinor: Number.isFinite(balance) ? balance : 0,
-        currency,
+        currency: 'PLN',
         loading: false,
         error: null,
       })

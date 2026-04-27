@@ -29,8 +29,7 @@ const handleBillingError = (res, error) => {
 }
 
 const normalizeCurrency = (value) => {
-  const raw = String(value || '').toUpperCase()
-  if (raw === 'USD') return 'USD'
+  // Billing is PLN-only. Keep accepting legacy inputs, but normalize to PLN.
   return 'PLN'
 }
 

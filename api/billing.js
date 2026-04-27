@@ -58,14 +58,13 @@ const normalizeLang = (value, req) => {
   return 'en'
 }
 
-const resolveCurrencyFromLang = (lang) => (lang === 'pl' ? 'PLN' : 'USD')
+// Billing is PLN-only (language must not affect currency).
+const resolveCurrencyFromLang = () => 'PLN'
 
 const resolveTestTopup = (tier, currency) => {
   const safeTier = String(tier || '').trim().toUpperCase()
-  const safeCurrency = currency === 'USD' ? 'USD' : 'PLN'
-  const amountMinorMap = safeCurrency === 'PLN'
-    ? { S: 2000, M: 5000, L: 10000 }
-    : { S: 500, M: 1500, L: 3000 }
+  const safeCurrency = 'PLN'
+  const amountMinorMap = { S: 2000, M: 5000, L: 10000 }
   const amountMinor = amountMinorMap[safeTier] ?? null
   return { tier: safeTier, currency: safeCurrency, amountMinor }
 }
@@ -100,8 +99,7 @@ const handleTestTopup = async (req, res) => {
       return
     }
 
-    const balanceColumn =
-      currency === 'USD' ? 'balance_usd_cents' : 'balance_pln_grosze'
+    const balanceColumn = 'balance_pln_grosze'
     const { data: account, error: accountError } = await supabaseAdmin
       .from('billing_accounts')
       .select(`${balanceColumn}`)
@@ -304,14 +302,10 @@ const handleBalance = async (req, res) => {
       return
     }
     const userId = data.user.id
-    const lang = normalizeLang(req.query?.lang || req.query?.language, req)
-    const preferredCurrency = resolveCurrencyFromLang(lang)
     const supabaseAdmin = getSupabaseAdmin()
-    const billingCurrency = await resolveBillingCurrency(
-      userId,
-      preferredCurrency,
-      supabaseAdmin
-    )
+    // Ensure profile currency is normalized to PLN (legacy profiles might have USD).
+    await resolveBillingCurrency(userId, null, supabaseAdmin)
+    const billingCurrency = 'PLN'
     await ensureBillingAccount(userId, supabaseAdmin)
     const { data: account, error: accountError } = await supabaseAdmin
       .from('billing_accounts')
@@ -323,15 +317,13 @@ const handleBalance = async (req, res) => {
       res.status(500).json({ ok: false, error: accountError.message || 'QUERY_FAILED' })
       return
     }
-    const balanceMinor =
-      billingCurrency === 'USD'
-        ? Number(account?.balance_usd_cents ?? 0)
-        : Number(account?.balance_pln_grosze ?? 0)
+    const balanceMinor = Number(account?.balance_pln_grosze ?? 0)
     res.status(200).json({
       ok: true,
       currency: billingCurrency,
       balanceMinor: Number.isFinite(balanceMinor) ? balanceMinor : 0,
       balance_pln_grosze: Number(account?.balance_pln_grosze ?? 0),
+      // Legacy: kept for compatibility, no longer used in runtime billing.
       balance_usd_cents: Number(account?.balance_usd_cents ?? 0),
     })
   } catch (error) {

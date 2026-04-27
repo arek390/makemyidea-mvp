@@ -551,7 +551,6 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         body: JSON.stringify({
           targetUserId: row.userId,
           amountMinor,
-          currency: row.currency,
         }),
       })
       const payload = await response.json().catch(() => null)
@@ -565,9 +564,9 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
       }
       const balanceAfterMinor = Number(payload.balance_after_minor ?? NaN)
       const balanceLabel = Number.isFinite(balanceAfterMinor)
-        ? formatMoneyMinor(balanceAfterMinor, row.currency)
+        ? formatMoneyMinor(balanceAfterMinor, 'PLN')
         : '—'
-      const deltaLabel = formatMoney(delta, row.currency)
+      const deltaLabel = formatMoney(delta, 'PLN')
       setBillingInputs((prev) => ({ ...prev, [row.userId]: '' }))
       setBillingNotice(t.topupNotice(deltaLabel, balanceLabel))
       await fetchBillingRows({ silent: true })
@@ -1034,14 +1033,12 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                         row.last_report_generate_cost_currency
                       )}
                     </td>
-                    <td>
-                      {formatMoneyMinor(
-                        row.billing_currency === 'USD'
-                          ? row.balance_usd_cents
-                          : row.balance_pln_grosze,
-                        row.billing_currency === 'USD' ? 'USD' : 'PLN'
-                      )}
-                    </td>
+	                    <td>
+	                      {formatMoneyMinor(row.balance_pln_grosze, 'PLN')}
+	                      {row.billing_currency === 'USD' && (
+	                        <span className="muted"> (legacy: profile was USD)</span>
+	                      )}
+	                    </td>
                     <td>{formatMoney(row.total_paid_pln, 'PLN')}</td>
                   </tr>
                 ))}

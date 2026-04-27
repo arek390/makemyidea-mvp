@@ -921,8 +921,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     topupTitle: 'Top up your account',
     topupSubtitle: '',
     topupConfig: {
-      amounts: ['5', '15', '30'],
-      currency: 'USD',
+      amounts: ['20', '50', '100'],
+      currency: 'PLN',
       captions: [
         ['1 report', '+ iterations'],
         ['full session on', 'a single product'],
@@ -3551,15 +3551,15 @@ const isAuthFlowInProgress = () => {
     enabled: isEnginePreview || isReport,
     uiLanguage,
   })
-  const balanceCurrency: 'PLN' | 'USD' = billingAccount.currency || 'PLN'
+  const balanceCurrency: 'PLN' = billingAccount.currency
   const [billingBalanceOverrideMinor, setBillingBalanceOverrideMinor] = useState<number | null>(
     null
   )
   const refreshBillingBalance = async () => {
     if (!authSession?.user?.id) return
     try {
-      const lang = uiLanguage === 'Polish' ? 'pl' : 'en'
-      const response = await apiFetch(`/api/billing?action=balance&lang=${lang}`, {
+      void uiLanguage
+      const response = await apiFetch('/api/billing?action=balance', {
         method: 'GET',
       })
       const payload = await response.json().catch(() => null)
@@ -3599,9 +3599,9 @@ const isAuthFlowInProgress = () => {
     const nextUrl = `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash || ''}`
     window.history.replaceState({}, '', nextUrl)
   }, [authSession?.user?.id, isEnginePreview, uiLanguage])
-  const formatTopupAmountValue = (currency: 'PLN' | 'USD', amountMinor: number) => {
+  const formatTopupAmountValue = (amountMinor: number) => {
     const amount = amountMinor / 100
-    const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
+    const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
     return new Intl.NumberFormat(locale, {
       minimumFractionDigits: 0,
       maximumFractionDigits: 2,
@@ -3717,7 +3717,7 @@ const isAuthFlowInProgress = () => {
       try {
         const { data, error } = await supabaseClient
           .from('pricing_rules_public')
-          .select('price_grosze,price_cents')
+          .select('price_grosze')
           .eq('action_key', 'report_generate')
           .maybeSingle()
         if (!cancelled) {
@@ -3726,11 +3726,8 @@ const isAuthFlowInProgress = () => {
           } else {
             const row = data as {
               price_grosze?: number | string | null
-              price_cents?: number | string | null
             } | null
-            const raw =
-              balanceCurrency === 'USD' ? row?.price_cents : row?.price_grosze
-            const value = Number(raw)
+            const value = Number(row?.price_grosze)
             setReportCreatePriceMinor(Number.isFinite(value) ? value : null)
           }
         }
@@ -3744,7 +3741,7 @@ const isAuthFlowInProgress = () => {
     return () => {
       cancelled = true
     }
-  }, [client, isEnginePreview, balanceCurrency])
+  }, [client, isEnginePreview])
 
   useEffect(() => {
     if (!isEnginePreview) return
@@ -11052,13 +11049,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
             >
               <div className="topup-inner">
                 <div className="topup-amount">
-                  <span className="topup-amount-value">
-                    {topupLoadingTier === 'S'
-                      ? '...'
-                      : formatTopupAmountValue(topupCurrency, topupAmountS)}
-                  </span>
-                  <span className="topup-amount-currency">{topupCurrency}</span>
-                </div>
+	                  <span className="topup-amount-value">
+	                    {topupLoadingTier === 'S'
+	                      ? '...'
+	                      : formatTopupAmountValue(topupAmountS)}
+	                  </span>
+	                  <span className="topup-amount-currency">{topupCurrency}</span>
+	                </div>
                 <p className="topup-caption">
                   {topupCopy.captions[0][0]}
                   <br />
@@ -11095,13 +11092,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
             >
               <div className="topup-inner">
                 <div className="topup-amount">
-                  <span className="topup-amount-value">
-                    {topupLoadingTier === 'M'
-                      ? '...'
-                      : formatTopupAmountValue(topupCurrency, topupAmountM)}
-                  </span>
-                  <span className="topup-amount-currency">{topupCurrency}</span>
-                </div>
+	                  <span className="topup-amount-value">
+	                    {topupLoadingTier === 'M'
+	                      ? '...'
+	                      : formatTopupAmountValue(topupAmountM)}
+	                  </span>
+	                  <span className="topup-amount-currency">{topupCurrency}</span>
+	                </div>
                 <p className="topup-caption">
                   {topupCopy.captions[1][0]}
                   <br />
@@ -11138,13 +11135,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
             >
               <div className="topup-inner">
                 <div className="topup-amount">
-                  <span className="topup-amount-value">
-                    {topupLoadingTier === 'L'
-                      ? '...'
-                      : formatTopupAmountValue(topupCurrency, topupAmountL)}
-                  </span>
-                  <span className="topup-amount-currency">{topupCurrency}</span>
-                </div>
+	                  <span className="topup-amount-value">
+	                    {topupLoadingTier === 'L'
+	                      ? '...'
+	                      : formatTopupAmountValue(topupAmountL)}
+	                  </span>
+	                  <span className="topup-amount-currency">{topupCurrency}</span>
+	                </div>
                 <p className="topup-caption">
                   {topupCopy.captions[2][0]}
                   <br />
@@ -11159,20 +11156,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
               </div>
             </section>
           </div>
-          <p className="topup-footer">
-            {topupCopy.footer}
-          </p>
-          {balanceCurrency === 'USD' && (
-            <p className="muted topup-footer">
-              {uiLanguage === 'Polish'
-                ? 'Doładowania Autopay są dostępne tylko w PLN (płatność zostanie przeliczona przez Twój bank/issuer).'
-                : 'Autopay top-ups are available in PLN only (your bank/issuer may convert the amount).'}
-            </p>
-          )}
-        </div>
-      </div>
-    )
-  }
+	          <p className="topup-footer">
+	            {topupCopy.footer}
+	          </p>
+	          {uiLanguage === 'English' && (
+	            <p className="muted topup-footer">All payments and account balances are processed in PLN.</p>
+	          )}
+	        </div>
+	      </div>
+	    )
+	  }
 
   if (isPrivacy) {
     const privacyCopy =
@@ -11548,14 +11541,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const questionText = sanitizeInlineHelperText(primary)
     return questionText || copy.engineEntryQuestionFallback
   }
-  const formatBalanceMinor = (currency: 'PLN' | 'USD', minor: number) => {
-    const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
-    return new Intl.NumberFormat(locale, {
-      style: 'currency',
-      currency,
+  const formatBalanceMinor = (minor: number) => {
+    const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
+    const formatted = new Intl.NumberFormat(locale, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(Math.max(0, minor || 0) / 100)
+    return `${formatted} PLN`
   }
 
     return withDevOverlay(
@@ -11600,15 +11592,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   >
                     💰
                   </button>
-                  <span className="engine-balance-value">
-                    {billingAccount.loading || billingAccount.error
-                      ? '—'
-                      : formatBalanceMinor(
-                          balanceCurrency,
-                          billingBalanceOverrideMinor ?? billingAccount.balanceMinor
-                        )}
-                  </span>
-                </div>
+	                  <span className="engine-balance-value">
+	                    {billingAccount.loading || billingAccount.error
+	                      ? '—'
+	                      : formatBalanceMinor(
+	                          billingBalanceOverrideMinor ?? billingAccount.balanceMinor
+	                        )}
+	                  </span>
+	                </div>
                 {insufficientBalanceState.active && (
                   <span className="engine-balance-warning">
                     {copy.insufficientBalanceNotice}

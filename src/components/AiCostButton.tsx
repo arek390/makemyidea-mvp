@@ -4,7 +4,7 @@ type AiCostButtonProps = {
   label: string
   lang: 'pl' | 'en'
   priceMinor: number | null
-  currency: 'PLN' | 'USD'
+  currency: 'PLN'
   priceLoading?: boolean
   loading?: boolean
   disabled?: boolean
@@ -14,9 +14,13 @@ type AiCostButtonProps = {
   metaLayout?: 'inside' | 'below'
 }
 
-const formatCurrency = (value: number, currency: 'PLN' | 'USD') => {
-  const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'
-  return new Intl.NumberFormat(locale, { style: 'currency', currency }).format(value)
+const formatCurrency = (value: number, lang: 'pl' | 'en') => {
+  const locale = lang === 'pl' ? 'pl-PL' : 'en-US'
+  const formatted = new Intl.NumberFormat(locale, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(value)
+  return `${formatted} PLN`
 }
 
 export const AiCostButton = ({
@@ -35,7 +39,7 @@ export const AiCostButton = ({
   const amountText = (() => {
     if (priceLoading || priceMinor == null) return '—'
     const amount = priceMinor / 100
-    return formatCurrency(amount, currency)
+    return formatCurrency(amount, lang)
   })()
   const metaLine = (
     <span className={`report-ai-inline${metaLayout === 'below' ? ' report-ai-inline--below' : ''}`}>

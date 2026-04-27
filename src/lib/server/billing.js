@@ -5,10 +5,9 @@ const toInt = (value) => {
   return Number.isFinite(num) ? Math.trunc(num) : NaN
 }
 
-const normalizeCurrency = (value) => {
-  const raw = String(value || '').toUpperCase()
-  if (raw === 'PLN' || raw === 'USD') return raw
-  return null
+const normalizeCurrency = (_value) => {
+  // Billing is PLN-only. Keep accepting legacy inputs, but normalize to PLN.
+  return 'PLN'
 }
 
 export const createBillingError = (code, message) => {
@@ -41,7 +40,7 @@ export const normalizeBillingError = (error) => {
 
 export const resolveBillingCurrency = async (
   userId,
-  preferredCurrency = null,
+  _preferredCurrency = null,
   supabaseAdmin = null
 ) => {
   const safeUserId = String(userId || '').trim()
@@ -58,13 +57,8 @@ export const resolveBillingCurrency = async (
   if (error) {
     throw createBillingError('PROFILE_LOOKUP_FAILED', error.message)
   }
-  const existing = normalizeCurrency(profile?.billing_currency)
-  if (existing) return existing
-
-  const next = normalizeCurrency(preferredCurrency) || null
-  if (!next) {
-    throw createBillingError('BILLING_CURRENCY_MISSING', 'Missing billing currency.')
-  }
+  const existingRaw = String(profile?.billing_currency || '').toUpperCase()
+  const next = 'PLN'
   if (!profile) {
     const insertRes = await client
       .schema('public')
@@ -73,7 +67,9 @@ export const resolveBillingCurrency = async (
     if (insertRes.error) {
       throw createBillingError('PROFILE_UPSERT_FAILED', insertRes.error.message)
     }
-  } else {
+    return next
+  }
+  if (existingRaw !== next) {
     const updateRes = await client
       .schema('public')
       .from('profiles')
@@ -110,22 +106,18 @@ export const ensureBillingAccount = async (userId, supabaseAdmin = null) => {
 
 export const getPriceForAction = async (
   actionKey,
-  currency,
+  _currency,
   supabaseAdmin = null
 ) => {
   const safeKey = String(actionKey || '').trim()
   if (!safeKey) {
     throw createBillingError('PRICING_RULE_MISSING', 'Missing action key.')
   }
-  const safeCurrency = normalizeCurrency(currency)
-  if (!safeCurrency) {
-    throw createBillingError('BILLING_CURRENCY_MISSING', 'Missing billing currency.')
-  }
   const client = supabaseAdmin || getSupabaseAdmin()
   const { data, error } = await client
     .schema('public')
     .from('pricing_rules')
-    .select('price_grosze,price_cents,is_active')
+    .select('price_grosze,is_active')
     .eq('action_key', safeKey)
     .maybeSingle()
   if (error) {
@@ -134,10 +126,9 @@ export const getPriceForAction = async (
   if (!data || data.is_active !== true) {
     throw createBillingError('PRICING_RULE_MISSING', 'Pricing rule missing or inactive.')
   }
-  const price = toInt(safeCurrency === 'USD' ? data.price_cents : data.price_grosze)
+  const price = toInt(data.price_grosze)
   if (!Number.isFinite(price) || price < 0) {
-    const errCode = safeCurrency === 'USD' ? 'PRICE_CENTS_MISSING' : 'PRICE_GROSZE_MISSING'
-    throw createBillingError(errCode, 'Invalid pricing rule.')
+    throw createBillingError('PRICE_GROSZE_MISSING', 'Invalid pricing rule.')
   }
   return price
 }
@@ -147,7 +138,7 @@ export const chargeUserBalance = async (
   actionKey,
   referenceId = null,
   supabaseAdmin = null,
-  options = {}
+  _options = {}
 ) => {
   const safeUserId = String(userId || '').trim()
   if (!safeUserId) {
@@ -158,14 +149,13 @@ export const chargeUserBalance = async (
     throw createBillingError('PRICING_RULE_MISSING', 'Missing action key.')
   }
   const client = supabaseAdmin || getSupabaseAdmin()
-  const preferredCurrency = options?.preferredCurrency || null
-  const billingCurrency = await resolveBillingCurrency(safeUserId, preferredCurrency, client)
+  const billingCurrency = await resolveBillingCurrency(safeUserId, null, client)
   await ensureBillingAccount(safeUserId, client)
   const { data, error } = await client.rpc('charge_user_balance', {
     p_user_id: safeUserId,
     p_action_key: safeActionKey,
     p_reference_id: referenceId ? String(referenceId) : null,
-    p_currency: billingCurrency,
+    p_currency: 'PLN',
   })
   if (error) {
     console.error('[billing][charge_user_balance] rpc failed', {
@@ -180,7 +170,7 @@ export const chargeUserBalance = async (
   const balanceBeforeMinor = toInt(row?.balance_before_minor)
   const balanceAfterMinor = toInt(row?.balance_after_minor)
   const amountMinor = toInt(row?.amount_minor)
-  const currency = normalizeCurrency(row?.currency) || billingCurrency
+  const currency = 'PLN'
   return {
     currency,
     balanceBeforeMinor: Number.isFinite(balanceBeforeMinor) ? balanceBeforeMinor : null,
