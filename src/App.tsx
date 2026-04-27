@@ -3006,6 +3006,7 @@ function App() {
   const engineEraseTimer = useRef<number | null>(null)
   const engineIdleTimer = useRef<number | null>(null)
   const engineNoticeTimer = useRef<number | null>(null)
+  const paymentReturnHandledRef = useRef(false)
   const oauthStartOnceRef = useRef(false)
   const authRedirectedRef = useRef(false)
   const initialRouteResolvedRef = useRef(false)
@@ -3569,6 +3570,33 @@ const isAuthFlowInProgress = () => {
       // ignore refresh failures
     }
   }
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isEnginePreview) return
+    if (paymentReturnHandledRef.current) return
+
+    const params = new URLSearchParams(window.location.search || '')
+    if (params.get('payment') !== 'success') return
+
+    // Wait until we have a user id so refreshBillingBalance can run.
+    if (!authSession?.user?.id) return
+
+    paymentReturnHandledRef.current = true
+    showEngineNotice(
+      uiLanguage === 'Polish'
+        ? 'Płatność została przyjęta. Saldo może odświeżyć się za chwilę.'
+        : 'Payment was accepted. Your balance may refresh in a moment.',
+      'success'
+    )
+
+    void refreshBillingBalance()
+
+    // Optional cleanup: remove the query param after handling it.
+    params.delete('payment')
+    const search = params.toString()
+    const nextUrl = `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash || ''}`
+    window.history.replaceState({}, '', nextUrl)
+  }, [authSession?.user?.id, isEnginePreview, uiLanguage])
   const formatTopupAmountValue = (currency: 'PLN' | 'USD', amountMinor: number) => {
     const amount = amountMinor / 100
     const locale = currency === 'PLN' ? 'pl-PL' : 'en-US'

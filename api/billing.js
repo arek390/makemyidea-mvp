@@ -231,10 +231,12 @@ const handleCreatePayment = async (req, res) => {
   const description = `Top up ${descriptionHost || 'makemyidea.work'}`
   const currency = 'PLN'
   const returnUrl = (() => {
+    const envReturnUrl = String(process.env.AUTOPAY_RETURN_URL || '').trim()
+    if (envReturnUrl) return envReturnUrl
     const proto = req?.headers?.['x-forwarded-proto'] || 'https'
     const host = req?.headers?.['x-forwarded-host'] || req?.headers?.host || ''
     if (!host) return ''
-    return `${proto}://${host}/engine#/topup`
+    return `${proto}://${host}/engine?payment=success`
   })()
   const hashPayload = buildHashPayload([
     serviceId,
