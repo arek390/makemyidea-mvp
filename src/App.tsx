@@ -11591,14 +11591,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const questionText = sanitizeInlineHelperText(primary)
     return questionText || copy.engineEntryQuestionFallback
   }
-  const formatBalanceMinor = (minor: number) => {
-    const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
-    const formatted = new Intl.NumberFormat(locale, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(Math.max(0, minor || 0) / 100)
-    return `${formatted} PLN`
-  }
 
     return withDevOverlay(
       <div className="app engine-preview" data-testid="active-session">
