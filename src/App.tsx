@@ -3897,6 +3897,10 @@ const isAuthFlowInProgress = () => {
       setAuthCallbackLoading(true)
       setAuthCallbackHint(null)
       const href = typeof window !== 'undefined' ? window.location.href : ''
+      console.info('[auth callback]', {
+        origin: typeof window !== 'undefined' ? window.location.origin : '',
+        href,
+      })
       const params = new URLSearchParams(window.location.search)
       const code = params.get('code')
       const errorParam = params.get('error')
@@ -4024,6 +4028,11 @@ const isAuthFlowInProgress = () => {
 	    setLoginNotice(null)
 	    setLoginOauthLoading(true)
 	    const redirectTo = getOAuthRedirectTo()
+    console.info('[auth redirect]', {
+      origin: typeof window !== 'undefined' ? window.location.origin : '',
+      href: typeof window !== 'undefined' ? window.location.href : '',
+      redirectTo,
+    })
 	    const next =
 	      typeof window !== 'undefined'
 	        ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
@@ -4093,6 +4102,11 @@ const isAuthFlowInProgress = () => {
     setLoginNotice(null)
     setLoginSending(true)
     const redirectTo = getOAuthRedirectTo()
+    console.info('[auth redirect]', {
+      origin: typeof window !== 'undefined' ? window.location.origin : '',
+      href: typeof window !== 'undefined' ? window.location.href : '',
+      redirectTo,
+    })
     setAuthFlowInProgress(true)
     recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_magiclink_start', {
@@ -4173,9 +4187,16 @@ const isAuthFlowInProgress = () => {
         setAuthError(`${error.message}${detail}`)
       }
     } else {
+      const redirectTo = getOAuthRedirectTo()
+      console.info('[auth redirect]', {
+        origin: typeof window !== 'undefined' ? window.location.origin : '',
+        href: typeof window !== 'undefined' ? window.location.href : '',
+        redirectTo,
+      })
       const { data, error } = await client.auth.signUp({
         email: loginEmail.trim(),
         password: loginPassword,
+        options: { emailRedirectTo: redirectTo },
       })
       if (import.meta.env.DEV) {
         console.log('[auth email] signUp', { ok: !error, error })
