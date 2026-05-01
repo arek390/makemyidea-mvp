@@ -15,6 +15,9 @@ export const supabaseEnvDiag = {
   anonLen: rawSupabaseAnon.length,
 }
 
+// Keep in sync with package-lock.json to help runtime auth diagnostics.
+export const SUPABASE_JS_VERSION = '2.91.0'
+
 let supabaseInitError: string | null = null
 
 console.info('[diag] supabase env', {
@@ -65,7 +68,10 @@ if (supabaseUrl && supabaseAnonKey) {
       const authOptions = {
         auth: {
           flowType: 'pkce',
-          detectSessionInUrl: true,
+          // We handle PKCE callback exchange explicitly on /auth/callback.
+          // Keeping this true can cause an automatic exchange during client init,
+          // which then makes a manual exchange fail with pkce_code_verifier_not_found.
+          detectSessionInUrl: false,
           persistSession: true,
           autoRefreshToken: true,
           ...(authStorage ? { storage: authStorage } : {}),

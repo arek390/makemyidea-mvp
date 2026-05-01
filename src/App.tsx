@@ -45,7 +45,7 @@ import {
   type ReportRecord,
 } from './lib/cloudReports'
 import type { Database } from './lib/supabase/types'
-import { getSupabaseInitError, supabase as client, supabaseEnvDiag } from './lib/supabase/client'
+import { getSupabaseInitError, supabase as client, supabaseEnvDiag, SUPABASE_JS_VERSION } from './lib/supabase/client'
 import { saveSessionToCloud } from './lib/cloudSessions'
 import { useBillingAccount } from './lib/useBillingAccount'
 import {
@@ -4055,6 +4055,7 @@ const isAuthFlowInProgress = () => {
       setAuthCallbackDiag(diagSnapshot)
       console.info('[auth][callback][pkce-diag]', diagSnapshot)
       saveAuthDiag('auth_callback_pkce_diag', diagSnapshot as any)
+      console.info('[auth][callback] supabase-js', { version: SUPABASE_JS_VERSION })
       console.log('[auth callback] location', {
         href,
         origin: typeof window !== 'undefined' ? window.location.origin : '',
@@ -4104,6 +4105,11 @@ const isAuthFlowInProgress = () => {
         authCodeExchangeInProgress = true
         exchangedAuthCodes.add(callbackCode)
         console.info('[auth exchange START]', { code: callbackCode, time: Date.now() })
+        console.info('[auth][callback] exchange_arg', {
+          version: SUPABASE_JS_VERSION,
+          argType: 'code',
+          argPreview: callbackCode ? `${callbackCode.slice(0, 8)}...` : null,
+        })
         // (Legacy sessionStorage/ref guards removed; module-level guard above is the source of truth.)
         const beforeVerifierLen =
           typeof window !== 'undefined' && pkceVerifierKey
