@@ -275,6 +275,7 @@ const getOAuthRedirectTo = () => {
   if (typeof window === 'undefined') return ''
   return `${window.location.origin}/auth/callback`
 }
+const BUILD_MARKER = 'preview-auth-check-2026-05-01'
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
 const CANONICAL_HOST = (() => {
@@ -2399,6 +2400,17 @@ function DebugMatrixPage({
 }
 
 function App() {
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const env = (import.meta as any).env || {}
+    console.info('[build]', {
+      marker: BUILD_MARKER,
+      href: window.location.href,
+      origin: window.location.origin,
+      mode: import.meta.env.MODE,
+      vercelEnv: env.VERCEL_ENV ?? null,
+    })
+  }, [])
   const [activeStep, setActiveStep] = useState<StepId>(1)
   const [showLanding, setShowLanding] = useState(true)
   const [landingView, setLandingView] = useState<'main' | 'threeSteps'>('main')
