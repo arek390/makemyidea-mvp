@@ -291,6 +291,9 @@ const saveAuthDiag = (event: string, data: Record<string, unknown> = {}) => {
   }
 }
 
+let authCodeExchangeInProgress = false
+const exchangedAuthCodes = new Set<string>()
+
 const isPreviewHost = () => {
   if (typeof window === 'undefined') return false
   const host = window.location.hostname || ''
@@ -4086,6 +4089,22 @@ const isAuthFlowInProgress = () => {
         return
       }
       try {
+        const callbackCode = code || ''
+        if (!callbackCode) {
+          setAuthCallbackError(copy.authCallback.signInFailed)
+          setAuthCallbackHint(copy.authCallback.missingCode)
+          setAuthCallbackLoading(false)
+          return
+        }
+        if (authCodeExchangeInProgress || exchangedAuthCodes.has(callbackCode)) {
+          console.warn('[auth callback] duplicate exchange blocked', { code: callbackCode })
+          saveAuthDiag('auth_callback_duplicate_exchange_blocked_module', { code: callbackCode })
+          setAuthCallbackLoading(false)
+          return
+        }
+        authCodeExchangeInProgress = true
+        exchangedAuthCodes.add(callbackCode)
+        console.info('[auth exchange START]', { code: callbackCode, time: Date.now() })
         const exchangeKey = 'auth_exchanged_code_v2'
         const alreadyExchanged =
           typeof window !== 'undefined' ? window.sessionStorage.getItem(exchangeKey) : null
@@ -4145,7 +4164,12 @@ const isAuthFlowInProgress = () => {
         }
         console.info('[auth][callback] exchangeCodeForSession:start', exchangeStartPayload)
         saveAuthDiag('auth_callback_exchange_start', exchangeStartPayload as any)
-        const { data, error } = await auth.exchangeCodeForSession(code || '')
+        const { data, error } = await auth.exchangeCodeForSession(callbackCode)
+        console.info('[auth exchange END]', {
+          success: Boolean(!error && data?.session),
+          errorCode: (error as any)?.code ?? null,
+          errorMessage: (error as any)?.message ?? null,
+        })
         if (cancelled) return
         if (error || !data?.session) {
           const codeValue = (error as { code?: string })?.code ?? null
@@ -4243,6 +4267,7 @@ const isAuthFlowInProgress = () => {
           window.location.replace(`${window.location.origin}/engine`)
         }
       } finally {
+        authCodeExchangeInProgress = false
         setAuthFlowInProgress(false)
       }
     }
