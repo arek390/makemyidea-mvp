@@ -2548,7 +2548,7 @@ function App() {
   }, [actionPlanReadinessLlmCache])
   const actionPlanReadinessLlmSeqRef = useRef(0)
   const actionPlanReadinessLlmInFlightRef = useRef(false)
-  const actionPlanReadinessLlmDebounceRef = useRef<number | null>(null)
+  const actionPlanReadinessLlmDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const actionPlanReadinessLastTotalCountRef = useRef(0)
   const readinessLastScheduledKeyRef = useRef<string | null>(null)
   const readinessLastStartedKeyRef = useRef<string | null>(null)
@@ -2599,7 +2599,7 @@ function App() {
     actionPlanReadinessLlmInFlightRef.current = false
     actionPlanReadinessLastTotalCountRef.current = 0
     if (actionPlanReadinessLlmDebounceRef.current) {
-      window.clearTimeout(actionPlanReadinessLlmDebounceRef.current)
+      clearTimeout(actionPlanReadinessLlmDebounceRef.current)
       actionPlanReadinessLlmDebounceRef.current = null
     }
   }, [actionPlanReadinessEnabled, enginePreviewSessionId])
@@ -8671,7 +8671,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const recentlyAttemptedSameInput = (() => {
         if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
         const attemptedAt = lastAttemptedAtNum
-        if (attemptedAt == null) return false
+        if (typeof attemptedAt !== 'number') return false
         if (Date.now() - attemptedAt >= retryWindowMs) return false
         if (lastAttemptedCount !== meaningfulCount) return false
         if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
@@ -8767,8 +8767,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }))
     actionPlanReadinessLastTotalCountRef.current = enginePreviewItems.length
     try {
-      if (!client) throw new Error('SUPABASE_CLIENT_MISSING')
-      const sessionRes = await client.auth.getSession()
+      const sbClient = client
+      if (sbClient == null) throw new Error('SUPABASE_CLIENT_MISSING')
+      const sessionRes = await sbClient!.auth.getSession()
       const token = sessionRes?.data?.session?.access_token || ''
       if (!token) throw new Error('AUTH_REQUIRED')
 	      logActionPlanReadinessLlm({
@@ -8931,7 +8932,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const recentlyAttemptedSameInput = (() => {
         if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
         const attemptedAt = lastAttemptedAtNum
-        if (attemptedAt == null) return false
+        if (typeof attemptedAt !== 'number') return false
         if (Date.now() - attemptedAt >= retryWindowMs) return false
         if (lastAttemptedCount !== actionPlanReadinessMeaningfulCount) return false
         if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
@@ -8997,9 +8998,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
     {
       const timer = actionPlanReadinessLlmDebounceRef.current
-      if (timer !== null) window.clearTimeout(timer)
+      if (timer != null) {
+        clearTimeout(timer)
+      }
     }
-    actionPlanReadinessLlmDebounceRef.current = window.setTimeout(() => {
+    actionPlanReadinessLlmDebounceRef.current = setTimeout(() => {
       setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: false }))
       void fetchActionPlanReadinessLlm(actionPlanReadinessMeaningfulCount)
     }, 650)
@@ -9014,7 +9017,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return () => {
       if (actionPlanReadinessLlmDebounceRef.current) {
         const timer = actionPlanReadinessLlmDebounceRef.current
-        if (timer !== null) window.clearTimeout(timer)
+        if (timer != null) {
+          clearTimeout(timer)
+        }
         actionPlanReadinessLlmDebounceRef.current = null
       }
       setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: false }))
