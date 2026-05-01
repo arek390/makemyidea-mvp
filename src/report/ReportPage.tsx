@@ -1235,15 +1235,32 @@ export const ReportPage = ({
       })
       const responsePayload = await response.json().catch(() => null)
 
+      const extractExecutionReportFromUpdateResponse = (payload: any) => {
+        if (!payload || typeof payload !== 'object') return null
+        if (payload.execution_report && typeof payload.execution_report === 'object') {
+          return normalizeExecutionReport(sanitizeReportPayload(payload.execution_report))
+        }
+        const report = payload.report && typeof payload.report === 'object' ? payload.report : null
+        const embedded =
+          report?.summary_json &&
+          typeof report.summary_json === 'object' &&
+          (report.summary_json as any).execution_report &&
+          typeof (report.summary_json as any).execution_report === 'object'
+            ? (report.summary_json as any).execution_report
+            : null
+        return embedded ? normalizeExecutionReport(sanitizeReportPayload(embedded)) : null
+      }
+
       if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
         const execution = responsePayload?.execution && typeof responsePayload.execution === 'object' ? responsePayload.execution : null
         const report = responsePayload?.report && typeof responsePayload.report === 'object' ? responsePayload.report : null
-        const executionReportReturned =
-          report?.summary_json && typeof report.summary_json === 'object' && report.summary_json.execution_report
-            ? normalizeExecutionReport(sanitizeReportPayload((report.summary_json as any).execution_report))
-            : responsePayload?.execution_report && typeof responsePayload.execution_report === 'object'
-              ? normalizeExecutionReport(sanitizeReportPayload(responsePayload.execution_report))
-              : null
+        const executionReportReturned = extractExecutionReportFromUpdateResponse(responsePayload)
+        const detectedExecutionPath =
+          responsePayload?.execution_report
+            ? 'execution_report'
+            : report?.summary_json?.execution_report
+              ? 'report.summary_json.execution_report'
+              : 'none'
         console.log('[REPORT FINALIZE DEBUG][frontend][after-post]', {
           httpStatus: response.status,
           responseOk: response.ok,
@@ -1251,6 +1268,7 @@ export const ReportPage = ({
           responseKeys: responsePayload && typeof responsePayload === 'object' ? Object.keys(responsePayload) : null,
           planGenerated: execution?.planGenerated ?? null,
           planSkippedReason: execution?.planSkippedReason ?? null,
+          detectedExecutionPath,
           returnedExecutionReportStage: executionReportReturned?.stage ?? null,
           returnedActionPlanLen: Array.isArray(executionReportReturned?.action_plan)
             ? executionReportReturned?.action_plan.length
@@ -1281,6 +1299,63 @@ export const ReportPage = ({
         }
         setUpdateNotice(t.labelSaveError)
         return
+      }
+      if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
+        const executionReportReturned = extractExecutionReportFromUpdateResponse(responsePayload)
+        if (executionReportReturned) {
+          console.log('[REPORT FINALIZE DEBUG][frontend][post-success] apply_execution_report', {
+            stage: executionReportReturned.stage ?? null,
+            actionPlanLen: Array.isArray(executionReportReturned.action_plan)
+              ? executionReportReturned.action_plan.length
+              : null,
+            decisionsLen: Array.isArray(executionReportReturned.decisions)
+              ? executionReportReturned.decisions.length
+              : null,
+          })
+          setExecutionReport(executionReportReturned)
+          onReportMetaChange?.({
+            execution_report: executionReportReturned,
+            updatedAt: Date.now(),
+          })
+          const base =
+            reportMetaRef.current && typeof reportMetaRef.current === 'object' ? reportMetaRef.current : {}
+          reportMetaRef.current = { ...base, execution_report: executionReportReturned }
+        } else if (responsePayload?.execution?.planGenerated) {
+          console.log('[REPORT FINALIZE DEBUG][frontend][post-success] missing_execution_report_refetch', {
+            sessionId: reportSessionId || sessionId,
+          })
+          try {
+            const record = await fetchReportBySessionId(reportSessionId || sessionId)
+            const exec = record?.executionReport
+              ? normalizeExecutionReport(sanitizeReportPayload(record.executionReport))
+              : null
+            console.log('[REPORT FINALIZE DEBUG][frontend][post-success] refetch_result', {
+              fetched: Boolean(record),
+              stage: exec?.stage ?? null,
+              actionPlanLen: Array.isArray(exec?.action_plan) ? exec.action_plan.length : null,
+              decisionsLen: Array.isArray(exec?.decisions) ? exec.decisions.length : null,
+            })
+            if (record) {
+              applyReportRecord(record)
+              setSummaryStatus('done')
+            }
+            if (exec) {
+              setExecutionReport(exec)
+              onReportMetaChange?.({
+                execution_report: exec,
+                updatedAt: Date.now(),
+              })
+              const base =
+                reportMetaRef.current && typeof reportMetaRef.current === 'object' ? reportMetaRef.current : {}
+              reportMetaRef.current = { ...base, execution_report: exec }
+            }
+          } catch (error) {
+            console.error('[REPORT FINALIZE DEBUG][frontend][post-success] refetch_failed', {
+              sessionId: reportSessionId || sessionId,
+              error: error instanceof Error ? error.message : String(error),
+            })
+          }
+        }
       }
       if (
         mode === 'plan_from_decisions_only' &&

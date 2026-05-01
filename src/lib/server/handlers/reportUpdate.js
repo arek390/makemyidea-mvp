@@ -4298,6 +4298,13 @@ export const handleReportUpdate = async (req, res) => {
 
         // If the source changed, reset to decisions stage (regenerate + clear selections).
         if (contentHashChanged) {
+          if (executionPlanOnly && allDecisionsSelected) {
+            console.log('[report:update][exec] finalize_blocked_by_contentHashChanged', {
+              requestId,
+              sessionId,
+              executionMode: executionMode || null,
+            })
+          }
           executionReportCandidate = normalizeExecutionReport({
             ...executionReportDefaults,
             stage: 'awaiting_decisions',
@@ -5322,6 +5329,28 @@ export const handleReportUpdate = async (req, res) => {
         reportId: reportRes.data?.id ?? null,
         ok: true,
       })
+      const savedExecFromUpdate =
+        updateRes?.data?.summary_json?.execution_report &&
+        typeof updateRes.data.summary_json.execution_report === 'object'
+          ? normalizeExecutionReport(updateRes.data.summary_json.execution_report)
+          : null
+      console.log('[REPORT FINALIZE DEBUG][backend][response-shape]', {
+        requestId,
+        sessionId,
+        returnedExecutionReportStage: savedExecFromUpdate?.stage ?? null,
+        returnedActionPlanLen: Array.isArray(savedExecFromUpdate?.action_plan)
+          ? savedExecFromUpdate.action_plan.length
+          : null,
+        returnedDecisionsLen: Array.isArray(savedExecFromUpdate?.decisions)
+          ? savedExecFromUpdate.decisions.length
+          : null,
+        returnedPrioritiesLen: Array.isArray(savedExecFromUpdate?.priorities)
+          ? savedExecFromUpdate.priorities.length
+          : null,
+        returnedValidationLoopLen: Array.isArray(savedExecFromUpdate?.validation_loop)
+          ? savedExecFromUpdate.validation_loop.length
+          : null,
+      })
       if (returnReport) {
         const finalReportRes = await supabaseAdmin
           .schema('public')
@@ -5351,6 +5380,7 @@ export const handleReportUpdate = async (req, res) => {
         res.status(200).json({
           ok: true,
           report: finalReportRes.data ?? null,
+          execution_report: savedExec,
           ...(Object.keys(responseMeta).length ? { meta: responseMeta } : {}),
           execution: responseExecution,
         })
@@ -5358,6 +5388,7 @@ export const handleReportUpdate = async (req, res) => {
       }
       res.status(200).json({
         ok: true,
+        execution_report: savedExecFromUpdate,
         ...(Object.keys(responseMeta).length ? { meta: responseMeta } : {}),
         execution: responseExecution,
       })
