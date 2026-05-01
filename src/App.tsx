@@ -8645,6 +8645,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
   )
 
   const fetchActionPlanReadinessLlm = useEffectEvent(async (meaningfulCount: number) => {
+    if (true) {
+      console.log('[READINESS FETCH BLOCKED]')
+      return
+    }
 	    if (!actionPlanReadinessLlmEnabled) return
 	    if (!enginePreviewSessionId) return
 	    // Run LLM after the first meaningful inputs appear (>=3 required for stable signal),
@@ -8863,6 +8867,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
   })
 
 	  useEffect(() => {
+      if (true) {
+        if (typeof process !== 'undefined' && process?.env?.NODE_ENV !== 'production') {
+          console.log('[READINESS DISABLED TEMP]')
+        }
+        return
+      }
 	    if (!actionPlanReadinessEnabled) return
 	    if (!actionPlanReadinessLlmEnabled) return
       if (import.meta.env.DEV && typeof window !== 'undefined') {
