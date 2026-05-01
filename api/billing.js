@@ -26,6 +26,52 @@ const safeKeyMeta = (key) => {
   }
 }
 
+const fingerprintKey = (key) => {
+  const value = String(key || '')
+  if (!value) return null
+  return sha256(value).slice(0, 6)
+}
+
+const resolveAutopayKey = ({ serviceId, kind }) => {
+  const sid = String(serviceId || '').trim()
+  const perService = (name) => (sid ? process.env[`${name}_${sid}`] : '')
+
+  if (kind === 'itn') {
+    const name1 = 'AUTOPAY_ITN_HASH_KEY'
+    const name2 = 'AUTOPAY_SHARED_KEY'
+    const v =
+      perService(name1) ||
+      process.env[name1] ||
+      perService(name2) ||
+      process.env[name2] ||
+      ''
+    const source =
+      (perService(name1) && `${name1}_${sid}`) ||
+      (process.env[name1] && name1) ||
+      (perService(name2) && `${name2}_${sid}`) ||
+      (process.env[name2] && name2) ||
+      null
+    return { key: v, source }
+  }
+
+  // kind === 'form'
+  const name1 = 'AUTOPAY_FORM_HASH_KEY'
+  const name2 = 'AUTOPAY_SHARED_KEY'
+  const v =
+    perService(name1) ||
+    process.env[name1] ||
+    perService(name2) ||
+    process.env[name2] ||
+    ''
+  const source =
+    (perService(name1) && `${name1}_${sid}`) ||
+    (process.env[name1] && name1) ||
+    (perService(name2) && `${name2}_${sid}`) ||
+    (process.env[name2] && name2) ||
+    null
+  return { key: v, source }
+}
+
 const buildConfirmXml = ({ serviceID, orderID, confirmation, sharedKey }) => {
   const hash = sha256([serviceID, orderID, confirmation, sharedKey].join('|'))
   return `<?xml version="1.0" encoding="UTF-8"?>\n` +
@@ -179,10 +225,7 @@ const handleCreatePayment = async (req, res) => {
   }
 
   const serviceId = process.env.AUTOPAY_SERVICE_ID || ''
-  const sharedKey =
-    (serviceId ? process.env[`AUTOPAY_SHARED_KEY_${serviceId}`] : '') ||
-    process.env.AUTOPAY_SHARED_KEY ||
-    ''
+  const { key: sharedKey } = resolveAutopayKey({ serviceId, kind: 'form' })
   const gatewayUrl = process.env.AUTOPAY_GATEWAY_URL || ''
   if (!serviceId || !sharedKey || !gatewayUrl) {
     sendJson(res, 500, { ok: false, error: 'MISSING_AUTOPAY_ENV' })
@@ -474,10 +517,10 @@ const handleAutopayItn = async (req, res) => {
     receivedHashPrefix,
   })
 
-  const sharedKey =
-    process.env[`AUTOPAY_SHARED_KEY_${serviceID}`] ||
-    process.env.AUTOPAY_SHARED_KEY ||
-    ''
+  const { key: sharedKey, source: sharedKeySource } = resolveAutopayKey({
+    serviceId: serviceID,
+    kind: 'itn',
+  })
   if (!sharedKey) {
     console.error('[AUTOPAY ITN] missing_shared_key', { itnRequestId })
     sendJson(res, 500, { ok: false, error: 'MISSING_SHARED_KEY', itnRequestId })
@@ -487,6 +530,8 @@ const handleAutopayItn = async (req, res) => {
     itnRequestId,
     serviceID,
     sharedKey: safeKeyMeta(sharedKey),
+    sharedKeyFingerprint: fingerprintKey(sharedKey),
+    sharedKeyEnv: sharedKeySource,
     diagEnabled: process.env.AUTOPAY_ITN_HASH_DIAG === 'true',
   })
 
