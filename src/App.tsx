@@ -2488,15 +2488,6 @@ function App() {
   const [authCallbackLoading, setAuthCallbackLoading] = useState(false)
   const [authCallbackHint, setAuthCallbackHint] = useState<string | null>(null)
   const [authCallbackErrorVisible, setAuthCallbackErrorVisible] = useState(false)
-  const [authCallbackDebug, setAuthCallbackDebug] = useState<{
-    href: string
-    origin: string
-    hasSession: boolean
-    nextParam: string | null
-    savedReturnTo: string | null
-    computedTarget: string
-    localStorageKeys: string[]
-  } | null>(null)
   const authResolved = authReady
   const [loginEmail, setLoginEmail] = useState('')
   const [loginSending, setLoginSending] = useState(false)
@@ -4067,32 +4058,7 @@ const isAuthFlowInProgress = () => {
         clearPostAuthNext()
         setAuthCallbackLoading(false)
         if (typeof window !== 'undefined') {
-          saveAuthCallbackDiag({
-            event: 'pre_nav',
-            nextParam,
-            savedReturnTo,
-            nextPath,
-            target,
-          })
-          const keyList = Object.keys(window.localStorage || {}).filter((key) => {
-            const lower = key.toLowerCase()
-            return (
-              lower.includes('auth') ||
-              lower.includes('redirect') ||
-              lower.includes('return') ||
-              lower.includes('next')
-            )
-          })
-          setAuthCallbackDebug({
-            href: window.location.href,
-            origin: window.location.origin,
-            hasSession: true,
-            nextParam,
-            savedReturnTo,
-            computedTarget: target,
-            localStorageKeys: keyList,
-          })
-          return
+          window.location.replace(`${window.location.origin}/engine`)
         }
       } finally {
         setAuthFlowInProgress(false)
@@ -10831,45 +10797,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   if (isAuthCallback) {
-    if (authCallbackDebug) {
-      return withDevOverlay(
-        <div className="app auth-screen">
-          <section className="panel auth-panel">
-            <h1>Auth callback debug</h1>
-            <div className="muted" style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>
-              <div><strong>href:</strong> {authCallbackDebug.href}</div>
-              <div><strong>origin:</strong> {authCallbackDebug.origin}</div>
-              <div><strong>session exists:</strong> {authCallbackDebug.hasSession ? 'true' : 'false'}</div>
-              <div><strong>saved next:</strong> {authCallbackDebug.nextParam ?? '—'}</div>
-              <div><strong>saved returnTo:</strong> {authCallbackDebug.savedReturnTo ?? '—'}</div>
-              <div><strong>computed target:</strong> {authCallbackDebug.computedTarget}</div>
-              <div style={{ marginTop: 10 }}><strong>localStorage keys (auth/redirect/return/next):</strong></div>
-              {authCallbackDebug.localStorageKeys.length ? (
-                <ul>
-                  {authCallbackDebug.localStorageKeys.map((key) => (
-                    <li key={key}>{key}</li>
-                  ))}
-                </ul>
-              ) : (
-                <div>—</div>
-              )}
-            </div>
-            <div className="actions">
-              <button
-                type="button"
-                className="primary"
-                onClick={() => {
-                  if (typeof window === 'undefined') return
-                  window.location.replace(`${window.location.origin}/engine`)
-                }}
-              >
-                Continue to /engine on this domain
-              </button>
-            </div>
-          </section>
-        </div>
-      )
-    }
     return withDevOverlay(
       <div className="app auth-screen">
         <section className="panel auth-panel">
