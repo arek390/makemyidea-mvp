@@ -1528,16 +1528,16 @@
   position: sticky;
   top: 1rem;
   z-index: 2;
-  transform: none;
+  transform: translateY(-50px);
 }
 
 .topup-return-button:hover {
-  transform: translateY(-1px);
+  transform: translateY(-51px);
   box-shadow: 0 8px 18px rgba(8, 26, 56, 0.28);
 }
 
 .topup-return-button:active {
-  transform: translateY(0);
+  transform: translateY(-50px);
   box-shadow: 0 4px 10px rgba(8, 26, 56, 0.2);
 }
 
@@ -4051,6 +4051,51 @@ details.report-section > summary {
 .engine-balance--loading {
   color: var(--muted);
   font-weight: 500;
+}
+
+.rolling-balance {
+  display: inline-flex;
+  align-items: baseline;
+  font-variant-numeric: tabular-nums;
+}
+
+.rolling-balance-number {
+  display: inline-flex;
+  align-items: baseline;
+}
+
+.rolling-sep {
+  display: inline-block;
+}
+
+.rolling-digit-static {
+  display: inline-block;
+}
+
+.rolling-digit {
+  --rolling-digit-h: 1.05em;
+  display: inline-block;
+  height: var(--rolling-digit-h);
+  overflow: hidden;
+  line-height: var(--rolling-digit-h);
+  vertical-align: -0.08em;
+}
+
+.rolling-digit-inner {
+  display: block;
+  transition-property: transform;
+  transition-timing-function: cubic-bezier(0.2, 0.9, 0.25, 1);
+  will-change: transform;
+}
+
+.rolling-digit-cell {
+  display: block;
+  height: var(--rolling-digit-h);
+  line-height: var(--rolling-digit-h);
+}
+
+.rolling-balance-currency {
+  display: inline-block;
 }
 
 .engine-balance:focus-visible {
