@@ -8667,10 +8667,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	    // without spamming on repeated failures.
 	    const bootstrap = actionPlanReadinessLlmCache.lastLLMResult == null && lastEvaluated < 3
       const retryWindowMs = 15_000
+      const lastAttemptedAtNum = typeof lastAttemptedAt === 'number' ? lastAttemptedAt : null
       const recentlyAttemptedSameInput =
         actionPlanReadinessLlmCache.lastLLMResult == null &&
-        typeof lastAttemptedAt === 'number' &&
-        Date.now() - lastAttemptedAt < retryWindowMs &&
+        lastAttemptedAtNum != null &&
+        Date.now() - lastAttemptedAtNum < retryWindowMs &&
         lastAttemptedCount === meaningfulCount &&
         (typeof lastAttemptedCoverage === 'number' ? lastAttemptedCoverage === currentCoverage : true)
       if (recentlyAttemptedSameInput) {
@@ -8763,7 +8764,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }))
     actionPlanReadinessLastTotalCountRef.current = enginePreviewItems.length
     try {
-      const sessionRes = client ? await client.auth.getSession() : null
+      if (!client) throw new Error('SUPABASE_CLIENT_MISSING')
+      const sessionRes = await client.auth.getSession()
       const token = sessionRes?.data?.session?.access_token || ''
       if (!token) throw new Error('AUTH_REQUIRED')
 	      logActionPlanReadinessLlm({
@@ -8922,10 +8924,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
         typeof lastCoverage === 'number' && Number.isFinite(lastCoverage) ? currentCoverage !== lastCoverage : false
       const allowByCoverageChange = !bootstrap && coverageChanged
       const retryWindowMs = 15_000
+      const lastAttemptedAtNum = typeof lastAttemptedAt === 'number' ? lastAttemptedAt : null
       const recentlyAttemptedSameInput =
         actionPlanReadinessLlmCache.lastLLMResult == null &&
-        typeof lastAttemptedAt === 'number' &&
-        Date.now() - lastAttemptedAt < retryWindowMs &&
+        lastAttemptedAtNum != null &&
+        Date.now() - lastAttemptedAtNum < retryWindowMs &&
         lastAttemptedCount === actionPlanReadinessMeaningfulCount &&
         (typeof lastAttemptedCoverage === 'number' ? lastAttemptedCoverage === currentCoverage : true)
       if (recentlyAttemptedSameInput) {
@@ -8986,8 +8989,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
       ;(window as any).__readinessDebugCounts = { ...counts }
     }
 
-    if (actionPlanReadinessLlmDebounceRef.current) {
-      window.clearTimeout(actionPlanReadinessLlmDebounceRef.current)
+    {
+      const timer = actionPlanReadinessLlmDebounceRef.current
+      if (timer != null) window.clearTimeout(timer)
     }
     actionPlanReadinessLlmDebounceRef.current = window.setTimeout(() => {
       setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: false }))
@@ -9003,7 +9007,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
     })
     return () => {
       if (actionPlanReadinessLlmDebounceRef.current) {
-        window.clearTimeout(actionPlanReadinessLlmDebounceRef.current)
+        const timer = actionPlanReadinessLlmDebounceRef.current
+        if (timer != null) window.clearTimeout(timer)
         actionPlanReadinessLlmDebounceRef.current = null
       }
       setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: false }))
