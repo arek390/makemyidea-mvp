@@ -262,9 +262,6 @@ const DEFAULT_IDLE_THRESHOLD_MS = 15000
 const ERASE_EMPTY_SECONDS_STRONG = 10
 const MAX_AUTO_CLASSIFY = 25
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
-const AUTH_LOGIN_ORIGIN_KEY = 'auth-login-origin'
-const AUTH_LOGIN_REDIRECT_KEY = 'auth-login-redirect'
-const AUTH_OAUTH_ORIGIN_KEY = 'auth_oauth_origin'
 const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
 const POST_AUTH_NEXT_KEY = 'post-auth-next'
 const POST_AUTH_LANG_KEY = 'post-auth-lang'
@@ -315,24 +312,6 @@ const safeNavigate = (target: unknown) => {
   }
   saveAuthDiag('safe_navigate', { target: targetString })
   window.location.assign(targetString)
-}
-
-const saveAuthCallbackDiag = (data: Record<string, unknown>) => {
-  try {
-    if (typeof window === 'undefined') return
-    const key = 'auth_callback_diag_v1'
-    const rows = JSON.parse(window.localStorage.getItem(key) || '[]')
-    const next = Array.isArray(rows) ? rows : []
-    next.push({
-      at: new Date().toISOString(),
-      origin: window.location.origin,
-      href: window.location.href,
-      ...data,
-    })
-    window.localStorage.setItem(key, JSON.stringify(next.slice(-20)))
-  } catch {
-    // ignore
-  }
 }
 
 const BUILD_MARKER = 'preview-auth-check-2026-05-01'
@@ -2488,15 +2467,6 @@ function App() {
   const [authCallbackLoading, setAuthCallbackLoading] = useState(false)
   const [authCallbackHint, setAuthCallbackHint] = useState<string | null>(null)
   const [authCallbackErrorVisible, setAuthCallbackErrorVisible] = useState(false)
-  const [authCallbackDebug, setAuthCallbackDebug] = useState<{
-    href: string
-    origin: string
-    hasSession: boolean
-    nextParam: string | null
-    savedReturnTo: string | null
-    computedTarget: string
-    localStorageKeys: string[]
-  } | null>(null)
   const authResolved = authReady
   const [loginEmail, setLoginEmail] = useState('')
   const [loginSending, setLoginSending] = useState(false)
@@ -3429,21 +3399,7 @@ function App() {
     )
   }
 
-const recordAuthRedirect = (redirectTo: string) => {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(AUTH_LOGIN_ORIGIN_KEY, window.location.origin)
-  window.localStorage.setItem(AUTH_LOGIN_REDIRECT_KEY, redirectTo)
-  logAuthDiagnostics('auth_redirect_set', {
-    origin: window.location.origin,
-    redirectTo,
-  })
-}
-
-const clearAuthRedirect = () => {
-  if (typeof window === 'undefined') return
-  window.localStorage.removeItem(AUTH_LOGIN_ORIGIN_KEY)
-  window.localStorage.removeItem(AUTH_LOGIN_REDIRECT_KEY)
-}
+const clearAuthRedirect = () => {}
 
 const setAuthFlowInProgress = (value: boolean) => {
   if (typeof window === 'undefined') return
@@ -3921,7 +3877,6 @@ const isAuthFlowInProgress = () => {
     authRedirectedRef.current = true
     if (window.location.pathname !== next) {
       const target = next.startsWith('/') ? `${window.location.origin}${next}` : next
-      saveAuthCallbackDiag({ event: 'session_resolved_nav', next, target })
       safeNavigate(target)
     }
   }, [authResolved, authSession?.user?.id])
@@ -4067,32 +4022,9 @@ const isAuthFlowInProgress = () => {
         clearPostAuthNext()
         setAuthCallbackLoading(false)
         if (typeof window !== 'undefined') {
-          saveAuthCallbackDiag({
-            event: 'pre_nav',
-            nextParam,
-            savedReturnTo,
-            nextPath,
-            target,
-          })
-          const keyList = Object.keys(window.localStorage || {}).filter((key) => {
-            const lower = key.toLowerCase()
-            return (
-              lower.includes('auth') ||
-              lower.includes('redirect') ||
-              lower.includes('return') ||
-              lower.includes('next')
-            )
-          })
-          setAuthCallbackDebug({
-            href: window.location.href,
-            origin: window.location.origin,
-            hasSession: true,
-            nextParam,
-            savedReturnTo,
-            computedTarget: target,
-            localStorageKeys: keyList,
-          })
-          return
+          console.info('[auth][post-login-redirect]', { target })
+          saveAuthDiag('post_login_redirect', { target })
+          safeNavigate(target)
         }
       } finally {
         setAuthFlowInProgress(false)
@@ -4169,13 +4101,9 @@ const isAuthFlowInProgress = () => {
     if (oauthStartOnceRef.current) return
     oauthStartOnceRef.current = true
     setAuthFlowInProgress(true)
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem(AUTH_OAUTH_ORIGIN_KEY, window.location.origin)
-    }
     writePostAuthNext(normalizedNext)
     writePostAuthLang(lang)
     console.info('[auth] starting oauth', { next: normalizedNext, lang })
-    recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_oauth_start', {
       origin: window.location.origin,
       redirectTo,
@@ -4236,7 +4164,6 @@ const isAuthFlowInProgress = () => {
     })
     saveAuthDiag('auth_start', { redirectTo })
     setAuthFlowInProgress(true)
-    recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_magiclink_start', {
       origin: window.location.origin,
       redirectTo,
@@ -9710,9 +9637,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
       console.log('[auth] signed out')
     }
     if (typeof window !== 'undefined') {
-      window.localStorage.removeItem(AUTH_LOGIN_ORIGIN_KEY)
-      window.localStorage.removeItem(AUTH_LOGIN_REDIRECT_KEY)
-      window.localStorage.removeItem(AUTH_OAUTH_ORIGIN_KEY)
       window.localStorage.removeItem(AUTH_FLOW_IN_PROGRESS_KEY)
       window.localStorage.removeItem(DIAGNOSTICS_STORAGE_KEY)
       window.sessionStorage.removeItem('last_oauth_code')
@@ -10831,45 +10755,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   if (isAuthCallback) {
-    if (authCallbackDebug) {
-      return withDevOverlay(
-        <div className="app auth-screen">
-          <section className="panel auth-panel">
-            <h1>Auth callback debug</h1>
-            <div className="muted" style={{ fontSize: 12, whiteSpace: 'pre-wrap' }}>
-              <div><strong>href:</strong> {authCallbackDebug.href}</div>
-              <div><strong>origin:</strong> {authCallbackDebug.origin}</div>
-              <div><strong>session exists:</strong> {authCallbackDebug.hasSession ? 'true' : 'false'}</div>
-              <div><strong>saved next:</strong> {authCallbackDebug.nextParam ?? '—'}</div>
-              <div><strong>saved returnTo:</strong> {authCallbackDebug.savedReturnTo ?? '—'}</div>
-              <div><strong>computed target:</strong> {authCallbackDebug.computedTarget}</div>
-              <div style={{ marginTop: 10 }}><strong>localStorage keys (auth/redirect/return/next):</strong></div>
-              {authCallbackDebug.localStorageKeys.length ? (
-                <ul>
-                  {authCallbackDebug.localStorageKeys.map((key) => (
-                    <li key={key}>{key}</li>
-                  ))}
-                </ul>
-              ) : (
-                <div>—</div>
-              )}
-            </div>
-            <div className="actions">
-              <button
-                type="button"
-                className="primary"
-                onClick={() => {
-                  if (typeof window === 'undefined') return
-                  window.location.replace(`${window.location.origin}/engine`)
-                }}
-              >
-                Continue to /engine on this domain
-              </button>
-            </div>
-          </section>
-        </div>
-      )
-    }
     return withDevOverlay(
       <div className="app auth-screen">
         <section className="panel auth-panel">
