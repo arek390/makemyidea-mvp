@@ -8668,15 +8668,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	    const bootstrap = actionPlanReadinessLlmCache.lastLLMResult == null && lastEvaluated < 3
 	      const retryWindowMs = 15_000
 		      const lastAttemptedAtNum = typeof lastAttemptedAt === 'number' ? lastAttemptedAt : undefined
-		      const recentlyAttemptedSameInput = (() => {
-		        if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
-		        const attemptedAt = lastAttemptedAtNum
-		        if (attemptedAt == null) return false
-		        if (Date.now() - attemptedAt >= retryWindowMs) return false
-		        if (lastAttemptedCount !== meaningfulCount) return false
-		        if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
-		        return true
-		      })()
+			      const recentlyAttemptedSameInput = (() => {
+			        if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
+			        const attemptedAt = lastAttemptedAtNum
+			        if (attemptedAt == null) return false
+              const attemptedAtMs = attemptedAt as number
+			        if (Date.now() - attemptedAtMs >= retryWindowMs) return false
+			        if (lastAttemptedCount !== meaningfulCount) return false
+			        if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
+			        return true
+			      })()
       if (recentlyAttemptedSameInput) {
         logActionPlanReadinessLlm({
           triggered: false,
@@ -8929,15 +8930,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const allowByCoverageChange = !bootstrap && coverageChanged
 	      const retryWindowMs = 15_000
 		      const lastAttemptedAtNum = typeof lastAttemptedAt === 'number' ? lastAttemptedAt : undefined
-		      const recentlyAttemptedSameInput = (() => {
-		        if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
-		        const attemptedAt = lastAttemptedAtNum
-		        if (attemptedAt == null) return false
-		        if (Date.now() - attemptedAt >= retryWindowMs) return false
-		        if (lastAttemptedCount !== actionPlanReadinessMeaningfulCount) return false
-		        if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
-		        return true
-		      })()
+			      const recentlyAttemptedSameInput = (() => {
+			        if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
+			        const attemptedAt = lastAttemptedAtNum
+			        if (attemptedAt == null) return false
+              const attemptedAtMs = attemptedAt as number
+			        if (Date.now() - attemptedAtMs >= retryWindowMs) return false
+			        if (lastAttemptedCount !== actionPlanReadinessMeaningfulCount) return false
+			        if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
+			        return true
+			      })()
       if (recentlyAttemptedSameInput) {
         logActionPlanReadinessLlm({
           triggered: false,
