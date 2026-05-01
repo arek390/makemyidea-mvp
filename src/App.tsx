@@ -2489,6 +2489,7 @@ function App() {
   const [authCallbackHint, setAuthCallbackHint] = useState<string | null>(null)
   const [authCallbackErrorVisible, setAuthCallbackErrorVisible] = useState(false)
   const [authCallbackDiag, setAuthCallbackDiag] = useState<Record<string, unknown> | null>(null)
+  const authCallbackExchangeOnceRef = useRef<string | null>(null)
   const authResolved = authReady
   const [loginEmail, setLoginEmail] = useState('')
   const [loginSending, setLoginSending] = useState(false)
@@ -4014,6 +4015,14 @@ const isAuthFlowInProgress = () => {
               )
             })
           : []
+      const pkceVerifierKey =
+        typeof window !== 'undefined'
+          ? authStorageKeys.find((key) => key.includes('-auth-token-code-verifier')) ?? null
+          : null
+      const pkceVerifierLen =
+        typeof window !== 'undefined' && pkceVerifierKey
+          ? String(window.localStorage.getItem(pkceVerifierKey) || '').length
+          : null
       const diagSnapshot = {
         currentOrigin,
         currentHref: href,
@@ -4026,6 +4035,8 @@ const isAuthFlowInProgress = () => {
         error: errorParam,
         error_description: errorDescription,
         authStorageKeys,
+        pkceVerifierKey,
+        pkceVerifierLen,
       }
       setAuthCallbackDiag(diagSnapshot)
       console.info('[auth][callback][pkce-diag]', diagSnapshot)
@@ -4063,7 +4074,33 @@ const isAuthFlowInProgress = () => {
         return
       }
       try {
-        const { data, error } = await auth.exchangeCodeForSession(href)
+        const exchangeKey = 'auth_exchanged_code_v2'
+        const alreadyExchanged =
+          typeof window !== 'undefined' ? window.sessionStorage.getItem(exchangeKey) : null
+        if (code && (authCallbackExchangeOnceRef.current === code || alreadyExchanged === code)) {
+          console.warn('[auth][callback] duplicate_exchange_prevented', { code })
+          saveAuthDiag('auth_callback_duplicate_exchange_prevented', { code })
+          const { data: existingSession } = await auth.getSession()
+          const hasSession = Boolean(existingSession?.session)
+          console.info('[auth][callback] getSession after duplicate prevent', { hasSession })
+          saveAuthDiag('auth_callback_getSession', { hasSession, reason: 'duplicate_prevent' })
+          if (hasSession && typeof window !== 'undefined') {
+            window.location.replace(`${window.location.origin}/engine`)
+          }
+          setAuthCallbackLoading(false)
+          return
+        }
+        console.info('[auth][callback] exchangeCodeForSession:start', {
+          hasCode: Boolean(code),
+          pkceVerifierKey,
+          pkceVerifierLen,
+        })
+        saveAuthDiag('auth_callback_exchange_start', {
+          hasCode: Boolean(code),
+          pkceVerifierKey,
+          pkceVerifierLen,
+        })
+        const { data, error } = await auth.exchangeCodeForSession(code || '')
         if (cancelled) return
         if (error || !data?.session) {
           const codeValue = (error as { code?: string })?.code ?? null
@@ -4086,6 +4123,12 @@ const isAuthFlowInProgress = () => {
           setAuthCallbackLoading(false)
           return
         }
+        if (code && typeof window !== 'undefined') {
+          authCallbackExchangeOnceRef.current = code
+          window.sessionStorage.setItem(exchangeKey, code)
+        }
+        console.info('[auth][callback] exchangeCodeForSession:ok', { hasSession: true })
+        saveAuthDiag('auth_callback_exchange_ok', { hasSession: true })
         clearAuthRedirect()
         const nextParam = normalizeNextPath(
           typeof window !== 'undefined'
