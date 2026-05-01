@@ -45,7 +45,7 @@ if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
         ;(console as any).trace('[TRACE READINESS FETCH STACK]')
       }
-      return originalFetch(...args)
+      return (originalFetch as any)(...args)
     }
   }
 }
