@@ -211,6 +211,7 @@ const handleCreatePayment = async (req, res) => {
       provider: 'autopay',
       order_id: orderId,
       amount_pln_grosze: amountGrosze,
+      tokens_to_add: amountGrosze,
       status: 'pending',
     })
   if (insertRes.error) {
