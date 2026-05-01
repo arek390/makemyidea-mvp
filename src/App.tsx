@@ -2551,37 +2551,13 @@ function App() {
   const actionPlanReadinessLlmDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const actionPlanReadinessLastTotalCountRef = useRef(0)
   const readinessLastScheduledKeyRef = useRef<string | null>(null)
-  const readinessLastStartedKeyRef = useRef<string | null>(null)
-  const readinessLogOnceKeyRef = useRef<string | null>(null)
-  const readinessLogDedupeRef = useRef<{ sig: string | null; at: number }>({ sig: null, at: 0 })
-  const readinessDevCountsRef = useRef<{ effectRuns: number; scheduled: number; fetchStarts: number; sameKeySkips: number }>(
-    { effectRuns: 0, scheduled: 0, fetchStarts: 0, sameKeySkips: 0 }
-  )
-  const logActionPlanReadinessLlm = useEffectEvent(
-    (payload: {
-      triggered: boolean
-      reason: string
-      meaningfulItemsCount: number
-      lastEvaluatedCount: number
-      usedFallback: boolean
-    }) => {
-      if (!actionPlanReadinessEnabled) return
-      // Keep logs informative but avoid noisy repeats on every render.
-      const sig = `${payload.triggered ? '1' : '0'}|${payload.reason}|${payload.meaningfulItemsCount}|${payload.lastEvaluatedCount}|${payload.usedFallback ? '1' : '0'}`
-      const now = Date.now()
-      const prev = readinessLogDedupeRef.current
-      if (prev.sig === sig && now - prev.at < 1500) return
-      readinessLogDedupeRef.current = { sig, at: now }
-    }
-  )
+  const logActionPlanReadinessLlm = useEffectEvent(() => {})
 
   useEffect(() => {
     if (!actionPlanReadinessEnabled) return
     if (!enginePreviewSessionId) return
     // Reset per-session so existing sessions can bootstrap a first LLM insight.
     readinessLastScheduledKeyRef.current = null
-    readinessLastStartedKeyRef.current = null
-    readinessLogOnceKeyRef.current = null
     setActionPlanReadinessLlmCache({
       lastEvaluatedCount: 0,
       lastEvaluatedCoverage: null,
@@ -8641,18 +8617,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   )
 
-  const fetchActionPlanReadinessLlm = useEffectEvent(async (meaningfulCount: number) => {
-    // TEMP: hard block readiness operation by action/task name (do not depend on UI flags).
-    if (typeof window !== 'undefined') {
-      const key = '__actionPlanReadinessFrontendBlockedOnce'
-      if (!(window as any)[key]) {
-        ;(window as any)[key] = true
-        console.warn('[TEMP BLOCK] action-plan-readiness frontend request blocked')
-      }
-    }
-    return
-	    if (!actionPlanReadinessLlmEnabled) return
-	    if (!enginePreviewSessionId) return
+	  const fetchActionPlanReadinessLlm = useEffectEvent(async (meaningfulCount: number) => {
+		    if (!actionPlanReadinessLlmEnabled) return
+		    if (!enginePreviewSessionId) return
 	    // Run LLM after the first meaningful inputs appear (>=3 required for stable signal),
       // and then after every +2 meaningful items thereafter.
       // Always clear "pending" when the debounce fires (even if we return early).
@@ -8736,33 +8703,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
       return
     }
 
-    actionPlanReadinessLlmInFlightRef.current = true
-	    const seq = (actionPlanReadinessLlmSeqRef.current += 1)
-	    const requestId = `apr_ui_${Date.now()}_${seq}`
-      const readinessKey = `${enginePreviewSessionId}|${meaningfulCount}|${currentCoverage}|${actionPlanReadinessHeuristic.notWorkingMeaningfulCount}`
-      readinessLastStartedKeyRef.current = readinessKey
-      if (import.meta.env.DEV && typeof window !== 'undefined') {
-        const counts = readinessDevCountsRef.current
-        counts.fetchStarts += 1
-        ;(window as any).__readinessDebugCounts = { ...counts }
-      }
-      logActionPlanReadinessLlm({
-        triggered: true,
-        reason: `fetch_start key=${readinessKey} requestId=${requestId}`,
-        meaningfulItemsCount: meaningfulCount,
-        lastEvaluatedCount: lastEvaluated,
-        usedFallback: false,
-      })
-	    logActionPlanReadinessLlm({
-	      triggered: true,
-	      reason: `${bootstrap ? 'trigger_bootstrap' : 'trigger_increment'} requestId=${requestId}`,
-	      meaningfulItemsCount: meaningfulCount,
-	      lastEvaluatedCount: lastEvaluated,
-	      usedFallback: false,
-	    })
-    // Mark attempted at request start to avoid tight retry loops when LLM is down.
-    setActionPlanReadinessLlmCache((prev) => ({
-      ...prev,
+	    actionPlanReadinessLlmInFlightRef.current = true
+		    const seq = (actionPlanReadinessLlmSeqRef.current += 1)
+		    const requestId = `apr_ui_${Date.now()}_${seq}`
+	      const readinessKey = `${enginePreviewSessionId}|${meaningfulCount}|${currentCoverage}|${actionPlanReadinessHeuristic.notWorkingMeaningfulCount}`
+	      logActionPlanReadinessLlm({
+	        triggered: true,
+	        reason: bootstrap ? 'trigger_bootstrap' : 'trigger_increment',
+	        meaningfulItemsCount: meaningfulCount,
+	        lastEvaluatedCount: lastEvaluated,
+	        usedFallback: false,
+	      })
+	    // Mark attempted at request start to avoid tight retry loops when LLM is down.
+	    setActionPlanReadinessLlmCache((prev) => ({
+	      ...prev,
       lastAttemptedAt: Date.now(),
       lastAttemptedCount: meaningfulCount,
       lastAttemptedCoverage: currentCoverage,
@@ -8773,18 +8727,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const sbClient = client
       if (sbClient == null) throw new Error('SUPABASE_CLIENT_MISSING')
       const sessionRes = await sbClient!.auth.getSession()
-      const token = sessionRes?.data?.session?.access_token || ''
-      if (!token) throw new Error('AUTH_REQUIRED')
-	      logActionPlanReadinessLlm({
-	        triggered: true,
-	        reason: `endpoint_called requestId=${requestId}`,
-	        meaningfulItemsCount: meaningfulCount,
-	        lastEvaluatedCount: lastEvaluated,
-	        usedFallback: false,
-	      })
-	      const response = await fetch('/api/coach?action=action_plan_readiness', {
-	        method: 'POST',
-	        headers: {
+	      const token = sessionRes?.data?.session?.access_token || ''
+	      if (!token) throw new Error('AUTH_REQUIRED')
+		      const response = await fetch('/api/coach?action=action_plan_readiness', {
+		        method: 'POST',
+		        headers: {
 	          'Content-Type': 'application/json',
 	          Authorization: `Bearer ${token}`,
 	          'x-request-id': requestId,
@@ -8804,89 +8751,56 @@ const isMissingLabel = (item: EngineBoardItem) => {
         lastEvaluatedCount: lastEvaluated,
         usedFallback: !response.ok || !payload || payload.ok !== true,
       })
-      if (!response.ok || !payload || payload.ok !== true) {
-        setActionPlanReadinessLlmCache((prev) => ({
-          ...prev,
-          lastLLMResult: null,
-          loading: false,
-        }))
-        logActionPlanReadinessLlm({
-          triggered: true,
-          reason: `fetch_end_invalid key=${readinessKey} requestId=${requestId}`,
-          meaningfulItemsCount: meaningfulCount,
-          lastEvaluatedCount: lastEvaluated,
-          usedFallback: true,
-        })
-        return
-      }
+	      if (!response.ok || !payload || payload.ok !== true) {
+	        setActionPlanReadinessLlmCache((prev) => ({
+	          ...prev,
+	          lastLLMResult: null,
+	          loading: false,
+	        }))
+	        return
+	      }
       const normalized = normalizeReadinessLlmResult(payload)
-      if (!normalized) {
-        setActionPlanReadinessLlmCache((prev) => ({
-          ...prev,
-          lastLLMResult: null,
-          loading: false,
-        }))
-        logActionPlanReadinessLlm({
-          triggered: true,
-          reason: `fetch_end_normalize_failed key=${readinessKey} requestId=${requestId}`,
-          meaningfulItemsCount: meaningfulCount,
-          lastEvaluatedCount: lastEvaluated,
-          usedFallback: true,
-        })
-        return
-      }
-      setActionPlanReadinessLlmCache((prev) => ({
-        ...prev,
-        lastEvaluatedCount: meaningfulCount,
-        lastEvaluatedCoverage: currentCoverage,
-        lastLLMResult: normalized,
-        loading: false,
-      }))
-      logActionPlanReadinessLlm({
-        triggered: true,
-        reason: `fetch_end_ok key=${readinessKey} requestId=${requestId}`,
-        meaningfulItemsCount: meaningfulCount,
-        lastEvaluatedCount: meaningfulCount,
-        usedFallback: false,
-      })
-    } catch {
-      if (seq !== actionPlanReadinessLlmSeqRef.current) return
-      logActionPlanReadinessLlm({
+	      if (!normalized) {
+	        setActionPlanReadinessLlmCache((prev) => ({
+	          ...prev,
+	          lastLLMResult: null,
+	          loading: false,
+	        }))
+	        return
+	      }
+	      setActionPlanReadinessLlmCache((prev) => ({
+	        ...prev,
+	        lastEvaluatedCount: meaningfulCount,
+	        lastEvaluatedCoverage: currentCoverage,
+	        lastLLMResult: normalized,
+	        loading: false,
+	      }))
+	    } catch {
+	      if (seq !== actionPlanReadinessLlmSeqRef.current) return
+	      logActionPlanReadinessLlm({
         triggered: true,
         reason: 'fallback_exception',
         meaningfulItemsCount: meaningfulCount,
         lastEvaluatedCount: lastEvaluated,
         usedFallback: true,
       })
-      setActionPlanReadinessLlmCache((prev) => ({
-        ...prev,
-        lastLLMResult: null,
-        loading: false,
-      }))
-      logActionPlanReadinessLlm({
-        triggered: true,
-        reason: `fetch_end_exception key=${readinessKey} requestId=${requestId}`,
-        meaningfulItemsCount: meaningfulCount,
-        lastEvaluatedCount: lastEvaluated,
-        usedFallback: true,
-      })
-    } finally {
-      actionPlanReadinessLlmInFlightRef.current = false
-    }
-  })
+	      setActionPlanReadinessLlmCache((prev) => ({
+	        ...prev,
+	        lastLLMResult: null,
+	        loading: false,
+	      }))
+	    } finally {
+	      actionPlanReadinessLlmInFlightRef.current = false
+	    }
+	  })
 
-	  useEffect(() => {
-	    if (!actionPlanReadinessEnabled) return
-	    if (!actionPlanReadinessLlmEnabled) return
-      if (import.meta.env.DEV && typeof window !== 'undefined') {
-        const counts = readinessDevCountsRef.current
-        counts.effectRuns += 1
-        ;(window as any).__readinessDebugCounts = { ...counts }
-      }
-    const cache = actionPlanReadinessLlmCacheRef.current
-    if (cache.loading) {
-      logActionPlanReadinessLlm({
-        triggered: false,
+		  useEffect(() => {
+		    if (!actionPlanReadinessEnabled) return
+		    if (!actionPlanReadinessLlmEnabled) return
+	    const cache = actionPlanReadinessLlmCacheRef.current
+	    if (cache.loading) {
+	      logActionPlanReadinessLlm({
+	        triggered: false,
         reason: 'skip_loading',
         meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
         lastEvaluatedCount: cache.lastEvaluatedCount || 0,
@@ -8968,52 +8882,27 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
 
     const readinessKey = `${enginePreviewSessionId}|${actionPlanReadinessMeaningfulCount}|${currentCoverage}|${actionPlanReadinessHeuristic.notWorkingMeaningfulCount}`
-    if (readinessKey === readinessLastScheduledKeyRef.current) {
-      if (import.meta.env.DEV && typeof window !== 'undefined') {
-        const counts = readinessDevCountsRef.current
-        counts.sameKeySkips += 1
-        ;(window as any).__readinessDebugCounts = { ...counts }
-      }
-      if (import.meta.env.DEV && readinessLogOnceKeyRef.current !== readinessKey) {
-        readinessLogOnceKeyRef.current = readinessKey
-        logActionPlanReadinessLlm({
-          triggered: false,
-          reason: `same_key_already_scheduled key=${readinessKey}`,
-          meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
-          lastEvaluatedCount: last,
-          usedFallback: false,
-        })
-      }
-      return
-    }
-    readinessLastScheduledKeyRef.current = readinessKey
-    readinessLogOnceKeyRef.current = null
-    if (import.meta.env.DEV && typeof window !== 'undefined') {
-      const counts = readinessDevCountsRef.current
-      counts.scheduled += 1
-      ;(window as any).__readinessDebugCounts = { ...counts }
-    }
+	    if (readinessKey === readinessLastScheduledKeyRef.current) {
+	      return
+	    }
+	    readinessLastScheduledKeyRef.current = readinessKey
 
-	    {
-	      const timer = actionPlanReadinessLlmDebounceRef.current
-	      if (timer === null) {
-	        // no-op
-		      } else {
-		        clearTimeout(timer as unknown as number)
-		      }
-		    }
+		    {
+		      const timer = actionPlanReadinessLlmDebounceRef.current
+		      if (timer != null) clearTimeout(timer)
+			    }
     actionPlanReadinessLlmDebounceRef.current = setTimeout(() => {
       setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: false }))
       void fetchActionPlanReadinessLlm(actionPlanReadinessMeaningfulCount)
     }, 650)
     setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: true }))
-    logActionPlanReadinessLlm({
-      triggered: true,
-      reason: `debounce_scheduled_${bootstrap ? 'bootstrap' : allowByCoverageChange ? 'coverage' : 'increment'} key=${readinessKey}`,
-      meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
-      lastEvaluatedCount: last,
-      usedFallback: false,
-    })
+	    logActionPlanReadinessLlm({
+	      triggered: true,
+	      reason: `debounce_scheduled_${bootstrap ? 'bootstrap' : allowByCoverageChange ? 'coverage' : 'increment'}`,
+	      meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
+	      lastEvaluatedCount: last,
+	      usedFallback: false,
+	    })
     return () => {
       if (actionPlanReadinessLlmDebounceRef.current) {
         const timer = actionPlanReadinessLlmDebounceRef.current
@@ -10767,29 +10656,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   }, [isDevUi])
 
-  console.warn('[BUILD MARKER] readiness-debug-build-2026-05-01-A')
-
   const devAuthPanel = null
 
   const withDevOverlay = (node: React.ReactNode) => (
     <>
       {devAuthPanel}
       {node}
-      <div
-        style={{
-          position: 'fixed',
-          right: 8,
-          bottom: 8,
-          zIndex: 99999,
-          background: 'red',
-          color: 'white',
-          fontSize: 11,
-          padding: '4px 6px',
-          borderRadius: 4,
-        }}
-      >
-        DEBUG BUILD A
-      </div>
     </>
   )
 
