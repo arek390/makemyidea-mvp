@@ -67,7 +67,6 @@ import { AdminPage } from './admin/AdminPage'
 import { useAuthState } from './lib/authState'
 import { AiCostButton } from './components/AiCostButton'
 import { ActionPlanReadinessGauge } from './components/ActionPlanReadinessGauge'
-import { RollingBalance } from './components/RollingBalance'
 
 type StepId = 1 | 2 | 3 | 4
 type SpaceSlot = 'supersystem' | 'subsystem'
@@ -270,8 +269,6 @@ const AUTH_FLOW_IN_PROGRESS_KEY = 'mmi_auth_flow_in_progress'
 const POST_AUTH_NEXT_KEY = 'post-auth-next'
 const POST_AUTH_LANG_KEY = 'post-auth-lang'
 const TOPUP_RETURN_TO_KEY = 'topup-return-to'
-const TOPUP_BALANCE_BEFORE_KEY = 'topup-balance-before'
-const TOPUP_BALANCE_ANIMATE_FROM_KEY = 'topup-balance-animate-from'
 const FX_FALLBACK_RATE = 3.55
 
 const getOAuthRedirectTo = () => {
@@ -3502,27 +3499,13 @@ const isAuthFlowInProgress = () => {
     }
     return window.location.pathname || ''
   }
-  const storeTopupReturnTo = (balanceMinor: number | null) => {
+  const storeTopupReturnTo = () => {
     if (typeof window === 'undefined') return
     const returnTo = getAppPath() || window.location.pathname || '/'
     window.sessionStorage.setItem(TOPUP_RETURN_TO_KEY, returnTo)
-    if (Number.isFinite(balanceMinor ?? NaN)) {
-      window.sessionStorage.setItem(TOPUP_BALANCE_BEFORE_KEY, String(Math.max(0, balanceMinor || 0)))
-    } else {
-      window.sessionStorage.removeItem(TOPUP_BALANCE_BEFORE_KEY)
-    }
   }
   const handleTopupReturn = () => {
     if (typeof window === 'undefined') return
-    void refreshBillingBalance()
-    const beforeRaw = window.sessionStorage.getItem(TOPUP_BALANCE_BEFORE_KEY)
-    if (beforeRaw) {
-      const before = Number(beforeRaw)
-      if (Number.isFinite(before)) {
-        window.sessionStorage.setItem(TOPUP_BALANCE_ANIMATE_FROM_KEY, String(Math.max(0, before || 0)))
-      }
-      window.sessionStorage.removeItem(TOPUP_BALANCE_BEFORE_KEY)
-    }
     const stored = window.sessionStorage.getItem(TOPUP_RETURN_TO_KEY)
     if (stored) {
       window.sessionStorage.removeItem(TOPUP_RETURN_TO_KEY)
@@ -3577,9 +3560,6 @@ const isAuthFlowInProgress = () => {
   const [billingBalanceOverrideMinor, setBillingBalanceOverrideMinor] = useState<number | null>(
     null
   )
-  const [billingBalanceAnimateFromMinor, setBillingBalanceAnimateFromMinor] = useState<number | null>(
-    null
-  )
   const refreshBillingBalance = async (): Promise<number | null> => {
     if (!authSession?.user?.id) return null
     try {
@@ -3601,32 +3581,7 @@ const isAuthFlowInProgress = () => {
   }
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (isTopup) return
-    if (!isEnginePreview && !isReport) return
-    const raw = window.sessionStorage.getItem(TOPUP_BALANCE_ANIMATE_FROM_KEY)
-    if (!raw) return
-    window.sessionStorage.removeItem(TOPUP_BALANCE_ANIMATE_FROM_KEY)
-    const value = Number(raw)
-    if (Number.isFinite(value)) {
-      setBillingBalanceAnimateFromMinor(Math.max(0, value || 0))
-    }
-  }, [isEnginePreview, isReport, isTopup, normalizedPath, appPath])
-  useEffect(() => {
-    if (billingBalanceAnimateFromMinor == null) return
-    const current = billingBalanceOverrideMinor ?? billingAccount.balanceMinor
-    const hasIncrease = Number.isFinite(current) && current > billingBalanceAnimateFromMinor
-    const timeout = window.setTimeout(
-      () => setBillingBalanceAnimateFromMinor(null),
-      hasIncrease ? 2200 : 10_000
-    )
-    return () => window.clearTimeout(timeout)
-  }, [
-    billingAccount.balanceMinor,
-    billingBalanceAnimateFromMinor,
-    billingBalanceOverrideMinor,
-  ])
-  useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (!isEnginePreview) return
     if (paymentReturnHandledRef.current) return
 
     const params = new URLSearchParams(window.location.search || '')
@@ -3643,41 +3598,7 @@ const isAuthFlowInProgress = () => {
       'success'
     )
 
-    const beforeRaw = window.sessionStorage.getItem(TOPUP_BALANCE_BEFORE_KEY)
-    const before = beforeRaw ? Number(beforeRaw) : null
-    const hasBefore = Number.isFinite(before ?? NaN)
-    if (hasBefore) {
-      window.sessionStorage.setItem(
-        TOPUP_BALANCE_ANIMATE_FROM_KEY,
-        String(Math.max(0, (before as number) || 0))
-      )
-      window.sessionStorage.removeItem(TOPUP_BALANCE_BEFORE_KEY)
-    }
-
-    // Autopay ITN can arrive a bit later; poll for a short time so the UI updates.
-    const pollUntilIncreased = async () => {
-      const start = Date.now()
-      const maxMs = 30_000
-      const baseDelayMs = 800
-      let attempt = 0
-      while (Date.now() - start < maxMs) {
-        attempt += 1
-        const next = await refreshBillingBalance()
-        if (next == null) {
-          const delay = Math.min(4000, baseDelayMs * attempt)
-          await new Promise((r) => setTimeout(r, delay))
-          continue
-        }
-        if (!hasBefore) {
-          if (attempt >= 3) break
-        } else if (next > (before as number)) {
-          break
-        }
-        const delay = Math.min(4000, baseDelayMs * attempt)
-        await new Promise((r) => setTimeout(r, delay))
-      }
-    }
-    void pollUntilIncreased()
+    void refreshBillingBalance()
 
     // Optional cleanup: remove the query param after handling it.
     params.delete('payment')
@@ -3686,8 +3607,6 @@ const isAuthFlowInProgress = () => {
     window.history.replaceState({}, '', nextUrl)
   }, [
     authSession?.user?.id,
-    billingAccount.balanceMinor,
-    billingBalanceOverrideMinor,
     isEnginePreview,
     uiLanguage,
   ])
@@ -11633,6 +11552,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const questionText = sanitizeInlineHelperText(primary)
     return questionText || copy.engineEntryQuestionFallback
   }
+  const formatBalanceMinor = (minor: number) => {
+    const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
+    const formatted = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Math.max(0, minor || 0) / 100)
+    return `${formatted} PLN`
+  }
 
     return withDevOverlay(
       <div className="app engine-preview" data-testid="active-session">
@@ -11653,7 +11580,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   tabIndex={0}
                   onClick={() => {
                     if (typeof window !== 'undefined') {
-                      storeTopupReturnTo(billingBalanceOverrideMinor ?? billingAccount.balanceMinor)
+                      storeTopupReturnTo()
                       window.location.hash = '#/topup'
                       setHashPath('/topup')
                     }
@@ -11662,7 +11589,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     if (event.key === 'Enter' || event.key === ' ') {
                       event.preventDefault()
                       if (typeof window !== 'undefined') {
-                        storeTopupReturnTo(billingBalanceOverrideMinor ?? billingAccount.balanceMinor)
+                        storeTopupReturnTo()
                         window.location.hash = '#/topup'
                         setHashPath('/topup')
                       }
@@ -11677,15 +11604,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     💰
                   </button>
 	                  <span className="engine-balance-value">
-	                    {billingAccount.loading || billingAccount.error ? (
-	                      '—'
-	                    ) : (
-	                      <RollingBalance
-	                        valueMinor={billingBalanceOverrideMinor ?? billingAccount.balanceMinor}
-	                        fromMinor={billingBalanceAnimateFromMinor}
-	                        locale={uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'}
-	                      />
-	                    )}
+	                    {billingAccount.loading || billingAccount.error
+	                      ? '—'
+	                      : formatBalanceMinor(
+	                          billingBalanceOverrideMinor ?? billingAccount.balanceMinor
+	                        )}
 	                  </span>
 	                </div>
                 {insufficientBalanceState.active && (

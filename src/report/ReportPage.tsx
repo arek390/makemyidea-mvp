@@ -19,11 +19,8 @@ import { buildSessionGoalText, extractProductNameFromSessionName } from './sessi
 import { fetchReportBySessionId, updateReportBySessionId } from '../lib/cloudReports'
 import { supabase as client } from '../lib/supabase/client'
 import { AiCostButton } from '../components/AiCostButton'
-import { RollingBalance } from '../components/RollingBalance'
  
 const TOPUP_RETURN_TO_KEY = 'topup-return-to'
-const TOPUP_BALANCE_BEFORE_KEY = 'topup-balance-before'
-const TOPUP_BALANCE_ANIMATE_FROM_KEY = 'topup-balance-animate-from'
 
 const withAlpha = (hexColor: string, alphaHex = '66') => {
   const value = String(hexColor || '').trim()
@@ -824,26 +821,6 @@ export const ReportPage = ({
 }: ReportPageProps) => {
   const t = reportCopy[language]
   const reportLogoUrl = new URL('../../logo/logo_makemyideawork.png', import.meta.url).href
-  const [balanceAnimateFromMinor, setBalanceAnimateFromMinor] = useState<number | null>(null)
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const raw = window.sessionStorage.getItem(TOPUP_BALANCE_ANIMATE_FROM_KEY)
-    if (!raw) return
-    window.sessionStorage.removeItem(TOPUP_BALANCE_ANIMATE_FROM_KEY)
-    const value = Number(raw)
-    if (Number.isFinite(value)) {
-      setBalanceAnimateFromMinor(Math.max(0, value || 0))
-    }
-  }, [])
-  useEffect(() => {
-    if (balanceAnimateFromMinor == null) return
-    const hasIncrease = Number.isFinite(balanceMinor) && balanceMinor > balanceAnimateFromMinor
-    const timeout = window.setTimeout(
-      () => setBalanceAnimateFromMinor(null),
-      hasIncrease ? 2200 : 10_000
-    )
-    return () => window.clearTimeout(timeout)
-  }, [balanceAnimateFromMinor, balanceMinor])
   const reportMetaRef = useRef<any>(snapshot.reportMeta ?? null)
   const initialReport = validateAndNormalizeReport({
     summary: snapshot.reportMeta?.summary ?? null,
@@ -2096,10 +2073,6 @@ export const ReportPage = ({
                       ? window.location.hash.slice(1)
                       : window.location.pathname || '/'
                   window.sessionStorage.setItem(TOPUP_RETURN_TO_KEY, returnTo)
-                  window.sessionStorage.setItem(
-                    TOPUP_BALANCE_BEFORE_KEY,
-                    String(Math.max(0, balanceMinor || 0))
-                  )
                   window.location.hash = '#/topup'
                 }
               }}
@@ -2112,10 +2085,6 @@ export const ReportPage = ({
                         ? window.location.hash.slice(1)
                         : window.location.pathname || '/'
                     window.sessionStorage.setItem(TOPUP_RETURN_TO_KEY, returnTo)
-                    window.sessionStorage.setItem(
-                      TOPUP_BALANCE_BEFORE_KEY,
-                      String(Math.max(0, balanceMinor || 0))
-                    )
                     window.location.hash = '#/topup'
                   }
                 }
@@ -2129,15 +2098,9 @@ export const ReportPage = ({
                 💰
               </button>
               <span className="engine-balance-value">
-                {billingLoading || billingError ? (
-                  '—'
-                ) : (
-                  <RollingBalance
-                    valueMinor={balanceMinor}
-                    fromMinor={balanceAnimateFromMinor}
-                    locale={language === 'pl' ? 'pl-PL' : 'en-US'}
-                  />
-                )}
+                {billingLoading || billingError
+                  ? '—'
+                  : formatBalanceMinor(balanceMinor)}
               </span>
             </div>
             {showInsufficientBalance && (
