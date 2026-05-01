@@ -3,6 +3,28 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+if (typeof window !== 'undefined') {
+  const originalLog = console.log.bind(console)
+  const originalWarn = console.warn.bind(console)
+
+  console.log = (...args: any[]) => {
+    const msg = String(args?.[0] ?? '')
+    if (msg.includes('[readiness][llm]')) {
+      // HARD BLOCK
+      return
+    }
+    return originalLog(...args)
+  }
+
+  console.warn = (...args: any[]) => {
+    const msg = String(args?.[0] ?? '')
+    if (msg.includes('[readiness][llm]')) {
+      return
+    }
+    return originalWarn(...args)
+  }
+}
+
 if (import.meta.env.DEV) {
   if (typeof window !== 'undefined' && !(window as any).__readinessLogTracerInstalled) {
     ;(window as any).__readinessLogTracerInstalled = true
