@@ -10782,12 +10782,29 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   }, [isDevUi])
 
+  console.warn('[BUILD MARKER] readiness-debug-build-2026-05-01-A')
+
   const devAuthPanel = null
 
   const withDevOverlay = (node: React.ReactNode) => (
     <>
       {devAuthPanel}
       {node}
+      <div
+        style={{
+          position: 'fixed',
+          right: 8,
+          bottom: 8,
+          zIndex: 99999,
+          background: 'red',
+          color: 'white',
+          fontSize: 11,
+          padding: '4px 6px',
+          borderRadius: 4,
+        }}
+      >
+        DEBUG BUILD A
+      </div>
     </>
   )
 
