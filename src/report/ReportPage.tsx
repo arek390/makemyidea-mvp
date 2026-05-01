@@ -872,10 +872,10 @@ export const ReportPage = ({
   const [trizImageDeleting, setTrizImageDeleting] = useState<Record<string, boolean>>({})
   const [trizImageErrors, setTrizImageErrors] = useState<Record<string, string | null>>({})
   const [trizApproachSelecting, setTrizApproachSelecting] = useState<Record<string, boolean>>({})
-  // Billing is PLN-only.
-  const handleDecisionSelect = async (decisionIndex: number, selectedOption: 'a' | 'b') => {
-    if (!executionReport?.decisions?.[decisionIndex]) return
-    if (executionReport.decisions[decisionIndex]?.selected_option === selectedOption) return
+	  // Billing is PLN-only.
+	  const handleDecisionSelect = async (decisionIndex: number, selectedOption: 'a' | 'b') => {
+	    if (!executionReport?.decisions?.[decisionIndex]) return
+	    if (executionReport.decisions[decisionIndex]?.selected_option === selectedOption) return
     const invalidatesPlan = executionReport.stage === 'plan_generated'
     const nextExecutionReport: ReportExecutionReport = {
       ...executionReport,
@@ -889,18 +889,19 @@ export const ReportPage = ({
       ),
     }
     setExecutionReport(nextExecutionReport)
-    onReportMetaChange?.({
-      execution_report: nextExecutionReport,
-      updatedAt: Date.now(),
-    })
-    if (!client || !reportSessionId) return
-    try {
-      const sessionRes = await client.auth.getSession()
-      const userId = sessionRes?.data?.session?.user?.id || null
-      const base = reportMetaRef.current && typeof reportMetaRef.current === 'object' ? reportMetaRef.current : {}
-      const patch = {
-        summary_json: {
-          ...base,
+	    onReportMetaChange?.({
+	      execution_report: nextExecutionReport,
+	      updatedAt: Date.now(),
+	    })
+	    if (!client || !reportSessionId) return
+	    let userId: string | null = null
+	    try {
+	      const sessionRes = await client.auth.getSession()
+	      userId = sessionRes?.data?.session?.user?.id || null
+	      const base = reportMetaRef.current && typeof reportMetaRef.current === 'object' ? reportMetaRef.current : {}
+	      const patch = {
+	        summary_json: {
+	          ...base,
           execution_report: nextExecutionReport,
         },
       }
@@ -910,11 +911,11 @@ export const ReportPage = ({
       pendingDecisionPersistRef.current = persistPromise.then(() => undefined).catch(() => undefined)
       await persistPromise
       reportMetaRef.current = { ...base, execution_report: nextExecutionReport }
-    } catch (error) {
-      console.error('[report][decision-select] persist_failed', {
-        userId,
-        sessionId: reportSessionId,
-        decisionIndex,
+	    } catch (error) {
+	      console.error('[report][decision-select] persist_failed', {
+	        userId,
+	        sessionId: reportSessionId,
+	        decisionIndex,
         selectedOption,
         patchKeys: ['summary_json'],
         summaryJsonKeys:
