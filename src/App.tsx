@@ -4023,6 +4023,17 @@ const isAuthFlowInProgress = () => {
         typeof window !== 'undefined' && pkceVerifierKey
           ? String(window.localStorage.getItem(pkceVerifierKey) || '').length
           : null
+      const pkceVerifierLenViaClientStorage = (() => {
+        if (typeof window === 'undefined') return null
+        if (!pkceVerifierKey) return null
+        const storage = (auth as any)?.storage
+        if (!storage || typeof storage.getItem !== 'function') return null
+        try {
+          return String(storage.getItem(pkceVerifierKey) || '').length
+        } catch {
+          return null
+        }
+      })()
       const diagSnapshot = {
         currentOrigin,
         currentHref: href,
@@ -4037,6 +4048,7 @@ const isAuthFlowInProgress = () => {
         authStorageKeys,
         pkceVerifierKey,
         pkceVerifierLen,
+        pkceVerifierLenViaClientStorage,
       }
       setAuthCallbackDiag(diagSnapshot)
       console.info('[auth][callback][pkce-diag]', diagSnapshot)
@@ -4077,6 +4089,21 @@ const isAuthFlowInProgress = () => {
         const exchangeKey = 'auth_exchanged_code_v2'
         const alreadyExchanged =
           typeof window !== 'undefined' ? window.sessionStorage.getItem(exchangeKey) : null
+        const callbackCode = code
+        const startedKey = callbackCode ? `auth_code_exchange_started_${callbackCode}` : null
+        const guardAlreadySet =
+          typeof window !== 'undefined' && startedKey
+            ? window.sessionStorage.getItem(startedKey) === '1'
+            : false
+        if (typeof window !== 'undefined' && startedKey && guardAlreadySet) {
+          console.warn('[auth callback] duplicate exchange blocked', { callbackCode })
+          saveAuthDiag('auth_callback_duplicate_exchange_blocked', { callbackCode })
+          setAuthCallbackLoading(false)
+          return
+        }
+        if (typeof window !== 'undefined' && startedKey) {
+          window.sessionStorage.setItem(startedKey, '1')
+        }
         if (code && (authCallbackExchangeOnceRef.current === code || alreadyExchanged === code)) {
           console.warn('[auth][callback] duplicate_exchange_prevented', { code })
           saveAuthDiag('auth_callback_duplicate_exchange_prevented', { code })
@@ -4090,16 +4117,34 @@ const isAuthFlowInProgress = () => {
           setAuthCallbackLoading(false)
           return
         }
-        console.info('[auth][callback] exchangeCodeForSession:start', {
-          hasCode: Boolean(code),
+        const beforeVerifierLen =
+          typeof window !== 'undefined' && pkceVerifierKey
+            ? String(window.localStorage.getItem(pkceVerifierKey) || '').length
+            : null
+        const beforeVerifierLenViaClient =
+          (() => {
+            if (typeof window === 'undefined') return null
+            if (!pkceVerifierKey) return null
+            const storage = (auth as any)?.storage
+            if (!storage || typeof storage.getItem !== 'function') return null
+            try {
+              return String(storage.getItem(pkceVerifierKey) || '').length
+            } catch {
+              return null
+            }
+          })()
+        const startedAt = new Date().toISOString()
+        const exchangeStartPayload = {
+          ts: startedAt,
+          callbackCode,
+          exchangeKey: startedKey,
+          guardAlreadySet,
           pkceVerifierKey,
-          pkceVerifierLen,
-        })
-        saveAuthDiag('auth_callback_exchange_start', {
-          hasCode: Boolean(code),
-          pkceVerifierKey,
-          pkceVerifierLen,
-        })
+          pkceVerifierLen: beforeVerifierLen,
+          pkceVerifierLenViaClientStorage: beforeVerifierLenViaClient,
+        }
+        console.info('[auth][callback] exchangeCodeForSession:start', exchangeStartPayload)
+        saveAuthDiag('auth_callback_exchange_start', exchangeStartPayload as any)
         const { data, error } = await auth.exchangeCodeForSession(code || '')
         if (cancelled) return
         if (error || !data?.session) {
@@ -4114,7 +4159,28 @@ const isAuthFlowInProgress = () => {
             status: statusValue,
           }
           console.error('[auth][callback] exchangeCodeForSession_failed', errPayload)
-          saveAuthDiag('auth_callback_exchange_failed', { error: errPayload })
+          const afterVerifierLen =
+            typeof window !== 'undefined' && pkceVerifierKey
+              ? String(window.localStorage.getItem(pkceVerifierKey) || '').length
+              : null
+          const afterVerifierLenViaClient =
+            (() => {
+              if (typeof window === 'undefined') return null
+              if (!pkceVerifierKey) return null
+              const storage = (auth as any)?.storage
+              if (!storage || typeof storage.getItem !== 'function') return null
+              try {
+                return String(storage.getItem(pkceVerifierKey) || '').length
+              } catch {
+                return null
+              }
+            })()
+          saveAuthDiag('auth_callback_exchange_failed', {
+            success: false,
+            error: errPayload,
+            pkceVerifierLenAfter: afterVerifierLen,
+            pkceVerifierLenAfterViaClientStorage: afterVerifierLenViaClient,
+          })
           const debugValue = messageValue
             ? `${messageValue}${codeValue ? ` (${codeValue})` : ''}`
             : null
@@ -4128,7 +4194,28 @@ const isAuthFlowInProgress = () => {
           window.sessionStorage.setItem(exchangeKey, code)
         }
         console.info('[auth][callback] exchangeCodeForSession:ok', { hasSession: true })
-        saveAuthDiag('auth_callback_exchange_ok', { hasSession: true })
+        const okAfterVerifierLen =
+          typeof window !== 'undefined' && pkceVerifierKey
+            ? String(window.localStorage.getItem(pkceVerifierKey) || '').length
+            : null
+        const okAfterVerifierLenViaClient =
+          (() => {
+            if (typeof window === 'undefined') return null
+            if (!pkceVerifierKey) return null
+            const storage = (auth as any)?.storage
+            if (!storage || typeof storage.getItem !== 'function') return null
+            try {
+              return String(storage.getItem(pkceVerifierKey) || '').length
+            } catch {
+              return null
+            }
+          })()
+        saveAuthDiag('auth_callback_exchange_ok', {
+          success: true,
+          hasSession: true,
+          pkceVerifierLenAfter: okAfterVerifierLen,
+          pkceVerifierLenAfterViaClientStorage: okAfterVerifierLenViaClient,
+        })
         clearAuthRedirect()
         const nextParam = normalizeNextPath(
           typeof window !== 'undefined'

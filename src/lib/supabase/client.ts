@@ -62,7 +62,7 @@ if (supabaseUrl && supabaseAnonKey) {
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
       supabaseInitError = 'invalid_supabase_url_protocol'
     } else {
-      supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+      const authOptions = {
         auth: {
           flowType: 'pkce',
           detectSessionInUrl: true,
@@ -70,7 +70,17 @@ if (supabaseUrl && supabaseAnonKey) {
           autoRefreshToken: true,
           ...(authStorage ? { storage: authStorage } : {}),
         },
-      })
+      }
+      if (typeof window !== 'undefined') {
+        console.info('[diag] supabase auth config', {
+          flowType: (authOptions as any).auth.flowType,
+          detectSessionInUrl: (authOptions as any).auth.detectSessionInUrl,
+          persistSession: (authOptions as any).auth.persistSession,
+          autoRefreshToken: (authOptions as any).auth.autoRefreshToken,
+          storage: (authOptions as any).auth.storage === window.localStorage ? 'window.localStorage' : 'custom',
+        })
+      }
+      supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey, authOptions as any)
     }
   } catch {
     supabaseInitError = 'invalid_supabase_url'
