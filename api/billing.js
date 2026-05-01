@@ -18,6 +18,14 @@ const sha256 = (value) => createHash('sha256').update(value, 'utf8').digest('hex
 
 const buildHashPayload = (values) => values.map((value) => String(value ?? '').trim()).filter(Boolean).join('|')
 
+const safeKeyMeta = (key) => {
+  const value = String(key || '')
+  return {
+    present: Boolean(value),
+    len: value.length,
+  }
+}
+
 const buildConfirmXml = ({ serviceID, orderID, confirmation, sharedKey }) => {
   const hash = sha256([serviceID, orderID, confirmation, sharedKey].join('|'))
   return `<?xml version="1.0" encoding="UTF-8"?>\n` +
@@ -171,7 +179,10 @@ const handleCreatePayment = async (req, res) => {
   }
 
   const serviceId = process.env.AUTOPAY_SERVICE_ID || ''
-  const sharedKey = process.env.AUTOPAY_SHARED_KEY || ''
+  const sharedKey =
+    (serviceId ? process.env[`AUTOPAY_SHARED_KEY_${serviceId}`] : '') ||
+    process.env.AUTOPAY_SHARED_KEY ||
+    ''
   const gatewayUrl = process.env.AUTOPAY_GATEWAY_URL || ''
   if (!serviceId || !sharedKey || !gatewayUrl) {
     sendJson(res, 500, { ok: false, error: 'MISSING_AUTOPAY_ENV' })
@@ -449,13 +460,25 @@ const handleAutopayItn = async (req, res) => {
     receivedHashPrefix,
   })
 
-  const sharedKey = process.env.AUTOPAY_SHARED_KEY || ''
+  const sharedKey =
+    process.env[`AUTOPAY_SHARED_KEY_${serviceID}`] ||
+    process.env.AUTOPAY_SHARED_KEY ||
+    ''
   if (!sharedKey) {
     console.error('[AUTOPAY ITN] missing_shared_key', { itnRequestId })
     sendJson(res, 500, { ok: false, error: 'MISSING_SHARED_KEY', itnRequestId })
     return
   }
+  console.log('[AUTOPAY ITN] key_meta', {
+    itnRequestId,
+    serviceID,
+    sharedKey: safeKeyMeta(sharedKey),
+    diagEnabled: process.env.AUTOPAY_ITN_HASH_DIAG === 'true',
+  })
 
+  // NOTE: Official docs example (Autopay Online Payment Gateway - Documentation, section "Example calculation of the value of a hash function in an ITN message")
+  // shows: Hash = SHA256("serviceID|orderID|remoteID|amount|currency|gatewayID|paymentDate|paymentStatus|paymentStatusDetails|shared_key")
+  // i.e. pipe-separated values with the shared key appended as the last pipe-separated value.
   const hashValues = [
     serviceID,
     orderID,
@@ -478,25 +501,53 @@ const handleAutopayItn = async (req, res) => {
     'paymentStatus',
     'paymentStatusDetails',
   ]
-  const includedPairs = hashFieldNames
-    .map((name, idx) => ({ name, value: String(hashValues[idx] ?? '').trim() }))
-    .filter((pair) => Boolean(pair.value))
-  const hashPayload = includedPairs.map((pair) => pair.value).join('|')
+  const rawPairs = hashFieldNames.map((name, idx) => ({ name, value: String(hashValues[idx] ?? '') }))
+  // IMPORTANT: For hash verification we preserve exact decoded XML text, except for trimming *line-end whitespace*.
+  // (Autopay docs show no extra whitespace; trimming avoids accidental CR/LF artifacts from transport.)
+  const normalizedPairs = rawPairs.map((pair) => ({ name: pair.name, value: pair.value.replace(/[\r\n]+/g, '').trim() }))
+
+  const hashPayloadAll = normalizedPairs.map((pair) => pair.value).join('|')
+  const hashPayloadSkipEmpty = normalizedPairs.filter((p) => p.value !== '').map((p) => p.value).join('|')
+
+  const expectedDoc = sha256(`${hashPayloadAll}|${sharedKey}`)
+  const expectedDocSkipEmpty = sha256(`${hashPayloadSkipEmpty}|${sharedKey}`)
+
   console.log('[AUTOPAY ITN] hash_fields', {
     itnRequestId,
-    included: includedPairs.map((p) => p.name),
+    included: hashFieldNames,
     trailingSeparatorUsed: false,
   })
   console.log('[AUTOPAY ITN] hash_values_normalized', {
     itnRequestId,
-    values: includedPairs.map((p) => ({ [p.name]: p.value })),
+    values: normalizedPairs.map((p) => ({ [p.name]: p.value })),
   })
 
-  const expectedHash = sha256(`${hashPayload}|${sharedKey}`)
-  console.log('[AUTOPAY ITN] expected_hash_prefix', {
-    itnRequestId,
-    prefix: expectedHash.slice(0, 8),
-  })
+  // Production verifier: documented variant (all fields, pipes, then pipe + key).
+  const expectedHash = expectedDoc
+  console.log('[AUTOPAY ITN] expected_hash_prefix', { itnRequestId, prefix: expectedHash.slice(0, 8) })
+  console.log('[AUTOPAY ITN] received_hash_prefix', { itnRequestId, prefix: receivedHashPrefix })
+
+  if (process.env.AUTOPAY_ITN_HASH_DIAG === 'true') {
+    const candidates = {
+      A_fields_pipe_key: expectedDoc,
+      B_fields_plus_key_no_pipe: sha256(`${hashPayloadAll}${sharedKey}`),
+      C_skip_empty_pipe_key: expectedDocSkipEmpty,
+      D_skip_empty_plus_key_no_pipe: sha256(`${hashPayloadSkipEmpty}${sharedKey}`),
+      E_no_serviceID_pipe_key: sha256(`${normalizedPairs.slice(1).map((p) => p.value).join('|')}|${sharedKey}`),
+      F_omit_remoteID_pipe_key: sha256(`${[serviceID, orderID, amount, currency, gatewayID, paymentDate, paymentStatus, paymentStatusDetails].join('|')}|${sharedKey}`),
+      G_omit_status_details_pipe_key: sha256(`${[serviceID, orderID, remoteID, amount, currency, gatewayID, paymentDate, paymentStatus].join('|')}|${sharedKey}`),
+    }
+    const receivedLower = String(receivedHash || '').toLowerCase()
+    const matchKeys = Object.entries(candidates)
+      .filter(([, v]) => v.toLowerCase() === receivedLower)
+      .map(([k]) => k)
+    console.log('[AUTOPAY ITN] hash_candidates', {
+      itnRequestId,
+      receivedPrefix: receivedHashPrefix,
+      expectedPrefixes: Object.fromEntries(Object.entries(candidates).map(([k, v]) => [k, v.slice(0, 8)])),
+      matches: matchKeys,
+    })
+  }
 
   let confirmation = 'NOTCONFIRMED'
   if (receivedHash && receivedHash.toLowerCase() === expectedHash.toLowerCase()) {
