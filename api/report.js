@@ -269,6 +269,54 @@ const handleReportPatchMeta = async (req, res) => {
   sendJson(res, 200, { ok: true, report: updateRes.data })
 }
 
+const handleReportGet = async (req, res) => {
+  if (req.method !== 'GET' && req.method !== 'POST') {
+    methodNotAllowed(res, ['GET', 'POST'])
+    return
+  }
+  const body = req.method === 'GET' ? req.query || {} : req.body && typeof req.body === 'object' ? req.body : {}
+  const sessionId = String(body.sessionId || '').trim()
+  if (!sessionId) {
+    sendJson(res, 400, { ok: false, error: 'MISSING_SESSION_ID' })
+    return
+  }
+
+  const token = getBearerToken(req)
+  if (!token) {
+    sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
+    return
+  }
+
+  const supabaseAdmin = getSupabaseAdmin()
+  const authRes = await supabaseAdmin.auth.getUser(token)
+  const userId = authRes?.data?.user?.id || null
+  if (authRes?.error || !userId) {
+    sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
+    return
+  }
+  const access = await resolveSessionAccess(supabaseAdmin, sessionId, userId)
+  if (!access.ok) {
+    sendJson(res, 500, { ok: false, error: access.reason || 'ACCESS_CHECK_FAILED' })
+    return
+  }
+  if (!access.allowed) {
+    sendJson(res, 403, { ok: false, error: 'FORBIDDEN' })
+    return
+  }
+
+  const existingRes = await supabaseAdmin
+    .schema('public')
+    .from('reports')
+    .select(selectReportFields)
+    .eq('session_id', sessionId)
+    .maybeSingle()
+  if (existingRes.error) {
+    sendJson(res, 500, { ok: false, error: 'QUERY_FAILED' })
+    return
+  }
+  sendJson(res, 200, { ok: true, report: existingRes.data ?? null })
+}
+
 export default async function handler(req, res) {
   const body = req.method === 'GET' ? null : await readJsonBody(req)
   if (req.method !== 'GET' && body === null) {
@@ -292,6 +340,10 @@ export default async function handler(req, res) {
   }
   if (action === 'patch_meta') {
     await handleReportPatchMeta(req, res)
+    return
+  }
+  if (action === 'get') {
+    await handleReportGet(req, res)
     return
   }
   if (action === 'generate-triz-image') {

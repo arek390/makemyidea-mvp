@@ -4008,14 +4008,14 @@ const isAuthFlowInProgress = () => {
       setAuthError(missingSupabaseEnvMessage)
       return
     }
-    setAuthError(null)
-    setLoginNotice(null)
-    setLoginOauthLoading(true)
-    const redirectTo = `${getOAuthRedirectTo()}?next=/admin`
-    const next =
-      typeof window !== 'undefined'
-        ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
-        : null
+	    setAuthError(null)
+	    setLoginNotice(null)
+	    setLoginOauthLoading(true)
+	    const redirectTo = getOAuthRedirectTo()
+	    const next =
+	      typeof window !== 'undefined'
+	        ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
+	        : null
     const lang = uiLanguage || 'English'
     const normalizedNext = next || '/engine'
     if (oauthStartOnceRef.current) return

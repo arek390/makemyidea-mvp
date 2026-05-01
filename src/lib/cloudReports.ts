@@ -125,16 +125,24 @@ export const fetchReportBySessionId = async (
     throw new Error('Missing Supabase client.')
   }
   if (!sessionId) return null
-  const { data, error } = await typedSupabase
-    .from('reports')
-    .select(
-      'id,session_id,created_at,updated_at,summary_json,last_summary_text_hash,source_updated_at'
-    )
-    .eq('session_id', sessionId)
-    .maybeSingle()
-  if (error) throw error
-  if (!data) return null
-  return normalizeReportRow(data as ReportRow)
+  const sessionRes = await supabase.auth.getSession()
+  const token = sessionRes?.data?.session?.access_token || ''
+  const response = await fetch(`/api/report?action=get`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(import.meta.env.DEV ? { 'x-diagnostics': '1' } : {}),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ sessionId }),
+  })
+  const payload = await response.json().catch(() => null)
+  if (!response.ok || !payload?.ok) {
+    const message = payload?.error || `REPORT_FETCH_FAILED_${response.status}`
+    throw new Error(message)
+  }
+  if (!payload?.report) return null
+  return normalizeReportRow(payload.report as ReportRow)
 }
 
 export const ensureReportExists = async (

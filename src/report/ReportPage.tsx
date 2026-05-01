@@ -1092,10 +1092,10 @@ export const ReportPage = ({
     }
     setReportMetaLoaded(false)
     let cancelled = false
-    ;(async () => {
-      try {
-        const record = await fetchReportBySessionId(reportSessionId)
-        if (cancelled || !record) return
+	    ;(async () => {
+	      try {
+	        const record = await fetchReportBySessionId(reportSessionId)
+	        if (cancelled || !record) return
         const mergedExecutionReport = mergeExecutionDecisionSelections(
           record.executionReport
             ? normalizeExecutionReport(sanitizeReportPayload(record.executionReport))
@@ -1116,12 +1116,15 @@ export const ReportPage = ({
         if (!lastSummaryTextHash && record.lastSummaryTextHash) {
           setLastSummaryTextHash(record.lastSummaryTextHash)
         }
-      } catch {
-        // ignore
-      } finally {
-        if (!cancelled) setReportMetaLoaded(true)
-      }
-    })()
+	      } catch (error) {
+	        console.error('[report] fetchReportBySessionId_failed', {
+	          sessionId: reportSessionId,
+	          error: error instanceof Error ? error.message : String(error),
+	        })
+	      } finally {
+	        if (!cancelled) setReportMetaLoaded(true)
+	      }
+	    })()
     return () => {
       cancelled = true
     }
