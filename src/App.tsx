@@ -2553,7 +2553,7 @@ function App() {
   const readinessLastScheduledKeyRef = useRef<string | null>(null)
   const readinessLastStartedKeyRef = useRef<string | null>(null)
   const readinessLogOnceKeyRef = useRef<string | null>(null)
-  const readinessLogDedupeRef = useRef<{ sig: string | null; at: number | null }>({ sig: null, at: null })
+  const readinessLogDedupeRef = useRef<{ sig: string | null; at: number }>({ sig: null, at: 0 })
   const readinessDevCountsRef = useRef<{ effectRuns: number; scheduled: number; fetchStarts: number; sameKeySkips: number }>(
     { effectRuns: 0, scheduled: 0, fetchStarts: 0, sameKeySkips: 0 }
   )
@@ -2583,10 +2583,7 @@ function App() {
       const sig = `${payload.triggered ? '1' : '0'}|${payload.reason}|${payload.meaningfulItemsCount}|${payload.lastEvaluatedCount}|${payload.usedFallback ? '1' : '0'}`
       const now = Date.now()
       const prev = readinessLogDedupeRef.current
-      if (prev.sig === sig) {
-        const prevAt = prev.at
-        if (typeof prevAt === 'number' && now - prevAt < 1500) return
-      }
+      if (prev.sig === sig && now - prev.at < 1500) return
       readinessLogDedupeRef.current = { sig, at: now }
       console.log('[readiness][llm]', payload)
     }
