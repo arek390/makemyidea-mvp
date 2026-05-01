@@ -1235,20 +1235,81 @@ export const ReportPage = ({
       })
       const responsePayload = await response.json().catch(() => null)
 
+      const getExecutionReportShape = (value: any) => {
+        const isObject = Boolean(value && typeof value === 'object' && !Array.isArray(value))
+        const stageRaw = isObject ? (value as any).stage ?? (value as any).execution_report_stage ?? null : null
+        const actionPlanRaw =
+          isObject && Array.isArray((value as any).action_plan)
+            ? (value as any).action_plan
+            : isObject && Array.isArray((value as any).actionPlan)
+              ? (value as any).actionPlan
+              : null
+        const validationLoopRaw =
+          isObject && Array.isArray((value as any).validation_loop)
+            ? (value as any).validation_loop
+            : isObject && Array.isArray((value as any).validationLoop)
+              ? (value as any).validationLoop
+              : null
+        return {
+          type: typeof value,
+          keys: isObject ? Object.keys(value) : null,
+          stage: typeof stageRaw === 'string' ? stageRaw : null,
+          actionPlanLen: Array.isArray(actionPlanRaw) ? actionPlanRaw.length : null,
+          decisionsLen: isObject && Array.isArray((value as any).decisions) ? (value as any).decisions.length : null,
+          prioritiesLen:
+            isObject && Array.isArray((value as any).priorities) ? (value as any).priorities.length : null,
+          validationLoopLen: Array.isArray(validationLoopRaw) ? validationLoopRaw.length : null,
+        }
+      }
+
+      const coerceExecutionReportPayload = (value: any) => {
+        if (!value || typeof value !== 'object') return null
+        if (Array.isArray(value)) return null
+        const v: any = value
+        const stage =
+          typeof v.stage === 'string'
+            ? v.stage
+            : typeof v.execution_report_stage === 'string'
+              ? v.execution_report_stage
+              : null
+        return {
+          ...v,
+          ...(stage ? { stage } : {}),
+          ...(v.action_plan == null && Array.isArray(v.actionPlan) ? { action_plan: v.actionPlan } : {}),
+          ...(v.validation_loop == null && Array.isArray(v.validationLoop) ? { validation_loop: v.validationLoop } : {}),
+        }
+      }
+
+      const isExecutionReportAcceptable = (value: any) => {
+        const shape = getExecutionReportShape(value)
+        const stage = (shape.stage || '').toLowerCase()
+        if (stage === 'plan_generated') return true
+        if ((shape.actionPlanLen ?? 0) > 0) return true
+        if ((shape.decisionsLen ?? 0) > 0) return true
+        return false
+      }
+
       const extractExecutionReportFromUpdateResponse = (payload: any) => {
         if (!payload || typeof payload !== 'object') return null
-        if (payload.execution_report && typeof payload.execution_report === 'object') {
-          return normalizeExecutionReport(sanitizeReportPayload(payload.execution_report))
-        }
         const report = payload.report && typeof payload.report === 'object' ? payload.report : null
-        const embedded =
-          report?.summary_json &&
-          typeof report.summary_json === 'object' &&
-          (report.summary_json as any).execution_report &&
-          typeof (report.summary_json as any).execution_report === 'object'
-            ? (report.summary_json as any).execution_report
-            : null
-        return embedded ? normalizeExecutionReport(sanitizeReportPayload(embedded)) : null
+        const candidates: Array<{ path: string; value: any }> = [
+          { path: 'execution_report', value: (payload as any).execution_report },
+          { path: 'execution', value: (payload as any).execution },
+          { path: 'execution_report.execution_report', value: (payload as any).execution_report?.execution_report },
+          { path: 'execution.execution_report', value: (payload as any).execution?.execution_report },
+          { path: 'report.summary_json.execution_report', value: (report as any)?.summary_json?.execution_report },
+        ]
+
+        for (const candidate of candidates) {
+          const value = candidate.value
+          if (!value || typeof value !== 'object') continue
+          const coerced = coerceExecutionReportPayload(value)
+          if (!coerced) continue
+          if (!isExecutionReportAcceptable(coerced)) continue
+          return normalizeExecutionReport(sanitizeReportPayload(coerced))
+        }
+
+        return null
       }
 
       if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
@@ -1258,9 +1319,15 @@ export const ReportPage = ({
         const detectedExecutionPath =
           responsePayload?.execution_report
             ? 'execution_report'
-            : report?.summary_json?.execution_report
-              ? 'report.summary_json.execution_report'
-              : 'none'
+            : responsePayload?.execution
+              ? 'execution'
+              : report?.summary_json?.execution_report
+                ? 'report.summary_json.execution_report'
+                : 'none'
+        console.log('[REPORT FINALIZE DEBUG][frontend][after-post][shape]', {
+          execution_report: getExecutionReportShape(responsePayload?.execution_report),
+          execution: getExecutionReportShape(responsePayload?.execution),
+        })
         console.log('[REPORT FINALIZE DEBUG][frontend][after-post]', {
           httpStatus: response.status,
           responseOk: response.ok,
