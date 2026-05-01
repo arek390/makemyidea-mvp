@@ -3937,7 +3937,7 @@ const isAuthFlowInProgress = () => {
       setAuthCallbackError(copy.authCallback.unknownError)
       return
     }
-    console.info('[auth cleanup active]', '2834f86')
+    console.info('[auth cleanup active]', 'no-debug-button')
     const auth = client.auth
     let cancelled = false
     const run = async () => {
