@@ -2467,6 +2467,7 @@ function App() {
   const [authCallbackLoading, setAuthCallbackLoading] = useState(false)
   const [authCallbackHint, setAuthCallbackHint] = useState<string | null>(null)
   const [authCallbackErrorVisible, setAuthCallbackErrorVisible] = useState(false)
+  const authCallbackExchangedRef = useRef<string | null>(null)
   const authResolved = authReady
   const [loginEmail, setLoginEmail] = useState('')
   const [loginSending, setLoginSending] = useState(false)
@@ -3954,6 +3955,18 @@ const isAuthFlowInProgress = () => {
       const params = new URLSearchParams(window.location.search)
       const code = params.get('code')
       const errorParam = params.get('error')
+      const errorDescription = params.get('error_description')
+      console.info('[auth][callback] params', {
+        hasCode: Boolean(code),
+        hasError: Boolean(errorParam),
+        hasErrorDescription: Boolean(errorDescription),
+      })
+      saveAuthDiag('auth_callback_params', {
+        hasCode: Boolean(code),
+        hasError: Boolean(errorParam),
+        error: errorParam,
+        error_description: errorDescription,
+      })
       console.log('[auth callback] location', {
         href,
         origin: typeof window !== 'undefined' ? window.location.origin : '',
@@ -3978,27 +3991,74 @@ const isAuthFlowInProgress = () => {
       if (errorParam) {
         console.error('[auth callback] oauth error', {
           error: errorParam,
-          description: params.get('error_description'),
+          description: errorDescription,
           href,
         })
         setAuthCallbackError(copy.authCallback.signInFailed)
-        setAuthCallbackHint(params.get('error_description'))
+        setAuthCallbackHint(errorDescription)
         setAuthCallbackLoading(false)
         return
       }
       try {
+        const exchangedKey = 'auth_exchanged_code_v1'
+        const alreadyExchanged =
+          typeof window !== 'undefined'
+            ? window.sessionStorage.getItem(exchangedKey)
+            : null
+        if (code && (authCallbackExchangedRef.current === code || alreadyExchanged === code)) {
+          console.warn('[auth][callback] duplicate_code_exchange_prevented', { code })
+          saveAuthDiag('auth_callback_duplicate_exchange_prevented', { code })
+          const { data: sessionData } = await auth.getSession()
+          const hasSession = Boolean(sessionData?.session)
+          console.info('[auth][callback] getSession after duplicate-prevent', { hasSession })
+          saveAuthDiag('auth_callback_getSession', { hasSession, reason: 'duplicate_prevent' })
+          if (hasSession && typeof window !== 'undefined') {
+            window.location.replace(`${window.location.origin}/engine`)
+          }
+          setAuthCallbackLoading(false)
+          return
+        }
+        console.info('[auth][callback] exchangeCodeForSession:start', { hasCode: Boolean(code) })
+        saveAuthDiag('auth_callback_exchange_start', { hasCode: Boolean(code) })
         const { data, error } = await auth.exchangeCodeForSession(href)
         if (cancelled) return
         if (error || !data?.session) {
           const codeValue = (error as { code?: string })?.code
+          const statusValue = (error as { status?: number })?.status
+          const errPayload = error
+            ? {
+                name: (error as any)?.name ?? null,
+                message: (error as any)?.message ?? null,
+                code: codeValue ?? null,
+                status: statusValue ?? null,
+              }
+            : null
+          console.error('[auth][callback] exchangeCodeForSession:failed', errPayload)
+          saveAuthDiag('auth_callback_exchange_failed', {
+            error: errPayload,
+          })
           const debugValue = error
             ? `${error.message}${codeValue ? ` (${codeValue})` : ''}`
             : null
           setAuthCallbackError(copy.authCallback.signInFailed)
-          setAuthCallbackHint(import.meta.env.DEV ? debugValue : null)
+          setAuthCallbackHint(debugValue)
           setAuthCallbackLoading(false)
           return
         }
+        if (code && typeof window !== 'undefined') {
+          authCallbackExchangedRef.current = code
+          window.sessionStorage.setItem(exchangedKey, code)
+        }
+        console.info('[auth][callback] exchangeCodeForSession:ok', { hasSession: true })
+        saveAuthDiag('auth_callback_exchange_ok', { hasSession: true })
+        const { data: afterSession } = await auth.getSession()
+        console.info('[auth][callback] getSession:after-exchange', {
+          hasSession: Boolean(afterSession?.session),
+        })
+        saveAuthDiag('auth_callback_getSession', {
+          hasSession: Boolean(afterSession?.session),
+          reason: 'after_exchange',
+        })
         clearAuthRedirect()
         const nextParam = normalizeNextPath(
           typeof window !== 'undefined'
@@ -10771,8 +10831,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
           {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && (
             <p className="engine-error">{authCallbackError}</p>
           )}
-          {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && import.meta.env.DEV && (
-            <p className="muted">DEV: {authCallbackHint || authCallbackError}</p>
+          {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && authCallbackHint && (
+            <p className="muted">DIAG: {authCallbackHint}</p>
           )}
           {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && (
             <div className="actions">
