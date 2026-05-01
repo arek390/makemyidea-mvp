@@ -531,6 +531,13 @@ const handleAutopayItn = async (req, res) => {
     included: hashFieldNames,
     trailingSeparatorUsed: false,
   })
+  console.log('[AUTOPAY ITN] hash_algorithm_version', {
+    itnRequestId,
+    value: 'itn_v2_pipe_shared_key_final',
+    hasSeparatorBeforeSharedKey: true,
+    hasTrailingSeparatorAfterSharedKey: false,
+    fieldCountIncludingSharedKey: 10,
+  })
   console.log('[AUTOPAY ITN] hash_values_normalized', {
     itnRequestId,
     values: normalizedPairs.map((p) => ({ [p.name]: p.value })),
