@@ -2519,9 +2519,10 @@ function App() {
     String(import.meta.env.VITE_SEED_CLASSIFICATION_MODE || '').trim() || 'full_3x3 (default)'
   const useColumnFirstSeedMode = seedClassificationMode === 'column_first'
   // This section is part of the standard Engine view (not diagnostics-only).
-  // TEMP: hard-disable all action-plan readiness logic (UI + scheduler + LLM) to debug other flows.
-  const actionPlanReadinessEnabled = false
-  const actionPlanReadinessLlmEnabled = false
+  const isEnvEnabled = (value: unknown) => value === '1' || value === 'true'
+  const actionPlanReadinessEnabled = isEnvEnabled(import.meta.env.VITE_ACTION_PLAN_READINESS_ENABLED)
+  const actionPlanReadinessLlmEnabled =
+    actionPlanReadinessEnabled && isEnvEnabled(import.meta.env.VITE_ACTION_PLAN_READINESS_LLM_ENABLED)
   const [actionPlanReadinessLlmCache, setActionPlanReadinessLlmCache] = useState<{
     lastEvaluatedCount: number
     lastEvaluatedCoverage: number | null
@@ -8642,6 +8643,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
   )
 
   const fetchActionPlanReadinessLlm = useEffectEvent(async (meaningfulCount: number) => {
+    // TEMP: hard block readiness operation by action/task name (do not depend on UI flags).
+    if (typeof window !== 'undefined') {
+      const key = '__actionPlanReadinessFrontendBlockedOnce'
+      if (!(window as any)[key]) {
+        ;(window as any)[key] = true
+        console.warn('[TEMP BLOCK] action-plan-readiness frontend request blocked')
+      }
+    }
+    return
 	    if (!actionPlanReadinessLlmEnabled) return
 	    if (!enginePreviewSessionId) return
 	    // Run LLM after the first meaningful inputs appear (>=3 required for stable signal),

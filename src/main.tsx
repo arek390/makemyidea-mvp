@@ -28,6 +28,26 @@ if (import.meta.env.DEV) {
       return originalWarn(...args)
     }
   }
+
+  if (typeof window !== 'undefined' && !(window as any).__readinessFetchTracerInstalled) {
+    ;(window as any).__readinessFetchTracerInstalled = true
+    const originalFetch = window.fetch.bind(window)
+    window.fetch = async (...args: any[]) => {
+      const url = String(args?.[0] || '')
+      const body = typeof args?.[1]?.body === 'string' ? args[1].body : ''
+      if (
+        url.includes('readiness') ||
+        body.includes('readiness') ||
+        body.includes('action-plan-readiness')
+      ) {
+        // eslint-disable-next-line no-console
+        console.warn('[TRACE READINESS FETCH]', { url, bodyPreview: body.slice(0, 300) })
+        // eslint-disable-next-line no-console
+        console.trace('[TRACE READINESS FETCH STACK]')
+      }
+      return originalFetch(...args)
+    }
+  }
 }
 
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'

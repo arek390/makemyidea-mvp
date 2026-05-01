@@ -148,11 +148,21 @@ const fallback = (ok) => ({
   nextBestAction: '',
 })
 
+let didTempBlockLog = false
+
 export const handleActionPlanReadiness = async (req, res) => {
   if (req.method !== 'POST') {
     sendJson(res, 405, { ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['POST'] })
     return
   }
+
+  // TEMP: hard block readiness operation at backend handler level (action/task name based).
+  if (!didTempBlockLog) {
+    didTempBlockLog = true
+    console.log('[TEMP BLOCK] action-plan-readiness backend handler blocked')
+  }
+  sendJson(res, 200, { ok: true, disabled: true, source: 'temp_block_action_plan_readiness' })
+  return
 
   try {
     const requestId =
