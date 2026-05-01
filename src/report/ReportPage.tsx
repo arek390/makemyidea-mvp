@@ -1781,6 +1781,8 @@ export const ReportPage = ({
         (d) => d.selected_option === 'a' || d.selected_option === 'b'
       )
   )
+  const needsActionPlanBootstrap =
+    reportVariant === 'action' && !normalizedExecutionReport?.decisions?.length
   const canBuildPlanFromDecisions =
     reportVariant === 'action' &&
     normalizedExecutionReport?.stage !== 'plan_generated' &&
@@ -1792,6 +1794,9 @@ export const ReportPage = ({
         : 'Finalize action plan'
       : t.reportUpdate
   const updateCtaMode = canBuildPlanFromDecisions ? 'plan_from_decisions_only' : undefined
+  const updateDisabled =
+    isReportUpdating ||
+    (!canBuildPlanFromDecisions && !reportIsOutdated && !needsActionPlanBootstrap)
 
   useEffect(() => {
     if (reportVariant !== 'action') return
@@ -2337,21 +2342,21 @@ export const ReportPage = ({
                   : 'update-action-plan-button--needs-update'
               }`}
             >
-              <AiCostButton
-                label={updateCtaLabel}
-                lang={language}
-                priceMinor={priceMinor}
-                currency={billingCurrency}
-                priceLoading={priceLoading}
-                loading={isReportUpdating}
-                disabled={canBuildPlanFromDecisions ? isReportUpdating : !reportIsOutdated || isReportUpdating}
+                <AiCostButton
+                  label={updateCtaLabel}
+                  lang={language}
+                  priceMinor={priceMinor}
+                  currency={billingCurrency}
+                  priceLoading={priceLoading}
+                  loading={isReportUpdating}
+                disabled={updateDisabled}
                 disabledTooltip={
-                  !canBuildPlanFromDecisions && !reportIsOutdated && !isReportUpdating
+                  !canBuildPlanFromDecisions && !reportIsOutdated && !needsActionPlanBootstrap && !isReportUpdating
                     ? t.reportUpdateDisabledTooltip
                     : undefined
                 }
-                className="report-update-btn--wide-left"
-                metaLayout="below"
+                  className="report-update-btn--wide-left"
+                  metaLayout="below"
                 onClick={() => void handleUpdateReport(updateCtaMode)}
               />
               {reportIsOutdated && !isReportUpdating && (
