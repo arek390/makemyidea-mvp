@@ -3588,7 +3588,7 @@ const isAuthFlowInProgress = () => {
         method: 'GET',
       })
       const payload = await response.json().catch(() => null)
-      if (!response.ok || !payload?.ok) return
+      if (!response.ok || !payload?.ok) return null
       const balance = Number(payload?.balanceMinor ?? 0)
       if (Number.isFinite(balance)) {
         setBillingBalanceOverrideMinor(balance)
@@ -3663,9 +3663,14 @@ const isAuthFlowInProgress = () => {
       while (Date.now() - start < maxMs) {
         attempt += 1
         const next = await refreshBillingBalance()
+        if (next == null) {
+          const delay = Math.min(4000, baseDelayMs * attempt)
+          await new Promise((r) => setTimeout(r, delay))
+          continue
+        }
         if (!hasBefore) {
           if (attempt >= 3) break
-        } else if (Number.isFinite(next) && next > (before as number)) {
+        } else if (next > (before as number)) {
           break
         }
         const delay = Math.min(4000, baseDelayMs * attempt)
