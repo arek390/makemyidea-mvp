@@ -2492,7 +2492,6 @@ function App() {
   const [authCallbackHint, setAuthCallbackHint] = useState<string | null>(null)
   const [authCallbackErrorVisible, setAuthCallbackErrorVisible] = useState(false)
   const [authCallbackDiag, setAuthCallbackDiag] = useState<Record<string, unknown> | null>(null)
-  const authCallbackExchangeOnceRef = useRef<string | null>(null)
   const authResolved = authReady
   const [loginEmail, setLoginEmail] = useState('')
   const [loginSending, setLoginSending] = useState(false)
@@ -4105,37 +4104,7 @@ const isAuthFlowInProgress = () => {
         authCodeExchangeInProgress = true
         exchangedAuthCodes.add(callbackCode)
         console.info('[auth exchange START]', { code: callbackCode, time: Date.now() })
-        const exchangeKey = 'auth_exchanged_code_v2'
-        const alreadyExchanged =
-          typeof window !== 'undefined' ? window.sessionStorage.getItem(exchangeKey) : null
-        const callbackCode = code
-        const startedKey = callbackCode ? `auth_code_exchange_started_${callbackCode}` : null
-        const guardAlreadySet =
-          typeof window !== 'undefined' && startedKey
-            ? window.sessionStorage.getItem(startedKey) === '1'
-            : false
-        if (typeof window !== 'undefined' && startedKey && guardAlreadySet) {
-          console.warn('[auth callback] duplicate exchange blocked', { callbackCode })
-          saveAuthDiag('auth_callback_duplicate_exchange_blocked', { callbackCode })
-          setAuthCallbackLoading(false)
-          return
-        }
-        if (typeof window !== 'undefined' && startedKey) {
-          window.sessionStorage.setItem(startedKey, '1')
-        }
-        if (code && (authCallbackExchangeOnceRef.current === code || alreadyExchanged === code)) {
-          console.warn('[auth][callback] duplicate_exchange_prevented', { code })
-          saveAuthDiag('auth_callback_duplicate_exchange_prevented', { code })
-          const { data: existingSession } = await auth.getSession()
-          const hasSession = Boolean(existingSession?.session)
-          console.info('[auth][callback] getSession after duplicate prevent', { hasSession })
-          saveAuthDiag('auth_callback_getSession', { hasSession, reason: 'duplicate_prevent' })
-          if (hasSession && typeof window !== 'undefined') {
-            window.location.replace(`${window.location.origin}/engine`)
-          }
-          setAuthCallbackLoading(false)
-          return
-        }
+        // (Legacy sessionStorage/ref guards removed; module-level guard above is the source of truth.)
         const beforeVerifierLen =
           typeof window !== 'undefined' && pkceVerifierKey
             ? String(window.localStorage.getItem(pkceVerifierKey) || '').length
@@ -4156,8 +4125,6 @@ const isAuthFlowInProgress = () => {
         const exchangeStartPayload = {
           ts: startedAt,
           callbackCode,
-          exchangeKey: startedKey,
-          guardAlreadySet,
           pkceVerifierKey,
           pkceVerifierLen: beforeVerifierLen,
           pkceVerifierLenViaClientStorage: beforeVerifierLenViaClient,
@@ -4212,10 +4179,6 @@ const isAuthFlowInProgress = () => {
           setAuthCallbackHint(debugValue)
           setAuthCallbackLoading(false)
           return
-        }
-        if (code && typeof window !== 'undefined') {
-          authCallbackExchangeOnceRef.current = code
-          window.sessionStorage.setItem(exchangeKey, code)
         }
         console.info('[auth][callback] exchangeCodeForSession:ok', { hasSession: true })
         const okAfterVerifierLen =
