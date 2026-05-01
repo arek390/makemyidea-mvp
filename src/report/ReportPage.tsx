@@ -1917,6 +1917,31 @@ export const ReportPage = ({
     [executionReport]
   )
   const hasLeanExecutionReport = hasLeanExecutionReportContent(normalizedExecutionReport)
+  const executionReportPlanRenderable = Boolean(
+    normalizedExecutionReport?.stage === 'plan_generated' &&
+      (normalizedExecutionReport?.action_plan?.length ||
+        normalizedExecutionReport?.priorities?.length ||
+        normalizedExecutionReport?.validation_loop?.length)
+  )
+  useEffect(() => {
+    if (reportVariant !== 'action') return
+    console.info('[REPORT RENDER DEBUG][execution]', {
+      stage: normalizedExecutionReport?.stage ?? null,
+      actionPlanLen: Array.isArray(normalizedExecutionReport?.action_plan)
+        ? normalizedExecutionReport?.action_plan.length
+        : null,
+      prioritiesLen: Array.isArray(normalizedExecutionReport?.priorities)
+        ? normalizedExecutionReport?.priorities.length
+        : null,
+      validationLoopLen: Array.isArray(normalizedExecutionReport?.validation_loop)
+        ? normalizedExecutionReport?.validation_loop.length
+        : null,
+      hasLeanExecutionReport,
+      renderableByStage: executionReportPlanRenderable,
+      hiddenByLeanGate: Boolean(executionReportPlanRenderable && !hasLeanExecutionReport),
+      source: 'executionReport state used by render',
+    })
+  }, [reportVariant, normalizedExecutionReport, hasLeanExecutionReport, executionReportPlanRenderable])
   const decisionsAllSelected = Boolean(
     normalizedExecutionReport?.decisions?.length &&
       normalizedExecutionReport.decisions.every(
@@ -2699,7 +2724,7 @@ export const ReportPage = ({
                     ? 'Najpierw podejmij kluczowe decyzje, aby wygenerować tę sekcję.'
                     : 'Make your key decisions first to generate this section.'}
                 </p>
-              ) : hasLeanExecutionReport && normalizedExecutionReport?.action_plan?.length ? (
+              ) : (executionReportPlanRenderable || hasLeanExecutionReport) && normalizedExecutionReport?.action_plan?.length ? (
                 (() => {
                   const actions = normalizedExecutionReport.action_plan
                   const normalizeKey = (value: string) =>
@@ -2832,7 +2857,7 @@ export const ReportPage = ({
                     ? 'Najpierw podejmij kluczowe decyzje, aby wygenerować tę sekcję.'
                     : 'Make your key decisions first to generate this section.'}
                 </p>
-              ) : hasLeanExecutionReport && normalizedExecutionReport?.priorities?.length ? (
+              ) : (executionReportPlanRenderable || hasLeanExecutionReport) && normalizedExecutionReport?.priorities?.length ? (
                 <ul>
                   {normalizedExecutionReport.priorities.map((item, index) => (
                     <li key={`priority-${index}`}>
@@ -2853,7 +2878,7 @@ export const ReportPage = ({
                     ? 'Najpierw podejmij kluczowe decyzje, aby wygenerować tę sekcję.'
                     : 'Make your key decisions first to generate this section.'}
                 </p>
-              ) : hasLeanExecutionReport && normalizedExecutionReport?.validation_loop?.length ? (
+              ) : (executionReportPlanRenderable || hasLeanExecutionReport) && normalizedExecutionReport?.validation_loop?.length ? (
                 <ul>
                   {normalizedExecutionReport.validation_loop.map((item, index) => (
                     <li key={`validation-${index}`}>
