@@ -2520,9 +2520,9 @@ function App() {
     String(import.meta.env.VITE_SEED_CLASSIFICATION_MODE || '').trim() || 'full_3x3 (default)'
   const useColumnFirstSeedMode = seedClassificationMode === 'column_first'
   // This section is part of the standard Engine view (not diagnostics-only).
-  const actionPlanReadinessEnabled = isEnvEnabled(import.meta.env.VITE_ACTION_PLAN_READINESS_ENABLED)
-  const actionPlanReadinessLlmEnabled =
-    actionPlanReadinessEnabled && isEnvEnabled(import.meta.env.VITE_ACTION_PLAN_READINESS_LLM_ENABLED)
+  // TEMP: hard-disable all action-plan readiness logic (UI + scheduler + LLM) to debug other flows.
+  const actionPlanReadinessEnabled = false
+  const actionPlanReadinessLlmEnabled = false
   const [actionPlanReadinessLlmCache, setActionPlanReadinessLlmCache] = useState<{
     lastEvaluatedCount: number
     lastEvaluatedCoverage: number | null
@@ -2557,7 +2557,6 @@ function App() {
   const readinessDevCountsRef = useRef<{ effectRuns: number; scheduled: number; fetchStarts: number; sameKeySkips: number }>(
     { effectRuns: 0, scheduled: 0, fetchStarts: 0, sameKeySkips: 0 }
   )
-  const readinessActiveSourceDisabledOnceRef = useRef(false)
   const logActionPlanReadinessLlm = useEffectEvent(
     (payload: {
       triggered: boolean
@@ -2566,18 +2565,6 @@ function App() {
       lastEvaluatedCount: number
       usedFallback: boolean
     }) => {
-      // TEMP: hard-disable readiness log emitter at the active source.
-      // This should silence browser console floods even if scheduling still happens elsewhere.
-      if (true) {
-        if (!readinessActiveSourceDisabledOnceRef.current) {
-          readinessActiveSourceDisabledOnceRef.current = true
-          console.warn('[READINESS ACTIVE SOURCE DISABLED]', {
-            file: 'src/App.tsx',
-            function: 'logActionPlanReadinessLlm',
-          })
-        }
-        return
-      }
       if (!actionPlanReadinessEnabled) return
       // Keep logs informative but avoid noisy repeats on every render.
       const sig = `${payload.triggered ? '1' : '0'}|${payload.reason}|${payload.meaningfulItemsCount}|${payload.lastEvaluatedCount}|${payload.usedFallback ? '1' : '0'}`
@@ -8656,10 +8643,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
   )
 
   const fetchActionPlanReadinessLlm = useEffectEvent(async (meaningfulCount: number) => {
-    if (true) {
-      console.log('[READINESS FETCH BLOCKED]')
-      return
-    }
 	    if (!actionPlanReadinessLlmEnabled) return
 	    if (!enginePreviewSessionId) return
 	    // Run LLM after the first meaningful inputs appear (>=3 required for stable signal),
@@ -8885,12 +8868,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
   })
 
 	  useEffect(() => {
-      if (true) {
-        if (typeof process !== 'undefined' && process?.env?.NODE_ENV !== 'production') {
-          console.log('[READINESS DISABLED TEMP]')
-        }
-        return
-      }
 	    if (!actionPlanReadinessEnabled) return
 	    if (!actionPlanReadinessLlmEnabled) return
       if (import.meta.env.DEV && typeof window !== 'undefined') {
