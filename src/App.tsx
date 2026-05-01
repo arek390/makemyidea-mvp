@@ -2515,7 +2515,6 @@ function App() {
   const suggestDiagEnabled =
     import.meta.env.VITE_SUGGEST_DIAG === '1' || diagnosticsEnabledForUser
   const showDiagnostics = diagnosticsEnabledForUser
-  const isEnvEnabled = (value: unknown) => value === '1' || value === 'true'
   const seedClassificationMode =
     String(import.meta.env.VITE_SEED_CLASSIFICATION_MODE || '').trim() || 'full_3x3 (default)'
   const useColumnFirstSeedMode = seedClassificationMode === 'column_first'
