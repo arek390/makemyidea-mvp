@@ -1179,6 +1179,36 @@ export const ReportPage = ({
         payload.execution_report = executionReport
         payload.triz = reportTriz
       }
+
+      if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
+        const exec = executionReport ? normalizeExecutionReport(sanitizeReportPayload(executionReport)) : null
+        const decisions = Array.isArray(exec?.decisions) ? exec.decisions : []
+        const selectedOptions = decisions.map((d) => (d?.selected_option === 'a' || d?.selected_option === 'b' ? d.selected_option : null))
+        const decisionsAllSelected = Boolean(decisions.length && selectedOptions.every((x) => x === 'a' || x === 'b'))
+        const triz = reportTriz ? normalizeTriz(sanitizeReportPayload(reportTriz)) : null
+        const contradictions = Array.isArray(triz?.contradictions) ? triz.contradictions : []
+        console.log('[REPORT FINALIZE DEBUG][frontend][before-post]', {
+          reportVariant,
+          execution_mode: mode,
+          sessionId: reportSessionId || sessionId,
+          hasSnapshotExecutionReport: Boolean(snapshot.reportMeta?.execution_report),
+          execution_report_stage: exec?.stage ?? null,
+          decisionsCount: decisions.length,
+          selectedOptions,
+          decisionsAllSelected,
+          hasTriz: Boolean(triz),
+          trizContradictionsCount: contradictions.length,
+          trizSelectedApproachIndices: contradictions.map((c, idx) => ({
+            contradictionIndex: idx,
+            selected_approach_indices: Array.isArray((c as any)?.selected_approach_indices)
+              ? (c as any).selected_approach_indices
+              : (c as any)?.selected_approach_index != null
+                ? [(c as any).selected_approach_index]
+                : [],
+          })),
+          payloadKeys: Object.keys(payload),
+        })
+      }
       const response = await fetch('/api/report?action=update', {
         method: 'POST',
         headers: {
@@ -1189,6 +1219,34 @@ export const ReportPage = ({
         body: JSON.stringify(payload),
       })
       const responsePayload = await response.json().catch(() => null)
+
+      if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
+        const execution = responsePayload?.execution && typeof responsePayload.execution === 'object' ? responsePayload.execution : null
+        const report = responsePayload?.report && typeof responsePayload.report === 'object' ? responsePayload.report : null
+        const executionReportReturned =
+          report?.summary_json && typeof report.summary_json === 'object' && report.summary_json.execution_report
+            ? normalizeExecutionReport(sanitizeReportPayload((report.summary_json as any).execution_report))
+            : responsePayload?.execution_report && typeof responsePayload.execution_report === 'object'
+              ? normalizeExecutionReport(sanitizeReportPayload(responsePayload.execution_report))
+              : null
+        console.log('[REPORT FINALIZE DEBUG][frontend][after-post]', {
+          httpStatus: response.status,
+          responseOk: response.ok,
+          payloadOk: Boolean(responsePayload?.ok),
+          responseKeys: responsePayload && typeof responsePayload === 'object' ? Object.keys(responsePayload) : null,
+          planGenerated: execution?.planGenerated ?? null,
+          planSkippedReason: execution?.planSkippedReason ?? null,
+          returnedExecutionReportStage: executionReportReturned?.stage ?? null,
+          returnedActionPlanLen: Array.isArray(executionReportReturned?.action_plan)
+            ? executionReportReturned?.action_plan.length
+            : null,
+          returnedDecisionsLen: Array.isArray(executionReportReturned?.decisions)
+            ? executionReportReturned?.decisions.length
+            : null,
+          error: responsePayload?.error ?? null,
+          message: responsePayload?.message ?? null,
+        })
+      }
       if (responsePayload?.meta) {
         const meta = responsePayload.meta as any
         const maybeEmitUsage = (value: any) => {
@@ -1245,6 +1303,22 @@ export const ReportPage = ({
     if (reportSessionId) {
       try {
         const record = await fetchReportBySessionId(reportSessionId)
+        if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
+          const exec = record?.executionReport
+            ? normalizeExecutionReport(sanitizeReportPayload(record.executionReport))
+            : null
+          console.log('[REPORT FINALIZE DEBUG][frontend][after-refresh]', {
+            fetched: Boolean(record),
+            sessionId: reportSessionId,
+            reportId: record?.id ?? null,
+            updatedAt: record?.updatedAt ?? null,
+            sourceUpdatedAt: record?.sourceUpdatedAt ?? null,
+            execution_report_stage: exec?.stage ?? null,
+            actionPlanLen: Array.isArray(exec?.action_plan) ? exec.action_plan.length : null,
+            decisionsLen: Array.isArray(exec?.decisions) ? exec.decisions.length : null,
+            validationLoopLen: Array.isArray(exec?.validation_loop) ? exec.validation_loop.length : null,
+          })
+        }
         if (record) {
           applyReportRecord(record)
           setSummaryStatus('done')

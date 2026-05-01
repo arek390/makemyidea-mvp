@@ -2628,6 +2628,45 @@ export const handleReportUpdate = async (req, res) => {
       const executionMode = String(body.execution_mode || body.executionMode || '').trim()
       const responseMeta = {}
       const responseExecution = { planGenerated: false, planSkippedReason: null }
+
+      if (executionMode === 'plan_from_decisions_only' || executionMode === 'plan_from_decisions') {
+        const incomingExecutionReport =
+          body.execution_report && typeof body.execution_report === 'object'
+            ? normalizeExecutionReport(body.execution_report)
+            : null
+        const incomingDecisions = Array.isArray(incomingExecutionReport?.decisions)
+          ? incomingExecutionReport.decisions
+          : []
+        const incomingSelectedOptions = incomingDecisions.map((d) =>
+          d?.selected_option === 'a' || d?.selected_option === 'b' ? d.selected_option : null
+        )
+        const incomingTriz = body.triz && typeof body.triz === 'object' ? normalizeTriz(body.triz) : null
+        const incomingContradictions = Array.isArray(incomingTriz?.contradictions)
+          ? incomingTriz.contradictions
+          : []
+        console.log('[REPORT FINALIZE DEBUG][backend][entry]', {
+          requestId,
+          method: req?.method ?? null,
+          sessionId,
+          execution_mode: executionMode,
+          lang: requestedLang ?? null,
+          diagnosticsEnabled,
+          hasIncomingExecutionReport: Boolean(incomingExecutionReport),
+          incomingExecutionReportStage: incomingExecutionReport?.stage ?? null,
+          incomingDecisionsCount: incomingDecisions.length,
+          incomingSelectedOptions,
+          hasIncomingTriz: Boolean(incomingTriz),
+          incomingTrizContradictionsCount: incomingContradictions.length,
+          incomingTrizSelectedApproachIndices: incomingContradictions.map((c, idx) => ({
+            contradictionIndex: idx,
+            selected_approach_indices: Array.isArray(c?.selected_approach_indices)
+              ? c.selected_approach_indices
+              : c?.selected_approach_index != null
+                ? [c.selected_approach_index]
+                : [],
+          })),
+        })
+      }
 	    const supabaseAdmin = getSupabaseAdmin()
     const authRes = await supabaseAdmin.auth.getUser(token)
     const userId = authRes?.data?.user?.id || null
@@ -4301,11 +4340,55 @@ export const handleReportUpdate = async (req, res) => {
             selectedTrizApproachesCount,
             hasAnySelections,
           })
+          if (executionPlanOnly) {
+            const selectedOptions = Array.isArray(executionReportCandidate?.decisions)
+              ? executionReportCandidate.decisions.map((d) =>
+                  d?.selected_option === 'a' || d?.selected_option === 'b' ? d.selected_option : null
+                )
+              : []
+            console.log('[REPORT FINALIZE DEBUG][backend][finalize-gate]', {
+              requestId,
+              sessionId,
+              execution_mode: executionMode,
+              executionPlanOnly,
+              allDecisionsSelected,
+              decisionsCount: Array.isArray(executionReportCandidate?.decisions)
+                ? executionReportCandidate.decisions.length
+                : 0,
+              selectedOptions,
+              contentHashChanged,
+              existingStage: executionReportCandidate?.stage ?? null,
+              willRunFinalizeGeneration: Boolean(executionPlanOnly && allDecisionsSelected),
+              planSkippedReason: allDecisionsSelected ? null : 'DECISIONS_INCOMPLETE',
+            })
+          }
           if (executionPlanOnly && allDecisionsSelected) {
             try {
               const existingDecisions = Array.isArray(executionReportCandidate?.decisions)
                 ? executionReportCandidate.decisions
                 : []
+              const promptForLen = buildExecutionReportPrompt(true, [])
+              console.log('[REPORT FINALIZE DEBUG][backend][before-final-plan-llm]', {
+                requestId,
+                sessionId,
+                task: 'report-action-plan',
+                language: llmLanguage,
+                analysisJsonExists: Boolean(analysisJson),
+                trizCandidateExists: Boolean(trizCandidate),
+                selectedApproachesCount: Array.isArray(trizCandidate?.contradictions)
+                  ? trizCandidate.contradictions.reduce((sum, c) => {
+                      const indices = Array.isArray(c?.selected_approach_indices)
+                        ? c.selected_approach_indices
+                        : c?.selected_approach_index != null
+                          ? [c.selected_approach_index]
+                          : []
+                      return sum + new Set(indices).size
+                    }, 0)
+                  : 0,
+                supportingItemsCount: Array.isArray(executionSupportingItems) ? executionSupportingItems.length : null,
+                decisionsCount: existingDecisions.length,
+                promptCharLen: typeof promptForLen === 'string' ? promptForLen.length : null,
+              })
               const execResult = await runExecutionReport(undefined, { strictJson: true })
               if (execResult?.meta) {
                 responseMeta.execution_report_action_plan = execResult.meta
@@ -4337,6 +4420,42 @@ export const handleReportUpdate = async (req, res) => {
                 executionReportValidation = validateExecutionPlanOnly(executionReportCandidate)
                 responseExecution.planGenerated =
                   Array.isArray(executionReportCandidate?.action_plan) && executionReportCandidate.action_plan.length > 0
+                console.log('[REPORT FINALIZE DEBUG][backend][after-final-plan-llm]', {
+                  requestId,
+                  sessionId,
+                  llmOk: Boolean(execResult?.ok),
+                  hasData: Boolean(execResult?.data),
+                  normalizedStage: executionReportCandidate?.stage ?? null,
+                  prioritiesLen: Array.isArray(executionReportCandidate?.priorities)
+                    ? executionReportCandidate.priorities.length
+                    : null,
+                  actionPlanLen: Array.isArray(executionReportCandidate?.action_plan)
+                    ? executionReportCandidate.action_plan.length
+                    : null,
+                  validationLoopLen: Array.isArray(executionReportCandidate?.validation_loop)
+                    ? executionReportCandidate.validation_loop.length
+                    : null,
+                  nextSessionFocus: Boolean(
+                    typeof executionReportCandidate?.next_session_focus === 'string' &&
+                      executionReportCandidate.next_session_focus.trim()
+                  ),
+                  validationErrors: executionReportValidation?.errors ?? null,
+                  planGenerated: responseExecution.planGenerated,
+                })
+              } else {
+                console.log('[REPORT FINALIZE DEBUG][backend][after-final-plan-llm]', {
+                  requestId,
+                  sessionId,
+                  llmOk: Boolean(execResult?.ok),
+                  hasData: Boolean(execResult?.data),
+                  normalizedStage: null,
+                  prioritiesLen: null,
+                  actionPlanLen: null,
+                  validationLoopLen: null,
+                  nextSessionFocus: null,
+                  validationErrors: null,
+                  planGenerated: false,
+                })
               }
             } catch (error) {
               console.error('[report:update] execution_report after decisions exception:', error)
@@ -5160,6 +5279,22 @@ export const handleReportUpdate = async (req, res) => {
         execution_report: finalExecutionReport,
       }
       const sanitized = sanitizeReportPayload(nextPayload)
+      console.log('[REPORT FINALIZE DEBUG][backend][before-save]', {
+        requestId,
+        sessionId,
+        reportId: reportRes.data?.id ?? null,
+        executionReportStage: finalExecutionReport?.stage ?? null,
+        actionPlanLen: Array.isArray(finalExecutionReport?.action_plan)
+          ? finalExecutionReport.action_plan.length
+          : null,
+        validationLoopLen: Array.isArray(finalExecutionReport?.validation_loop)
+          ? finalExecutionReport.validation_loop.length
+          : null,
+        decisionsLen: Array.isArray(finalExecutionReport?.decisions)
+          ? finalExecutionReport.decisions.length
+          : null,
+        isPlanGenerated: finalExecutionReport?.stage === 'plan_generated',
+      })
       const updateRes = await supabaseAdmin
         .schema('public')
         .from('reports')
@@ -5171,9 +5306,22 @@ export const handleReportUpdate = async (req, res) => {
         })
         .eq('session_id', sessionId)
       if (updateRes.error) {
+        console.log('[REPORT FINALIZE DEBUG][backend][after-save]', {
+          requestId,
+          sessionId,
+          reportId: reportRes.data?.id ?? null,
+          ok: false,
+          error: updateRes.error?.message ?? null,
+        })
         res.status(500).json({ ok: false, error: updateRes.error })
         return
       }
+      console.log('[REPORT FINALIZE DEBUG][backend][after-save]', {
+        requestId,
+        sessionId,
+        reportId: reportRes.data?.id ?? null,
+        ok: true,
+      })
       if (returnReport) {
         const finalReportRes = await supabaseAdmin
           .schema('public')
@@ -5185,6 +5333,21 @@ export const handleReportUpdate = async (req, res) => {
           res.status(500).json({ ok: false, error: finalReportRes.error })
           return
         }
+        const savedExec =
+          finalReportRes.data?.summary_json?.execution_report &&
+          typeof finalReportRes.data.summary_json.execution_report === 'object'
+            ? normalizeExecutionReport(finalReportRes.data.summary_json.execution_report)
+            : null
+        console.log('[REPORT FINALIZE DEBUG][backend][after-save]', {
+          requestId,
+          sessionId,
+          reportId: finalReportRes.data?.id ?? null,
+          ok: true,
+          returnedUpdatedAt: finalReportRes.data?.updated_at ?? null,
+          returnedSourceUpdatedAt: finalReportRes.data?.source_updated_at ?? null,
+          returnedExecutionReportStage: savedExec?.stage ?? null,
+          returnedActionPlanLen: Array.isArray(savedExec?.action_plan) ? savedExec.action_plan.length : null,
+        })
         res.status(200).json({
           ok: true,
           report: finalReportRes.data ?? null,

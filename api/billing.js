@@ -15,23 +15,8 @@ const readRawBody = async (req) => {
 }
 
 const sha256 = (value) => createHash('sha256').update(value, 'utf8').digest('hex')
-const md5 = (value) => createHash('md5').update(value, 'utf8').digest('hex')
 
 const buildHashPayload = (values) => values.map((value) => String(value ?? '').trim()).filter(Boolean).join('|')
-
-const safeKeyMeta = (key) => {
-  const value = String(key || '')
-  return {
-    present: Boolean(value),
-    len: value.length,
-  }
-}
-
-const fingerprintKey = (key) => {
-  const value = String(key || '')
-  if (!value) return null
-  return sha256(value).slice(0, 6)
-}
 
 const resolveAutopayKey = ({ serviceId, kind }) => {
   const sid = String(serviceId || '').trim()
@@ -71,16 +56,6 @@ const resolveAutopayKey = ({ serviceId, kind }) => {
     (process.env[name2] && name2) ||
     null
   return { key: v, source }
-}
-
-const isHashDiagEnabled = () => {
-  const raw = String(process.env.AUTOPAY_ITN_HASH_DIAG || '').trim().toLowerCase()
-  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on'
-}
-
-const isHashDiagMd5Enabled = () => {
-  const raw = String(process.env.AUTOPAY_ITN_HASH_DIAG_MD5 || '').trim().toLowerCase()
-  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on'
 }
 
 const buildConfirmXml = ({ serviceID, orderID, confirmation, sharedKey }) => {
@@ -280,7 +255,6 @@ const handleCreatePayment = async (req, res) => {
   }
 
   const orderId = randomUUID().replace(/-/g, '')
-  console.log('[AUTOPAY CREATE] order_id_length', { orderId, length: orderId.length })
   const amountStr = amountPln.toFixed(2)
   const amountGrosze = Math.round(amountPln * 100)
 
@@ -304,12 +278,6 @@ const handleCreatePayment = async (req, res) => {
     res.status(500).json({ ok: false, error: 'PAYMENT_CREATE_FAILED' })
     return
   }
-  console.log('[AUTOPAY CREATE] payment_insert_ok', {
-    orderId,
-    userIdPrefix: String(userId).slice(0, 8),
-    amountPln,
-    amountGrosze,
-  })
 
   const descriptionHost = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').trim()
   const description = `Top up ${descriptionHost || 'makemyidea.work'}`
@@ -319,7 +287,6 @@ const handleCreatePayment = async (req, res) => {
     if (envReturnUrl) return envReturnUrl
     return 'https://makemyidea.work/api/billing?action=return'
   })()
-  console.log('[AUTOPAY CREATE] return_url', { returnUrl })
   const hashPayload = buildHashPayload([
     serviceId,
     orderId,
@@ -331,24 +298,6 @@ const handleCreatePayment = async (req, res) => {
     returnUrl, // ReturnURL (optional, order 45 in docs)
   ])
   const hash = sha256(`${hashPayload}|${sharedKey}`)
-  console.log('[AUTOPAY CREATE] key_meta', {
-    serviceId,
-    formKey: safeKeyMeta(sharedKey),
-    formKeyFingerprint: fingerprintKey(sharedKey),
-    formKeyEnv: sharedKeySource,
-    formHashPrefix: hash.slice(0, 8),
-  })
-  console.log('[AUTOPAY CREATE] form_payload', {
-    serviceId,
-    orderId,
-    amountStr,
-    description,
-    currency,
-    hasCustomerEmail: Boolean(userEmail),
-    hasReturnUrl: Boolean(returnUrl),
-    gatewayUrl,
-    hashPrefix: hash.slice(0, 8),
-  })
 
   const html = `<!doctype html>
 <html lang="pl">
@@ -442,20 +391,8 @@ const handleAutopayItn = async (req, res) => {
   }
 
   const itnRequestId = `itn-${Date.now().toString(36)}-${Math.random().toString(16).slice(2, 8)}`
-  const rawUrl = req?.url || ''
-  const contentType = String(req?.headers?.['content-type'] || '')
-  const forwardedFor = String(req?.headers?.['x-forwarded-for'] || '')
-  const ip = forwardedFor ? forwardedFor.split(',')[0].trim() : req?.socket?.remoteAddress || 'unknown'
-  console.log('[AUTOPAY ITN] received', {
-    itnRequestId,
-    url: rawUrl,
-    method: req.method,
-    contentType,
-    ip,
-  })
 
   const rawBody = await readRawBody(req)
-  console.log('[AUTOPAY ITN] raw_body_present', { itnRequestId, present: Boolean(rawBody), len: rawBody.length })
   let transactions = null
   if (rawBody) {
     const params = new URLSearchParams(rawBody)
@@ -464,18 +401,12 @@ const handleAutopayItn = async (req, res) => {
       if (keys.length >= 12) break
       keys.push(key)
     }
-    console.log('[AUTOPAY ITN] raw_body_keys', { itnRequestId, keys })
     transactions = params.get('transactions')
   }
   if (!transactions && req.body && typeof req.body === 'object') {
-    console.log('[AUTOPAY ITN] body_object_keys', {
-      itnRequestId,
-      keys: Object.keys(req.body).slice(0, 12),
-    })
     transactions = req.body.transactions
   }
   if (!transactions) {
-    console.log('[AUTOPAY ITN] missing_transactions', { itnRequestId })
     sendJson(res, 400, { ok: false, error: 'MISSING_TRANSACTIONS', itnRequestId })
     return
   }
@@ -484,13 +415,10 @@ const handleAutopayItn = async (req, res) => {
   try {
     xml = Buffer.from(String(transactions), 'base64').toString('utf8')
   } catch {
-    console.log('[AUTOPAY ITN] invalid_base64', { itnRequestId })
     sendJson(res, 400, { ok: false, error: 'INVALID_BASE64', itnRequestId })
     return
   }
-  console.log('[AUTOPAY ITN] decoded_xml_prefix', { itnRequestId, prefix: String(xml).slice(0, 160) })
   if (!xml || !xml.includes('<')) {
-    console.log('[AUTOPAY ITN] invalid_xml', { itnRequestId })
     sendJson(res, 400, { ok: false, error: 'INVALID_XML', itnRequestId })
     return
   }
@@ -502,7 +430,6 @@ const handleAutopayItn = async (req, res) => {
     const parser = new XMLParser({ ignoreAttributes: false, parseTagValue: false, trimValues: false })
     parsed = parser.parse(xml)
   } catch {
-    console.log('[AUTOPAY ITN] xml_parse_failed', { itnRequestId })
     sendJson(res, 400, { ok: false, error: 'INVALID_XML', itnRequestId })
     return
   }
@@ -514,7 +441,6 @@ const handleAutopayItn = async (req, res) => {
   const transactionNode = transactionList?.transactions?.transaction
   const transaction = Array.isArray(transactionNode) ? transactionNode[0] : transactionNode
   if (!serviceID || !transaction) {
-    console.log('[AUTOPAY ITN] invalid_payload', { itnRequestId, hasServiceID: Boolean(serviceID), hasTx: Boolean(transaction) })
     sendJson(res, 400, { ok: false, error: 'INVALID_PAYLOAD', itnRequestId })
     return
   }
@@ -541,21 +467,6 @@ const handleAutopayItn = async (req, res) => {
   const paymentStatus = cleanField(paymentStatus_raw)
   const paymentStatusDetails = cleanField(paymentStatusDetails_raw)
   const receivedHash = cleanField(receivedHash_raw)
-  const receivedHashPrefix = receivedHash ? receivedHash.slice(0, 8) : ''
-
-  console.log('[AUTOPAY ITN] parsed_fields', {
-    itnRequestId,
-    serviceID,
-    orderID,
-    remoteID,
-    amount,
-    currency,
-    gatewayID,
-    paymentDate,
-    paymentStatus,
-    paymentStatusDetails,
-    receivedHashPrefix,
-  })
 
   const { key: sharedKey, source: sharedKeySource } = resolveAutopayKey({
     serviceId: serviceID,
@@ -566,14 +477,6 @@ const handleAutopayItn = async (req, res) => {
     sendJson(res, 500, { ok: false, error: 'MISSING_SHARED_KEY', itnRequestId })
     return
   }
-  console.log('[AUTOPAY ITN] key_meta', {
-    itnRequestId,
-    serviceID,
-    sharedKey: safeKeyMeta(sharedKey),
-    sharedKeyFingerprint: fingerprintKey(sharedKey),
-    sharedKeyEnv: sharedKeySource,
-    diagEnabled: isHashDiagEnabled(),
-  })
 
   // ITN hash verification must handle extra non-empty fields in SUCCESS payloads.
   // Approach:
@@ -603,163 +506,15 @@ const handleAutopayItn = async (req, res) => {
   }
 
   const orderedTxPairs = extractOrderedTransactionFields(xml)
-  const hashFieldNames = ['serviceID', ...orderedTxPairs.map((p) => p.name)]
   const hashValuesRaw = [serviceID, ...orderedTxPairs.map((p) => p.value)]
   const expectedHash = sha256(`${hashValuesRaw.join('|')}|${sharedKey}`).toLowerCase()
-
-  console.log('[AUTOPAY ITN] hash_algorithm_version', {
-    itnRequestId,
-    value: 'itn_v3_ordered_nonempty_children_pipe_shared_key_final',
-    hasSeparatorBeforeSharedKey: true,
-    hasTrailingSeparatorAfterSharedKey: false,
-    fieldCountIncludingSharedKey: hashValuesRaw.length + 1,
-  })
-  console.log('[AUTOPAY ITN] hash_fields', {
-    itnRequestId,
-    included: hashFieldNames,
-    excludesEmptyFields: true,
-    excludesHashNode: true,
-  })
-  console.log('[AUTOPAY ITN] hash_values_normalized', {
-    itnRequestId,
-    values: hashValuesRaw.map((v, idx) => ({ [hashFieldNames[idx]]: v })),
-  })
-  console.log('[AUTOPAY ITN] expected_hash_prefix', { itnRequestId, prefix: expectedHash.slice(0, 8) })
-  console.log('[AUTOPAY ITN] received_hash_prefix', { itnRequestId, prefix: receivedHashPrefix })
-
-  if (isHashDiagEnabled()) {
-    const receivedLower = String(receivedHash || '').toLowerCase()
-
-    const fieldNames = [...hashFieldNames]
-    const fieldValuesRaw = [...hashValuesRaw]
-    const fieldValuesClean = fieldValuesRaw.map((v) => String(v ?? '').trim())
-
-    const variants = []
-    const addVariant = (name, fields, hashValue, algo = 'sha256') => {
-      variants.push({
-        name,
-        algo,
-        fields,
-        prefix: String(hashValue || '').slice(0, 8),
-        match: String(hashValue || '').toLowerCase() === receivedLower,
-      })
-    }
-
-    const joinAll = (values) => values.map((v) => String(v ?? '')).join('|')
-    const joinSkipEmpty = (values) =>
-      values
-        .map((v) => String(v ?? ''))
-        .filter((v) => v !== '')
-        .join('|')
-
-    // 1) documented variant (all fields, key as final pipe-separated field)
-    addVariant(
-      '1_doc_fields_pipe_shared_key_final',
-      [...fieldNames, 'sharedKey'],
-      sha256(`${joinAll(fieldValuesRaw)}|${sharedKey}`).toLowerCase()
-    )
-    // 2) without serviceID
-    addVariant(
-      '2_no_serviceID_pipe_shared_key_final',
-      [...fieldNames.slice(1), 'sharedKey'],
-      sha256(`${joinAll(fieldValuesRaw.slice(1))}|${sharedKey}`).toLowerCase()
-    )
-    const dropField = (names, values, dropName) => {
-      const outNames = []
-      const outValues = []
-      for (let i = 0; i < names.length; i += 1) {
-        if (names[i] === dropName) continue
-        outNames.push(names[i])
-        outValues.push(values[i])
-      }
-      return { names: outNames, values: outValues }
-    }
-    // 3) without remoteID (if present)
-    {
-      const dropped = dropField(fieldNames, fieldValuesRaw, 'remoteID')
-      addVariant(
-        '3_no_remoteID_pipe_shared_key_final',
-        [...dropped.names, 'sharedKey'],
-        sha256(`${joinAll(dropped.values)}|${sharedKey}`).toLowerCase()
-      )
-    }
-    // 4) without paymentStatusDetails (if present)
-    {
-      const dropped = dropField(fieldNames, fieldValuesRaw, 'paymentStatusDetails')
-      addVariant(
-        '4_no_paymentStatusDetails_pipe_shared_key_final',
-        [...dropped.names, 'sharedKey'],
-        sha256(`${joinAll(dropped.values)}|${sharedKey}`).toLowerCase()
-      )
-    }
-    // 5) omit empty fields
-    addVariant(
-      '5_skip_empty_fields_pipe_shared_key_final',
-      [...fieldNames.filter((_, i) => String(fieldValuesRaw[i] ?? '') !== ''), 'sharedKey'],
-      sha256(`${joinSkipEmpty(fieldValuesRaw)}|${sharedKey}`).toLowerCase()
-    )
-    // 6) include empty fields as separators (same as 1, but named explicitly)
-    addVariant(
-      '6_include_empty_fields_as_separators_pipe_shared_key_final',
-      [...fieldNames, 'sharedKey'],
-      sha256(`${joinAll(fieldValuesRaw)}|${sharedKey}`).toLowerCase()
-    )
-    // 7) use cleaned values (trimmed) instead of raw XML
-    addVariant(
-      '7_clean_values_trimmed_pipe_shared_key_final',
-      [...fieldNames, 'sharedKey'],
-      sha256(`${joinAll(fieldValuesClean)}|${sharedKey}`).toLowerCase()
-    )
-    // 8) append sharedKey directly without pipe
-    addVariant(
-      '8_fields_plus_shared_key_no_pipe',
-      [...fieldNames, 'sharedKey'],
-      sha256(`${joinAll(fieldValuesRaw)}${sharedKey}`).toLowerCase()
-    )
-    // 9) add trailing pipe after sharedKey
-    addVariant(
-      '9_fields_pipe_shared_key_pipe_trailing',
-      [...fieldNames, 'sharedKey', '(trailing|)'],
-      sha256(`${joinAll(fieldValuesRaw)}|${sharedKey}|`).toLowerCase()
-    )
-    // 10) SHA256(decoded XML without hash node + pipe + sharedKey)
-    // Avoid RegExp dotAll flag for compatibility with older runtimes.
-    const xmlNoHash = String(xml || '').replace(/<hash>[\s\S]*?<\/hash>/, '')
-    addVariant(
-      '10_xml_without_hash_node_pipe_shared_key_final',
-      ['xml_without_hash_node', 'sharedKey'],
-      sha256(`${xmlNoHash}|${sharedKey}`).toLowerCase()
-    )
-
-    if (isHashDiagMd5Enabled()) {
-      addVariant(
-        'md5_doc_fields_pipe_shared_key_final',
-        [...fieldNames, 'sharedKey'],
-        md5(`${joinAll(fieldValuesRaw)}|${sharedKey}`).toLowerCase(),
-        'md5'
-      )
-    }
-
-    for (const v of variants) {
-      console.log('[AUTOPAY ITN] hash_diag_variant', {
-        itnRequestId,
-        serviceID,
-        variant: v.name,
-        algo: v.algo,
-        fields: v.fields,
-        prefix: v.prefix,
-        match: v.match,
-      })
-    }
-  }
 
   let confirmation = 'NOTCONFIRMED'
   const hashMatches =
     Boolean(receivedHash) && timingSafeHexEqual(String(receivedHash).toLowerCase(), expectedHash)
   if (hashMatches) {
-    console.log('[AUTOPAY ITN] hash_match', { itnRequestId, orderID })
     if (currency !== 'PLN') {
-      console.log('[AUTOPAY ITN] hash_ok_but_currency_not_pln', { itnRequestId, orderID, currency })
+      // Keep PLN-only billing.
     } else if (paymentStatus === 'PENDING') {
       // Valid ITN but not a final state — persist identifiers for audit, do not credit balance.
       try {
@@ -786,7 +541,6 @@ const handleAutopayItn = async (req, res) => {
             code: updateRes.error.code,
           })
         } else {
-          console.log('[AUTOPAY ITN] pending_payment_update_ok', { itnRequestId, orderID })
           confirmation = 'CONFIRMED'
         }
       } catch (error) {
@@ -795,7 +549,6 @@ const handleAutopayItn = async (req, res) => {
     } else if (paymentStatus === 'SUCCESS' && paymentStatusDetails === 'AUTHORIZED') {
       try {
         const supabaseAdmin = getSupabaseAdmin()
-        console.log('[AUTOPAY ITN] hash_ok', { itnRequestId, orderID })
         const { data: payment, error: paymentError } = await supabaseAdmin
           .from('payments')
           .select('user_id,amount_pln_grosze,status,updated_at')
@@ -805,7 +558,6 @@ const handleAutopayItn = async (req, res) => {
           console.error('[AUTOPAY ITN] payment_lookup_failed', { itnRequestId, orderID, message: paymentError.message })
           confirmation = 'NOTCONFIRMED'
         } else if (!payment) {
-          console.log('[AUTOPAY ITN] payment_lookup_result', { itnRequestId, orderID, found: false })
           confirmation = 'NOTCONFIRMED'
         } else {
           // Persist the Autopay-side identifiers for later audit/debug (no secrets).
@@ -830,40 +582,14 @@ const handleAutopayItn = async (req, res) => {
               message: providerUpdate.error.message,
               code: providerUpdate.error.code,
             })
-          } else {
-            console.log('[AUTOPAY ITN] payment_provider_payload_update_ok', { itnRequestId, orderID })
           }
 
           const itnAmountGrosze = parsePlnToGrosze(amount)
           const expectedAmountGrosze = Number(payment.amount_pln_grosze ?? NaN)
-          console.log('[AUTOPAY ITN] payment_lookup_result', {
-            itnRequestId,
-            orderID,
-            found: true,
-            dbAmountGrosze: Number.isFinite(expectedAmountGrosze) ? expectedAmountGrosze : null,
-            dbStatus: payment.status ?? null,
-            userIdPrefix: String(payment.user_id || '').slice(0, 8),
-          })
 
           if (itnAmountGrosze == null || !Number.isFinite(expectedAmountGrosze)) {
-            console.log('[AUTOPAY ITN] amount_check', {
-              itnRequestId,
-              orderID,
-              itnAmountGrosze: itnAmountGrosze ?? null,
-              dbAmountGrosze: Number.isFinite(expectedAmountGrosze) ? expectedAmountGrosze : null,
-              match: false,
-              parseOk: false,
-            })
             confirmation = 'NOTCONFIRMED'
           } else if (itnAmountGrosze !== expectedAmountGrosze) {
-            console.log('[AUTOPAY ITN] amount_check', {
-              itnRequestId,
-              orderID,
-              itnAmountGrosze,
-              dbAmountGrosze: expectedAmountGrosze,
-              match: false,
-              parseOk: true,
-            })
             confirmation = 'NOTCONFIRMED'
           } else {
             const balanceBefore = await supabaseAdmin
@@ -871,15 +597,6 @@ const handleAutopayItn = async (req, res) => {
               .select('balance_pln_grosze,balance_pln,total_paid_pln')
               .eq('user_id', payment.user_id)
               .maybeSingle()
-            console.log('[AUTOPAY ITN] pre_apply_snapshot', {
-              itnRequestId,
-              orderID,
-              billingAccountFound: Boolean(balanceBefore.data),
-              balance_pln_grosze: balanceBefore.data?.balance_pln_grosze ?? null,
-              balance_pln: balanceBefore.data?.balance_pln ?? null,
-              total_paid_pln: balanceBefore.data?.total_paid_pln ?? null,
-              accountError: balanceBefore.error ? balanceBefore.error.message : null,
-            })
 
             const rpcRes = await supabaseAdmin.rpc('apply_payment', { order_id_in: orderID })
             if (rpcRes.error) {
@@ -908,31 +625,9 @@ const handleAutopayItn = async (req, res) => {
                 .select('balance_pln_grosze,balance_pln,total_paid_pln,updated_at')
                 .eq('user_id', payment.user_id)
                 .maybeSingle()
-              console.log('[AUTOPAY ITN] post_apply_snapshot', {
-                itnRequestId,
-                orderID,
-                paymentStatus: paymentAfter.data?.status ?? null,
-                paidAt: paymentAfter.data?.paid_at ?? null,
-                billingTransactionsForOrderId: Array.isArray(billingTx.data) ? billingTx.data.length : null,
-                billingTransactionsError: billingTx.error ? billingTx.error.message : null,
-                billingAccountFound: Boolean(balanceAfter.data),
-                balance_pln_grosze: balanceAfter.data?.balance_pln_grosze ?? null,
-                balance_pln: balanceAfter.data?.balance_pln ?? null,
-                total_paid_pln: balanceAfter.data?.total_paid_pln ?? null,
-                paymentAfterError: paymentAfter.error ? paymentAfter.error.message : null,
-                accountAfterError: balanceAfter.error ? balanceAfter.error.message : null,
-              })
               confirmation = 'CONFIRMED'
+              console.log('[AUTOPAY ITN] credited', { itnRequestId, orderID, amount, currency })
             }
-            console.log('[AUTOPAY ITN] amount_check', {
-              itnRequestId,
-              orderID,
-              itnAmountGrosze,
-              dbAmountGrosze: expectedAmountGrosze,
-              match: true,
-              parseOk: true,
-            })
-            console.log('[AUTOPAY ITN] applied', { itnRequestId, orderID, amount })
           }
         }
       } catch (error) {
@@ -940,15 +635,8 @@ const handleAutopayItn = async (req, res) => {
         confirmation = 'NOTCONFIRMED'
       }
     } else {
-      console.log('[AUTOPAY ITN] hash_ok_but_status_not_creditable', {
-        itnRequestId,
-        orderID,
-        paymentStatus,
-        paymentStatusDetails,
-      })
+      // Valid ITN but not a creditable final state.
     }
-  } else {
-    console.log('[AUTOPAY ITN] hash_mismatch', { itnRequestId, orderID, receivedHashPrefix })
   }
 
   const responseXml = buildConfirmXml({
@@ -957,7 +645,7 @@ const handleAutopayItn = async (req, res) => {
     confirmation,
     sharedKey,
   })
-  console.log('[AUTOPAY ITN] response_confirmation', { itnRequestId, orderID, confirmation })
+  console.log('[AUTOPAY ITN] confirmation_sent', { itnRequestId, orderID, confirmation })
   res.status(200)
   res.setHeader('Content-Type', 'application/xml; charset=utf-8')
   res.send(responseXml)
