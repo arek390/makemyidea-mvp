@@ -2583,9 +2583,9 @@ function App() {
       const sig = `${payload.triggered ? '1' : '0'}|${payload.reason}|${payload.meaningfulItemsCount}|${payload.lastEvaluatedCount}|${payload.usedFallback ? '1' : '0'}`
       const now = Date.now()
       const prev = readinessLogDedupeRef.current
-      const prevAt = prev.at
-      if (prev.sig === sig && typeof prevAt === 'number' && now - prevAt < 1500) {
-        return
+      if (prev.sig === sig) {
+        const prevAt = prev.at
+        if (typeof prevAt === 'number' && now - prevAt < 1500) return
       }
       readinessLogDedupeRef.current = { sig, at: now }
       console.log('[readiness][llm]', payload)
