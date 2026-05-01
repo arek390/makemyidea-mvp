@@ -210,7 +210,6 @@ const handleCreatePayment = async (req, res) => {
       user_id: userId,
       provider: 'autopay',
       order_id: orderId,
-      amount_pln: amountPln,
       amount_pln_grosze: amountGrosze,
       status: 'pending',
     })
@@ -482,7 +481,7 @@ const handleAutopayItn = async (req, res) => {
         console.log('[AUTOPAY ITN] hash_ok', { itnRequestId, orderID })
         const { data: payment, error: paymentError } = await supabaseAdmin
           .from('payments')
-          .select('user_id,amount_pln,amount_pln_grosze,status,updated_at')
+          .select('user_id,amount_pln_grosze,status,updated_at')
           .eq('order_id', orderID)
           .maybeSingle()
         if (paymentError) {
