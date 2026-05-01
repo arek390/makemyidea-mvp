@@ -736,7 +736,8 @@ const handleAutopayItn = async (req, res) => {
       sha256(`${joinAll(fieldValuesRaw)}|${sharedKey}|`).toLowerCase()
     )
     // 10) SHA256(decoded XML without hash node + pipe + sharedKey)
-    const xmlNoHash = String(xml || '').replace(/<hash>.*?<\\/hash>/s, '')
+    // Avoid RegExp dotAll flag for compatibility with older runtimes.
+    const xmlNoHash = String(xml || '').replace(/<hash>[\\s\\S]*?<\\/hash>/, '')
     addVariant(
       '10_xml_without_hash_node_pipe_shared_key_final',
       ['xml_without_hash_node', 'sharedKey'],
