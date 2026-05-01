@@ -317,6 +317,24 @@ const safeNavigate = (target: unknown) => {
   window.location.assign(targetString)
 }
 
+const saveAuthCallbackDiag = (data: Record<string, unknown>) => {
+  try {
+    if (typeof window === 'undefined') return
+    const key = 'auth_callback_diag_v1'
+    const rows = JSON.parse(window.localStorage.getItem(key) || '[]')
+    const next = Array.isArray(rows) ? rows : []
+    next.push({
+      at: new Date().toISOString(),
+      origin: window.location.origin,
+      href: window.location.href,
+      ...data,
+    })
+    window.localStorage.setItem(key, JSON.stringify(next.slice(-20)))
+  } catch {
+    // ignore
+  }
+}
+
 const BUILD_MARKER = 'preview-auth-check-2026-05-01'
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
@@ -3892,7 +3910,9 @@ const isAuthFlowInProgress = () => {
     console.info('[auth] redirecting', { redirectTo: next })
     authRedirectedRef.current = true
     if (window.location.pathname !== next) {
-      safeNavigate(next)
+      const target = next.startsWith('/') ? `${window.location.origin}${next}` : next
+      saveAuthCallbackDiag({ event: 'session_resolved_nav', next, target })
+      safeNavigate(target)
     }
   }, [authResolved, authSession?.user?.id])
 
@@ -4019,13 +4039,15 @@ const isAuthFlowInProgress = () => {
             ? new URLSearchParams(window.location.search).get('next')
             : null
         )
-        const nextRaw = nextParam || readPostAuthNext()
-        const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
+        const savedReturnTo = typeof window !== 'undefined' ? readPostAuthNext() : null
+        const nextRaw = nextParam || savedReturnTo
+        const nextPath = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
+        const target = typeof window !== 'undefined' ? `${window.location.origin}${nextPath}` : nextPath
         console.info('[auth][callback]', {
           origin: typeof window !== 'undefined' ? window.location.origin : '',
           href: typeof window !== 'undefined' ? window.location.href : '',
         })
-        saveAuthDiag('auth_callback_success', { nextTarget: next })
+        saveAuthDiag('auth_callback_success', { nextTarget: target })
         const lang = readPostAuthLang()
         if (lang) {
           setUiLanguage(lang)
@@ -4035,9 +4057,17 @@ const isAuthFlowInProgress = () => {
         clearPostAuthNext()
         setAuthCallbackLoading(false)
         if (typeof window !== 'undefined') {
-          console.info('[auth][post-login-redirect]', { target: next })
-          saveAuthDiag('post_login_redirect', { target: next })
-          safeNavigate(next)
+          saveAuthCallbackDiag({
+            event: 'pre_nav',
+            nextParam,
+            savedReturnTo,
+            nextPath,
+            target,
+          })
+          alert(`POST LOGIN TARGET: ${target}`)
+          console.info('[auth][post-login-redirect]', { target })
+          saveAuthDiag('post_login_redirect', { target })
+          safeNavigate(target)
         }
       } finally {
         setAuthFlowInProgress(false)
