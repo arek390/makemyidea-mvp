@@ -291,6 +291,32 @@ const saveAuthDiag = (event: string, data: Record<string, unknown> = {}) => {
   }
 }
 
+const isPreviewHost = () => {
+  if (typeof window === 'undefined') return false
+  const host = window.location.hostname || ''
+  return host.includes('.vercel.app') && host.includes('makemyidea-mvp-git-')
+}
+
+const safeNavigate = (target: unknown) => {
+  if (typeof window === 'undefined') return
+  const targetString = String(target || '')
+  if (
+    isPreviewHost() &&
+    targetString.startsWith('https://makemyidea.work')
+  ) {
+    console.error('[preview guard] blocked production redirect', {
+      href: window.location.href,
+      origin: window.location.origin,
+      target: targetString,
+    })
+    saveAuthDiag('preview_guard_blocked', { target: targetString })
+    window.location.replace(`${window.location.origin}/engine`)
+    return
+  }
+  saveAuthDiag('safe_navigate', { target: targetString })
+  window.location.assign(targetString)
+}
+
 const BUILD_MARKER = 'preview-auth-check-2026-05-01'
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
@@ -3424,7 +3450,7 @@ const isAuthFlowInProgress = () => {
     if (typeof window !== 'undefined') {
       window.localStorage.clear()
       window.sessionStorage.clear()
-      window.location.replace('/')
+      safeNavigate('/')
     }
   }
 
@@ -3533,12 +3559,12 @@ const isAuthFlowInProgress = () => {
     if (typeof window === 'undefined') return
     const stored = window.sessionStorage.getItem(TOPUP_RETURN_TO_KEY)
     if (stored) {
-      window.sessionStorage.removeItem(TOPUP_RETURN_TO_KEY)
-      const normalized = stored.startsWith('#') ? stored.slice(1) : stored
+        window.sessionStorage.removeItem(TOPUP_RETURN_TO_KEY)
+        const normalized = stored.startsWith('#') ? stored.slice(1) : stored
       if (normalized.startsWith('/')) {
         const currentPath = window.location.pathname.replace(/\/+$/, '')
         if (currentPath === '/topup') {
-          window.location.assign(normalized)
+          safeNavigate(normalized)
           return
         }
         window.location.hash = `#${normalized}`
@@ -3866,7 +3892,7 @@ const isAuthFlowInProgress = () => {
     console.info('[auth] redirecting', { redirectTo: next })
     authRedirectedRef.current = true
     if (window.location.pathname !== next) {
-      window.location.replace(next)
+      safeNavigate(next)
     }
   }, [authResolved, authSession?.user?.id])
 
@@ -3874,7 +3900,7 @@ const isAuthFlowInProgress = () => {
     if (!isProtectedRoute || authLoading || authDisabled) return
     if (!authSession) {
       const next = window.location.pathname + window.location.search
-      window.location.href = `/login?next=${encodeURIComponent(next)}`
+      safeNavigate(`/login?next=${encodeURIComponent(next)}`)
     }
   }, [isProtectedRoute, authLoading, authSession, authDisabled])
 
@@ -3884,7 +3910,7 @@ const isAuthFlowInProgress = () => {
     if (isAuthed || guestEntryAllowed) return
     if (typeof window === 'undefined') return
     const next = window.location.pathname + window.location.search
-    window.location.replace(`/login?next=${encodeURIComponent(next)}`)
+    safeNavigate(`/login?next=${encodeURIComponent(next)}`)
   }, [isEnginePreview, authResolved, isAuthed, guestEntryAllowed])
 
   useEffect(() => {
@@ -3915,7 +3941,7 @@ const isAuthFlowInProgress = () => {
     }
 
     if (target !== path) {
-      window.location.replace(target)
+      safeNavigate(target)
     }
     initialRouteResolvedRef.current = true
   }, [authResolved, canEnterApp, isAuthed, isGuest, hasActiveGuestSession])
@@ -4011,7 +4037,7 @@ const isAuthFlowInProgress = () => {
         if (typeof window !== 'undefined') {
           console.info('[auth][post-login-redirect]', { target: next })
           saveAuthDiag('post_login_redirect', { target: next })
-          window.location.replace(next)
+          safeNavigate(next)
         }
       } finally {
         setAuthFlowInProgress(false)
@@ -4325,7 +4351,7 @@ const isAuthFlowInProgress = () => {
     if (typeof window !== 'undefined') {
       window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, uiLanguage)
       writePostAuthLang(uiLanguage)
-      window.location.href = target
+      safeNavigate(target)
     }
   }
 
@@ -9637,7 +9663,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       window.sessionStorage.removeItem('last_oauth_code')
     }
     setDiagnosticsEnabled(false)
-    window.location.href = '/'
+    safeNavigate('/')
   }
 
   const fetchEngineSessions = async () => {
@@ -10767,7 +10793,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 type="button"
                 className="secondary"
                 onClick={() => {
-                  window.location.href = '/'
+                  safeNavigate('/')
                 }}
               >
                 {copy.authCallback.tryAgainCta}
@@ -10776,7 +10802,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 type="button"
                 className="ghost"
                 onClick={() => {
-                  window.location.href = '/'
+                  safeNavigate('/')
                 }}
               >
                 {copy.authCallback.goHome}
@@ -11295,7 +11321,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 if (window.history.length > 1) {
                   window.history.back()
                 } else {
-                  window.location.href = '/'
+                  safeNavigate('/')
                 }
               }}
             >
@@ -11335,7 +11361,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             className="auth-logo"
             onClick={() => {
               if (typeof window !== 'undefined') {
-                window.location.href = '/'
+                safeNavigate('/')
               }
             }}
           >
