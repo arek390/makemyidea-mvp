@@ -3514,6 +3514,7 @@ const isAuthFlowInProgress = () => {
   }
   const handleTopupReturn = () => {
     if (typeof window === 'undefined') return
+    void refreshBillingBalance()
     const beforeRaw = window.sessionStorage.getItem(TOPUP_BALANCE_BEFORE_KEY)
     if (beforeRaw) {
       const before = Number(beforeRaw)
@@ -3579,8 +3580,8 @@ const isAuthFlowInProgress = () => {
   const [billingBalanceAnimateFromMinor, setBillingBalanceAnimateFromMinor] = useState<number | null>(
     null
   )
-  const refreshBillingBalance = async () => {
-    if (!authSession?.user?.id) return
+  const refreshBillingBalance = async (): Promise<number | null> => {
+    if (!authSession?.user?.id) return null
     try {
       void uiLanguage
       const response = await apiFetch('/api/billing?action=balance', {
@@ -3591,10 +3592,12 @@ const isAuthFlowInProgress = () => {
       const balance = Number(payload?.balanceMinor ?? 0)
       if (Number.isFinite(balance)) {
         setBillingBalanceOverrideMinor(balance)
+        return balance
       }
     } catch {
       // ignore refresh failures
     }
+    return null
   }
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -3624,7 +3627,6 @@ const isAuthFlowInProgress = () => {
   ])
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (!isEnginePreview) return
     if (paymentReturnHandledRef.current) return
 
     const params = new URLSearchParams(window.location.search || '')
@@ -3641,14 +3643,49 @@ const isAuthFlowInProgress = () => {
       'success'
     )
 
-    void refreshBillingBalance()
+    const beforeRaw = window.sessionStorage.getItem(TOPUP_BALANCE_BEFORE_KEY)
+    const before = beforeRaw ? Number(beforeRaw) : null
+    const hasBefore = Number.isFinite(before ?? NaN)
+    if (hasBefore) {
+      window.sessionStorage.setItem(
+        TOPUP_BALANCE_ANIMATE_FROM_KEY,
+        String(Math.max(0, (before as number) || 0))
+      )
+      window.sessionStorage.removeItem(TOPUP_BALANCE_BEFORE_KEY)
+    }
+
+    // Autopay ITN can arrive a bit later; poll for a short time so the UI updates.
+    const pollUntilIncreased = async () => {
+      const start = Date.now()
+      const maxMs = 30_000
+      const baseDelayMs = 800
+      let attempt = 0
+      while (Date.now() - start < maxMs) {
+        attempt += 1
+        const next = await refreshBillingBalance()
+        if (!hasBefore) {
+          if (attempt >= 3) break
+        } else if (Number.isFinite(next) && next > (before as number)) {
+          break
+        }
+        const delay = Math.min(4000, baseDelayMs * attempt)
+        await new Promise((r) => setTimeout(r, delay))
+      }
+    }
+    void pollUntilIncreased()
 
     // Optional cleanup: remove the query param after handling it.
     params.delete('payment')
     const search = params.toString()
     const nextUrl = `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash || ''}`
     window.history.replaceState({}, '', nextUrl)
-  }, [authSession?.user?.id, isEnginePreview, uiLanguage])
+  }, [
+    authSession?.user?.id,
+    billingAccount.balanceMinor,
+    billingBalanceOverrideMinor,
+    isEnginePreview,
+    uiLanguage,
+  ])
   const formatTopupAmountValue = (amountMinor: number) => {
     const amount = amountMinor / 100
     const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
