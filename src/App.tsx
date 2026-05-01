@@ -8666,17 +8666,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	    // Bootstrap for existing sessions (and the moment we cross the >=3 meaningful threshold)
 	    // without spamming on repeated failures.
 	    const bootstrap = actionPlanReadinessLlmCache.lastLLMResult == null && lastEvaluated < 3
-      const retryWindowMs = 15_000
-      const lastAttemptedAtNum = typeof lastAttemptedAt === 'number' ? lastAttemptedAt : null
-      const recentlyAttemptedSameInput = (() => {
-        if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
-        const attemptedAt = lastAttemptedAtNum
-        if (typeof attemptedAt !== 'number') return false
-        if (Date.now() - attemptedAt >= retryWindowMs) return false
-        if (lastAttemptedCount !== meaningfulCount) return false
-        if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
-        return true
-      })()
+	      const retryWindowMs = 15_000
+	      const lastAttemptedAtNum = typeof lastAttemptedAt === 'number' ? lastAttemptedAt : null
+	      const recentlyAttemptedSameInput = (() => {
+	        if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
+	        const attemptedAt = lastAttemptedAtNum
+	        if (attemptedAt == null) return false
+	        const attemptedAtMs: number = attemptedAt
+	        if (Date.now() - attemptedAtMs >= retryWindowMs) return false
+	        if (lastAttemptedCount !== meaningfulCount) return false
+	        if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
+	        return true
+	      })()
       if (recentlyAttemptedSameInput) {
         logActionPlanReadinessLlm({
           triggered: false,
@@ -8927,17 +8928,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const coverageChanged =
         typeof lastCoverage === 'number' && Number.isFinite(lastCoverage) ? currentCoverage !== lastCoverage : false
       const allowByCoverageChange = !bootstrap && coverageChanged
-      const retryWindowMs = 15_000
-      const lastAttemptedAtNum = typeof lastAttemptedAt === 'number' ? lastAttemptedAt : null
-      const recentlyAttemptedSameInput = (() => {
-        if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
-        const attemptedAt = lastAttemptedAtNum
-        if (typeof attemptedAt !== 'number') return false
-        if (Date.now() - attemptedAt >= retryWindowMs) return false
-        if (lastAttemptedCount !== actionPlanReadinessMeaningfulCount) return false
-        if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
-        return true
-      })()
+	      const retryWindowMs = 15_000
+	      const lastAttemptedAtNum = typeof lastAttemptedAt === 'number' ? lastAttemptedAt : null
+	      const recentlyAttemptedSameInput = (() => {
+	        if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
+	        const attemptedAt = lastAttemptedAtNum
+	        if (attemptedAt == null) return false
+	        const attemptedAtMs: number = attemptedAt
+	        if (Date.now() - attemptedAtMs >= retryWindowMs) return false
+	        if (lastAttemptedCount !== actionPlanReadinessMeaningfulCount) return false
+	        if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
+	        return true
+	      })()
       if (recentlyAttemptedSameInput) {
         logActionPlanReadinessLlm({
           triggered: false,
@@ -8996,12 +8998,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
       ;(window as any).__readinessDebugCounts = { ...counts }
     }
 
-    {
-      const timer = actionPlanReadinessLlmDebounceRef.current
-      if (timer != null) {
-        clearTimeout(timer)
-      }
-    }
+	    {
+	      const timer = actionPlanReadinessLlmDebounceRef.current
+	      if (timer === null) {
+	        // no-op
+	      } else {
+	        clearTimeout(timer)
+	      }
+	    }
     actionPlanReadinessLlmDebounceRef.current = setTimeout(() => {
       setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: false }))
       void fetchActionPlanReadinessLlm(actionPlanReadinessMeaningfulCount)
