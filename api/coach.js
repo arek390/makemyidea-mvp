@@ -49,7 +49,6 @@ export default async function handler(req, res) {
       (typeof req?.headers?.get === 'function' ? req.headers.get('x-request-id') : null) ||
       req?.headers?.['x-request-id'] ||
       null
-    console.log('[readiness][llm]', { stage: 'api_route', action, requestId })
     await handleActionPlanReadiness(req, res)
     return
   }

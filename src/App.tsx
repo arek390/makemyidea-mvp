@@ -2572,7 +2572,6 @@ function App() {
       const prev = readinessLogDedupeRef.current
       if (prev.sig === sig && now - prev.at < 1500) return
       readinessLogDedupeRef.current = { sig, at: now }
-      console.log('[readiness][llm]', payload)
     }
   )
 

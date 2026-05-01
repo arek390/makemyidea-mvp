@@ -175,15 +175,6 @@ export const handleActionPlanReadiness = async (req, res) => {
     const sessionId = toText(body.sessionId, 128)
     const language = normalizeLanguage(body.language)
     const items = normalizeItems(body.items)
-    console.log('[readiness][llm]', {
-      requestId,
-      sourceTask,
-      stage: 'endpoint_called',
-      sessionId,
-      language,
-      meaningfulItemsCount: items.length,
-    })
-
     if (!sessionId) {
       sendJson(res, 400, { ok: false, error: 'SESSION_ID_REQUIRED' })
       return
@@ -191,12 +182,6 @@ export const handleActionPlanReadiness = async (req, res) => {
 
     const meaningfulCount = items.length
     if (meaningfulCount < 3) {
-      console.log('[readiness][llm]', {
-        requestId,
-        sourceTask,
-        stage: 'fallback_meaningful_lt_3',
-        meaningfulItemsCount: meaningfulCount,
-      })
       sendJson(res, 200, {
         ok: true,
         summary: '',
@@ -220,7 +205,6 @@ export const handleActionPlanReadiness = async (req, res) => {
     const authRes = await supabaseAdmin.auth.getUser(token)
     const userId = authRes?.data?.user?.id || null
     if (authRes?.error || !userId) {
-      console.log('[readiness][llm]', { requestId, sourceTask, stage: 'auth_failed' })
       sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
       return
     }
@@ -233,12 +217,10 @@ export const handleActionPlanReadiness = async (req, res) => {
       .limit(1)
       .maybeSingle()
     if (sessionRes.error) {
-      console.log('[readiness][llm]', { requestId, sourceTask, stage: 'session_lookup_failed' })
       sendJson(res, 500, { ok: false, error: 'SESSION_LOOKUP_FAILED' })
       return
     }
     if (!sessionRes.data || String(sessionRes.data.user_id || '') !== String(userId)) {
-      console.log('[readiness][llm]', { requestId, sourceTask, stage: 'forbidden' })
       sendJson(res, 403, { ok: false, error: 'FORBIDDEN' })
       return
     }
@@ -249,7 +231,6 @@ export const handleActionPlanReadiness = async (req, res) => {
         ? 'Return ONLY valid JSON. No markdown. Required keys: summary, howToBoost, biggestBoostRightNow. Optional keys: qualityLevel, insights, improvements, nextBestAction. Keep the three required fields short (1 sentence, max 2 short sentences) and distinct.'
         : 'Zwróć WYŁĄCZNIE poprawny JSON. Bez markdown. Wymagane klucze: summary, howToBoost, biggestBoostRightNow. Opcjonalne: qualityLevel, insights, improvements, nextBestAction. 3 wymagane pola krótko (1 zdanie, max 2 krótkie zdania) i stylistycznie różnie.'
 
-    console.log('[readiness][llm]', { requestId, sourceTask, stage: 'llm_request_start' })
     const llmRes = await runLlmTask({
       apiKey: process.env.OPENAI_API_KEY,
       aiSupportEnabled: true,
@@ -261,22 +242,8 @@ export const handleActionPlanReadiness = async (req, res) => {
       parseResponse: (value) => {
         const parsed = tryParseJson(value)
         if (!parsed.ok || !parsed.data || typeof parsed.data !== 'object') {
-          const raw = typeof value === 'string' ? value : String(value ?? '')
-          console.log('[readiness][llm]', {
-            requestId,
-            sourceTask,
-            stage: 'parse_failed',
-            rawPreview: raw.slice(0, 500),
-          })
           return null
         }
-        console.log('[readiness][llm]', {
-          requestId,
-          sourceTask,
-          stage: 'parse_ok',
-          rawPreview: (typeof value === 'string' ? value : String(value ?? '')).slice(0, 500),
-          parsedJson: parsed.data,
-        })
         return normalizeResult(parsed.data)
       },
       fallbackData: null,
@@ -284,18 +251,6 @@ export const handleActionPlanReadiness = async (req, res) => {
       maxOutputTokens: 260,
       rateLimiter: limiter,
       rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
-    })
-    console.log('[readiness][llm]', {
-      requestId,
-      sourceTask,
-      stage: 'llm_response_received',
-      ok: Boolean(llmRes?.ok),
-      hasData: Boolean(llmRes?.data),
-      errorCategory: llmRes?.meta?.errorCategory || null,
-      errorMessage:
-        typeof llmRes?.error === 'string'
-          ? llmRes.error
-          : llmRes?.error?.message || llmRes?.meta?.message || null,
     })
 
     if (llmRes?.meta) {
@@ -308,23 +263,15 @@ export const handleActionPlanReadiness = async (req, res) => {
         referenceId: null,
         meta: llmRes.meta,
       })
-      console.log('[readiness][llm]', { requestId, sourceTask, stage: 'usage_recorded' })
     }
 
     if (!llmRes?.ok || !llmRes.data) {
-      console.log('[readiness][llm]', { requestId, sourceTask, stage: 'fallback_llm_failed' })
       sendJson(res, 200, fallback(false))
       return
     }
 
-    console.log('[readiness][llm]', { requestId, sourceTask, stage: 'success' })
     sendJson(res, 200, { ok: true, ...llmRes.data })
   } catch {
-    console.log('[readiness][llm]', {
-      requestId: `apr_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-      sourceTask: 'action-plan-readiness',
-      stage: 'fallback_exception',
-    })
     sendJson(res, 200, fallback(false))
   }
 }
