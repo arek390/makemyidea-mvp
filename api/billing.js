@@ -467,16 +467,42 @@ const handleAutopayItn = async (req, res) => {
     paymentStatus,
     paymentStatusDetails,
   ]
-  // Log without shared key.
-  const hashInputStringPrefix = `${hashValues.join('|')}|`.slice(0, 200)
-  console.log('[AUTOPAY ITN] hash_input_string_prefix', { itnRequestId, prefix: hashInputStringPrefix })
+  const hashFieldNames = [
+    'serviceID',
+    'orderID',
+    'remoteID',
+    'amount',
+    'currency',
+    'gatewayID',
+    'paymentDate',
+    'paymentStatus',
+    'paymentStatusDetails',
+  ]
+  const includedPairs = hashFieldNames
+    .map((name, idx) => ({ name, value: String(hashValues[idx] ?? '').trim() }))
+    .filter((pair) => Boolean(pair.value))
+  const hashPayload = includedPairs.map((pair) => pair.value).join('|')
+  console.log('[AUTOPAY ITN] hash_fields', {
+    itnRequestId,
+    included: includedPairs.map((p) => p.name),
+    trailingSeparatorUsed: false,
+  })
+  console.log('[AUTOPAY ITN] hash_values_normalized', {
+    itnRequestId,
+    values: includedPairs.map((p) => ({ [p.name]: p.value })),
+  })
 
-  const expectedHash = sha256(`${hashValues.join('|')}|${sharedKey}`)
-  console.log('[AUTOPAY ITN] expected_hash_prefix', { itnRequestId, prefix: expectedHash.slice(0, 8) })
+  const expectedHash = sha256(`${hashPayload}|${sharedKey}`)
+  console.log('[AUTOPAY ITN] expected_hash_prefix', {
+    itnRequestId,
+    prefix: expectedHash.slice(0, 8),
+  })
 
   let confirmation = 'NOTCONFIRMED'
   if (receivedHash && receivedHash.toLowerCase() === expectedHash.toLowerCase()) {
-    if (paymentStatus === 'SUCCESS') {
+    if (currency !== 'PLN') {
+      console.log('[AUTOPAY ITN] hash_ok_but_currency_not_pln', { itnRequestId, orderID, currency })
+    } else if (paymentStatus === 'SUCCESS') {
       try {
         const supabaseAdmin = getSupabaseAdmin()
         console.log('[AUTOPAY ITN] hash_ok', { itnRequestId, orderID })
@@ -492,6 +518,32 @@ const handleAutopayItn = async (req, res) => {
           console.log('[AUTOPAY ITN] payment_lookup_result', { itnRequestId, orderID, found: false })
           confirmation = 'NOTCONFIRMED'
         } else {
+          // Persist the Autopay-side identifiers for later audit/debug (no secrets).
+          const providerPayloadPatch = {
+            itn: {
+              remoteID,
+              gatewayID,
+              paymentDate,
+              paymentStatus,
+              paymentStatusDetails,
+              currency,
+            },
+          }
+          const providerUpdate = await supabaseAdmin
+            .from('payments')
+            .update({ provider_payload: providerPayloadPatch, updated_at: new Date().toISOString() })
+            .eq('order_id', orderID)
+          if (providerUpdate.error) {
+            console.error('[AUTOPAY ITN] payment_provider_payload_update_failed', {
+              itnRequestId,
+              orderID,
+              message: providerUpdate.error.message,
+              code: providerUpdate.error.code,
+            })
+          } else {
+            console.log('[AUTOPAY ITN] payment_provider_payload_update_ok', { itnRequestId, orderID })
+          }
+
           const itnAmountGrosze = parsePlnToGrosze(amount)
           const expectedAmountGrosze = Number(payment.amount_pln_grosze ?? NaN)
           console.log('[AUTOPAY ITN] payment_lookup_result', {
