@@ -961,7 +961,8 @@ const normalizeSeedEntriesForClassification = (entries) => {
 
 const buildSeedFallbackEntries = (text, maxEntries = 8) => {
   const chunks = String(text || '')
-    .split(/[\n\r]+|(?<=[.!?])\s+/)
+    // Avoid RegExp lookbehind for broader runtime compatibility.
+    .split(/[\n\r]+|[.!?]\s+/)
     .map((item) => normalizeSeedText(item))
     .filter(Boolean)
   return normalizeSeedEntries(
