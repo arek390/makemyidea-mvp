@@ -14,7 +14,7 @@ if (import.meta.env.DEV) {
       const first = String(args?.[0] ?? '')
       if (first.includes('[readiness][llm]')) {
         // eslint-disable-next-line no-console
-        console.trace('[TRACE readiness console.log source]', ...args)
+        ;(console as any).trace('[TRACE readiness console.log source]', ...args)
       }
       return originalLog(...args)
     }
@@ -23,7 +23,7 @@ if (import.meta.env.DEV) {
       const first = String(args?.[0] ?? '')
       if (first.includes('[readiness][llm]')) {
         // eslint-disable-next-line no-console
-        console.trace('[TRACE readiness console.warn source]', ...args)
+        ;(console as any).trace('[TRACE readiness console.warn source]', ...args)
       }
       return originalWarn(...args)
     }
@@ -43,7 +43,7 @@ if (import.meta.env.DEV) {
         // eslint-disable-next-line no-console
         console.warn('[TRACE READINESS FETCH]', { url, bodyPreview: body.slice(0, 300) })
         // eslint-disable-next-line no-console
-        console.trace('[TRACE READINESS FETCH STACK]')
+        ;(console as any).trace('[TRACE READINESS FETCH STACK]')
       }
       return originalFetch(...args)
     }
