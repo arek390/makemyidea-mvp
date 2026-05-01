@@ -15,6 +15,7 @@ const readRawBody = async (req) => {
 }
 
 const sha256 = (value) => createHash('sha256').update(value, 'utf8').digest('hex')
+const md5 = (value) => createHash('md5').update(value, 'utf8').digest('hex')
 
 const buildHashPayload = (values) => values.map((value) => String(value ?? '').trim()).filter(Boolean).join('|')
 
@@ -70,6 +71,16 @@ const resolveAutopayKey = ({ serviceId, kind }) => {
     (process.env[name2] && name2) ||
     null
   return { key: v, source }
+}
+
+const isHashDiagEnabled = () => {
+  const raw = String(process.env.AUTOPAY_ITN_HASH_DIAG || '').trim().toLowerCase()
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on'
+}
+
+const isHashDiagMd5Enabled = () => {
+  const raw = String(process.env.AUTOPAY_ITN_HASH_DIAG_MD5 || '').trim().toLowerCase()
+  return raw === '1' || raw === 'true' || raw === 'yes' || raw === 'on'
 }
 
 const buildConfirmXml = ({ serviceID, orderID, confirmation, sharedKey }) => {
@@ -225,7 +236,10 @@ const handleCreatePayment = async (req, res) => {
   }
 
   const serviceId = process.env.AUTOPAY_SERVICE_ID || ''
-  const { key: sharedKey } = resolveAutopayKey({ serviceId, kind: 'form' })
+  const { key: sharedKey, source: sharedKeySource } = resolveAutopayKey({
+    serviceId,
+    kind: 'form',
+  })
   const gatewayUrl = process.env.AUTOPAY_GATEWAY_URL || ''
   if (!serviceId || !sharedKey || !gatewayUrl) {
     sendJson(res, 500, { ok: false, error: 'MISSING_AUTOPAY_ENV' })
@@ -305,6 +319,13 @@ const handleCreatePayment = async (req, res) => {
     returnUrl, // ReturnURL (optional, order 45 in docs)
   ])
   const hash = sha256(`${hashPayload}|${sharedKey}`)
+  console.log('[AUTOPAY CREATE] key_meta', {
+    serviceId,
+    formKey: safeKeyMeta(sharedKey),
+    formKeyFingerprint: fingerprintKey(sharedKey),
+    formKeyEnv: sharedKeySource,
+    formHashPrefix: hash.slice(0, 8),
+  })
   console.log('[AUTOPAY CREATE] form_payload', {
     serviceId,
     orderId,
@@ -532,7 +553,7 @@ const handleAutopayItn = async (req, res) => {
     sharedKey: safeKeyMeta(sharedKey),
     sharedKeyFingerprint: fingerprintKey(sharedKey),
     sharedKeyEnv: sharedKeySource,
-    diagEnabled: process.env.AUTOPAY_ITN_HASH_DIAG === 'true',
+    diagEnabled: isHashDiagEnabled(),
   })
 
   // Official docs example (Autopay Online Payment Gateway - Documentation, "Example calculation of the value of a hash function in an ITN message"):
@@ -561,7 +582,10 @@ const handleAutopayItn = async (req, res) => {
     'paymentStatus',
     'paymentStatusDetails',
   ]
-  const rawPairs = hashFieldNames.map((name, idx) => ({ name, value: String(hashValuesRaw[idx] ?? '') }))
+  const rawPairs = hashFieldNames.map((name, idx) => ({
+    name,
+    value: String(hashValuesRaw[idx] ?? ''),
+  }))
   const normalizedPairs = rawPairs.map((pair) => ({
     name: pair.name,
     // No normalization beyond XML decoding (hash input is sensitive to whitespace).
@@ -593,25 +617,145 @@ const handleAutopayItn = async (req, res) => {
   console.log('[AUTOPAY ITN] expected_hash_prefix', { itnRequestId, prefix: expectedHash.slice(0, 8) })
   console.log('[AUTOPAY ITN] received_hash_prefix', { itnRequestId, prefix: receivedHashPrefix })
 
-  if (process.env.AUTOPAY_ITN_HASH_DIAG === 'true') {
-    const candidates = {
-      A_doc_fields_pipe_key: expectedDoc,
-      B_fields_plus_key_no_pipe: sha256(`${hashPayload}${sharedKey}`).toLowerCase(),
-      C_doc_trailing_pipe_then_key: sha256(`${hashPayload}||${sharedKey}`).toLowerCase(),
-      D_no_serviceID_pipe_key: sha256(`${normalizedPairs.slice(1).map((p) => p.value).join('|')}|${sharedKey}`).toLowerCase(),
-      E_omit_remoteID_pipe_key: sha256(`${[serviceID, orderID_raw, amount_raw, currency_raw, gatewayID_raw, paymentDate_raw, paymentStatus_raw, paymentStatusDetails_raw].map((v) => String(v ?? '')).join('|')}|${sharedKey}`).toLowerCase(),
-      F_omit_status_details_pipe_key: sha256(`${[serviceID, orderID_raw, remoteID_raw, amount_raw, currency_raw, gatewayID_raw, paymentDate_raw, paymentStatus_raw].map((v) => String(v ?? '')).join('|')}|${sharedKey}`).toLowerCase(),
-    }
+  if (isHashDiagEnabled()) {
     const receivedLower = String(receivedHash || '').toLowerCase()
-    const matchKeys = Object.entries(candidates)
-      .filter(([, v]) => v.toLowerCase() === receivedLower)
-      .map(([k]) => k)
-    console.log('[AUTOPAY ITN] hash_candidates', {
-      itnRequestId,
-      receivedPrefix: receivedHashPrefix,
-      expectedPrefixes: Object.fromEntries(Object.entries(candidates).map(([k, v]) => [k, v.slice(0, 8)])),
-      matches: matchKeys,
-    })
+
+    const fieldValuesClean = [
+      serviceID,
+      orderID,
+      remoteID,
+      amount,
+      currency,
+      gatewayID,
+      paymentDate,
+      paymentStatus,
+      paymentStatusDetails,
+    ]
+    const fieldNames = [...hashFieldNames]
+    const fieldValuesRaw = [...normalizedPairs.map((p) => p.value)]
+
+    const variants = []
+    const addVariant = (name, fields, hashValue, algo = 'sha256') => {
+      variants.push({
+        name,
+        algo,
+        fields,
+        prefix: String(hashValue || '').slice(0, 8),
+        match: String(hashValue || '').toLowerCase() === receivedLower,
+      })
+    }
+
+    const joinAll = (values) => values.map((v) => String(v ?? '')).join('|')
+    const joinSkipEmpty = (values) =>
+      values
+        .map((v) => String(v ?? ''))
+        .filter((v) => v !== '')
+        .join('|')
+
+    // 1) documented variant (all fields, key as final pipe-separated field)
+    addVariant(
+      '1_doc_fields_pipe_shared_key_final',
+      [...fieldNames, 'sharedKey'],
+      sha256(`${joinAll(fieldValuesRaw)}|${sharedKey}`).toLowerCase()
+    )
+    // 2) without serviceID
+    addVariant(
+      '2_no_serviceID_pipe_shared_key_final',
+      [...fieldNames.slice(1), 'sharedKey'],
+      sha256(`${joinAll(fieldValuesRaw.slice(1))}|${sharedKey}`).toLowerCase()
+    )
+    // 3) without remoteID
+    addVariant(
+      '3_no_remoteID_pipe_shared_key_final',
+      ['serviceID', 'orderID', 'amount', 'currency', 'gatewayID', 'paymentDate', 'paymentStatus', 'paymentStatusDetails', 'sharedKey'],
+      sha256(
+        `${joinAll([
+          serviceID,
+          orderID_raw,
+          amount_raw,
+          currency_raw,
+          gatewayID_raw,
+          paymentDate_raw,
+          paymentStatus_raw,
+          paymentStatusDetails_raw,
+        ])}|${sharedKey}`
+      ).toLowerCase()
+    )
+    // 4) without paymentStatusDetails
+    addVariant(
+      '4_no_paymentStatusDetails_pipe_shared_key_final',
+      ['serviceID', 'orderID', 'remoteID', 'amount', 'currency', 'gatewayID', 'paymentDate', 'paymentStatus', 'sharedKey'],
+      sha256(
+        `${joinAll([
+          serviceID,
+          orderID_raw,
+          remoteID_raw,
+          amount_raw,
+          currency_raw,
+          gatewayID_raw,
+          paymentDate_raw,
+          paymentStatus_raw,
+        ])}|${sharedKey}`
+      ).toLowerCase()
+    )
+    // 5) omit empty fields
+    addVariant(
+      '5_skip_empty_fields_pipe_shared_key_final',
+      [...fieldNames.filter((_, i) => String(fieldValuesRaw[i] ?? '') !== ''), 'sharedKey'],
+      sha256(`${joinSkipEmpty(fieldValuesRaw)}|${sharedKey}`).toLowerCase()
+    )
+    // 6) include empty fields as separators (same as 1, but named explicitly)
+    addVariant(
+      '6_include_empty_fields_as_separators_pipe_shared_key_final',
+      [...fieldNames, 'sharedKey'],
+      sha256(`${joinAll(fieldValuesRaw)}|${sharedKey}`).toLowerCase()
+    )
+    // 7) use cleaned values (trimmed) instead of raw XML
+    addVariant(
+      '7_clean_values_trimmed_pipe_shared_key_final',
+      [...fieldNames, 'sharedKey'],
+      sha256(`${joinAll(fieldValuesClean)}|${sharedKey}`).toLowerCase()
+    )
+    // 8) append sharedKey directly without pipe
+    addVariant(
+      '8_fields_plus_shared_key_no_pipe',
+      [...fieldNames, 'sharedKey'],
+      sha256(`${joinAll(fieldValuesRaw)}${sharedKey}`).toLowerCase()
+    )
+    // 9) add trailing pipe after sharedKey
+    addVariant(
+      '9_fields_pipe_shared_key_pipe_trailing',
+      [...fieldNames, 'sharedKey', '(trailing|)'],
+      sha256(`${joinAll(fieldValuesRaw)}|${sharedKey}|`).toLowerCase()
+    )
+    // 10) SHA256(decoded XML without hash node + pipe + sharedKey)
+    const xmlNoHash = String(xml || '').replace(/<hash>.*?<\\/hash>/s, '')
+    addVariant(
+      '10_xml_without_hash_node_pipe_shared_key_final',
+      ['xml_without_hash_node', 'sharedKey'],
+      sha256(`${xmlNoHash}|${sharedKey}`).toLowerCase()
+    )
+
+    if (isHashDiagMd5Enabled()) {
+      addVariant(
+        'md5_doc_fields_pipe_shared_key_final',
+        [...fieldNames, 'sharedKey'],
+        md5(`${joinAll(fieldValuesRaw)}|${sharedKey}`).toLowerCase(),
+        'md5'
+      )
+    }
+
+    for (const v of variants) {
+      console.log('[AUTOPAY ITN] hash_diag_variant', {
+        itnRequestId,
+        serviceID,
+        variant: v.name,
+        algo: v.algo,
+        fields: v.fields,
+        prefix: v.prefix,
+        match: v.match,
+      })
+    }
   }
 
   let confirmation = 'NOTCONFIRMED'
