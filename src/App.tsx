@@ -2551,7 +2551,7 @@ function App() {
   const actionPlanReadinessLlmDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const actionPlanReadinessLastTotalCountRef = useRef(0)
   const readinessLastScheduledKeyRef = useRef<string | null>(null)
-  const logActionPlanReadinessLlm = useEffectEvent(() => {})
+  const logActionPlanReadinessLlm = useEffectEvent((_event: unknown) => {})
 
   useEffect(() => {
     if (!actionPlanReadinessEnabled) return
@@ -8703,14 +8703,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
       return
     }
 
-	    actionPlanReadinessLlmInFlightRef.current = true
-		    const seq = (actionPlanReadinessLlmSeqRef.current += 1)
-		    const requestId = `apr_ui_${Date.now()}_${seq}`
-	      const readinessKey = `${enginePreviewSessionId}|${meaningfulCount}|${currentCoverage}|${actionPlanReadinessHeuristic.notWorkingMeaningfulCount}`
-	      logActionPlanReadinessLlm({
-	        triggered: true,
-	        reason: bootstrap ? 'trigger_bootstrap' : 'trigger_increment',
-	        meaningfulItemsCount: meaningfulCount,
+		    actionPlanReadinessLlmInFlightRef.current = true
+			    const seq = (actionPlanReadinessLlmSeqRef.current += 1)
+			    const requestId = `apr_ui_${Date.now()}_${seq}`
+		      logActionPlanReadinessLlm({
+		        triggered: true,
+		        reason: bootstrap ? 'trigger_bootstrap' : 'trigger_increment',
+		        meaningfulItemsCount: meaningfulCount,
 	        lastEvaluatedCount: lastEvaluated,
 	        usedFallback: false,
 	      })
