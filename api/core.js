@@ -240,7 +240,7 @@ const handleFeedbackSend = async (req, res, body) => {
     `User agent: ${userAgent || 'n/a'}`,
   ].join('\n')
 
-  const toEmail = process.env.FEEDBACK_TO_EMAIL || 'arektest8@gmail.com'
+  const toEmail = process.env.FEEDBACK_TO_EMAIL || 'makemyideawork@aremai.tech'
 
   try {
     const response = await fetch('https://api.resend.com/emails', {

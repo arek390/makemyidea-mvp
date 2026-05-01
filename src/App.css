@@ -1525,16 +1525,19 @@
   box-shadow: 0 6px 14px rgba(8, 26, 56, 0.25);
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
-  transform: translateY(-100px);
+  position: sticky;
+  top: 1rem;
+  z-index: 2;
+  transform: none;
 }
 
 .topup-return-button:hover {
-  transform: translateY(-101px);
+  transform: translateY(-1px);
   box-shadow: 0 8px 18px rgba(8, 26, 56, 0.28);
 }
 
 .topup-return-button:active {
-  transform: translateY(-100px);
+  transform: translateY(0);
   box-shadow: 0 4px 10px rgba(8, 26, 56, 0.2);
 }
 

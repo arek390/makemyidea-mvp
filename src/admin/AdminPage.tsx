@@ -1048,7 +1048,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         )}
 
         {/* Manual test checklist:
-            1) Zaloguj jako arektest8@gmail.com → widzisz tabelę Billing.
+            1) Zaloguj jako makemyideawork@aremai.tech → widzisz tabelę Billing.
             2) Zaloguj jako zwykły user → nie widzisz tabeli, endpointy zwracają 403.
             3) Zasil +20 → saldo rośnie, audyt zapisany.
             4) Refresh → saldo nadal poprawne.

@@ -3511,6 +3511,11 @@ const isAuthFlowInProgress = () => {
       window.sessionStorage.removeItem(TOPUP_RETURN_TO_KEY)
       const normalized = stored.startsWith('#') ? stored.slice(1) : stored
       if (normalized.startsWith('/')) {
+        const currentPath = window.location.pathname.replace(/\/+$/, '')
+        if (currentPath === '/topup') {
+          window.location.assign(normalized)
+          return
+        }
         window.location.hash = `#${normalized}`
         setHashPath(normalized)
         return
@@ -4955,7 +4960,7 @@ const isAuthFlowInProgress = () => {
       setFeedbackCooldown(0)
     }
     setFeedbackNotice(null)
-    const to = 'arektest8@gmail.com'
+    const to = 'makemyideawork@aremai.tech'
     const subject = 'Feedback – makemyidea.work'
     const sessionName =
       enginePreviewSessionName || sessionId || feedbackContext.sessionId || ''

@@ -1,6 +1,6 @@
 import type { Session } from '@supabase/supabase-js'
 
-export const ADMIN_EMAIL = 'arektest8@gmail.com'
+export const ADMIN_EMAIL = 'makemyideawork@aremai.tech'
 
 export const DIAGNOSTICS_STORAGE_KEY = 'mmw:diagnosticsEnabled'
 

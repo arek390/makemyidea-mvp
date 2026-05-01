@@ -1,7 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 
 const MAX_INPUT_CHARS = 10_000
-const ADMIN_EMAIL = 'arektest8@gmail.com'
+const ADMIN_EMAIL = 'makemyideawork@aremai.tech'
 
 export const readJsonBody = async (req) => {
   if (req.body && typeof req.body === 'object') return req.body
