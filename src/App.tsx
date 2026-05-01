@@ -14387,6 +14387,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
           <a className="ghost landing-bottom-link" href="/privacy">
             {copy.landingPrivacyTitle}
           </a>
+          <a
+            className="landing-bottom-logo-link"
+            href="https://www.aremai.tech"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label="AremAI website"
+          >
+            <img
+              className="landing-bottom-logo"
+              src={new URL('/logo/aremai_logo.png.webp', import.meta.url).href}
+              alt="AremAI"
+              loading="lazy"
+            />
+          </a>
         </footer>
       )}
       {activeIdeaCell && (

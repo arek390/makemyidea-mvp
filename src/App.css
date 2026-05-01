@@ -791,6 +791,7 @@
 }
 
 .landing-bottom-bar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -803,6 +804,30 @@
 
 .landing-bottom-link {
   text-decoration: none;
+}
+
+.landing-bottom-logo {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  height: 28px;
+  width: auto;
+  opacity: 0.92;
+}
+
+.landing-bottom-logo-link {
+  position: absolute;
+  left: 20px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.landing-bottom-logo-link:hover .landing-bottom-logo {
+  opacity: 1;
 }
 
 .scroll-progress {
