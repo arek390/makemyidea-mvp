@@ -2557,6 +2557,7 @@ function App() {
   const readinessDevCountsRef = useRef<{ effectRuns: number; scheduled: number; fetchStarts: number; sameKeySkips: number }>(
     { effectRuns: 0, scheduled: 0, fetchStarts: 0, sameKeySkips: 0 }
   )
+  const readinessActiveSourceDisabledOnceRef = useRef(false)
   const logActionPlanReadinessLlm = useEffectEvent(
     (payload: {
       triggered: boolean
@@ -2565,6 +2566,18 @@ function App() {
       lastEvaluatedCount: number
       usedFallback: boolean
     }) => {
+      // TEMP: hard-disable readiness log emitter at the active source.
+      // This should silence browser console floods even if scheduling still happens elsewhere.
+      if (true) {
+        if (!readinessActiveSourceDisabledOnceRef.current) {
+          readinessActiveSourceDisabledOnceRef.current = true
+          console.warn('[READINESS ACTIVE SOURCE DISABLED]', {
+            file: 'src/App.tsx',
+            function: 'logActionPlanReadinessLlm',
+          })
+        }
+        return
+      }
       if (!actionPlanReadinessEnabled) return
       // Keep logs informative but avoid noisy repeats on every render.
       const sig = `${payload.triggered ? '1' : '0'}|${payload.reason}|${payload.meaningfulItemsCount}|${payload.lastEvaluatedCount}|${payload.usedFallback ? '1' : '0'}`
