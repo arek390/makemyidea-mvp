@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'crypto'
+import { createHash, randomUUID, timingSafeEqual } from 'crypto'
 import { XMLParser } from 'fast-xml-parser'
 import { createSupabaseServerClient } from '../src/lib/server/supabaseServer.js'
 import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
@@ -96,6 +96,18 @@ const buildConfirmXml = ({ serviceID, orderID, confirmation, sharedKey }) => {
     `</transactionsConfirmations>` +
     `<hash>${hash}</hash>` +
     `</confirmationList>`
+}
+
+const timingSafeHexEqual = (a, b) => {
+  const aa = String(a || '')
+  const bb = String(b || '')
+  if (!aa || !bb) return false
+  if (aa.length !== bb.length) return false
+  try {
+    return timingSafeEqual(Buffer.from(aa, 'utf8'), Buffer.from(bb, 'utf8'))
+  } catch {
+    return false
+  }
 }
 
 const normalizeAmountPln = (value) => {
@@ -563,83 +575,64 @@ const handleAutopayItn = async (req, res) => {
     diagEnabled: isHashDiagEnabled(),
   })
 
-  // Official docs example (Autopay Online Payment Gateway - Documentation, "Example calculation of the value of a hash function in an ITN message"):
-  // Hash = SHA256("serviceID|orderID|remoteID|amount|currency|gatewayID|paymentDate|paymentStatus|paymentStatusDetails|shared_key")
-  // IMPORTANT: empty optional fields MUST preserve separators (i.e. do NOT drop empty values).
-  // IMPORTANT: do NOT add an extra trailing separator after shared_key.
-  const hashValuesRaw = [
-    serviceID,
-    orderID_raw,
-    remoteID_raw,
-    amount_raw,
-    currency_raw,
-    gatewayID_raw,
-    paymentDate_raw,
-    paymentStatus_raw,
-    paymentStatusDetails_raw,
-  ]
-  const hashFieldNames = [
-    'serviceID',
-    'orderID',
-    'remoteID',
-    'amount',
-    'currency',
-    'gatewayID',
-    'paymentDate',
-    'paymentStatus',
-    'paymentStatusDetails',
-  ]
-  const rawPairs = hashFieldNames.map((name, idx) => ({
-    name,
-    value: String(hashValuesRaw[idx] ?? ''),
-  }))
-  const normalizedPairs = rawPairs.map((pair) => ({
-    name: pair.name,
-    // No normalization beyond XML decoding (hash input is sensitive to whitespace).
-    value: pair.value,
-  }))
+  // ITN hash verification must handle extra non-empty fields in SUCCESS payloads.
+  // Approach:
+  // - Take `serviceID` from transactionList.
+  // - Extract direct child elements of `<transaction>` from the decoded XML in their original order.
+  // - Exclude hash/checksum fields and empty values (no empty separators).
+  // - Append sharedKey as final pipe-separated value.
+  // - SHA256 hex.
+  const extractOrderedTransactionFields = (xmlText) => {
+    const text = String(xmlText || '')
+    const match = text.match(/<transaction\b[^>]*>([\s\S]*?)<\/transaction>/i)
+    if (!match) return []
+    const inner = match[1] || ''
+    const out = []
+    const re = /<([A-Za-z0-9_:-]+)>([^<]*)<\/\1>/g
+    let m
+    while ((m = re.exec(inner))) {
+      const name = String(m[1] || '').trim()
+      const value = String(m[2] || '').trim()
+      if (!name) continue
+      const normalizedName = name.toLowerCase()
+      if (normalizedName === 'hash' || normalizedName === 'checksum' || normalizedName === 'hashvalue') continue
+      if (!value) continue
+      out.push({ name, value })
+    }
+    return out
+  }
 
-  const hashPayload = normalizedPairs.map((pair) => pair.value).join('|')
-  const expectedDoc = sha256(`${hashPayload}|${sharedKey}`).toLowerCase()
+  const orderedTxPairs = extractOrderedTransactionFields(xml)
+  const hashFieldNames = ['serviceID', ...orderedTxPairs.map((p) => p.name)]
+  const hashValuesRaw = [serviceID, ...orderedTxPairs.map((p) => p.value)]
+  const expectedHash = sha256(`${hashValuesRaw.join('|')}|${sharedKey}`).toLowerCase()
 
+  console.log('[AUTOPAY ITN] hash_algorithm_version', {
+    itnRequestId,
+    value: 'itn_v3_ordered_nonempty_children_pipe_shared_key_final',
+    hasSeparatorBeforeSharedKey: true,
+    hasTrailingSeparatorAfterSharedKey: false,
+    fieldCountIncludingSharedKey: hashValuesRaw.length + 1,
+  })
   console.log('[AUTOPAY ITN] hash_fields', {
     itnRequestId,
     included: hashFieldNames,
-    trailingSeparatorUsed: false,
-  })
-  console.log('[AUTOPAY ITN] hash_algorithm_version', {
-    itnRequestId,
-    value: 'itn_v2_pipe_shared_key_final',
-    hasSeparatorBeforeSharedKey: true,
-    hasTrailingSeparatorAfterSharedKey: false,
-    fieldCountIncludingSharedKey: 10,
+    excludesEmptyFields: true,
+    excludesHashNode: true,
   })
   console.log('[AUTOPAY ITN] hash_values_normalized', {
     itnRequestId,
-    values: normalizedPairs.map((p) => ({ [p.name]: p.value })),
+    values: hashValuesRaw.map((v, idx) => ({ [hashFieldNames[idx]]: v })),
   })
-
-  // Production verifier: documented variant (all fields, pipes, then pipe + key).
-  const expectedHash = expectedDoc
   console.log('[AUTOPAY ITN] expected_hash_prefix', { itnRequestId, prefix: expectedHash.slice(0, 8) })
   console.log('[AUTOPAY ITN] received_hash_prefix', { itnRequestId, prefix: receivedHashPrefix })
 
   if (isHashDiagEnabled()) {
     const receivedLower = String(receivedHash || '').toLowerCase()
 
-    const fieldValuesClean = [
-      serviceID,
-      orderID,
-      remoteID,
-      amount,
-      currency,
-      gatewayID,
-      paymentDate,
-      paymentStatus,
-      paymentStatusDetails,
-    ]
     const fieldNames = [...hashFieldNames]
-    const fieldValuesRaw = [...normalizedPairs.map((p) => p.value)]
+    const fieldValuesRaw = [...hashValuesRaw]
+    const fieldValuesClean = fieldValuesRaw.map((v) => String(v ?? '').trim())
 
     const variants = []
     const addVariant = (name, fields, hashValue, algo = 'sha256') => {
@@ -671,40 +664,34 @@ const handleAutopayItn = async (req, res) => {
       [...fieldNames.slice(1), 'sharedKey'],
       sha256(`${joinAll(fieldValuesRaw.slice(1))}|${sharedKey}`).toLowerCase()
     )
-    // 3) without remoteID
-    addVariant(
-      '3_no_remoteID_pipe_shared_key_final',
-      ['serviceID', 'orderID', 'amount', 'currency', 'gatewayID', 'paymentDate', 'paymentStatus', 'paymentStatusDetails', 'sharedKey'],
-      sha256(
-        `${joinAll([
-          serviceID,
-          orderID_raw,
-          amount_raw,
-          currency_raw,
-          gatewayID_raw,
-          paymentDate_raw,
-          paymentStatus_raw,
-          paymentStatusDetails_raw,
-        ])}|${sharedKey}`
-      ).toLowerCase()
-    )
-    // 4) without paymentStatusDetails
-    addVariant(
-      '4_no_paymentStatusDetails_pipe_shared_key_final',
-      ['serviceID', 'orderID', 'remoteID', 'amount', 'currency', 'gatewayID', 'paymentDate', 'paymentStatus', 'sharedKey'],
-      sha256(
-        `${joinAll([
-          serviceID,
-          orderID_raw,
-          remoteID_raw,
-          amount_raw,
-          currency_raw,
-          gatewayID_raw,
-          paymentDate_raw,
-          paymentStatus_raw,
-        ])}|${sharedKey}`
-      ).toLowerCase()
-    )
+    const dropField = (names, values, dropName) => {
+      const outNames = []
+      const outValues = []
+      for (let i = 0; i < names.length; i += 1) {
+        if (names[i] === dropName) continue
+        outNames.push(names[i])
+        outValues.push(values[i])
+      }
+      return { names: outNames, values: outValues }
+    }
+    // 3) without remoteID (if present)
+    {
+      const dropped = dropField(fieldNames, fieldValuesRaw, 'remoteID')
+      addVariant(
+        '3_no_remoteID_pipe_shared_key_final',
+        [...dropped.names, 'sharedKey'],
+        sha256(`${joinAll(dropped.values)}|${sharedKey}`).toLowerCase()
+      )
+    }
+    // 4) without paymentStatusDetails (if present)
+    {
+      const dropped = dropField(fieldNames, fieldValuesRaw, 'paymentStatusDetails')
+      addVariant(
+        '4_no_paymentStatusDetails_pipe_shared_key_final',
+        [...dropped.names, 'sharedKey'],
+        sha256(`${joinAll(dropped.values)}|${sharedKey}`).toLowerCase()
+      )
+    }
     // 5) omit empty fields
     addVariant(
       '5_skip_empty_fields_pipe_shared_key_final',
@@ -767,7 +754,8 @@ const handleAutopayItn = async (req, res) => {
   }
 
   let confirmation = 'NOTCONFIRMED'
-  const hashMatches = receivedHash && receivedHash.toLowerCase() === expectedHash.toLowerCase()
+  const hashMatches =
+    Boolean(receivedHash) && timingSafeHexEqual(String(receivedHash).toLowerCase(), expectedHash)
   if (hashMatches) {
     console.log('[AUTOPAY ITN] hash_match', { itnRequestId, orderID })
     if (currency !== 'PLN') {
