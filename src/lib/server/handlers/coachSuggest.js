@@ -469,7 +469,8 @@ const normalizeSeedText = (value) =>
 const seedDedupKey = (value) =>
   normalizeSeedText(value)
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    // Avoid Unicode property escapes for broader runtime compatibility.
+    .replace(/[^A-Za-z0-9\u00C0-\u024F\u1E00-\u1EFF\u00A1-\u00FF\u0100-\u017F\u0180-\u024F\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -569,7 +570,8 @@ const normalizeColumnFirstComparableText = (value) =>
 const columnFirstMatchKey = (value) =>
   normalizeColumnFirstComparableText(value)
     .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, '')
+    // Avoid Unicode property escapes for broader runtime compatibility.
+    .replace(/[^A-Za-z0-9\u00C0-\u024F\u1E00-\u1EFF\u00A1-\u00FF\u0100-\u017F\u0180-\u024F\s]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -926,7 +928,8 @@ const normalizeSeedEntriesForClassification = (entries) => {
   const dedupKey = (value) =>
     normalize(value)
       .toLowerCase()
-      .replace(/[^\p{L}\p{N}\s]/gu, '')
+      // Avoid Unicode property escapes for broader runtime compatibility.
+      .replace(/[^A-Za-z0-9\u00C0-\u024F\u1E00-\u1EFF\u00A1-\u00FF\u0100-\u017F\u0180-\u024F\s]/g, '')
       .replace(/\s+/g, ' ')
       .trim()
   const safeShorten = (value, maxLen = 160) => {
