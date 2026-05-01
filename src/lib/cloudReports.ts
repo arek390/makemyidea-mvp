@@ -1,4 +1,3 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
 import type { Database } from './supabase/types'
 import { supabase } from './supabase/client'
 import type {
@@ -25,8 +24,6 @@ export type ReportRecord = {
   lastSummaryTextHash: string | null
   sourceUpdatedAt: number
 }
-
-const typedSupabase = supabase as SupabaseClient<Database, 'public'>
 
 const toNumber = (value: unknown, fallback = 0) => {
   if (typeof value === 'number' && Number.isFinite(value)) return value
