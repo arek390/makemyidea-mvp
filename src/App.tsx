@@ -2488,6 +2488,7 @@ function App() {
   const [authCallbackLoading, setAuthCallbackLoading] = useState(false)
   const [authCallbackHint, setAuthCallbackHint] = useState<string | null>(null)
   const [authCallbackErrorVisible, setAuthCallbackErrorVisible] = useState(false)
+  const [authCallbackDiag, setAuthCallbackDiag] = useState<Record<string, unknown> | null>(null)
   const authResolved = authReady
   const [loginEmail, setLoginEmail] = useState('')
   const [loginSending, setLoginSending] = useState(false)
@@ -3986,9 +3987,49 @@ const isAuthFlowInProgress = () => {
         href,
       })
       saveAuthDiag('auth_callback_start', {})
+      const authDiagLoginOrigin =
+        typeof window !== 'undefined' ? window.localStorage.getItem('auth_diag_login_origin') : null
+      const authDiagLoginHref =
+        typeof window !== 'undefined' ? window.localStorage.getItem('auth_diag_login_href') : null
+      const authDiagRedirectTo =
+        typeof window !== 'undefined' ? window.localStorage.getItem('auth_diag_redirect_to') : null
+      const authDiagStartedAt =
+        typeof window !== 'undefined' ? window.localStorage.getItem('auth_diag_started_at') : null
       const params = new URLSearchParams(window.location.search)
       const code = params.get('code')
       const errorParam = params.get('error')
+      const errorDescription = params.get('error_description')
+      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : ''
+      const originMatches = Boolean(authDiagLoginOrigin && currentOrigin && authDiagLoginOrigin === currentOrigin)
+      const authStorageKeys =
+        typeof window !== 'undefined'
+          ? Object.keys(window.localStorage || {}).filter((key) => {
+              const lower = key.toLowerCase()
+              return (
+                lower.includes('supabase') ||
+                lower.includes('sb-') ||
+                lower.includes('auth') ||
+                lower.includes('pkce') ||
+                lower.includes('code-verifier')
+              )
+            })
+          : []
+      const diagSnapshot = {
+        currentOrigin,
+        currentHref: href,
+        auth_diag_login_origin: authDiagLoginOrigin,
+        auth_diag_login_href: authDiagLoginHref,
+        auth_diag_redirect_to: authDiagRedirectTo,
+        auth_diag_started_at: authDiagStartedAt,
+        originMatches,
+        hasCode: Boolean(code),
+        error: errorParam,
+        error_description: errorDescription,
+        authStorageKeys,
+      }
+      setAuthCallbackDiag(diagSnapshot)
+      console.info('[auth][callback][pkce-diag]', diagSnapshot)
+      saveAuthDiag('auth_callback_pkce_diag', diagSnapshot as any)
       console.log('[auth callback] location', {
         href,
         origin: typeof window !== 'undefined' ? window.location.origin : '',
@@ -4013,11 +4054,11 @@ const isAuthFlowInProgress = () => {
       if (errorParam) {
         console.error('[auth callback] oauth error', {
           error: errorParam,
-          description: params.get('error_description'),
+          description: errorDescription,
           href,
         })
         setAuthCallbackError(copy.authCallback.signInFailed)
-        setAuthCallbackHint(params.get('error_description'))
+        setAuthCallbackHint(errorDescription)
         setAuthCallbackLoading(false)
         return
       }
@@ -4025,12 +4066,23 @@ const isAuthFlowInProgress = () => {
         const { data, error } = await auth.exchangeCodeForSession(href)
         if (cancelled) return
         if (error || !data?.session) {
-          const codeValue = (error as { code?: string })?.code
-          const debugValue = error
-            ? `${error.message}${codeValue ? ` (${codeValue})` : ''}`
+          const codeValue = (error as { code?: string })?.code ?? null
+          const statusValue = (error as { status?: number })?.status ?? null
+          const nameValue = (error as any)?.name ?? null
+          const messageValue = (error as any)?.message ?? null
+          const errPayload = {
+            name: nameValue,
+            message: messageValue,
+            code: codeValue,
+            status: statusValue,
+          }
+          console.error('[auth][callback] exchangeCodeForSession_failed', errPayload)
+          saveAuthDiag('auth_callback_exchange_failed', { error: errPayload })
+          const debugValue = messageValue
+            ? `${messageValue}${codeValue ? ` (${codeValue})` : ''}`
             : null
           setAuthCallbackError(copy.authCallback.signInFailed)
-          setAuthCallbackHint(import.meta.env.DEV ? debugValue : null)
+          setAuthCallbackHint(debugValue)
           setAuthCallbackLoading(false)
           return
         }
@@ -4119,13 +4171,21 @@ const isAuthFlowInProgress = () => {
 	    setAuthError(null)
 	    setLoginNotice(null)
 	    setLoginOauthLoading(true)
-	    const redirectTo = `${window.location.origin}/auth/callback`
+	    const redirectTo = new URL('/auth/callback', window.location.origin).toString()
     console.info('[auth][start]', {
       origin: window.location.origin,
       href: window.location.href,
       redirectTo,
     })
     saveAuthDiag('auth_start', { redirectTo })
+    try {
+      window.localStorage.setItem('auth_diag_login_origin', window.location.origin)
+      window.localStorage.setItem('auth_diag_login_href', window.location.href)
+      window.localStorage.setItem('auth_diag_redirect_to', redirectTo)
+      window.localStorage.setItem('auth_diag_started_at', new Date().toISOString())
+    } catch {
+      // ignore
+    }
 	    const next =
 	      typeof window !== 'undefined'
 	        ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
@@ -4194,13 +4254,21 @@ const isAuthFlowInProgress = () => {
     setAuthError(null)
     setLoginNotice(null)
     setLoginSending(true)
-    const redirectTo = `${window.location.origin}/auth/callback`
+    const redirectTo = new URL('/auth/callback', window.location.origin).toString()
     console.info('[auth][start]', {
       origin: window.location.origin,
       href: window.location.href,
       redirectTo,
     })
     saveAuthDiag('auth_start', { redirectTo })
+    try {
+      window.localStorage.setItem('auth_diag_login_origin', window.location.origin)
+      window.localStorage.setItem('auth_diag_login_href', window.location.href)
+      window.localStorage.setItem('auth_diag_redirect_to', redirectTo)
+      window.localStorage.setItem('auth_diag_started_at', new Date().toISOString())
+    } catch {
+      // ignore
+    }
     setAuthFlowInProgress(true)
     recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_magiclink_start', {
@@ -10805,8 +10873,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
           {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && (
             <p className="engine-error">{authCallbackError}</p>
           )}
-          {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && import.meta.env.DEV && (
-            <p className="muted">DEV: {authCallbackHint || authCallbackError}</p>
+          {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && authCallbackHint && (
+            <p className="muted">DIAG: {authCallbackHint}</p>
+          )}
+          {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && authCallbackDiag && (
+            <details className="muted" style={{ fontSize: 12 }}>
+              <summary>PKCE diagnostics</summary>
+              <pre style={{ whiteSpace: 'pre-wrap' }}>
+                {JSON.stringify(authCallbackDiag, null, 2)}
+              </pre>
+            </details>
           )}
           {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && (
             <div className="actions">
