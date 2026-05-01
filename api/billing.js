@@ -379,6 +379,11 @@ const handleBalance = async (req, res) => {
     }
     const { data, error } = await supabase.auth.getUser()
     if (error || !data?.user) {
+      console.log('[billing][balance] unauthorized', {
+        hasUser: Boolean(data?.user),
+        hasError: Boolean(error),
+        error: error ? String(error.message || error) : null,
+      })
       res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
       return
     }
@@ -399,6 +404,7 @@ const handleBalance = async (req, res) => {
       return
     }
     const balanceMinor = Number(account?.balance_pln_grosze ?? 0)
+    console.log('[billing][balance] ok', { userIdPrefix: String(userId).slice(0, 8), balanceMinor })
     res.status(200).json({
       ok: true,
       currency: billingCurrency,
@@ -408,6 +414,7 @@ const handleBalance = async (req, res) => {
       balance_usd_cents: Number(account?.balance_usd_cents ?? 0),
     })
   } catch (error) {
+    console.error('[billing][balance] failed', { message: error?.message || String(error) })
     res.status(500).json({ ok: false, error: 'SERVER_ERROR' })
   }
 }
