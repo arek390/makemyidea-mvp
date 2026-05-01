@@ -271,10 +271,6 @@ const POST_AUTH_LANG_KEY = 'post-auth-lang'
 const TOPUP_RETURN_TO_KEY = 'topup-return-to'
 const FX_FALLBACK_RATE = 3.55
 
-const getOAuthRedirectTo = () => {
-  if (typeof window === 'undefined') return ''
-  return `${window.location.origin}/auth/callback`
-}
 const BUILD_MARKER = 'preview-auth-check-2026-05-01'
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
