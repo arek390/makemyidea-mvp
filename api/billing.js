@@ -426,6 +426,7 @@ const handleAutopayItn = async (req, res) => {
 
   const transactionList = parsed?.transactionList || parsed?.transactionlist
   const cleanField = (value) => String(value ?? '').trim()
+  const rawField = (value) => String(value ?? '')
   const serviceID = cleanField(transactionList?.serviceID || '')
   const transactionNode = transactionList?.transactions?.transaction
   const transaction = Array.isArray(transactionNode) ? transactionNode[0] : transactionNode
@@ -435,15 +436,28 @@ const handleAutopayItn = async (req, res) => {
     return
   }
 
-  const orderID = cleanField(transaction?.orderID || '')
-  const remoteID = cleanField(transaction?.remoteID || '')
-  const amount = cleanField(transaction?.amount || '')
-  const currency = cleanField(transaction?.currency || '')
-  const gatewayID = cleanField(transaction?.gatewayID || '')
-  const paymentDate = cleanField(transaction?.paymentDate || '')
-  const paymentStatus = cleanField(transaction?.paymentStatus || '')
-  const paymentStatusDetails = cleanField(transaction?.paymentStatusDetails || '')
-  const receivedHash = cleanField(transactionList?.hash || transaction?.hash || '')
+  // For HASH verification we must use values exactly as transmitted in XML (beyond XML decoding).
+  // Do NOT trim these values, as hash input is sensitive to even whitespace.
+  const orderID_raw = rawField(transaction?.orderID || '')
+  const remoteID_raw = rawField(transaction?.remoteID || '')
+  const amount_raw = rawField(transaction?.amount || '')
+  const currency_raw = rawField(transaction?.currency || '')
+  const gatewayID_raw = rawField(transaction?.gatewayID || '')
+  const paymentDate_raw = rawField(transaction?.paymentDate || '')
+  const paymentStatus_raw = rawField(transaction?.paymentStatus || '')
+  const paymentStatusDetails_raw = rawField(transaction?.paymentStatusDetails || '')
+  const receivedHash_raw = rawField(transactionList?.hash || transaction?.hash || '')
+
+  // Cleaned versions for routing/DB lookups/logic.
+  const orderID = cleanField(orderID_raw)
+  const remoteID = cleanField(remoteID_raw)
+  const amount = cleanField(amount_raw)
+  const currency = cleanField(currency_raw)
+  const gatewayID = cleanField(gatewayID_raw)
+  const paymentDate = cleanField(paymentDate_raw)
+  const paymentStatus = cleanField(paymentStatus_raw)
+  const paymentStatusDetails = cleanField(paymentStatusDetails_raw)
+  const receivedHash = cleanField(receivedHash_raw)
   const receivedHashPrefix = receivedHash ? receivedHash.slice(0, 8) : ''
 
   console.log('[AUTOPAY ITN] parsed_fields', {
@@ -476,19 +490,20 @@ const handleAutopayItn = async (req, res) => {
     diagEnabled: process.env.AUTOPAY_ITN_HASH_DIAG === 'true',
   })
 
-  // NOTE: Official docs example (Autopay Online Payment Gateway - Documentation, section "Example calculation of the value of a hash function in an ITN message")
-  // shows: Hash = SHA256("serviceID|orderID|remoteID|amount|currency|gatewayID|paymentDate|paymentStatus|paymentStatusDetails|shared_key")
-  // i.e. pipe-separated values with the shared key appended as the last pipe-separated value.
-  const hashValues = [
+  // Official docs example (Autopay Online Payment Gateway - Documentation, "Example calculation of the value of a hash function in an ITN message"):
+  // Hash = SHA256("serviceID|orderID|remoteID|amount|currency|gatewayID|paymentDate|paymentStatus|paymentStatusDetails|shared_key")
+  // IMPORTANT: empty optional fields MUST preserve separators (i.e. do NOT drop empty values).
+  // IMPORTANT: do NOT add an extra trailing separator after shared_key.
+  const hashValuesRaw = [
     serviceID,
-    orderID,
-    remoteID,
-    amount,
-    currency,
-    gatewayID,
-    paymentDate,
-    paymentStatus,
-    paymentStatusDetails,
+    orderID_raw,
+    remoteID_raw,
+    amount_raw,
+    currency_raw,
+    gatewayID_raw,
+    paymentDate_raw,
+    paymentStatus_raw,
+    paymentStatusDetails_raw,
   ]
   const hashFieldNames = [
     'serviceID',
@@ -501,16 +516,15 @@ const handleAutopayItn = async (req, res) => {
     'paymentStatus',
     'paymentStatusDetails',
   ]
-  const rawPairs = hashFieldNames.map((name, idx) => ({ name, value: String(hashValues[idx] ?? '') }))
-  // IMPORTANT: For hash verification we preserve exact decoded XML text, except for trimming *line-end whitespace*.
-  // (Autopay docs show no extra whitespace; trimming avoids accidental CR/LF artifacts from transport.)
-  const normalizedPairs = rawPairs.map((pair) => ({ name: pair.name, value: pair.value.replace(/[\r\n]+/g, '').trim() }))
+  const rawPairs = hashFieldNames.map((name, idx) => ({ name, value: String(hashValuesRaw[idx] ?? '') }))
+  const normalizedPairs = rawPairs.map((pair) => ({
+    name: pair.name,
+    // No normalization beyond XML decoding (hash input is sensitive to whitespace).
+    value: pair.value,
+  }))
 
-  const hashPayloadAll = normalizedPairs.map((pair) => pair.value).join('|')
-  const hashPayloadSkipEmpty = normalizedPairs.filter((p) => p.value !== '').map((p) => p.value).join('|')
-
-  const expectedDoc = sha256(`${hashPayloadAll}|${sharedKey}`)
-  const expectedDocSkipEmpty = sha256(`${hashPayloadSkipEmpty}|${sharedKey}`)
+  const hashPayload = normalizedPairs.map((pair) => pair.value).join('|')
+  const expectedDoc = sha256(`${hashPayload}|${sharedKey}`).toLowerCase()
 
   console.log('[AUTOPAY ITN] hash_fields', {
     itnRequestId,
@@ -529,13 +543,12 @@ const handleAutopayItn = async (req, res) => {
 
   if (process.env.AUTOPAY_ITN_HASH_DIAG === 'true') {
     const candidates = {
-      A_fields_pipe_key: expectedDoc,
-      B_fields_plus_key_no_pipe: sha256(`${hashPayloadAll}${sharedKey}`),
-      C_skip_empty_pipe_key: expectedDocSkipEmpty,
-      D_skip_empty_plus_key_no_pipe: sha256(`${hashPayloadSkipEmpty}${sharedKey}`),
-      E_no_serviceID_pipe_key: sha256(`${normalizedPairs.slice(1).map((p) => p.value).join('|')}|${sharedKey}`),
-      F_omit_remoteID_pipe_key: sha256(`${[serviceID, orderID, amount, currency, gatewayID, paymentDate, paymentStatus, paymentStatusDetails].join('|')}|${sharedKey}`),
-      G_omit_status_details_pipe_key: sha256(`${[serviceID, orderID, remoteID, amount, currency, gatewayID, paymentDate, paymentStatus].join('|')}|${sharedKey}`),
+      A_doc_fields_pipe_key: expectedDoc,
+      B_fields_plus_key_no_pipe: sha256(`${hashPayload}${sharedKey}`).toLowerCase(),
+      C_doc_trailing_pipe_then_key: sha256(`${hashPayload}||${sharedKey}`).toLowerCase(),
+      D_no_serviceID_pipe_key: sha256(`${normalizedPairs.slice(1).map((p) => p.value).join('|')}|${sharedKey}`).toLowerCase(),
+      E_omit_remoteID_pipe_key: sha256(`${[serviceID, orderID_raw, amount_raw, currency_raw, gatewayID_raw, paymentDate_raw, paymentStatus_raw, paymentStatusDetails_raw].map((v) => String(v ?? '')).join('|')}|${sharedKey}`).toLowerCase(),
+      F_omit_status_details_pipe_key: sha256(`${[serviceID, orderID_raw, remoteID_raw, amount_raw, currency_raw, gatewayID_raw, paymentDate_raw, paymentStatus_raw].map((v) => String(v ?? '')).join('|')}|${sharedKey}`).toLowerCase(),
     }
     const receivedLower = String(receivedHash || '').toLowerCase()
     const matchKeys = Object.entries(candidates)
@@ -550,10 +563,44 @@ const handleAutopayItn = async (req, res) => {
   }
 
   let confirmation = 'NOTCONFIRMED'
-  if (receivedHash && receivedHash.toLowerCase() === expectedHash.toLowerCase()) {
+  const hashMatches = receivedHash && receivedHash.toLowerCase() === expectedHash.toLowerCase()
+  if (hashMatches) {
+    console.log('[AUTOPAY ITN] hash_match', { itnRequestId, orderID })
     if (currency !== 'PLN') {
       console.log('[AUTOPAY ITN] hash_ok_but_currency_not_pln', { itnRequestId, orderID, currency })
-    } else if (paymentStatus === 'SUCCESS') {
+    } else if (paymentStatus === 'PENDING') {
+      // Valid ITN but not a final state — persist identifiers for audit, do not credit balance.
+      try {
+        const supabaseAdmin = getSupabaseAdmin()
+        const providerPayloadPatch = {
+          itn: {
+            remoteID,
+            gatewayID,
+            paymentDate,
+            paymentStatus,
+            paymentStatusDetails,
+            currency,
+          },
+        }
+        const updateRes = await supabaseAdmin
+          .from('payments')
+          .update({ provider_payload: providerPayloadPatch, updated_at: new Date().toISOString() })
+          .eq('order_id', orderID)
+        if (updateRes.error) {
+          console.error('[AUTOPAY ITN] pending_payment_update_failed', {
+            itnRequestId,
+            orderID,
+            message: updateRes.error.message,
+            code: updateRes.error.code,
+          })
+        } else {
+          console.log('[AUTOPAY ITN] pending_payment_update_ok', { itnRequestId, orderID })
+          confirmation = 'CONFIRMED'
+        }
+      } catch (error) {
+        console.error('[AUTOPAY ITN] pending_payment_update_failed', { itnRequestId, orderID, message: error?.message })
+      }
+    } else if (paymentStatus === 'SUCCESS' && paymentStatusDetails === 'AUTHORIZED') {
       try {
         const supabaseAdmin = getSupabaseAdmin()
         console.log('[AUTOPAY ITN] hash_ok', { itnRequestId, orderID })
@@ -701,7 +748,12 @@ const handleAutopayItn = async (req, res) => {
         confirmation = 'NOTCONFIRMED'
       }
     } else {
-      console.log('[AUTOPAY ITN] hash_ok_but_status_not_success', { itnRequestId, orderID, paymentStatus })
+      console.log('[AUTOPAY ITN] hash_ok_but_status_not_creditable', {
+        itnRequestId,
+        orderID,
+        paymentStatus,
+        paymentStatusDetails,
+      })
     }
   } else {
     console.log('[AUTOPAY ITN] hash_mismatch', { itnRequestId, orderID, receivedHashPrefix })
