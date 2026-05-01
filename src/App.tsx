@@ -3937,6 +3937,7 @@ const isAuthFlowInProgress = () => {
       setAuthCallbackError(copy.authCallback.unknownError)
       return
     }
+    console.info('[auth cleanup active]', '2834f86')
     const auth = client.auth
     let cancelled = false
     const run = async () => {
@@ -4007,12 +4008,19 @@ const isAuthFlowInProgress = () => {
         const savedReturnTo = typeof window !== 'undefined' ? readPostAuthNext() : null
         const nextRaw = nextParam || savedReturnTo
         const nextPath = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
-        const target = typeof window !== 'undefined' ? `${window.location.origin}${nextPath}` : nextPath
+        const target =
+          typeof window !== 'undefined'
+            ? `${window.location.origin}${nextPath}`
+            : nextPath
+        const engineTarget =
+          typeof window !== 'undefined'
+            ? `${window.location.origin}/engine`
+            : '/engine'
         console.info('[auth][callback]', {
           origin: typeof window !== 'undefined' ? window.location.origin : '',
           href: typeof window !== 'undefined' ? window.location.href : '',
         })
-        saveAuthDiag('auth_callback_success', { nextTarget: target })
+        saveAuthDiag('auth_callback_success', { nextTarget: target, engineTarget })
         const lang = readPostAuthLang()
         if (lang) {
           setUiLanguage(lang)
@@ -4022,9 +4030,9 @@ const isAuthFlowInProgress = () => {
         clearPostAuthNext()
         setAuthCallbackLoading(false)
         if (typeof window !== 'undefined') {
-          console.info('[auth][post-login-redirect]', { target })
-          saveAuthDiag('post_login_redirect', { target })
-          safeNavigate(target)
+          console.info('[auth][post-login-redirect]', { target: engineTarget, ignoredTarget: target })
+          saveAuthDiag('post_login_redirect', { target: engineTarget, ignoredTarget: target })
+          window.location.replace(engineTarget)
         }
       } finally {
         setAuthFlowInProgress(false)
