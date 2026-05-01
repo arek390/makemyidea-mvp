@@ -3,6 +3,33 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+if (import.meta.env.DEV) {
+  if (typeof window !== 'undefined' && !(window as any).__readinessLogTracerInstalled) {
+    ;(window as any).__readinessLogTracerInstalled = true
+
+    const originalLog = console.log.bind(console)
+    const originalWarn = console.warn.bind(console)
+
+    console.log = (...args: any[]) => {
+      const first = String(args?.[0] ?? '')
+      if (first.includes('[readiness][llm]')) {
+        // eslint-disable-next-line no-console
+        console.trace('[TRACE readiness console.log source]', ...args)
+      }
+      return originalLog(...args)
+    }
+
+    console.warn = (...args: any[]) => {
+      const first = String(args?.[0] ?? '')
+      if (first.includes('[readiness][llm]')) {
+        // eslint-disable-next-line no-console
+        console.trace('[TRACE readiness console.warn source]', ...args)
+      }
+      return originalWarn(...args)
+    }
+  }
+}
+
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
 
 const resolveUiLanguage = () => {
