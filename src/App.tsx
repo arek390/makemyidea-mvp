@@ -271,6 +271,26 @@ const POST_AUTH_LANG_KEY = 'post-auth-lang'
 const TOPUP_RETURN_TO_KEY = 'topup-return-to'
 const FX_FALLBACK_RATE = 3.55
 
+const saveAuthDiag = (event: string, data: Record<string, unknown> = {}) => {
+  try {
+    if (typeof window === 'undefined') return
+    const key = 'auth_redirect_diag_v1'
+    const rows = JSON.parse(window.localStorage.getItem(key) || '[]')
+    const next = Array.isArray(rows) ? rows : []
+    next.push({
+      event,
+      at: new Date().toISOString(),
+      origin: window.location.origin,
+      href: window.location.href,
+      ...data,
+    })
+    window.localStorage.setItem(key, JSON.stringify(next.slice(-20)))
+    console.info('[auth diag]', event, data)
+  } catch (e) {
+    console.warn('[auth diag] failed', e)
+  }
+}
+
 const BUILD_MARKER = 'preview-auth-check-2026-05-01'
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
@@ -2406,6 +2426,13 @@ function App() {
       mode: import.meta.env.MODE,
       vercelEnv: env.VERCEL_ENV ?? null,
     })
+    ;(window as any).__printAuthDiag = () => {
+      try {
+        return JSON.parse(window.localStorage.getItem('auth_redirect_diag_v1') || '[]')
+      } catch {
+        return []
+      }
+    }
   }, [])
   const [activeStep, setActiveStep] = useState<StepId>(1)
   const [showLanding, setShowLanding] = useState(true)
@@ -3911,6 +3938,7 @@ const isAuthFlowInProgress = () => {
         origin: typeof window !== 'undefined' ? window.location.origin : '',
         href,
       })
+      saveAuthDiag('auth_callback_start', {})
       const params = new URLSearchParams(window.location.search)
       const code = params.get('code')
       const errorParam = params.get('error')
@@ -3971,6 +3999,7 @@ const isAuthFlowInProgress = () => {
           origin: typeof window !== 'undefined' ? window.location.origin : '',
           href: typeof window !== 'undefined' ? window.location.href : '',
         })
+        saveAuthDiag('auth_callback_success', { nextTarget: next })
         const lang = readPostAuthLang()
         if (lang) {
           setUiLanguage(lang)
@@ -3981,6 +4010,7 @@ const isAuthFlowInProgress = () => {
         setAuthCallbackLoading(false)
         if (typeof window !== 'undefined') {
           console.info('[auth][post-login-redirect]', { target: next })
+          saveAuthDiag('post_login_redirect', { target: next })
           window.location.replace(next)
         }
       } finally {
@@ -4048,6 +4078,7 @@ const isAuthFlowInProgress = () => {
       href: window.location.href,
       redirectTo,
     })
+    saveAuthDiag('auth_start', { redirectTo })
 	    const next =
 	      typeof window !== 'undefined'
 	        ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
@@ -4122,6 +4153,7 @@ const isAuthFlowInProgress = () => {
       href: window.location.href,
       redirectTo,
     })
+    saveAuthDiag('auth_start', { redirectTo })
     setAuthFlowInProgress(true)
     recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_magiclink_start', {
@@ -4208,6 +4240,7 @@ const isAuthFlowInProgress = () => {
         href: window.location.href,
         redirectTo,
       })
+      saveAuthDiag('auth_start', { redirectTo })
       const { data, error } = await client.auth.signUp({
         email: loginEmail.trim(),
         password: loginPassword,
