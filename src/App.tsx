@@ -2550,6 +2550,26 @@ function App() {
   const actionPlanReadinessLlmInFlightRef = useRef(false)
   const actionPlanReadinessLlmDebounceRef = useRef<number | null>(null)
   const actionPlanReadinessLastTotalCountRef = useRef(0)
+  const readinessLoopDebugRef = useRef<{
+    lastEffectDeps: null | {
+      sessionId: string | null
+      meaningfulCount: number
+      totalItemsCount: number
+      coverage: number
+      lastEvaluatedCount: number
+      lastEvaluatedCoverage: number | null
+      lastAttemptedAt: number | null
+      lastAttemptedCount: number
+      lastAttemptedCoverage: number | null
+      hasLastLLMResult: boolean
+      loading: boolean
+      inFlight: boolean
+    }
+    effectRunCount: number
+    lastResetAt: number | null
+    lastFetchStartAt: number | null
+    lastFetchRequestId: string | null
+  }>({ lastEffectDeps: null, effectRunCount: 0, lastResetAt: null, lastFetchStartAt: null, lastFetchRequestId: null })
   const logActionPlanReadinessLlm = useEffectEvent(
     (payload: {
       triggered: boolean
@@ -2560,6 +2580,17 @@ function App() {
     }) => {
       if (!actionPlanReadinessEnabled) return
       console.log('[readiness][llm]', payload)
+      // Extra debug to diagnose loops (do not log user content).
+      console.log('[READINESS LOOP DEBUG][log]', {
+        sessionId: enginePreviewSessionId || null,
+        triggered: payload.triggered,
+        reason: payload.reason,
+        meaningfulItemsCount: payload.meaningfulItemsCount,
+        lastEvaluatedCount: payload.lastEvaluatedCount,
+        hasLastLLMResult: Boolean(actionPlanReadinessLlmCacheRef.current?.lastLLMResult),
+        loading: Boolean(actionPlanReadinessLlmCacheRef.current?.loading),
+        inFlight: Boolean(actionPlanReadinessLlmInFlightRef.current),
+      })
     }
   )
 
@@ -2567,6 +2598,12 @@ function App() {
     if (!actionPlanReadinessEnabled) return
     if (!enginePreviewSessionId) return
     // Reset per-session so existing sessions can bootstrap a first LLM insight.
+    readinessLoopDebugRef.current.lastResetAt = Date.now()
+    console.log('[READINESS LOOP DEBUG][reset]', {
+      sessionId: enginePreviewSessionId,
+      actionPlanReadinessEnabled,
+      actionPlanReadinessLlmEnabled,
+    })
     setActionPlanReadinessLlmCache({
       lastEvaluatedCount: 0,
       lastEvaluatedCoverage: null,
@@ -8641,7 +8678,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
   )
 
-	  const fetchActionPlanReadinessLlm = useEffectEvent(async (meaningfulCount: number) => {
+  const fetchActionPlanReadinessLlm = useEffectEvent(async (meaningfulCount: number) => {
 	    if (!actionPlanReadinessLlmEnabled) return
 	    if (!enginePreviewSessionId) return
 	    // Run LLM after the first meaningful inputs appear (>=3 required for stable signal),
@@ -8725,6 +8762,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
     actionPlanReadinessLlmInFlightRef.current = true
 	    const seq = (actionPlanReadinessLlmSeqRef.current += 1)
 	    const requestId = `apr_ui_${Date.now()}_${seq}`
+      readinessLoopDebugRef.current.lastFetchStartAt = Date.now()
+      readinessLoopDebugRef.current.lastFetchRequestId = requestId
+      console.log('[READINESS LOOP DEBUG][fetch][start]', {
+        requestId,
+        sessionId: enginePreviewSessionId,
+        meaningfulItemsCount: meaningfulCount,
+        lastEvaluatedCount: lastEvaluated,
+        lastEvaluatedCoverage: actionPlanReadinessLlmCache.lastEvaluatedCoverage ?? null,
+        currentCoverage,
+        totalItemsCount: enginePreviewItems.length,
+        inFlight: true,
+        loading: actionPlanReadinessLlmCache.loading,
+        hasLastLLMResult: Boolean(actionPlanReadinessLlmCache.lastLLMResult),
+      })
 	    logActionPlanReadinessLlm({
 	      triggered: true,
 	      reason: `${bootstrap ? 'trigger_bootstrap' : 'trigger_increment'} requestId=${requestId}`,
@@ -8740,6 +8791,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
       lastAttemptedCoverage: currentCoverage,
       loading: true,
     }))
+    console.log('[READINESS LOOP DEBUG][fetch][state-set]', {
+      requestId,
+      step: 'set_loading_true',
+      sessionId: enginePreviewSessionId,
+      meaningfulItemsCount: meaningfulCount,
+      currentCoverage,
+    })
     actionPlanReadinessLastTotalCountRef.current = enginePreviewItems.length
     try {
       const sessionRes = client ? await client.auth.getSession() : null
@@ -8767,6 +8825,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
       })
       const payload = await response.json().catch(() => null)
       if (seq !== actionPlanReadinessLlmSeqRef.current) return
+      console.log('[READINESS LOOP DEBUG][fetch][response]', {
+        requestId,
+        sessionId: enginePreviewSessionId,
+        httpStatus: response.status,
+        responseOk: response.ok,
+        payloadOk: Boolean(payload && payload.ok === true),
+        payloadKeys: payload && typeof payload === 'object' ? Object.keys(payload).slice(0, 12) : null,
+      })
       logActionPlanReadinessLlm({
         triggered: true,
         reason: 'response_received',
@@ -8780,6 +8846,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
           lastLLMResult: null,
           loading: false,
         }))
+        console.log('[READINESS LOOP DEBUG][fetch][state-set]', {
+          requestId,
+          step: 'set_loading_false_invalid_payload',
+          sessionId: enginePreviewSessionId,
+        })
         return
       }
       const normalized = normalizeReadinessLlmResult(payload)
@@ -8789,6 +8860,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
           lastLLMResult: null,
           loading: false,
         }))
+        console.log('[READINESS LOOP DEBUG][fetch][state-set]', {
+          requestId,
+          step: 'set_loading_false_normalize_failed',
+          sessionId: enginePreviewSessionId,
+        })
         return
       }
       setActionPlanReadinessLlmCache((prev) => ({
@@ -8798,6 +8874,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
         lastLLMResult: normalized,
         loading: false,
       }))
+      console.log('[READINESS LOOP DEBUG][fetch][state-set]', {
+        requestId,
+        step: 'set_lastLLMResult',
+        sessionId: enginePreviewSessionId,
+        lastEvaluatedCount: meaningfulCount,
+        currentCoverage,
+      })
     } catch {
       if (seq !== actionPlanReadinessLlmSeqRef.current) return
       logActionPlanReadinessLlm({
@@ -8812,14 +8895,52 @@ const isMissingLabel = (item: EngineBoardItem) => {
         lastLLMResult: null,
         loading: false,
       }))
+      console.log('[READINESS LOOP DEBUG][fetch][state-set]', {
+        requestId,
+        step: 'set_loading_false_exception',
+        sessionId: enginePreviewSessionId,
+      })
     } finally {
       actionPlanReadinessLlmInFlightRef.current = false
+      console.log('[READINESS LOOP DEBUG][fetch][end]', {
+        requestId,
+        sessionId: enginePreviewSessionId,
+        inFlight: false,
+      })
     }
   })
 
 	  useEffect(() => {
 	    if (!actionPlanReadinessEnabled) return
 	    if (!actionPlanReadinessLlmEnabled) return
+      {
+        const deps = {
+          sessionId: enginePreviewSessionId || null,
+          meaningfulCount: actionPlanReadinessMeaningfulCount,
+          totalItemsCount: enginePreviewItems.length,
+          coverage: actionPlanReadinessHeuristic.coverage,
+          lastEvaluatedCount: actionPlanReadinessLlmCache.lastEvaluatedCount || 0,
+          lastEvaluatedCoverage: actionPlanReadinessLlmCache.lastEvaluatedCoverage,
+          lastAttemptedAt: actionPlanReadinessLlmCache.lastAttemptedAt,
+          lastAttemptedCount: actionPlanReadinessLlmCache.lastAttemptedCount || 0,
+          lastAttemptedCoverage: actionPlanReadinessLlmCache.lastAttemptedCoverage,
+          hasLastLLMResult: Boolean(actionPlanReadinessLlmCache.lastLLMResult),
+          loading: Boolean(actionPlanReadinessLlmCache.loading),
+          inFlight: Boolean(actionPlanReadinessLlmInFlightRef.current),
+        }
+        const prev = readinessLoopDebugRef.current.lastEffectDeps
+        readinessLoopDebugRef.current.effectRunCount += 1
+        readinessLoopDebugRef.current.lastEffectDeps = deps
+        console.log('[READINESS LOOP DEBUG][effect][run]', {
+          run: readinessLoopDebugRef.current.effectRunCount,
+          deps,
+          changed: prev
+            ? Object.fromEntries(
+                Object.keys(deps).map((k) => [k, (prev as any)[k] !== (deps as any)[k]])
+              )
+            : null,
+        })
+      }
     if (actionPlanReadinessLlmCache.loading) {
       logActionPlanReadinessLlm({
         triggered: false,
@@ -8905,6 +9026,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
       void fetchActionPlanReadinessLlm(actionPlanReadinessMeaningfulCount)
     }, 650)
     setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: true }))
+    console.log('[READINESS LOOP DEBUG][effect][debounce-scheduled]', {
+      sessionId: enginePreviewSessionId || null,
+      meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
+      lastEvaluatedCount: last,
+      bootstrap,
+      allowByCoverageChange,
+      enginePreviewItemsLen: enginePreviewItems.length,
+      lastTotalCount: actionPlanReadinessLastTotalCountRef.current,
+    })
     logActionPlanReadinessLlm({
       triggered: true,
       reason: bootstrap ? 'debounce_scheduled_bootstrap' : 'debounce_scheduled_increment',
