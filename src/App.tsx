@@ -3952,6 +3952,20 @@ const isAuthFlowInProgress = () => {
         href,
       })
       saveAuthDiag('auth_callback_start', {})
+      const authLoginOrigin =
+        typeof window !== 'undefined' ? window.sessionStorage.getItem('auth_login_origin') : null
+      const currentOrigin = typeof window !== 'undefined' ? window.location.origin : ''
+      const originMatches = Boolean(authLoginOrigin && currentOrigin && authLoginOrigin === currentOrigin)
+      console.info('[auth][callback] origin_check', {
+        currentOrigin,
+        authLoginOrigin,
+        originMatches,
+      })
+      saveAuthDiag('auth_callback_origin_check', {
+        currentOrigin,
+        authLoginOrigin,
+        originMatches,
+      })
       const params = new URLSearchParams(window.location.search)
       const code = params.get('code')
       const errorParam = params.get('error')
@@ -4000,6 +4014,15 @@ const isAuthFlowInProgress = () => {
         return
       }
       try {
+        if (authLoginOrigin && currentOrigin && authLoginOrigin !== currentOrigin) {
+          const diag = `Auth started on ${authLoginOrigin} but callback returned to ${currentOrigin}. Use the same preview domain.`
+          console.error('[auth][callback] origin_mismatch', { authLoginOrigin, currentOrigin })
+          saveAuthDiag('auth_callback_origin_mismatch', { authLoginOrigin, currentOrigin })
+          setAuthCallbackError(copy.authCallback.signInFailed)
+          setAuthCallbackHint(diag)
+          setAuthCallbackLoading(false)
+          return
+        }
         const exchangedKey = 'auth_exchanged_code_v1'
         const alreadyExchanged =
           typeof window !== 'undefined'
@@ -4153,13 +4176,14 @@ const isAuthFlowInProgress = () => {
 	    setAuthError(null)
 	    setLoginNotice(null)
 	    setLoginOauthLoading(true)
-	    const redirectTo = `${window.location.origin}/auth/callback`
+	    const redirectTo = new URL('/auth/callback', window.location.origin).toString()
     console.info('[auth][start]', {
       origin: window.location.origin,
       href: window.location.href,
       redirectTo,
     })
     saveAuthDiag('auth_start', { redirectTo })
+    window.sessionStorage.setItem('auth_login_origin', window.location.origin)
 	    const next =
 	      typeof window !== 'undefined'
 	        ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
@@ -4224,13 +4248,14 @@ const isAuthFlowInProgress = () => {
     setAuthError(null)
     setLoginNotice(null)
     setLoginSending(true)
-    const redirectTo = `${window.location.origin}/auth/callback`
+    const redirectTo = new URL('/auth/callback', window.location.origin).toString()
     console.info('[auth][start]', {
       origin: window.location.origin,
       href: window.location.href,
       redirectTo,
     })
     saveAuthDiag('auth_start', { redirectTo })
+    window.sessionStorage.setItem('auth_login_origin', window.location.origin)
     setAuthFlowInProgress(true)
     logAuthDiagnostics('auth_magiclink_start', {
       origin: window.location.origin,
@@ -4310,13 +4335,14 @@ const isAuthFlowInProgress = () => {
         setAuthError(`${error.message}${detail}`)
       }
     } else {
-      const redirectTo = `${window.location.origin}/auth/callback`
+      const redirectTo = new URL('/auth/callback', window.location.origin).toString()
       console.info('[auth][start]', {
         origin: window.location.origin,
         href: window.location.href,
         redirectTo,
       })
       saveAuthDiag('auth_start', { redirectTo })
+      window.sessionStorage.setItem('auth_login_origin', window.location.origin)
       const { data, error } = await client.auth.signUp({
         email: loginEmail.trim(),
         password: loginPassword,
