@@ -45,7 +45,7 @@ import {
   type ReportRecord,
 } from './lib/cloudReports'
 import type { Database } from './lib/supabase/types'
-import { getSupabaseInitError, supabase as client, supabaseEnvDiag, SUPABASE_JS_VERSION } from './lib/supabase/client'
+import { getSupabaseInitError, supabase as client, supabaseEnvDiag } from './lib/supabase/client'
 import { saveSessionToCloud } from './lib/cloudSessions'
 import { useBillingAccount } from './lib/useBillingAccount'
 import {
@@ -338,7 +338,6 @@ const saveAuthCallbackDiag = (data: Record<string, unknown>) => {
   }
 }
 
-const BUILD_MARKER = 'preview-auth-check-2026-05-01'
 const CANONICAL_URL =
   import.meta.env.VITE_CANONICAL_URL || 'https://www.makemyidea.work'
 const CANONICAL_HOST = (() => {
@@ -2465,14 +2464,6 @@ function DebugMatrixPage({
 function App() {
   useEffect(() => {
     if (typeof window === 'undefined') return
-    const env = (import.meta as any).env || {}
-    console.info('[build]', {
-      marker: BUILD_MARKER,
-      href: window.location.href,
-      origin: window.location.origin,
-      mode: import.meta.env.MODE,
-      vercelEnv: env.VERCEL_ENV ?? null,
-    })
     ;(window as any).__printAuthDiag = () => {
       try {
         return JSON.parse(window.localStorage.getItem('auth_redirect_diag_v1') || '[]')
@@ -2491,7 +2482,6 @@ function App() {
   const [authCallbackLoading, setAuthCallbackLoading] = useState(false)
   const [authCallbackHint, setAuthCallbackHint] = useState<string | null>(null)
   const [authCallbackErrorVisible, setAuthCallbackErrorVisible] = useState(false)
-  const [authCallbackDiag, setAuthCallbackDiag] = useState<Record<string, unknown> | null>(null)
   const authResolved = authReady
   const [loginEmail, setLoginEmail] = useState('')
   const [loginSending, setLoginSending] = useState(false)
@@ -4017,26 +4007,7 @@ const isAuthFlowInProgress = () => {
               )
             })
           : []
-      const pkceVerifierKey =
-        typeof window !== 'undefined'
-          ? authStorageKeys.find((key) => key.includes('-auth-token-code-verifier')) ?? null
-          : null
-      const pkceVerifierLen =
-        typeof window !== 'undefined' && pkceVerifierKey
-          ? String(window.localStorage.getItem(pkceVerifierKey) || '').length
-          : null
-      const pkceVerifierLenViaClientStorage = (() => {
-        if (typeof window === 'undefined') return null
-        if (!pkceVerifierKey) return null
-        const storage = (auth as any)?.storage
-        if (!storage || typeof storage.getItem !== 'function') return null
-        try {
-          return String(storage.getItem(pkceVerifierKey) || '').length
-        } catch {
-          return null
-        }
-      })()
-      const diagSnapshot = {
+      saveAuthDiag('auth_callback_pkce_diag', {
         currentOrigin,
         currentHref: href,
         auth_diag_login_origin: authDiagLoginOrigin,
@@ -4048,14 +4019,7 @@ const isAuthFlowInProgress = () => {
         error: errorParam,
         error_description: errorDescription,
         authStorageKeys,
-        pkceVerifierKey,
-        pkceVerifierLen,
-        pkceVerifierLenViaClientStorage,
-      }
-      setAuthCallbackDiag(diagSnapshot)
-      console.info('[auth][callback][pkce-diag]', diagSnapshot)
-      saveAuthDiag('auth_callback_pkce_diag', diagSnapshot as any)
-      console.info('[auth][callback] supabase-js', { version: SUPABASE_JS_VERSION })
+      })
       console.log('[auth callback] location', {
         href,
         origin: typeof window !== 'undefined' ? window.location.origin : '',
@@ -4077,14 +4041,14 @@ const isAuthFlowInProgress = () => {
         setAuthCallbackLoading(false)
         return
       }
-      if (errorParam) {
+  if (errorParam) {
         console.error('[auth callback] oauth error', {
           error: errorParam,
           description: errorDescription,
           href,
         })
         setAuthCallbackError(copy.authCallback.signInFailed)
-        setAuthCallbackHint(errorDescription)
+        setAuthCallbackHint(errorDescription || null)
         setAuthCallbackLoading(false)
         return
       }
@@ -4105,37 +4069,12 @@ const isAuthFlowInProgress = () => {
         authCodeExchangeInProgress = true
         exchangedAuthCodes.add(callbackCode)
         console.info('[auth exchange START]', { code: callbackCode, time: Date.now() })
-        console.info('[auth][callback] exchange_arg', {
-          version: SUPABASE_JS_VERSION,
-          argType: 'code',
-          argPreview: callbackCode ? `${callbackCode.slice(0, 8)}...` : null,
-        })
         // (Legacy sessionStorage/ref guards removed; module-level guard above is the source of truth.)
-        const beforeVerifierLen =
-          typeof window !== 'undefined' && pkceVerifierKey
-            ? String(window.localStorage.getItem(pkceVerifierKey) || '').length
-            : null
-        const beforeVerifierLenViaClient =
-          (() => {
-            if (typeof window === 'undefined') return null
-            if (!pkceVerifierKey) return null
-            const storage = (auth as any)?.storage
-            if (!storage || typeof storage.getItem !== 'function') return null
-            try {
-              return String(storage.getItem(pkceVerifierKey) || '').length
-            } catch {
-              return null
-            }
-          })()
         const startedAt = new Date().toISOString()
         const exchangeStartPayload = {
           ts: startedAt,
           callbackCode,
-          pkceVerifierKey,
-          pkceVerifierLen: beforeVerifierLen,
-          pkceVerifierLenViaClientStorage: beforeVerifierLenViaClient,
         }
-        console.info('[auth][callback] exchangeCodeForSession:start', exchangeStartPayload)
         saveAuthDiag('auth_callback_exchange_start', exchangeStartPayload as any)
         const { data, error } = await auth.exchangeCodeForSession(callbackCode)
         console.info('[auth exchange END]', {
@@ -4156,27 +4095,9 @@ const isAuthFlowInProgress = () => {
             status: statusValue,
           }
           console.error('[auth][callback] exchangeCodeForSession_failed', errPayload)
-          const afterVerifierLen =
-            typeof window !== 'undefined' && pkceVerifierKey
-              ? String(window.localStorage.getItem(pkceVerifierKey) || '').length
-              : null
-          const afterVerifierLenViaClient =
-            (() => {
-              if (typeof window === 'undefined') return null
-              if (!pkceVerifierKey) return null
-              const storage = (auth as any)?.storage
-              if (!storage || typeof storage.getItem !== 'function') return null
-              try {
-                return String(storage.getItem(pkceVerifierKey) || '').length
-              } catch {
-                return null
-              }
-            })()
           saveAuthDiag('auth_callback_exchange_failed', {
             success: false,
             error: errPayload,
-            pkceVerifierLenAfter: afterVerifierLen,
-            pkceVerifierLenAfterViaClientStorage: afterVerifierLenViaClient,
           })
           const debugValue = messageValue
             ? `${messageValue}${codeValue ? ` (${codeValue})` : ''}`
@@ -4187,27 +4108,9 @@ const isAuthFlowInProgress = () => {
           return
         }
         console.info('[auth][callback] exchangeCodeForSession:ok', { hasSession: true })
-        const okAfterVerifierLen =
-          typeof window !== 'undefined' && pkceVerifierKey
-            ? String(window.localStorage.getItem(pkceVerifierKey) || '').length
-            : null
-        const okAfterVerifierLenViaClient =
-          (() => {
-            if (typeof window === 'undefined') return null
-            if (!pkceVerifierKey) return null
-            const storage = (auth as any)?.storage
-            if (!storage || typeof storage.getItem !== 'function') return null
-            try {
-              return String(storage.getItem(pkceVerifierKey) || '').length
-            } catch {
-              return null
-            }
-          })()
         saveAuthDiag('auth_callback_exchange_ok', {
           success: true,
           hasSession: true,
-          pkceVerifierLenAfter: okAfterVerifierLen,
-          pkceVerifierLenAfterViaClientStorage: okAfterVerifierLenViaClient,
         })
         clearAuthRedirect()
         const nextParam = normalizeNextPath(
@@ -11000,14 +10903,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && authCallbackHint && (
             <p className="muted">DIAG: {authCallbackHint}</p>
           )}
-          {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && authCallbackDiag && (
-            <details className="muted" style={{ fontSize: 12 }}>
-              <summary>PKCE diagnostics</summary>
-              <pre style={{ whiteSpace: 'pre-wrap' }}>
-                {JSON.stringify(authCallbackDiag, null, 2)}
-              </pre>
-            </details>
-          )}
+          {/* PKCE diagnostics removed after stabilizing preview auth. */}
           {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && (
             <div className="actions">
               <button

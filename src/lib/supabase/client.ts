@@ -15,20 +15,7 @@ export const supabaseEnvDiag = {
   anonLen: rawSupabaseAnon.length,
 }
 
-// Keep in sync with package-lock.json to help runtime auth diagnostics.
-export const SUPABASE_JS_VERSION = '2.91.0'
-
 let supabaseInitError: string | null = null
-
-console.info('[diag] supabase env', {
-  mode: import.meta.env.MODE,
-  prod: import.meta.env.PROD,
-  dev: import.meta.env.DEV,
-  hasUrl: supabaseEnvDiag.hasUrl,
-  hasAnon: supabaseEnvDiag.hasAnon,
-  urlLen: supabaseEnvDiag.urlLen,
-  anonLen: supabaseEnvDiag.anonLen,
-})
 
 if (import.meta.env.DEV && typeof window !== 'undefined') {
   console.log('[diag] supabase config', {
@@ -76,15 +63,6 @@ if (supabaseUrl && supabaseAnonKey) {
           autoRefreshToken: true,
           ...(authStorage ? { storage: authStorage } : {}),
         },
-      }
-      if (typeof window !== 'undefined') {
-        console.info('[diag] supabase auth config', {
-          flowType: (authOptions as any).auth.flowType,
-          detectSessionInUrl: (authOptions as any).auth.detectSessionInUrl,
-          persistSession: (authOptions as any).auth.persistSession,
-          autoRefreshToken: (authOptions as any).auth.autoRefreshToken,
-          storage: (authOptions as any).auth.storage === window.localStorage ? 'window.localStorage' : 'custom',
-        })
       }
       supabaseClient = createClient<Database>(supabaseUrl, supabaseAnonKey, authOptions as any)
     }
