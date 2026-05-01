@@ -895,21 +895,32 @@ export const ReportPage = ({
     })
     if (!client || !reportSessionId) return
     try {
+      const sessionRes = await client.auth.getSession()
+      const userId = sessionRes?.data?.session?.user?.id || null
       const base = reportMetaRef.current && typeof reportMetaRef.current === 'object' ? reportMetaRef.current : {}
-      const persistPromise = updateReportBySessionId(reportSessionId, {
+      const patch = {
         summary_json: {
           ...base,
           execution_report: nextExecutionReport,
         },
+      }
+      const persistPromise = updateReportBySessionId(reportSessionId, {
+        summary_json: patch.summary_json,
       })
       pendingDecisionPersistRef.current = persistPromise.then(() => undefined).catch(() => undefined)
       await persistPromise
       reportMetaRef.current = { ...base, execution_report: nextExecutionReport }
     } catch (error) {
       console.error('[report][decision-select] persist_failed', {
+        userId,
         sessionId: reportSessionId,
         decisionIndex,
         selectedOption,
+        patchKeys: ['summary_json'],
+        summaryJsonKeys:
+          reportMetaRef.current && typeof reportMetaRef.current === 'object'
+            ? Object.keys(reportMetaRef.current as any)
+            : [],
         error: error instanceof Error ? error.message : String(error),
       })
     }

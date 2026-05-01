@@ -210,6 +210,65 @@ const handleReportGenerate = async (req, res) => {
   await handleReportUpdate(req, res)
 }
 
+const handleReportPatchMeta = async (req, res) => {
+  if (req.method !== 'POST') {
+    methodNotAllowed(res, ['POST'])
+    return
+  }
+  const body = req.body && typeof req.body === 'object' ? req.body : {}
+  const sessionId = String(body.sessionId || '').trim()
+  if (!sessionId) {
+    sendJson(res, 400, { ok: false, error: 'MISSING_SESSION_ID' })
+    return
+  }
+
+  const token = getBearerToken(req)
+  if (!token) {
+    sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
+    return
+  }
+
+  const supabaseAdmin = getSupabaseAdmin()
+  const authRes = await supabaseAdmin.auth.getUser(token)
+  const userId = authRes?.data?.user?.id || null
+  if (authRes?.error || !userId) {
+    sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
+    return
+  }
+  const access = await resolveSessionAccess(supabaseAdmin, sessionId, userId)
+  if (!access.ok) {
+    sendJson(res, 500, { ok: false, error: access.reason || 'ACCESS_CHECK_FAILED' })
+    return
+  }
+  if (!access.allowed) {
+    sendJson(res, 403, { ok: false, error: 'FORBIDDEN' })
+    return
+  }
+
+  const patch = body.patch && typeof body.patch === 'object' ? body.patch : {}
+  const hasSummaryJson = Object.prototype.hasOwnProperty.call(patch, 'summary_json')
+  if (!hasSummaryJson) {
+    sendJson(res, 400, { ok: false, error: 'PATCH_NOT_ALLOWED' })
+    return
+  }
+
+  const updateRes = await supabaseAdmin
+    .schema('public')
+    .from('reports')
+    .update({
+      summary_json: patch.summary_json ?? null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('session_id', sessionId)
+    .select(selectReportFields)
+    .maybeSingle()
+  if (updateRes.error) {
+    sendJson(res, 500, { ok: false, error: 'REPORT_PATCH_FAILED' })
+    return
+  }
+  sendJson(res, 200, { ok: true, report: updateRes.data })
+}
+
 export default async function handler(req, res) {
   const body = req.method === 'GET' ? null : await readJsonBody(req)
   if (req.method !== 'GET' && body === null) {
@@ -229,6 +288,10 @@ export default async function handler(req, res) {
   }
   if (action === 'generate') {
     await handleReportGenerate(req, res)
+    return
+  }
+  if (action === 'patch_meta') {
+    await handleReportPatchMeta(req, res)
     return
   }
   if (action === 'generate-triz-image') {
