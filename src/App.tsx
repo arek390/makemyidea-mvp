@@ -2554,6 +2554,9 @@ function App() {
   const readinessLastStartedKeyRef = useRef<string | null>(null)
   const readinessLogOnceKeyRef = useRef<string | null>(null)
   const readinessLogDedupeRef = useRef<{ sig: string | null; at: number | null }>({ sig: null, at: null })
+  const readinessDevCountsRef = useRef<{ effectRuns: number; scheduled: number; fetchStarts: number; sameKeySkips: number }>(
+    { effectRuns: 0, scheduled: 0, fetchStarts: 0, sameKeySkips: 0 }
+  )
   const logActionPlanReadinessLlm = useEffectEvent(
     (payload: {
       triggered: boolean
@@ -2567,7 +2570,7 @@ function App() {
       const sig = `${payload.triggered ? '1' : '0'}|${payload.reason}|${payload.meaningfulItemsCount}|${payload.lastEvaluatedCount}|${payload.usedFallback ? '1' : '0'}`
       const now = Date.now()
       const prev = readinessLogDedupeRef.current
-      if (!payload.triggered && prev.sig === sig && typeof prev.at === 'number' && now - prev.at < 1500) {
+      if (prev.sig === sig && typeof prev.at === 'number' && now - prev.at < 1500) {
         return
       }
       readinessLogDedupeRef.current = { sig, at: now }
@@ -2734,25 +2737,10 @@ function App() {
             }
           }
 
-          if (sessionAiCostEventsHasModelUsedRef.current === false) {
-            return runSelect('model,tokens_input,tokens_output,usage_cost_usd')
-          }
-
-          const first = await runSelect('model,model_used,tokens_input,tokens_output,usage_cost_usd')
-          const normalizedFirstError = normalizeSupabaseError(first.error)
-          if (normalizedFirstError?.code === '42703' || normalizedFirstError?.code === 'PGRST204') {
-            sessionAiCostEventsHasModelUsedRef.current = false
-            if (diagnosticsEnabledForUser) {
-              console.warn('[session usage] events select retry (no model_used)', {
-                sessionId: normalizedSessionId,
-                error: normalizedFirstError,
-                at: Date.now(),
-              })
-            }
-            return runSelect('model,tokens_input,tokens_output,usage_cost_usd')
-          }
-          sessionAiCostEventsHasModelUsedRef.current = true
-          return first
+          // Avoid noisy 400s from PostgREST schema cache when `model_used` is missing.
+          // We treat `model` as the canonical field in UI diagnostics.
+          sessionAiCostEventsHasModelUsedRef.current = false
+          return runSelect('model,tokens_input,tokens_output,usage_cost_usd')
         })(),
       ])
 
@@ -8742,6 +8730,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	    const requestId = `apr_ui_${Date.now()}_${seq}`
       const readinessKey = `${enginePreviewSessionId}|${meaningfulCount}|${currentCoverage}|${actionPlanReadinessHeuristic.notWorkingMeaningfulCount}`
       readinessLastStartedKeyRef.current = readinessKey
+      if (import.meta.env.DEV && typeof window !== 'undefined') {
+        const counts = readinessDevCountsRef.current
+        counts.fetchStarts += 1
+        ;(window as any).__readinessDebugCounts = { ...counts }
+      }
       logActionPlanReadinessLlm({
         triggered: true,
         reason: `fetch_start key=${readinessKey} requestId=${requestId}`,
@@ -8872,6 +8865,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	  useEffect(() => {
 	    if (!actionPlanReadinessEnabled) return
 	    if (!actionPlanReadinessLlmEnabled) return
+      if (import.meta.env.DEV && typeof window !== 'undefined') {
+        const counts = readinessDevCountsRef.current
+        counts.effectRuns += 1
+        ;(window as any).__readinessDebugCounts = { ...counts }
+      }
     const cache = actionPlanReadinessLlmCacheRef.current
     if (cache.loading) {
       logActionPlanReadinessLlm({
@@ -8953,11 +8951,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
     const readinessKey = `${enginePreviewSessionId}|${actionPlanReadinessMeaningfulCount}|${currentCoverage}|${actionPlanReadinessHeuristic.notWorkingMeaningfulCount}`
     if (readinessKey === readinessLastScheduledKeyRef.current) {
+      if (import.meta.env.DEV && typeof window !== 'undefined') {
+        const counts = readinessDevCountsRef.current
+        counts.sameKeySkips += 1
+        ;(window as any).__readinessDebugCounts = { ...counts }
+      }
       if (import.meta.env.DEV && readinessLogOnceKeyRef.current !== readinessKey) {
         readinessLogOnceKeyRef.current = readinessKey
         logActionPlanReadinessLlm({
           triggered: false,
-          reason: `skip_same_key key=${readinessKey}`,
+          reason: `same_key_already_scheduled key=${readinessKey}`,
           meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
           lastEvaluatedCount: last,
           usedFallback: false,
@@ -8967,6 +8970,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
     readinessLastScheduledKeyRef.current = readinessKey
     readinessLogOnceKeyRef.current = null
+    if (import.meta.env.DEV && typeof window !== 'undefined') {
+      const counts = readinessDevCountsRef.current
+      counts.scheduled += 1
+      ;(window as any).__readinessDebugCounts = { ...counts }
+    }
 
     if (actionPlanReadinessLlmDebounceRef.current) {
       window.clearTimeout(actionPlanReadinessLlmDebounceRef.current)
@@ -8978,14 +8986,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setActionPlanReadinessLlmCache((prev) => ({ ...prev, pending: true }))
     logActionPlanReadinessLlm({
       triggered: true,
-      reason: `debounce_scheduled key=${readinessKey}`,
-      meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
-      lastEvaluatedCount: last,
-      usedFallback: false,
-    })
-    logActionPlanReadinessLlm({
-      triggered: true,
-      reason: bootstrap ? 'debounce_scheduled_bootstrap' : 'debounce_scheduled_increment',
+      reason: `debounce_scheduled_${bootstrap ? 'bootstrap' : allowByCoverageChange ? 'coverage' : 'increment'} key=${readinessKey}`,
       meaningfulItemsCount: actionPlanReadinessMeaningfulCount,
       lastEvaluatedCount: last,
       usedFallback: false,
