@@ -3291,9 +3291,23 @@ function App() {
 
   const normalizeNextPath = (value: string | null) => {
     if (!value) return null
-    if (!value.startsWith('/')) return null
-    if (value.startsWith('//')) return null
-    return value
+    const trimmed = String(value).trim()
+    if (!trimmed) return null
+    // Accept absolute URLs only if they match the current origin; then downgrade to a relative path.
+    if (/^https?:\/\//i.test(trimmed)) {
+      try {
+        const parsed = new URL(trimmed)
+        if (typeof window === 'undefined') return null
+        if (parsed.origin !== window.location.origin) return null
+        const next = `${parsed.pathname || ''}${parsed.search || ''}${parsed.hash || ''}`
+        return next.startsWith('/') && !next.startsWith('//') ? next : null
+      } catch {
+        return null
+      }
+    }
+    if (!trimmed.startsWith('/')) return null
+    if (trimmed.startsWith('//')) return null
+    return trimmed
   }
 
   const readPostAuthNext = () => {
@@ -3957,6 +3971,11 @@ const isAuthFlowInProgress = () => {
         )
         const nextRaw = nextParam || readPostAuthNext()
         const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
+        console.info('[auth][callback]', {
+          origin: typeof window !== 'undefined' ? window.location.origin : '',
+          href: typeof window !== 'undefined' ? window.location.href : '',
+          nextTarget: next,
+        })
         const lang = readPostAuthLang()
         if (lang) {
           setUiLanguage(lang)
@@ -3966,6 +3985,7 @@ const isAuthFlowInProgress = () => {
         clearPostAuthNext()
         setAuthCallbackLoading(false)
         if (typeof window !== 'undefined') {
+          console.info('[auth][post-login-redirect]', { target: next })
           window.location.replace(next)
         }
       } finally {
