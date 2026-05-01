@@ -3911,7 +3911,7 @@ const isAuthFlowInProgress = () => {
       setAuthCallbackLoading(true)
       setAuthCallbackHint(null)
       const href = typeof window !== 'undefined' ? window.location.href : ''
-      console.info('[auth callback]', {
+      console.info('[auth][callback]', {
         origin: typeof window !== 'undefined' ? window.location.origin : '',
         href,
       })
@@ -3974,7 +3974,6 @@ const isAuthFlowInProgress = () => {
         console.info('[auth][callback]', {
           origin: typeof window !== 'undefined' ? window.location.origin : '',
           href: typeof window !== 'undefined' ? window.location.href : '',
-          nextTarget: next,
         })
         const lang = readPostAuthLang()
         if (lang) {
@@ -4047,10 +4046,10 @@ const isAuthFlowInProgress = () => {
 	    setAuthError(null)
 	    setLoginNotice(null)
 	    setLoginOauthLoading(true)
-	    const redirectTo = getOAuthRedirectTo()
-    console.info('[auth redirect]', {
-      origin: typeof window !== 'undefined' ? window.location.origin : '',
-      href: typeof window !== 'undefined' ? window.location.href : '',
+	    const redirectTo = `${window.location.origin}/auth/callback`
+    console.info('[auth][start]', {
+      origin: window.location.origin,
+      href: window.location.href,
       redirectTo,
     })
 	    const next =
@@ -4121,10 +4120,10 @@ const isAuthFlowInProgress = () => {
     setAuthError(null)
     setLoginNotice(null)
     setLoginSending(true)
-    const redirectTo = getOAuthRedirectTo()
-    console.info('[auth redirect]', {
-      origin: typeof window !== 'undefined' ? window.location.origin : '',
-      href: typeof window !== 'undefined' ? window.location.href : '',
+    const redirectTo = `${window.location.origin}/auth/callback`
+    console.info('[auth][start]', {
+      origin: window.location.origin,
+      href: window.location.href,
       redirectTo,
     })
     setAuthFlowInProgress(true)
@@ -4207,10 +4206,10 @@ const isAuthFlowInProgress = () => {
         setAuthError(`${error.message}${detail}`)
       }
     } else {
-      const redirectTo = getOAuthRedirectTo()
-      console.info('[auth redirect]', {
-        origin: typeof window !== 'undefined' ? window.location.origin : '',
-        href: typeof window !== 'undefined' ? window.location.href : '',
+      const redirectTo = `${window.location.origin}/auth/callback`
+      console.info('[auth][start]', {
+        origin: window.location.origin,
+        href: window.location.href,
         redirectTo,
       })
       const { data, error } = await client.auth.signUp({
