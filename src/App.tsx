@@ -2548,7 +2548,7 @@ function App() {
   }, [actionPlanReadinessLlmCache])
   const actionPlanReadinessLlmSeqRef = useRef(0)
   const actionPlanReadinessLlmInFlightRef = useRef(false)
-  const actionPlanReadinessLlmDebounceRef = useRef<number | null>(null)
+  const actionPlanReadinessLlmDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const actionPlanReadinessLastTotalCountRef = useRef(0)
   const readinessLastScheduledKeyRef = useRef<string | null>(null)
   const readinessLastStartedKeyRef = useRef<string | null>(null)
@@ -8668,12 +8668,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	    const bootstrap = actionPlanReadinessLlmCache.lastLLMResult == null && lastEvaluated < 3
       const retryWindowMs = 15_000
       const lastAttemptedAtNum = typeof lastAttemptedAt === 'number' ? lastAttemptedAt : null
-      const recentlyAttemptedSameInput =
-        actionPlanReadinessLlmCache.lastLLMResult == null &&
-        lastAttemptedAtNum != null &&
-        Date.now() - lastAttemptedAtNum < retryWindowMs &&
-        lastAttemptedCount === meaningfulCount &&
-        (typeof lastAttemptedCoverage === 'number' ? lastAttemptedCoverage === currentCoverage : true)
+      const recentlyAttemptedSameInput = (() => {
+        if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
+        if (lastAttemptedAtNum == null) return false
+        if (Date.now() - lastAttemptedAtNum >= retryWindowMs) return false
+        if (lastAttemptedCount !== meaningfulCount) return false
+        if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
+        return true
+      })()
       if (recentlyAttemptedSameInput) {
         logActionPlanReadinessLlm({
           triggered: false,
@@ -8764,8 +8766,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }))
     actionPlanReadinessLastTotalCountRef.current = enginePreviewItems.length
     try {
-      if (!client) throw new Error('SUPABASE_CLIENT_MISSING')
-      const sessionRes = await client.auth.getSession()
+      const sbClient = client
+      if (!sbClient) throw new Error('SUPABASE_CLIENT_MISSING')
+      const sessionRes = await sbClient.auth.getSession()
       const token = sessionRes?.data?.session?.access_token || ''
       if (!token) throw new Error('AUTH_REQUIRED')
 	      logActionPlanReadinessLlm({
@@ -8925,12 +8928,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const allowByCoverageChange = !bootstrap && coverageChanged
       const retryWindowMs = 15_000
       const lastAttemptedAtNum = typeof lastAttemptedAt === 'number' ? lastAttemptedAt : null
-      const recentlyAttemptedSameInput =
-        actionPlanReadinessLlmCache.lastLLMResult == null &&
-        lastAttemptedAtNum != null &&
-        Date.now() - lastAttemptedAtNum < retryWindowMs &&
-        lastAttemptedCount === actionPlanReadinessMeaningfulCount &&
-        (typeof lastAttemptedCoverage === 'number' ? lastAttemptedCoverage === currentCoverage : true)
+      const recentlyAttemptedSameInput = (() => {
+        if (actionPlanReadinessLlmCache.lastLLMResult != null) return false
+        if (lastAttemptedAtNum == null) return false
+        if (Date.now() - lastAttemptedAtNum >= retryWindowMs) return false
+        if (lastAttemptedCount !== actionPlanReadinessMeaningfulCount) return false
+        if (typeof lastAttemptedCoverage === 'number' && lastAttemptedCoverage !== currentCoverage) return false
+        return true
+      })()
       if (recentlyAttemptedSameInput) {
         logActionPlanReadinessLlm({
           triggered: false,
