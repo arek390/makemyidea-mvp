@@ -2747,10 +2747,10 @@ export const ReportPage = ({
                     ? 'Najpierw podejmij kluczowe decyzje, aby wygenerować tę sekcję.'
                     : 'Make your key decisions first to generate this section.'}
                 </p>
-              ) : (executionReportPlanRenderable || hasLeanExecutionReport) && normalizedExecutionReport?.action_plan?.length ? (
-                (() => {
-                  const actions = normalizedExecutionReport.action_plan
-                  const normalizeKey = (value: string) =>
+	              ) : (executionReportPlanRenderable || hasLeanExecutionReport) && normalizedExecutionReport?.action_plan?.length ? (
+	                (() => {
+	                  const actions = normalizedExecutionReport.action_plan
+	                  const normalizeKey = (value: string) =>
                     String(value || '')
                       .toLowerCase()
                       .normalize('NFKD')
@@ -2792,84 +2792,54 @@ export const ReportPage = ({
                     return approach
                   }
 
-                  const choiceGroups: Array<{
-                    key: string
-                    header: string
-                    subheader?: string
-                    action: (typeof actions)[number]
-                  }> = []
-                  const otherActions: Array<(typeof actions)[number]> = []
+	                  const linkedLabel = t.actionPlanLinkedToLabel
+	                  const buildLinkedText = (action: (typeof actions)[number]) => {
+	                    const sourceType = (action as any)?.source_type as string | null | undefined
+	                    const sourceRef = (action as any)?.source_ref as string | null | undefined
+	                    if (!sourceType || !sourceRef) return ''
+	                    if (sourceType === 'decision') {
+	                      const decision = findDecisionBySourceRef(sourceRef)
+	                      return decision?.tradeoff ? `${linkedLabel}: ${sanitizeReportText(decision.tradeoff)}` : ''
+	                    }
+	                    if (sourceType === 'triz') {
+	                      const approach = findTrizApproachBySourceRef(sourceRef)
+	                      // Do NOT render approach title/description as headers; keep as small metadata only.
+	                      return approach?.title ? `${linkedLabel}: ${sanitizeReportText(approach.title)}` : ''
+	                    }
+	                    return ''
+	                  }
 
-                  actions.forEach((action) => {
-                    const sourceType = (action as any)?.source_type as string | null | undefined
-                    const sourceRef = (action as any)?.source_ref as string | null | undefined
-                    const derivedFromChoice = (action as any)?.derived_from_user_choice as boolean | null | undefined
-                    if (sourceType === 'triz') {
-                      const approach = findTrizApproachBySourceRef(sourceRef)
-                      if (approach) {
-                        choiceGroups.push({
-                          key: `triz:${sourceRef}`,
-                          header: sanitizeReportText(approach.title),
-                          subheader: approach.description ? sanitizeReportText(approach.description) : undefined,
-                          action,
-                        })
-                        return
-                      }
-                    }
-                    if (sourceType === 'decision') {
-                      const decision = findDecisionBySourceRef(sourceRef)
-                      if (decision) {
-                        choiceGroups.push({
-                          key: `decision:${sourceRef}`,
-                          header: sanitizeReportText(decision.tradeoff),
-                          action,
-                        })
-                        return
-                      }
-                    }
-                    if (sourceType === 'analysis' || derivedFromChoice === false) {
-                      otherActions.push(action)
-                      return
-                    }
-                    // Unknown source => show under Other.
-                    otherActions.push(action)
-                  })
-
-                  return (
-                    <div className="report-action-plan-grouped">
-                      <ul className="report-action-plan-grouped__list">
-                        {choiceGroups.map((group, index) => (
-                          <li key={`${group.key}-${index}`} className="report-action-plan-grouped__item">
-                            <div className="report-action-plan-grouped__header">
-                              {group.header}
-                            </div>
-                            {group.subheader ? (
-                              <div className="muted report-action-plan-grouped__subheader">
-                                {group.subheader}
-                              </div>
-                            ) : null}
-                            <ul className="report-action-plan-grouped__bullets">
-                              <li>{sanitizeActionPlanStep(group.action.step, language)}</li>
-                            </ul>
-                          </li>
-                        ))}
-                      </ul>
-                      {otherActions.length ? (
-                        <div className="report-action-plan-grouped__other">
-                          <div className="report-action-plan-grouped__header">{t.actionPlanOtherLabel}</div>
-                          <ul className="report-action-plan-grouped__bullets">
-                            {otherActions.map((action, idx) => (
-                              <li key={`action-other-${idx}`}>{sanitizeActionPlanStep(action.step, language)}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : null}
-                    </div>
-                  )
-                })()
-              ) : (
-                <p>{t.actionPlanEmpty}</p>
-              )}
+	                  return (
+	                    <ul className="report-action-plan-list">
+	                      {actions.map((action, idx) => {
+	                        const step = sanitizeActionPlanStep(action.step, language)
+	                        if (!step) return null
+	                        const linked = buildLinkedText(action)
+	                        const details = sanitizeActionPlanDetail(action.details)
+	                        const doneWhen = sanitizeActionPlanDetail(action.done_when)
+	                        const tech = Array.isArray(action.technology_options)
+	                          ? action.technology_options.map((x) => sanitizeActionPlanDetail(x)).filter(Boolean)
+	                          : []
+	                        return (
+	                          <li key={`action-plan-${idx}`} className="report-action-plan-list__item">
+	                            <div className="report-action-plan-list__step">{step}</div>
+	                            {linked ? <div className="muted report-action-plan-list__meta">{linked}</div> : null}
+	                            {details ? <div className="muted report-action-plan-list__meta">{details}</div> : null}
+	                            {doneWhen ? <div className="muted report-action-plan-list__meta">{doneWhen}</div> : null}
+	                            {tech.length ? (
+	                              <div className="muted report-action-plan-list__meta">
+	                                {tech.join(' · ')}
+	                              </div>
+	                            ) : null}
+	                          </li>
+	                        )
+	                      })}
+	                    </ul>
+	                  )
+	                })()
+	              ) : (
+	                <p>{t.actionPlanEmpty}</p>
+	              )}
 	            </section>
 
 	            <section id="appendix" className="report-section">

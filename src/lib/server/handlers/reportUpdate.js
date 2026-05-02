@@ -818,6 +818,11 @@ const startsWithImperativeVerb = (text, lang) => {
     'Zaprojektuj',
     'Zbuduj',
     'Przetestuj',
+    'Przeprowadź',
+    'Sformułuj',
+    'Wyznacz',
+    'Sprawdź',
+    'Oceń',
     'Porównaj',
     'Dobierz',
     'Oszacuj',
@@ -840,6 +845,27 @@ const startsWithImperativeVerb = (text, lang) => {
   return verbs.includes(first)
 }
 
+const isLikelyTradeoffTitle = (text) => {
+  const value = normalizeExecutionText(text)
+  if (!value) return false
+  if (!/\bvs\.\b|\bvs\b/i.test(value)) return false
+  if (startsWithImperativeVerb(value, 'pl') || startsWithImperativeVerb(value, 'en')) return false
+  return true
+}
+
+const stripLeadingMetaPrefixes = (text, lang) => {
+  let value = normalizeExecutionText(text)
+  if (!value) return ''
+  value = value.replace(/^(define|design|build|test|action|task)\s+/i, '')
+  if (lang === 'pl') {
+    value = value.replace(
+      /^zdefiniuj\s+(przeprowadź|sformułuj|wyznacz|ustal|określ|przygotuj|sprawdź|oceń|zmierz|porównaj|zbuduj|zaprojektuj|dobierz|oszacuj|zweryfikuj)\b/i,
+      (_, verb) => `${verb[0].toUpperCase()}${verb.slice(1)}`
+    )
+  }
+  return value.trim()
+}
+
 const looksLikeNounPhrase = (text, lang) => {
   const value = normalizeExecutionText(text)
   if (!value) return false
@@ -856,9 +882,10 @@ const looksLikeNounPhrase = (text, lang) => {
 const rewriteStepToImperative = (step, lang) => {
   const value = normalizeExecutionText(step)
   if (!value) return ''
-  if (startsWithImperativeVerb(value, lang)) return value
+  const stripped = stripLeadingMetaPrefixes(value, lang)
+  if (startsWithImperativeVerb(stripped, lang)) return stripped
   // Strip any leaked English meta-prefixes before rewriting (common failure: "Define zaprojektuj ...").
-  const withoutMetaPrefix = value.replace(/^(define|design|build|test|action|task)\s+/i, '')
+  const withoutMetaPrefix = stripped.replace(/^(define|design|build|test|action|task)\s+/i, '')
   if (withoutMetaPrefix !== value && startsWithImperativeVerb(withoutMetaPrefix, 'pl')) {
     return withoutMetaPrefix
   }
@@ -892,6 +919,14 @@ const rewriteStepToImperative = (step, lang) => {
       return rest ? `${verb} ${rest}` : verb
     }
   }
+  if (lang === 'pl') {
+    const tokens = withoutMetaPrefix.split(/\s+/).filter(Boolean)
+    if (tokens.length >= 2) {
+      const second = tokens[1] || ''
+      const candidate = `${second} ${tokens.slice(2).join(' ')}`.trim()
+      if (startsWithImperativeVerb(candidate, 'pl')) return candidate
+    }
+  }
   // Fallback: prefix with a neutral imperative verb.
   return lang === 'en' ? `Design ${lower}` : `Zdefiniuj ${lower}`
 }
@@ -918,6 +953,7 @@ const coerceExecutionActionPlanItem = (item, lang) => {
   if (!stepCandidate && !detailsCandidate && !doneWhenCandidate) return null
 
   let step = rewriteStepToImperative(stepCandidate, lang)
+  if (isLikelyTradeoffTitle(step) || isLikelyTradeoffTitle(stepCandidate)) return null
   let details = normalizeExecutionText(detailsCandidate)
   const done_when = normalizeExecutionText(doneWhenCandidate)
 
@@ -953,6 +989,7 @@ const coerceExecutionActionPlanItem = (item, lang) => {
     step = rewriteStepToImperative(step, 'pl')
     step = trimDangling(step, 'pl')
   }
+  step = stripLeadingMetaPrefixes(step, lang)
   if (!step) return null
 
   // Preserve meta fields for UI grouping if present; they are not part of the contract but harmless for storage/display.
@@ -3907,13 +3944,14 @@ export const handleReportUpdate = async (req, res) => {
 	              'Lean shape only. Prioritize durable fields that will be persisted and displayed: priorities.title, action_plan.step, action_plan.status, action_plan.details, action_plan.technology_options, action_plan.done_when, decisions.tradeoff, decisions.option_a, decisions.option_b, decisions.consequence_a, decisions.consequence_b, validation_loop.check, next_session_focus, map_context.coverage_summary, goal, headline.',
 	              'Make steps specific and project-grounded, not generic labels.',
 	              'Each priorities item must contain exactly: title.',
-              'Action plan must have two conceptual layers.',
-              'Layer 1: contradiction-linked actions. Start from the selected or strongly supported contradictions that the user chose to work with. For each selected contradiction, create one or more concrete actions only when the material supports it.',
-              'Layer 2: broader synthesis actions. After contradiction-linked actions, add actions derived from the full board material, summary, recommendations, perspective map, supporting items, and the user’s choices in Key decisions to make.',
-              'The user must be able to see why actions were created: actions should visibly connect either to a selected contradiction or to a concrete decision/user choice.',
-              'Use contradictions as visible anchors, not as cages. Do not limit the content of actions to the contradiction title.',
-	              'For contradiction-linked actions, include the contradiction title (or a short recognizable version) in action_plan.step or action_plan.details.',
-              'For broader synthesis actions, ground them in selected decision directions, unresolved risks, repeated patterns, missing validation steps, or practical constraints from the material.',
+	              'Action plan must have two conceptual layers.',
+	              'Layer 1: contradiction-linked actions. Start from the selected or strongly supported contradictions that the user chose to work with. For each selected contradiction, create one or more concrete actions only when the material supports it.',
+	              'Layer 2: broader synthesis actions. After contradiction-linked actions, add actions derived from the full board material, summary, recommendations, perspective map, supporting items, and the user’s choices in Key decisions to make.',
+	              'The user must be able to see why actions were created: actions should visibly connect either to a selected contradiction or to a concrete decision/user choice.',
+	              'Use contradictions as visible anchors, not as cages. Do not limit the content of actions to the contradiction title.',
+		              'Keep source links via source_type/source_ref (or other metadata), not by copying titles into step.',
+		              'Never include contradiction titles, decision tradeoffs, or solution/approach titles in action_plan.step.',
+	              'For broader synthesis actions, ground them in selected decision directions, unresolved risks, repeated patterns, missing validation steps, or practical constraints from the material.',
               'Order the action plan as follows: first actions linked to selected/supported contradictions, then broader synthesis actions.',
               'Each action must be concrete enough that the user knows what to do next, on what object/scope, and what practical result it should produce.',
 	              'Avoid generic steps such as "Analyze options", "Define priorities", "Validate assumptions", unless the step includes a concrete project-specific object.',

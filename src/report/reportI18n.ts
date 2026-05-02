@@ -84,6 +84,7 @@ export const reportCopy: Record<
 	    whereYouAreTitle: string
 	    actionPlanSectionTitle: string
 	    actionPlanOtherLabel: string
+	    actionPlanLinkedToLabel: string
 	    decisionsTitle: string
 	    whatNextTitle: string
 	    actionPlanEmpty: string
@@ -192,6 +193,7 @@ export const reportCopy: Record<
 	    whereYouAreTitle: 'Where you are now',
 	    actionPlanSectionTitle: 'Action plan',
 	    actionPlanOtherLabel: 'Other',
+	    actionPlanLinkedToLabel: 'Linked to',
 	    decisionsTitle: 'Key decisions to make',
 	    whatNextTitle: 'What next',
 	    actionPlanEmpty: 'This action-focused variant is not available for this report yet. Update the report to generate it.',
@@ -300,6 +302,7 @@ export const reportCopy: Record<
 	    whereYouAreTitle: 'Gdzie jesteś teraz',
 	    actionPlanSectionTitle: 'Plan działania',
 	    actionPlanOtherLabel: 'Inne',
+	    actionPlanLinkedToLabel: 'Powiązane z',
 	    decisionsTitle: 'Kluczowe decyzje do podjęcia',
 	    whatNextTitle: 'Co dalej',
 	    actionPlanEmpty: 'Ten wariant nastawiony na działanie nie jest jeszcze dostępny dla tego raportu. Zaktualizuj raport, aby go wygenerować.',
