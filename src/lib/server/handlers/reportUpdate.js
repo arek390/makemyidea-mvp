@@ -5297,8 +5297,7 @@ export const handleReportUpdate = async (req, res) => {
                 return value.replace(/^(\s*(decyzja|podejście triz|triz approach|z tablicy|from the board)\s*:)\s*/i, '')
               }
 
-	              const buildChoiceRepairActions = () => {
-	                const inferProductObject = (raw, lang) => {
+	              const inferProductObject = (raw, lang) => {
 	                  const text = normalizeExecutionText(raw).toLowerCase()
 	                  const asForms = (nom, gen, acc, kind = 'generic') => ({ nom, gen, acc, kind })
 	                  const asFormsSame = (value, kind = 'generic') => asForms(value, value, value, kind)
@@ -5340,6 +5339,8 @@ export const handleReportUpdate = async (req, res) => {
 	                  }
 	                  return asFormsSame('kluczowy element produktu')
 	                }
+
+	              const buildChoiceRepairActions = () => {
 	                const shorten = (value, maxWords = 10) => {
 	                  const text = normalizeExecutionText(value).replace(/[“”"']/g, '').trim()
 	                  if (!text) return ''
