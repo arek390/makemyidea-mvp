@@ -685,6 +685,54 @@ const normalizeExecutionTechnologyOptions = (value) => {
   return items
 }
 
+export const sanitizeExecutionActionStep = (rawStep, reportLang) => {
+  const lang = reportLang === 'pl' ? 'pl' : 'en'
+  let value = normalizeExecutionText(rawStep)
+  if (!value) return ''
+
+  // Remove leaked English meta-prefixes in Polish locale.
+  if (lang === 'pl') {
+    value = value.replace(/^(define|design|build|test|action|task)\s+/i, '')
+    if (value && value[0] === value[0].toLowerCase()) {
+      value = `${value[0].toUpperCase()}${value.slice(1)}`
+    }
+    // If the step already starts with a Polish imperative verb, keep it.
+    if (startsWithImperativeVerb(value, 'pl')) return value
+    // If it starts with an English imperative verb, drop it (we want Polish-only).
+    value = value.replace(/^(design|build|test|compare|select|estimate|define|validate)\s+/i, '')
+    if (value && value[0] === value[0].toLowerCase()) {
+      value = `${value[0].toUpperCase()}${value.slice(1)}`
+    }
+    return value
+  }
+
+  // English locale: keep as-is (verb enforcement happens elsewhere).
+  return value
+}
+
+const diagnoseExecutionActionPlan = (actionPlan, reportLang) => {
+  const lang = reportLang === 'en' ? 'en' : 'pl'
+  const items = Array.isArray(actionPlan) ? actionPlan : []
+  const inProgressCount = items.filter((x) => x && typeof x === 'object' && x.status === 'in_progress').length
+  const defineLeaks = items
+    .filter((x) => x && typeof x === 'object')
+    .map((x, idx) => ({ idx, step: String(x.step || '') }))
+    .filter(({ step }) => /^(define|action|task)\s+/i.test(step.trim()))
+  const mixedLanguage = lang === 'pl'
+    ? items
+        .filter((x) => x && typeof x === 'object')
+        .map((x, idx) => ({ idx, step: String(x.step || '') }))
+        .filter(({ step }) => /\b(define|design|build|test)\b/i.test(step) && /\b(zaprojektuj|zbuduj|przetestuj|dobierz|oszacuj|zweryfikuj|zdefiniuj)\b/i.test(step))
+    : []
+  return {
+    inProgressCount,
+    defineLeakCount: defineLeaks.length,
+    defineLeaks,
+    mixedLanguageCount: mixedLanguage.length,
+    mixedLanguage,
+  }
+}
+
 const ensureSingleInProgress = (items, options = {}) => {
   const allowCompleted = options.allowCompleted === true
   const list = Array.isArray(items) ? items.filter((x) => x && typeof x === 'object') : []
@@ -809,6 +857,14 @@ const rewriteStepToImperative = (step, lang) => {
   const value = normalizeExecutionText(step)
   if (!value) return ''
   if (startsWithImperativeVerb(value, lang)) return value
+  // Strip any leaked English meta-prefixes before rewriting (common failure: "Define zaprojektuj ...").
+  const withoutMetaPrefix = value.replace(/^(define|design|build|test|action|task)\s+/i, '')
+  if (withoutMetaPrefix !== value && startsWithImperativeVerb(withoutMetaPrefix, 'pl')) {
+    return withoutMetaPrefix
+  }
+  if (withoutMetaPrefix !== value && startsWithImperativeVerb(withoutMetaPrefix, 'en')) {
+    return withoutMetaPrefix
+  }
   const lower = value.toLowerCase()
   const mappingsEn = [
     [/^prototype\b/i, 'Build'],
@@ -837,7 +893,7 @@ const rewriteStepToImperative = (step, lang) => {
     }
   }
   // Fallback: prefix with a neutral imperative verb.
-  return lang === 'en' ? `Define ${lower}` : `Zdefiniuj ${lower}`
+  return lang === 'en' ? `Design ${lower}` : `Zdefiniuj ${lower}`
 }
 
 const coerceExecutionActionPlanItem = (item, lang) => {
@@ -874,6 +930,30 @@ const coerceExecutionActionPlanItem = (item, lang) => {
       step = head
     }
   }
+
+  const trimDangling = (value, locale) => {
+    const text = normalizeExecutionText(value)
+    if (!text) return ''
+    const stopwords =
+      locale === 'en'
+        ? ['and', 'or', 'to', 'with', 'of', 'in', 'at', 'for', 'on', 'from']
+        : ['i', 'oraz', 'albo', 'po', 'do', 'z', 'ze', 'w', 'we', 'na', 'od', 'dla']
+    const parts = text.split(/\s+/).filter(Boolean)
+    while (parts.length > 2) {
+      const last = (parts[parts.length - 1] || '').toLowerCase()
+      if (!stopwords.includes(last)) break
+      parts.pop()
+    }
+    return parts.join(' ')
+  }
+
+  step = trimDangling(step, lang)
+  step = sanitizeExecutionActionStep(step, lang)
+  if (lang === 'pl' && step && !startsWithImperativeVerb(step, 'pl')) {
+    step = rewriteStepToImperative(step, 'pl')
+    step = trimDangling(step, 'pl')
+  }
+  if (!step) return null
 
   // Preserve meta fields for UI grouping if present; they are not part of the contract but harmless for storage/display.
   const source_type =
@@ -1446,7 +1526,7 @@ const validateAndNormalizeReport = (payload) => {
   const items = Array.isArray(value.items) ? value.items : []
   const recommendations = normalizeRecommendations(value.recommendations)
   const triz = normalizeTriz(value.triz)
-  const execution_report = normalizeExecutionReport(value.execution_report, lang || 'en')
+  const execution_report = normalizeExecutionReport(value.execution_report, lang || 'pl')
   return {
     lang,
     summary,
@@ -4540,18 +4620,18 @@ export const handleReportUpdate = async (req, res) => {
               executionMode: executionMode || null,
             })
           }
-          executionReportCandidate = normalizeExecutionReport({
-            ...executionReportDefaults,
-            stage: 'awaiting_decisions',
-            priorities: [],
-            action_plan: [],
-            validation_loop: [],
-            next_session_focus: '',
-            decisions: [],
-            supporting_items: executionSupportingItems,
-            source_snapshot: phaseASanitized.source_snapshot ?? null,
-          })
-        }
+	          executionReportCandidate = normalizeExecutionReport({
+	            ...executionReportDefaults,
+	            stage: 'awaiting_decisions',
+	            priorities: [],
+	            action_plan: [],
+	            validation_loop: [],
+	            next_session_focus: '',
+	            decisions: [],
+	            supporting_items: executionSupportingItems,
+	            source_snapshot: phaseASanitized.source_snapshot ?? null,
+	          }, reportLang)
+	        }
 
         if (wantsPlanFromDecisions) {
           const selectedDecisionsCount = Array.isArray(executionReportCandidate?.decisions)
@@ -5140,17 +5220,17 @@ export const handleReportUpdate = async (req, res) => {
               logLlmMeta('execution-decisions', decisionsResult)
             }
             if (decisionsResult?.ok && Array.isArray(decisionsResult.data)) {
-              executionReportCandidate = normalizeExecutionReport({
-                ...executionReportDefaults,
-                stage: 'awaiting_decisions',
-                priorities: [],
-                action_plan: [],
-                validation_loop: [],
-                next_session_focus: '',
-                decisions: decisionsResult.data.map((d) => ({ ...d, selected_option: null })),
-                supporting_items: executionSupportingItems,
-                source_snapshot: phaseASanitized.source_snapshot ?? null,
-              })
+	              executionReportCandidate = normalizeExecutionReport({
+	                ...executionReportDefaults,
+	                stage: 'awaiting_decisions',
+	                priorities: [],
+	                action_plan: [],
+	                validation_loop: [],
+	                next_session_focus: '',
+	                decisions: decisionsResult.data.map((d) => ({ ...d, selected_option: null })),
+	                supporting_items: executionSupportingItems,
+	                source_snapshot: phaseASanitized.source_snapshot ?? null,
+	              }, reportLang)
               executionReportValidation = validateExecutionDecisionsOnly(executionReportCandidate, {
                 contradictionsCount,
               })
@@ -5172,13 +5252,13 @@ export const handleReportUpdate = async (req, res) => {
               })
             }
           } else if (executionReportCandidate.stage !== 'plan_generated') {
-            executionReportCandidate = normalizeExecutionReport({
-              ...executionReportDefaults,
-              ...executionReportCandidate,
-              stage: 'awaiting_decisions',
-              supporting_items: executionSupportingItems,
-              source_snapshot: phaseASanitized.source_snapshot ?? null,
-            })
+	            executionReportCandidate = normalizeExecutionReport({
+	              ...executionReportDefaults,
+	              ...executionReportCandidate,
+	              stage: 'awaiting_decisions',
+	              supporting_items: executionSupportingItems,
+	              source_snapshot: phaseASanitized.source_snapshot ?? null,
+	            }, reportLang)
             executionReportValidation = validateExecutionDecisionsOnly(executionReportCandidate, {
               contradictionsCount,
             })
@@ -5317,10 +5397,10 @@ export const handleReportUpdate = async (req, res) => {
       )
       let finalExecutionReport = null
       let actionPlanDecision = 'execution_report_lean_not_persisted_empty_fallback'
-      if (generatedExecutionReadyForSave) {
-        finalExecutionReport = normalizeExecutionReport(
-          executionReportCandidate?.stage === 'plan_generated'
-            ? ensureExecutionNextSessionFocus(
+	      if (generatedExecutionReadyForSave) {
+	        finalExecutionReport = normalizeExecutionReport(
+	          executionReportCandidate?.stage === 'plan_generated'
+	            ? ensureExecutionNextSessionFocus(
                 {
                   ...executionReportCandidate,
                   headline: normalizeExecutionText(executionReportCandidate?.headline) || headlineFallback,
@@ -5334,8 +5414,8 @@ export const handleReportUpdate = async (req, res) => {
                 headline: normalizeExecutionText(executionReportCandidate?.headline) || headlineFallback,
                 supporting_items: executionSupportingItems,
                 source_snapshot: phaseASanitized.source_snapshot ?? null,
-              }
-        )
+	              }
+	        , reportLang)
         const finalDecisionOptions = countDecisionOptions(finalExecutionReport)
         const existingOptionTotal = (existingDecisionOptions.optionA || 0) + (existingDecisionOptions.optionB || 0)
         const finalOptionTotal = (finalDecisionOptions.optionA || 0) + (finalDecisionOptions.optionB || 0)
@@ -5352,8 +5432,8 @@ export const handleReportUpdate = async (req, res) => {
           decisionOptions: finalDecisionOptions,
           stage: executionReportCandidate?.stage ?? null,
         })
-      } else if (hasUsableExistingExecutionReport) {
-        finalExecutionReport = normalizeExecutionReport(
+	      } else if (hasUsableExistingExecutionReport) {
+	        finalExecutionReport = normalizeExecutionReport(
           existingExecutionReport?.stage === 'plan_generated'
             ? ensureExecutionNextSessionFocus(
                 {
@@ -5367,8 +5447,8 @@ export const handleReportUpdate = async (req, res) => {
                 ...existingExecutionReport,
                 supporting_items: executionSupportingItems,
                 source_snapshot: phaseASanitized.source_snapshot ?? null,
-              }
-        )
+	              }
+	        , reportLang)
         actionPlanDecision = 'execution_report_lean_preserved_existing_only_if_new_not_persistable'
         console.log('[report:update][step3] execution_report_lean_preserved_existing_only_if_new_not_persistable')
       } else if (!generatedExecutionPersistable.persistable) {
@@ -5379,9 +5459,21 @@ export const handleReportUpdate = async (req, res) => {
         actionPlanDecision = 'execution_report_lean_discarded_below_threshold'
         console.log('[report:update][step3] execution_report_lean_not_persisted_empty_fallback')
       }
-      if (!generatedExecutionValidation.ok) {
-        console.log('[report:update][step3] execution_report fallback', generatedExecutionValidation.errors)
-      }
+	      if (!generatedExecutionValidation.ok) {
+	        console.log('[report:update][step3] execution_report fallback', generatedExecutionValidation.errors)
+	      }
+
+	      if (finalExecutionReport && diagnosticsEnabled) {
+	        const diag = diagnoseExecutionActionPlan(finalExecutionReport.action_plan, reportLang)
+	        console.log('[report:update][diagnostics] action_plan_quality', {
+	          requestId,
+	          reportLang,
+	          actionPlanLen: Array.isArray(finalExecutionReport?.action_plan)
+	            ? finalExecutionReport.action_plan.length
+	            : null,
+	          ...diag,
+	        })
+	      }
 
       const decisionsForEnrichment = Array.isArray(finalExecutionReport?.decisions)
         ? finalExecutionReport.decisions.filter(

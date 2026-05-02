@@ -332,6 +332,16 @@ const sanitizeActionPlanDetail = (input: string | null | undefined) => {
   return ACTION_PLAN_PLACEHOLDER_PATTERNS.some((pattern) => pattern.test(value)) ? '' : value
 }
 
+const sanitizeActionPlanStep = (input: string | null | undefined, language: ReportLang) => {
+  const base = sanitizeActionPlanDetail(input)
+  if (!base) return ''
+  if (language !== 'pl') return base
+  // Defensive UI-side cleanup for old reports / mixed-language LLM output.
+  const stripped = base.replace(/^(define|design|build|test|action|task)\s+/i, '').trim()
+  if (!stripped) return ''
+  return stripped[0] === stripped[0].toLowerCase() ? `${stripped[0].toUpperCase()}${stripped.slice(1)}` : stripped
+}
+
 const hasLeanExecutionReportContent = (report: ReportExecutionReport | null) => {
   if (!report) return false
   const sectionsWithContent = [
@@ -2839,7 +2849,7 @@ export const ReportPage = ({
                               </div>
                             ) : null}
                             <ul className="report-action-plan-grouped__bullets">
-                              <li>{sanitizeReportText(group.action.step)}</li>
+                              <li>{sanitizeActionPlanStep(group.action.step, language)}</li>
                             </ul>
                           </li>
                         ))}
@@ -2849,7 +2859,7 @@ export const ReportPage = ({
                           <div className="report-action-plan-grouped__header">{t.actionPlanOtherLabel}</div>
                           <ul className="report-action-plan-grouped__bullets">
                             {otherActions.map((action, idx) => (
-                              <li key={`action-other-${idx}`}>{sanitizeReportText(action.step)}</li>
+                              <li key={`action-other-${idx}`}>{sanitizeActionPlanStep(action.step, language)}</li>
                             ))}
                           </ul>
                         </div>
