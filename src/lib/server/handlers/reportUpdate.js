@@ -879,6 +879,122 @@ const looksLikeNounPhrase = (text, lang) => {
   return lang === 'en' ? nounStartersEn.includes(first) : nounStartersPl.includes(first)
 }
 
+export const rewriteNounPhraseActionStep = (step, details, lang) => {
+  const rawStep = normalizeExecutionText(step)
+  if (!rawStep) return ''
+  const rawDetails = normalizeExecutionText(details)
+  const text = `${rawStep} ${rawDetails}`.toLowerCase()
+
+  const pickVerb = () => {
+    if (lang === 'en') {
+      if (/\b(test|testing|validate|verification|trial)\b/.test(text)) return 'Test'
+      if (/\b(prototype|build|assemble|fabricate)\b/.test(text)) return 'Build'
+      if (/\b(compare|evaluate|trade-off)\b/.test(text)) return 'Compare'
+      if (/\b(select|material|aluminum|aluminium|composite|carbon|steel|nylon)\b/.test(text)) return 'Select'
+      if (/\b(cost|production|manufactur|scalab)\b/.test(text)) return 'Estimate'
+      if (/\b(scale|marking|markings|indicator)\b/.test(text)) return 'Design'
+      if (/\b(mechanism|system|mount|mounting|lock|latch)\b/.test(text)) return 'Design'
+      return ''
+    }
+    // pl
+    if (/\b(test|testy|przetest|zweryfik|sprawdź)\b/.test(text)) return 'Przetestuj'
+    if (/\b(prototyp|zbuduj|wydruk|złóż|montaż)\b/.test(text)) return 'Zbuduj prototyp'
+    if (/\b(porównaj|porównanie)\b/.test(text)) return 'Porównaj'
+    if (/\b(dobierz|materiał|material|aluminium|aluminum|kompozyt|węgl|stal|nylon)\b/.test(text)) {
+      return /\b(porównaj|porównanie)\b/.test(text) ? 'Porównaj' : 'Dobierz'
+    }
+    if (/\b(koszt|produkcj|wykonalno|skalowalno)\b/.test(text)) return 'Oszacuj'
+    if (/\b(skala|oznaczen|wskaźnik)\b/.test(text)) return 'Zaprojektuj'
+    if (/\b(mechanizm|system|mocowan|blokad|zatrzask)\b/.test(text)) return 'Zaprojektuj'
+    return ''
+  }
+
+  const verb = pickVerb()
+  if (!verb) return ''
+
+  const cleaned = rawStep.replace(/[.。!]+$/g, '').trim()
+  const suffix =
+    lang === 'pl' && verb.toLowerCase().includes('prototyp')
+      ? cleaned.replace(/^prototyp\s+/i, '').trim()
+      : cleaned
+
+  const normalizedSuffix =
+    lang === 'pl' && suffix && suffix[0] === suffix[0].toUpperCase()
+      ? `${suffix[0].toLowerCase()}${suffix.slice(1)}`
+      : suffix
+
+  return `${verb} ${normalizedSuffix}`.trim()
+}
+
+export const validatePolishedActionPlan = (original, polished, reportLang) => {
+  const lang = reportLang === 'pl' ? 'pl' : 'en'
+  const originalList = Array.isArray(original) ? original.filter((x) => x && typeof x === 'object') : []
+  const polishedList = Array.isArray(polished) ? polished.filter((x) => x && typeof x === 'object') : []
+  const errors = []
+
+  if (originalList.length !== polishedList.length) {
+    errors.push('length_mismatch')
+    return { ok: false, errors }
+  }
+
+  const hasExactlyOneInProgress =
+    originalList.filter((x) => normalizeExecutionStatus(x?.status) === 'in_progress').length === 1
+
+  const forbidMetaPrefixes =
+    lang === 'pl'
+      ? /^(define|design|build|test|action|task)\s+/i
+      : /^(action|task)\s+/i
+
+  for (let i = 0; i < originalList.length; i += 1) {
+    const originalItem = originalList[i]
+    const candidate = polishedList[i]
+
+    const originalStatus = normalizeExecutionStatus(originalItem?.status)
+    const candidateStatus = normalizeExecutionStatus(candidate?.status)
+    if (candidateStatus !== originalStatus) errors.push(`status_changed:${i}`)
+
+    const step = sanitizeExecutionActionStep(normalizeExecutionText(candidate?.step), lang)
+    const details = sanitizeExecutionDetailText(candidate?.details)
+    const done_when = sanitizeExecutionDetailText(candidate?.done_when)
+    const technology_options = normalizeExecutionTechnologyOptions(candidate?.technology_options)
+
+    if (!step) errors.push(`missing_step:${i}`)
+    if (!done_when) errors.push(`missing_done_when:${i}`)
+
+    if (step && forbidMetaPrefixes.test(step)) errors.push(`meta_prefix:${i}`)
+    if (step && !startsWithImperativeVerb(step, lang)) errors.push(`not_imperative:${i}`)
+
+    const wordCount = step ? step.split(/\s+/).filter(Boolean).length : 0
+    if (wordCount > 10) errors.push(`step_too_long:${i}`)
+
+    if (technology_options.length > 3) errors.push(`technology_options_too_many:${i}`)
+    if (technology_options.some((x) => typeof x !== 'string' || !normalizeExecutionText(x))) {
+      errors.push(`technology_options_invalid:${i}`)
+    }
+
+    // Ensure we don't create mixed-language "Define zaprojektuj..." leaks.
+    if (
+      lang === 'pl' &&
+      step &&
+      /\b(define|design|build|test)\b/i.test(step) &&
+      /\b(zaprojektuj|zbuduj|przetestuj|dobierz|oszacuj|zweryfikuj|zdefiniuj|przeprowadź|sformułuj|wyznacz)\b/i.test(
+        step
+      )
+    ) {
+      errors.push(`mixed_language:${i}`)
+    }
+  }
+
+  if (
+    hasExactlyOneInProgress &&
+    polishedList.filter((x) => normalizeExecutionStatus(x?.status) === 'in_progress').length !== 1
+  ) {
+    errors.push('in_progress_count_changed')
+  }
+
+  return { ok: errors.length === 0, errors }
+}
+
 const rewriteStepToImperative = (step, lang) => {
   const value = normalizeExecutionText(step)
   if (!value) return ''
@@ -919,6 +1035,10 @@ const rewriteStepToImperative = (step, lang) => {
       return rest ? `${verb} ${rest}` : verb
     }
   }
+  if (looksLikeNounPhrase(value, lang)) {
+    const rewritten = rewriteNounPhraseActionStep(value, '', lang)
+    if (rewritten && startsWithImperativeVerb(rewritten, lang)) return rewritten
+  }
   if (lang === 'pl') {
     const tokens = withoutMetaPrefix.split(/\s+/).filter(Boolean)
     if (tokens.length >= 2) {
@@ -952,7 +1072,10 @@ const coerceExecutionActionPlanItem = (item, lang) => {
 
   if (!stepCandidate && !detailsCandidate && !doneWhenCandidate) return null
 
-  let step = rewriteStepToImperative(stepCandidate, lang)
+  const nounRewrite = looksLikeNounPhrase(stepCandidate, lang)
+    ? rewriteNounPhraseActionStep(stepCandidate, detailsCandidate, lang)
+    : ''
+  let step = rewriteStepToImperative(nounRewrite || stepCandidate, lang)
   if (isLikelyTradeoffTitle(step) || isLikelyTradeoffTitle(stepCandidate)) return null
   let details = normalizeExecutionText(detailsCandidate)
   const done_when = normalizeExecutionText(doneWhenCandidate)
@@ -4422,6 +4545,217 @@ export const handleReportUpdate = async (req, res) => {
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
         })
 
+      const buildActionPlanCopyPolishPrompt = (actions, context = {}) =>
+        JSON.stringify({
+          lang: reportLang,
+          project_hint: {
+            headline: normalizeExecutionText(context?.headline),
+            goal: normalizeExecutionText(context?.goal),
+          },
+          action_plan: Array.isArray(actions)
+            ? actions.map((item) => ({
+                step: normalizeExecutionText(item?.step || item?.title),
+                status: normalizeExecutionStatus(item?.status),
+                details: normalizeExecutionText(item?.details || item?.what_to_do),
+                technology_options: normalizeExecutionTechnologyOptions(item?.technology_options),
+                done_when: normalizeExecutionText(item?.done_when || item?.expected_result),
+                meta: {
+                  source_type: item?.source_type ?? null,
+                  source_ref: item?.source_ref ?? null,
+                  derived_from_user_choice: Boolean(item?.derived_from_user_choice),
+                },
+              }))
+            : [],
+          requirements: {
+            output_schema: {
+              action_plan: [
+                {
+                  step: 'string',
+                  status: '"pending" | "in_progress" | "completed"',
+                  details: 'string',
+                  technology_options: ['string'],
+                  done_when: 'string',
+                },
+              ],
+            },
+            notes: [
+              'Return exactly one valid JSON object and nothing else.',
+              'The JSON must contain only: action_plan.',
+              'Rewrite ONLY the copy (wording) of: step, details, technology_options, done_when.',
+              'Preserve EXACTLY the same number of items and the same order.',
+              'Do NOT add/remove/reorder/merge/split items.',
+              'Do NOT change statuses. Preserve status values exactly.',
+              'Do NOT add any new fields. Do NOT output meta fields.',
+              'Do NOT copy contradiction titles, decision tradeoffs, or solution titles into step.',
+              'Never output noun-phrase topics. Every step must start with an imperative verb.',
+              'Keep step short and natural (ideally 3–8 words), but do not truncate or break grammar.',
+              'details: concise natural phrasing; avoid repeating step.',
+              'technology_options: keep 0–3 concrete options; do not invent many options.',
+              'done_when: keep a verifiable completion condition; do not turn it into a benefit.',
+              reportLang === 'en' ? 'Output must be in English only.' : 'Całość wyłącznie po polsku.',
+              reportLang === 'en'
+                ? 'Status values must remain in English only: pending, in_progress, completed.'
+                : 'Status zawsze po angielsku: pending, in_progress, completed.',
+              reportLang === 'en'
+                ? 'STRICT: Do not output markdown.'
+                : 'TRYB ŚCISŁY: Bez markdown.',
+            ],
+          },
+        })
+
+      const runActionPlanCopyPolish = async (actions, options = {}) =>
+        runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'action-plan-copy-polish',
+          input: buildActionPlanCopyPolishPrompt(actions, options.context || {}),
+          sessionId,
+          language: llmLanguage,
+          taskInstructions:
+            reportLang === 'en'
+              ? 'Return a single valid JSON object only. No markdown. No text before or after JSON. Key: action_plan. You are polishing copy only; preserve meaning, count, order, and status.'
+              : 'Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: action_plan. To tylko wygładzenie copy; zachowaj sens, liczbę, kolejność i statusy.',
+          parseResponse: (value) => {
+            const parseAttempt = safeParseJson(value)
+            const parsed = parseAttempt.parsed
+            const raw = parsed?.action_plan
+            return Array.isArray(raw) ? raw : null
+          },
+          fallbackData: null,
+          models: {
+            default: options.modelOverride || process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
+            preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+          },
+          maxOutputTokens: 700,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+
+      const polishActionPlanCopyWithLlm = async (actionPlan, locale, context = {}) => {
+        const plan = Array.isArray(actionPlan) ? actionPlan : []
+        if (!plan.length) return plan
+        console.log('[report:update][action-plan-copy-polish] diagnostics', {
+          requestId,
+          sessionId,
+          task: 'action-plan-copy-polish',
+          locale,
+          item_count: plan.length,
+          polish_attempted: 1,
+          polish_accepted: 0,
+          polish_rejected: 0,
+          polish_reject_reason: null,
+        })
+
+        const summarizeRejectReason = (errors) => {
+          const list = Array.isArray(errors) ? errors : []
+          const has = (prefix) => list.some((e) => String(e || '').startsWith(prefix))
+          if (list.includes('length_mismatch')) return 'wrong_length'
+          if (list.includes('in_progress_count_changed') || has('status_changed:')) return 'status_changed'
+          if (has('meta_prefix:')) return 'invalid_step'
+          if (has('mixed_language:')) return 'mixed_language'
+          if (has('missing_step:') || has('missing_done_when:') || has('not_imperative:')) return 'invalid_step'
+          if (has('step_too_long:') || has('technology_options_')) return 'invalid_step'
+          return list.length ? 'invalid_step' : 'unknown'
+        }
+        try {
+          const polishResult = await runActionPlanCopyPolish(plan, { strictJson: true, context })
+          if (polishResult?.meta) {
+            await recordAiUsageBestEffort({
+              sessionId: reportRes.data.session_id ?? sessionId,
+              reportId: reportRes.data.id ?? null,
+              userId,
+              actionKey: reportActionKey,
+              sourceTask: 'action-plan-copy-polish',
+              referenceId: reportRes.data.id ?? null,
+              requestId,
+              feature: 'action-plan-copy-polish',
+              meta: polishResult.meta,
+            })
+            logLlmMeta('action-plan-copy-polish', polishResult)
+          }
+          if (!(polishResult?.ok && Array.isArray(polishResult.data))) {
+            const rejectReason = polishResult?.error ? 'llm_error' : 'invalid_json'
+            console.log('[report:update][action-plan-copy-polish] diagnostics', {
+              requestId,
+              sessionId,
+              task: 'action-plan-copy-polish',
+              locale,
+              item_count: plan.length,
+              polish_attempted: 1,
+              polish_accepted: 0,
+              polish_rejected: 1,
+              polish_reject_reason: rejectReason,
+              ok: polishResult?.ok ?? false,
+              hasData: Array.isArray(polishResult?.data),
+              llm_error: polishResult?.error ?? null,
+              metaTokens: polishResult?.meta?.tokens ?? null,
+            })
+            return plan
+          }
+
+          const candidate = polishResult.data
+          const validation = validatePolishedActionPlan(plan, candidate, locale)
+          if (!validation.ok) {
+            const rejectReason = summarizeRejectReason(validation.errors)
+            console.log('[report:update][action-plan-copy-polish] diagnostics', {
+              requestId,
+              sessionId,
+              task: 'action-plan-copy-polish',
+              locale,
+              item_count: plan.length,
+              polish_attempted: 1,
+              polish_accepted: 0,
+              polish_rejected: 1,
+              polish_reject_reason: rejectReason,
+              error_count: validation.errors.length,
+            })
+            return plan
+          }
+
+          const merged = candidate.map((item, idx) => {
+            const original = plan[idx] || {}
+            const step = sanitizeExecutionActionStep(normalizeExecutionText(item?.step), locale)
+            return {
+              ...original,
+              step: step,
+              // Preserve original status + metadata, only polish user-facing copy.
+              status: normalizeExecutionStatus(original?.status),
+              details: sanitizeExecutionDetailText(item?.details),
+              technology_options: normalizeExecutionTechnologyOptions(item?.technology_options),
+              done_when: sanitizeExecutionDetailText(item?.done_when),
+            }
+          })
+
+          console.log('[report:update][action-plan-copy-polish] diagnostics', {
+            requestId,
+            sessionId,
+            task: 'action-plan-copy-polish',
+            locale,
+            item_count: merged.length,
+            polish_attempted: 1,
+            polish_accepted: 1,
+            polish_rejected: 0,
+            polish_reject_reason: null,
+          })
+          return merged
+        } catch (error) {
+          console.error('[report:update] action-plan-copy-polish exception:', error)
+          console.log('[report:update][action-plan-copy-polish] diagnostics', {
+            requestId,
+            sessionId,
+            task: 'action-plan-copy-polish',
+            locale,
+            item_count: plan.length,
+            polish_attempted: 1,
+            polish_accepted: 0,
+            polish_rejected: 1,
+            polish_reject_reason: 'llm_error',
+          })
+          return plan
+        }
+      }
+
       const runDecisionEnrichment = async (decisions) =>
         runLlmTask({
           apiKey: process.env.OPENAI_API_KEY,
@@ -5589,6 +5923,14 @@ export const handleReportUpdate = async (req, res) => {
         } catch (error) {
           console.error('[report:update] decisions-enrich exception:', error)
         }
+      }
+
+      if (finalExecutionReport && Array.isArray(finalExecutionReport.action_plan) && finalExecutionReport.action_plan.length) {
+        const polishedPlan = await polishActionPlanCopyWithLlm(finalExecutionReport.action_plan, reportLang, {
+          headline: finalExecutionReport.headline,
+          goal: finalExecutionReport.goal,
+        })
+        finalExecutionReport = { ...finalExecutionReport, action_plan: polishedPlan }
       }
       logExecutionReportShape('final', finalExecutionReport)
       logExecutionDecisionCoverage('final', finalExecutionReport)
