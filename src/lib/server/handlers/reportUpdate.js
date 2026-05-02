@@ -5297,11 +5297,53 @@ export const handleReportUpdate = async (req, res) => {
                 return value.replace(/^(\s*(decyzja|podejście triz|triz approach|z tablicy|from the board)\s*:)\s*/i, '')
               }
 
-              const buildChoiceRepairActions = () => {
-                const shorten = (value, maxWords = 10) => {
-                  const text = normalizeExecutionText(value).replace(/[“”"']/g, '').trim()
-                  if (!text) return ''
-                  const words = text.split(/\s+/).filter(Boolean)
+	              const buildChoiceRepairActions = () => {
+	                const inferProductObject = (raw, lang) => {
+	                  const text = normalizeExecutionText(raw).toLowerCase()
+	                  const asForms = (nom, gen, acc, kind = 'generic') => ({ nom, gen, acc, kind })
+	                  const asFormsSame = (value, kind = 'generic') => asForms(value, value, value, kind)
+	                  if (lang === 'en') {
+	                    if (!text) return asFormsSame('the key product component')
+	                    if (/\b(mocowan|plecak|backpack)\b/.test(text)) return asFormsSame('the backpack mounting system')
+	                    if (/\b(skala|oznaczen|marking|markings|indicator)\b/.test(text)) return asFormsSame('the segment marking scale')
+	                    if (/\b(materiał|material|aluminium|aluminum|kompozyt|composite|carbon|węgl)\b/.test(text)) {
+	                      return asFormsSame('the pole structure material')
+	                    }
+	                    if (/\b(koszt|produkcj|manufactur|production|cost)\b/.test(text)) {
+	                      return asFormsSame('the production cost', 'cost')
+	                    }
+	                    if (/\b(blokad|zatrzask|mechanizm|lock|latch|segment|długo|length)\b/.test(text)) {
+	                      return asFormsSame('the segment locking mechanism')
+	                    }
+	                    return asFormsSame('the key product component')
+	                  }
+	                  // pl
+	                  if (!text) return asFormsSame('kluczowy element produktu')
+	                  if (/\b(mocowan|plecak|backpack)\b/.test(text)) {
+	                    return asForms('mocowanie plecakowe', 'mocowania plecakowego', 'mocowanie plecakowe')
+	                  }
+	                  if (/\b(skala|oznaczen|marking|markings|indicator)\b/.test(text)) {
+	                    return asForms('skala oznaczeń segmentów', 'skali oznaczeń segmentów', 'skalę oznaczeń segmentów')
+	                  }
+	                  if (/\b(materiał|material|aluminium|aluminum|kompozyt|composite|carbon|węgl)\b/.test(text)) {
+	                    return asForms('materiał konstrukcji kijków', 'materiału konstrukcji kijków', 'materiał konstrukcji kijków')
+	                  }
+	                  if (/\b(koszt|produkcj|manufactur|production|cost)\b/.test(text)) {
+	                    return asForms('koszt produkcji', 'kosztu produkcji', 'koszt produkcji', 'cost')
+	                  }
+	                  if (/\b(blokad|zatrzask|mechanizm|lock|latch|segment|długo|length)\b/.test(text)) {
+	                    return asForms(
+	                      'mechanizm blokady segmentów',
+	                      'mechanizmu blokady segmentów',
+	                      'mechanizm blokady segmentów'
+	                    )
+	                  }
+	                  return asFormsSame('kluczowy element produktu')
+	                }
+	                const shorten = (value, maxWords = 10) => {
+	                  const text = normalizeExecutionText(value).replace(/[“”"']/g, '').trim()
+	                  if (!text) return ''
+	                  const words = text.split(/\s+/).filter(Boolean)
                   if (words.length <= maxWords) return text
                   return `${words.slice(0, maxWords).join(' ')}…`
                 }
@@ -5314,113 +5356,110 @@ export const handleReportUpdate = async (req, res) => {
                   }
                   return Math.abs(h)
                 }
-                const pick = (arr, seed) => arr[seed % arr.length]
-                const decisionMovesPl = [
-                  (tradeoff, opt) =>
-                    `Zawęź MVP dla tego wyboru: co wchodzi / nie wchodzi (opcja ${opt}) — 3 punkty zakresu`,
-                  (tradeoff, opt) =>
-                    `Ustal kryteria akceptacji dla wybranego kierunku (opcja ${opt}) — 2 miary + 1 warunek odrzucenia`,
-                  (tradeoff, opt) =>
-                    `Podejmij świadomy kompromis: co poświęcamy, żeby wygrać w opcji ${opt} — 1 zdanie + konsekwencja`,
-                  (tradeoff, opt) =>
-                    `Porównaj warianty w mikroteście: jak rozpoznamy, że opcja ${opt} jest lepsza w praktyce`,
-                  (tradeoff, opt) =>
-                    `Uprość rozwiązanie pod opcję ${opt}: usuń 1 element, który nie zwiększa wartości dla użytkownika`,
-                ]
-                const decisionMovesEn = [
-                  (tradeoff, opt) =>
-                    `Narrow the MVP for this choice (option ${opt}): what is in vs out — 3 scope bullets`,
-                  (tradeoff, opt) =>
-                    `Set acceptance criteria for the chosen direction (option ${opt}): 2 metrics + 1 kill condition`,
-                  (tradeoff, opt) =>
-                    `Make the trade-off explicit for option ${opt}: what you sacrifice and why it’s worth it — 1 sentence`,
-                  (tradeoff, opt) =>
-                    `Run a quick A/B check: what observable behavior would favor option ${opt}`,
-                  (tradeoff, opt) =>
-                    `Simplify toward option ${opt}: remove one element that adds complexity without user value`,
-                ]
-                const trizMovesPl = [
-                  (label) =>
-                    `Zdefiniuj sygnał sukcesu dla tego kierunku: 1 miara + próg, który uznasz za “działa”`,
-                  (label) =>
-                    `Określ ograniczenie projektowe dla tego podejścia (np. gabaryt, koszt, czas pakowania) — 1 twarda liczba`,
-                  (label) =>
-                    `Zaproponuj najprostszy wariant tego podejścia, który można pokazać użytkownikowi w 1 dniu`,
-                  (label) =>
-                    `Wybierz priorytet: która część tego podejścia jest krytyczna, a co może poczekać`,
-                  (label) =>
-                    `Wskaż warunek odrzucenia: kiedy uznasz, że ten kierunek nie ma sensu`,
-                ]
-                const trizMovesEn = [
-                  (label) =>
-                    `Define a success signal for this direction: 1 metric + a threshold you’ll accept as “works”`,
-                  (label) =>
-                    `Set one hard constraint for this approach (size, cost, pack-time, durability) — a number`,
-                  (label) =>
-                    `Draft the simplest version of this approach you can show a user in 1 day`,
-                  (label) =>
-                    `Pick a priority inside this approach: what must work first vs what can wait`,
-                  (label) =>
-                    `Write a kill condition: when you would drop this direction`,
-                ]
-                const items = []
-	                selectedDecisions.forEach((d) => {
-	                  const opt = String(d.selected).toUpperCase()
-	                  const seed = hashSeed(`${d.tradeoff}:${opt}`)
-	                  const base = shorten(d.tradeoff, 8)
-	                  const move = reportLang === 'en' ? pick(decisionMovesEn, seed) : pick(decisionMovesPl, seed)
-	                  items.push({
-	                    step: rewriteStepToImperative(
-	                      reportLang === 'en' ? `${move(base, opt)}` : `${move(base, opt)}`,
-	                      reportLang
-	                    ),
-	                    details: '',
-	                    technology_options: [],
-	                    done_when: '',
-	                    source_type: 'decision',
-	                    source_ref: `decision:${normalizeQualityKey(d.tradeoff)}:${String(d.selected)}`,
-	                    derived_from_user_choice: true,
-	                  })
-	                })
-	                selectedTrizApproaches.forEach((a) => {
-	                  const label = shorten(a.approach_title || a.contradiction_title || '', 9)
-	                  const seed = hashSeed(`triz:${a.contradiction_index}:${a.approach_index}:${label}`)
-	                  const move = reportLang === 'en' ? pick(trizMovesEn, seed) : pick(trizMovesPl, seed)
-	                  items.push({
-	                    step: rewriteStepToImperative(reportLang === 'en' ? `${move(label)}` : `${move(label)}`, reportLang),
-	                    details: '',
-	                    technology_options: [],
-	                    done_when: '',
-	                    source_type: 'triz',
-	                    source_ref: `triz:${a.contradiction_index}:${a.approach_index}`,
-	                    derived_from_user_choice: true,
-	                  })
-	                })
-                return items
-              }
+	                const pick = (arr, seed) => arr[seed % arr.length]
+	                const decisionMovesPl = [
+	                  (obj) => `Zdefiniuj wymagania ${obj.gen}`,
+	                  (obj) => `Zaprojektuj ${obj.acc}`,
+	                  (obj) => `Zbuduj prototyp ${obj.gen}`,
+	                  (obj) => `Przetestuj ${obj.acc} w terenie`,
+	                  (obj) => obj.kind === 'cost' ? 'Oszacuj koszt produkcji rozwiązania' : `Oszacuj koszt ${obj.gen}`,
+	                ]
+	                const decisionMovesEn = [
+	                  (obj) => `Define requirements for ${obj.acc}`,
+	                  (obj) => `Design ${obj.acc}`,
+	                  (obj) => `Build a prototype of ${obj.acc}`,
+	                  (obj) => `Test ${obj.acc} in real use`,
+	                  (obj) => obj.kind === 'cost' ? 'Estimate the solution production cost' : `Estimate the cost of ${obj.acc}`,
+	                ]
+		                const trizMovesPl = [
+		                  (obj) => `Zaprojektuj ${obj.acc}`,
+		                  (obj) => `Zbuduj prototyp ${obj.gen}`,
+		                  (obj) => `Przetestuj ${obj.acc} w użyciu`,
+		                  (obj) => `Dobierz technologię dla ${obj.gen}`,
+		                  (obj) => `Oceń wykonalność ${obj.gen}`,
+		                ]
+		                const trizMovesEn = [
+		                  (obj) => `Design ${obj.acc}`,
+		                  (obj) => `Build a prototype of ${obj.acc}`,
+		                  (obj) => `Test ${obj.acc} in use`,
+		                  (obj) => `Select a technology for ${obj.acc}`,
+		                  (obj) => `Evaluate feasibility of ${obj.acc}`,
+		                ]
+	                const items = []
+		                selectedDecisions.forEach((d) => {
+		                  const seed = hashSeed(`${d.tradeoff}:${String(d.selected)}`)
+		                  const obj = inferProductObject(d.tradeoff, reportLang)
+		                  const move = reportLang === 'en' ? pick(decisionMovesEn, seed) : pick(decisionMovesPl, seed)
+		                  items.push({
+		                    step: rewriteStepToImperative(
+		                      reportLang === 'en' ? `${move(obj)}` : `${move(obj)}`,
+		                      reportLang
+		                    ),
+		                    details: '',
+		                    technology_options: [],
+		                    done_when:
+		                      reportLang === 'en'
+		                        ? 'An artifact exists and can be reviewed.'
+		                        : 'Powstaje artefakt, który da się ocenić.',
+		                    source_type: 'decision',
+		                    source_ref: `decision:${normalizeQualityKey(d.tradeoff)}:${String(d.selected)}`,
+		                    derived_from_user_choice: true,
+		                  })
+		                })
+		                selectedTrizApproaches.forEach((a) => {
+		                  const rawLabel = a.approach_title || a.contradiction_title || ''
+		                  let labelCandidate = normalizeExecutionText(rawLabel)
+		                  if (!labelCandidate) labelCandidate = normalizeExecutionText(a.contradiction_title) || ''
+		                  labelCandidate = stripLeadingMetaPrefixes(labelCandidate, reportLang)
+		                  // Ensure `label` is a noun-phrase-ish object so move templates don't create double verbs.
+		                  if (startsWithImperativeVerb(labelCandidate, reportLang)) {
+		                    labelCandidate = labelCandidate.split(/\s+/).slice(1).join(' ').trim()
+		                  }
+		                  const label = shorten(labelCandidate || rawLabel, 10)
+		                  const seed = hashSeed(`triz:${a.contradiction_index}:${a.approach_index}:${label}`)
+		                  const move = reportLang === 'en' ? pick(trizMovesEn, seed) : pick(trizMovesPl, seed)
+		                  const labelForms = inferProductObject(label, reportLang)
+		                  items.push({
+		                    step: rewriteStepToImperative(
+		                      reportLang === 'en' ? `${move(labelForms)}` : `${move(labelForms)}`,
+		                      reportLang
+		                    ),
+		                    details: '',
+		                    technology_options: [],
+		                    done_when:
+		                      reportLang === 'en'
+		                        ? 'A concrete prototype/test/design output is ready.'
+		                        : 'Gotowy jest konkretny wynik: projekt/prototyp/test.',
+		                    source_type: 'triz',
+		                    source_ref: `triz:${a.contradiction_index}:${a.approach_index}`,
+		                    derived_from_user_choice: true,
+		                  })
+		                })
+	                return items
+	              }
 
-              const buildAnalysisRepairActions = (needed) => {
-                const actions = []
+	              const buildAnalysisRepairActions = (needed) => {
+	                const actions = []
                 const tensions = Array.isArray(analysisJson?.tensions_or_opportunities)
                   ? analysisJson.tensions_or_opportunities
                   : []
                 const themes = Array.isArray(analysisJson?.key_themes) ? analysisJson.key_themes : []
                 const candidates = [...tensions, ...themes].map((x) => normalizeExecutionText(x)).filter(Boolean)
                 const base = candidates.length ? candidates : executionSupportingItems.map((i) => normalizeExecutionText(i?.text)).filter(Boolean)
-                const analysisMovesPl = [
-                  (x) => `Zamień sygnał w eksperyment: co zmieniamy i co mierzymy, żeby potwierdzić/obalić założenie`,
-                  (x) => `Ustal ograniczenie MVP wynikające z materiału: 1 rzecz, której nie robimy (żeby nie komplikować)`,
-                  (x) => `Zdefiniuj test zachowania użytkownika: co ma się wydarzyć przy pakowaniu, żeby uznać kierunek za dobry`,
-                  (x) => `Wybierz priorytet na najbliższy tydzień: co odblokuje pozostałe decyzje`,
-                  (x) => `Dodaj warunek odrzucenia: kiedy przestajemy inwestować w ten kierunek`,
-                ]
-                const analysisMovesEn = [
-                  (x) => `Turn a signal into an experiment: what changes and what you measure to confirm/deny the assumption`,
-                  (x) => `Set an MVP constraint from the material: one thing you deliberately won’t do to keep it simple`,
-                  (x) => `Define a user-behavior test: what must happen during packing to count as success`,
-                  (x) => `Pick a one-week priority that unlocks the next decisions`,
-                  (x) => `Add a kill condition: when you stop investing in this direction`,
-                ]
+	                const analysisMovesPl = [
+	                  (obj) => `Zdefiniuj wymagania ${obj.gen}`,
+	                  (obj) => `Zaprojektuj ${obj.acc}`,
+	                  (obj) => `Zbuduj prototyp ${obj.gen}`,
+	                  (obj) => `Przetestuj ${obj.acc} w użyciu`,
+	                  (obj) => obj.kind === 'cost' ? 'Oszacuj koszt produkcji rozwiązania' : `Oszacuj koszt ${obj.gen}`,
+	                ]
+	                const analysisMovesEn = [
+	                  (obj) => `Define requirements for ${obj.acc}`,
+	                  (obj) => `Design ${obj.acc}`,
+	                  (obj) => `Build a prototype of ${obj.acc}`,
+	                  (obj) => `Test ${obj.acc} in use`,
+	                  (obj) => obj.kind === 'cost' ? 'Estimate the solution production cost' : `Estimate manufacturing cost for ${obj.acc}`,
+	                ]
                 const shorten = (value, maxWords = 12) => {
                   const text = normalizeExecutionText(value).replace(/[“”"']/g, '').trim()
                   if (!text) return ''
@@ -5439,22 +5478,25 @@ export const handleReportUpdate = async (req, res) => {
                 }
                 const pick = (arr, seed) => arr[seed % arr.length]
 	                for (let i = 0; i < needed; i += 1) {
-	                  const hint = base[i % Math.max(1, base.length)] || ''
-	                  const short = shorten(hint, 10) || (reportLang === 'en' ? 'a key assumption' : 'kluczowe założenie')
-	                  const seed = hashSeed(`analysis:${i}:${short}`)
-	                  const move = reportLang === 'en' ? pick(analysisMovesEn, seed) : pick(analysisMovesPl, seed)
-	                  actions.push({
-	                    step: rewriteStepToImperative(`${move(short)}`, reportLang),
-	                    details: '',
-	                    technology_options: [],
-	                    done_when: '',
-	                    source_type: 'analysis',
-	                    source_ref: `analysis:${i}`,
-	                    derived_from_user_choice: false,
-	                  })
-	                }
-                return actions
-              }
+		                  const hint = base[i % Math.max(1, base.length)] || ''
+		                  const obj = inferProductObject(hint, reportLang)
+		                  const seed = hashSeed(`analysis:${i}:${obj.nom}`)
+		                  const move = reportLang === 'en' ? pick(analysisMovesEn, seed) : pick(analysisMovesPl, seed)
+		                  actions.push({
+		                    step: rewriteStepToImperative(`${move(obj)}`, reportLang),
+		                    details: '',
+		                    technology_options: [],
+		                    done_when:
+		                      reportLang === 'en'
+		                        ? 'A concrete build/design/test artifact exists.'
+		                        : 'Powstaje konkretny artefakt: projekt/prototyp/test.',
+		                    source_type: 'analysis',
+		                    source_ref: `analysis:${i}`,
+		                    derived_from_user_choice: false,
+		                  })
+		                }
+	                return actions
+	              }
 
 	              let finalChoiceActions = choiceActions.map((a, index) => ({
 	                step: sanitizeActionText(a.step),
