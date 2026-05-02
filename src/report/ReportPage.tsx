@@ -175,33 +175,48 @@ const normalizeExecutionReport = (value: unknown): ReportExecutionReport => {
           })
           .filter((item) => item.title || item.why_it_matters || item.risk_of_ignoring)
       : [],
-    action_plan: Array.isArray(report.action_plan)
-      ? report.action_plan
-          .filter((item) => item && typeof item === 'object')
-          .map((item) => {
-            const current = item as Record<string, unknown>
-            const sourceTypeRaw = toText(current.source_type)
-            const source_type =
-              sourceTypeRaw === 'decision' || sourceTypeRaw === 'triz' || sourceTypeRaw === 'analysis'
-                ? (sourceTypeRaw as 'decision' | 'triz' | 'analysis')
-                : null
-            const source_ref = toText(current.source_ref) || null
-            const derived_from_user_choice =
-              typeof current.derived_from_user_choice === 'boolean'
-                ? current.derived_from_user_choice
-                : null
-            return {
-              title: toText(current.title),
-              what_to_do: toText(current.what_to_do),
-              why_now: toText(current.why_now),
-              expected_result: toText(current.expected_result),
-              ...(source_type ? { source_type } : {}),
-              ...(source_ref ? { source_ref } : {}),
-              ...(derived_from_user_choice != null ? { derived_from_user_choice } : {}),
-            }
-          })
-          .filter((item) => item.title || item.what_to_do || item.why_now || item.expected_result)
-      : [],
+	    action_plan: Array.isArray(report.action_plan)
+	      ? report.action_plan
+	          .filter((item) => item && typeof item === 'object')
+	          .map((item) => {
+	            const current = item as Record<string, unknown>
+	            const sourceTypeRaw = toText(current.source_type)
+	            const source_type =
+	              sourceTypeRaw === 'decision' || sourceTypeRaw === 'triz' || sourceTypeRaw === 'analysis'
+	                ? (sourceTypeRaw as 'decision' | 'triz' | 'analysis')
+	                : null
+	            const source_ref = toText(current.source_ref) || null
+	            const derived_from_user_choice =
+	              typeof current.derived_from_user_choice === 'boolean'
+	                ? current.derived_from_user_choice
+	                : null
+	            const statusRaw = toText(current.status)
+	            const status =
+	              statusRaw === 'pending' || statusRaw === 'in_progress' || statusRaw === 'completed'
+	                ? (statusRaw as 'pending' | 'in_progress' | 'completed')
+	                : 'pending'
+	            const technology_options = Array.isArray(current.technology_options)
+	              ? (current.technology_options as unknown[])
+	                  .map((x) => toText(x))
+	                  .filter(Boolean)
+	                  .slice(0, 3)
+	              : []
+	            const step = toText(current.step) || toText(current.title) || toText(current.what_to_do)
+	            const details = toText(current.details) || toText(current.what_to_do)
+	            const done_when = toText(current.done_when) || toText(current.expected_result)
+	            return {
+	              step,
+	              status,
+	              details,
+	              technology_options,
+	              done_when,
+	              ...(source_type ? { source_type } : {}),
+	              ...(source_ref ? { source_ref } : {}),
+	              ...(derived_from_user_choice != null ? { derived_from_user_choice } : {}),
+	            }
+	          })
+	          .filter((item) => item.step || item.details || item.done_when)
+	      : [],
     decisions: Array.isArray(report.decisions)
       ? report.decisions
           .filter((item) => item && typeof item === 'object')
@@ -321,7 +336,7 @@ const hasLeanExecutionReportContent = (report: ReportExecutionReport | null) => 
   if (!report) return false
   const sectionsWithContent = [
     Array.isArray(report.priorities) && report.priorities.some((item) => sanitizeActionPlanDetail(item.title)),
-    Array.isArray(report.action_plan) && report.action_plan.some((item) => sanitizeActionPlanDetail(item.title)),
+    Array.isArray(report.action_plan) && report.action_plan.some((item) => sanitizeActionPlanDetail(item.step)),
     Array.isArray(report.decisions) && report.decisions.some((item) => sanitizeActionPlanDetail(item.tradeoff)),
     Array.isArray(report.validation_loop) && report.validation_loop.some((item) => sanitizeActionPlanDetail(item.check)),
   ].filter(Boolean).length
@@ -2545,19 +2560,17 @@ export const ReportPage = ({
       <main className="report-body">
         {reportVariant === 'action' ? (
           <>
-            <section id="action-plan-toc" className="report-section">
-              <h2>{t.toc}</h2>
-              <ol className="report-toc">
-                <li><a href="#your-data">{t.yourDataTitle}</a></li>
-                <li><a href="#where-you-are">{t.whereYouAreTitle}</a></li>
-                <li><a href="#tradeoffs">{t.trizTitle}</a></li>
-                <li><a href="#decisions">{t.decisionsTitle}</a></li>
-                <li><a href="#action-plan">{t.actionPlanSectionTitle}</a></li>
-                <li><a href="#priorities">{t.prioritiesTitle}</a></li>
-                <li><a href="#validation">{t.validationTitle}</a></li>
-                <li><a href="#appendix">{t.appendices}</a></li>
-              </ol>
-            </section>
+	            <section id="action-plan-toc" className="report-section">
+	              <h2>{t.toc}</h2>
+	              <ol className="report-toc">
+	                <li><a href="#your-data">{t.yourDataTitle}</a></li>
+	                <li><a href="#where-you-are">{t.whereYouAreTitle}</a></li>
+	                <li><a href="#tradeoffs">{t.trizTitle}</a></li>
+	                <li><a href="#decisions">{t.decisionsTitle}</a></li>
+	                <li><a href="#action-plan">{t.actionPlanSectionTitle}</a></li>
+	                <li><a href="#appendix">{t.appendices}</a></li>
+	              </ol>
+	            </section>
 
             <section id="your-data" className="report-section">
               <h2>{t.yourDataTitle}</h2>
@@ -2826,7 +2839,7 @@ export const ReportPage = ({
                               </div>
                             ) : null}
                             <ul className="report-action-plan-grouped__bullets">
-                              <li>{sanitizeReportText(group.action.title)}</li>
+                              <li>{sanitizeReportText(group.action.step)}</li>
                             </ul>
                           </li>
                         ))}
@@ -2836,7 +2849,7 @@ export const ReportPage = ({
                           <div className="report-action-plan-grouped__header">{t.actionPlanOtherLabel}</div>
                           <ul className="report-action-plan-grouped__bullets">
                             {otherActions.map((action, idx) => (
-                              <li key={`action-other-${idx}`}>{sanitizeReportText(action.title)}</li>
+                              <li key={`action-other-${idx}`}>{sanitizeReportText(action.step)}</li>
                             ))}
                           </ul>
                         </div>
@@ -2847,56 +2860,13 @@ export const ReportPage = ({
               ) : (
                 <p>{t.actionPlanEmpty}</p>
               )}
-            </section>
+	            </section>
 
-            <section id="priorities" className="report-section">
-              <h2>{t.prioritiesTitle}</h2>
-              {normalizedExecutionReport?.stage !== 'plan_generated' ? (
-                <p className="report-section-placeholder">
-                  {language === 'pl'
-                    ? 'Najpierw podejmij kluczowe decyzje, aby wygenerować tę sekcję.'
-                    : 'Make your key decisions first to generate this section.'}
-                </p>
-              ) : (executionReportPlanRenderable || hasLeanExecutionReport) && normalizedExecutionReport?.priorities?.length ? (
-                <ul>
-                  {normalizedExecutionReport.priorities.map((item, index) => (
-                    <li key={`priority-${index}`}>
-                      {sanitizeReportText(item.title)}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>{t.actionPlanEmpty}</p>
-              )}
-            </section>
-
-            <section id="validation" className="report-section">
-              <h2>{t.validationTitle}</h2>
-              {normalizedExecutionReport?.stage !== 'plan_generated' ? (
-                <p className="report-section-placeholder">
-                  {language === 'pl'
-                    ? 'Najpierw podejmij kluczowe decyzje, aby wygenerować tę sekcję.'
-                    : 'Make your key decisions first to generate this section.'}
-                </p>
-              ) : (executionReportPlanRenderable || hasLeanExecutionReport) && normalizedExecutionReport?.validation_loop?.length ? (
-                <ul>
-                  {normalizedExecutionReport.validation_loop.map((item, index) => (
-                    <li key={`validation-${index}`}>
-                      {sanitizeReportText(item.check)}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p>{t.actionPlanEmpty}</p>
-              )}
-            </section>
-
-
-            <section id="appendix" className="report-section">
-              <h2>{t.appendices}</h2>
-              <div className="report-actions">
-                <button type="button" className="primary" onClick={handlePrintReport}>
-                  {t.pdfPrint}
+	            <section id="appendix" className="report-section">
+	              <h2>{t.appendices}</h2>
+	              <div className="report-actions">
+	                <button type="button" className="primary" onClick={handlePrintReport}>
+	                  {t.pdfPrint}
                 </button>
                 <button
                   type="button"

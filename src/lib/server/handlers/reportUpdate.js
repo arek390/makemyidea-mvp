@@ -669,7 +669,234 @@ const sanitizeExecutionDetailText = (value) => {
   return isExecutionPlaceholderText(normalized) ? '' : normalized
 }
 
-const normalizeExecutionReport = (value) => {
+const EXECUTION_ACTION_STATUSES = ['pending', 'in_progress', 'completed']
+
+const normalizeExecutionStatus = (value) => {
+  const v = typeof value === 'string' ? value.trim() : ''
+  return v === 'pending' || v === 'in_progress' || v === 'completed' ? v : 'pending'
+}
+
+const normalizeExecutionTechnologyOptions = (value) => {
+  if (!Array.isArray(value)) return []
+  const items = value
+    .map((x) => normalizeExecutionText(x))
+    .filter(Boolean)
+    .slice(0, 3)
+  return items
+}
+
+const ensureSingleInProgress = (items, options = {}) => {
+  const allowCompleted = options.allowCompleted === true
+  const list = Array.isArray(items) ? items.filter((x) => x && typeof x === 'object') : []
+  if (list.length === 0) return []
+
+  const sanitized = list.map((item) => {
+    const rawStatus = normalizeExecutionStatus(item.status)
+    const status = allowCompleted ? rawStatus : rawStatus === 'completed' ? 'pending' : rawStatus
+    return { ...item, status }
+  })
+
+  const inProgressIndices = sanitized
+    .map((item, idx) => (item.status === 'in_progress' ? idx : -1))
+    .filter((idx) => idx >= 0)
+
+  if (inProgressIndices.length === 1) return sanitized
+
+  if (inProgressIndices.length > 1) {
+    const keep = inProgressIndices[0]
+    return sanitized.map((item, idx) =>
+      idx === keep ? item : item.status === 'in_progress' ? { ...item, status: 'pending' } : item
+    )
+  }
+
+  // None in progress => pick first non-completed; otherwise first item.
+  const firstNonCompleted = sanitized.findIndex((item) => item.status !== 'completed')
+  const target = firstNonCompleted >= 0 ? firstNonCompleted : 0
+  return sanitized.map((item, idx) => (idx === target ? { ...item, status: 'in_progress' } : { ...item, status: 'pending' }))
+}
+
+const initializeActionPlanStatuses = (items, options = {}) => {
+  const allowCompleted = options.allowCompleted === true
+  const list = Array.isArray(items) ? items.filter((x) => x && typeof x === 'object') : []
+  if (list.length === 0) return []
+  const normalized = list.map((item) => ({
+    ...item,
+    status: allowCompleted ? normalizeExecutionStatus(item.status) : normalizeExecutionStatus(item.status) === 'completed' ? 'pending' : normalizeExecutionStatus(item.status),
+  }))
+  // New-plan policy: first in progress, rest pending (unless completed allowed and already present).
+  if (!allowCompleted) {
+    return normalized.map((item, idx) => ({ ...item, status: idx === 0 ? 'in_progress' : 'pending' }))
+  }
+  // If completed exists, do not override; just ensure single in_progress.
+  return ensureSingleInProgress(normalized, { allowCompleted })
+}
+
+const startsWithImperativeVerb = (text, lang) => {
+  const value = normalizeExecutionText(text)
+  if (!value) return false
+  const first = value.split(/\s+/).filter(Boolean)[0] || ''
+  if (!first) return false
+  if (lang === 'en') {
+    const verbs = [
+      'Design',
+      'Build',
+      'Test',
+      'Compare',
+      'Select',
+      'Estimate',
+      'Define',
+      'Validate',
+      'Set',
+      'Narrow',
+      'Evaluate',
+      'Analyze',
+      'Choose',
+      'Plan',
+      'Prepare',
+      'Write',
+      'Draft',
+      'Prototype',
+      'Implement',
+      'Instrument',
+      'Measure',
+      'Run',
+      'Create',
+      'Document',
+      'Review',
+    ]
+    return verbs.includes(first)
+  }
+  const verbs = [
+    'Zaprojektuj',
+    'Zbuduj',
+    'Przetestuj',
+    'Porównaj',
+    'Dobierz',
+    'Oszacuj',
+    'Zdefiniuj',
+    'Zweryfikuj',
+    'Ustal',
+    'Określ',
+    'Wybierz',
+    'Zaplanuj',
+    'Napisz',
+    'Przygotuj',
+    'Prototypuj',
+    'Wdroż',
+    'Zmierz',
+    'Uruchom',
+    'Stwórz',
+    'Opisz',
+    'Przejrzyj',
+  ]
+  return verbs.includes(first)
+}
+
+const looksLikeNounPhrase = (text, lang) => {
+  const value = normalizeExecutionText(text)
+  if (!value) return false
+  if (startsWithImperativeVerb(value, lang)) return false
+  // Heuristic: starts with a noun-like Polish/English token, often capitalized only at start, no verb.
+  // We treat "Prototyp ..." and "Projekt ..." as noun-phrase topics.
+  const first = value.split(/\s+/).filter(Boolean)[0] || ''
+  if (!first) return false
+  const nounStartersEn = ['Prototype', 'Design', 'Project', 'Implementation', 'Testing', 'Evaluation']
+  const nounStartersPl = ['Prototyp', 'Projekt', 'Testy', 'Test', 'Wycena', 'Analiza', 'Dobór']
+  return lang === 'en' ? nounStartersEn.includes(first) : nounStartersPl.includes(first)
+}
+
+const rewriteStepToImperative = (step, lang) => {
+  const value = normalizeExecutionText(step)
+  if (!value) return ''
+  if (startsWithImperativeVerb(value, lang)) return value
+  const lower = value.toLowerCase()
+  const mappingsEn = [
+    [/^prototype\b/i, 'Build'],
+    [/^design\b/i, 'Design'],
+    [/^testing\b/i, 'Test'],
+    [/^test\b/i, 'Test'],
+    [/^evaluation\b/i, 'Evaluate'],
+    [/^analysis\b/i, 'Analyze'],
+    [/^implementation\b/i, 'Implement'],
+    [/^project\b/i, 'Define'],
+  ]
+  const mappingsPl = [
+    [/^prototyp\b/i, 'Zbuduj prototyp'],
+    [/^projekt\b/i, 'Zaprojektuj'],
+    [/^testy\b/i, 'Przetestuj'],
+    [/^test\b/i, 'Przetestuj'],
+    [/^analiza\b/i, 'Przeanalizuj'],
+    [/^wycena\b/i, 'Oszacuj'],
+    [/^dobór\b/i, 'Dobierz'],
+  ]
+  const mappings = lang === 'en' ? mappingsEn : mappingsPl
+  for (const [re, verb] of mappings) {
+    if (re.test(value)) {
+      const rest = value.replace(re, '').trim()
+      return rest ? `${verb} ${rest}` : verb
+    }
+  }
+  // Fallback: prefix with a neutral imperative verb.
+  return lang === 'en' ? `Define ${lower}` : `Zdefiniuj ${lower}`
+}
+
+const coerceExecutionActionPlanItem = (item, lang) => {
+  if (!item || typeof item !== 'object') return null
+
+  // New shape
+  const rawStep = normalizeExecutionText(item.step)
+  const rawDetails = normalizeExecutionText(item.details)
+  const rawDoneWhen = normalizeExecutionText(item.done_when || item.doneWhen)
+  const rawStatus = normalizeExecutionStatus(item.status)
+  const rawTech = normalizeExecutionTechnologyOptions(item.technology_options || item.technologyOptions)
+
+  // Old shape fallbacks (backward compatibility)
+  const oldTitle = normalizeExecutionText(item.title || item.action || item.task || item.krok)
+  const oldWhat = normalizeExecutionText(item.what_to_do || item.what || item.do)
+  const oldExpected = normalizeExecutionText(item.expected_result || item.expectedResult || item.success_criteria || item.successCriteria)
+
+  const stepCandidate = rawStep || oldTitle || oldWhat
+  const detailsCandidate = rawDetails || oldWhat
+  const doneWhenCandidate = rawDoneWhen || oldExpected
+
+  if (!stepCandidate && !detailsCandidate && !doneWhenCandidate) return null
+
+  let step = rewriteStepToImperative(stepCandidate, lang)
+  let details = normalizeExecutionText(detailsCandidate)
+  const done_when = normalizeExecutionText(doneWhenCandidate)
+
+  {
+    const words = step.split(/\s+/).filter(Boolean)
+    if (words.length > 8) {
+      const head = words.slice(0, 8).join(' ')
+      const tail = words.slice(8).join(' ').trim()
+      if (tail && !details) details = tail
+      step = head
+    }
+  }
+
+  // Preserve meta fields for UI grouping if present; they are not part of the contract but harmless for storage/display.
+  const source_type =
+    item.source_type === 'decision' || item.source_type === 'triz' || item.source_type === 'analysis'
+      ? item.source_type
+      : null
+  const source_ref = typeof item.source_ref === 'string' && item.source_ref.trim() ? item.source_ref.trim() : null
+  const derived_from_user_choice =
+    typeof item.derived_from_user_choice === 'boolean' ? item.derived_from_user_choice : null
+
+  return {
+    step,
+    status: rawStatus,
+    details,
+    technology_options: rawTech,
+    done_when,
+    ...(source_type ? { source_type } : {}),
+    ...(source_ref ? { source_ref } : {}),
+    ...(typeof derived_from_user_choice === 'boolean' ? { derived_from_user_choice } : {}),
+  }
+}
+
+const normalizeExecutionReport = (value, reportLang = 'en') => {
   const empty = {
     stage: null,
     headline: '',
@@ -759,39 +986,21 @@ const normalizeExecutionReport = (value) => {
         risk_of_ignoring: '',
       }
     }),
-    action_plan: normalizeExecutionList(report.action_plan, (item) => {
-      if (typeof item === 'string') {
-        const text = item.trim()
-        if (!text) return null
-        return {
-          title: text,
-          what_to_do: text,
-          why_now: '',
-          expected_result: '',
-          source_type: null,
-          source_ref: null,
-          derived_from_user_choice: null,
+    action_plan: normalizeExecutionList(
+      report.action_plan,
+      (item) => {
+        if (typeof item === 'string') {
+          const text = item.trim()
+          if (!text) return null
+          return coerceExecutionActionPlanItem(
+            { step: text, status: 'pending', details: '', technology_options: [], done_when: '' },
+            reportLang
+          )
         }
-      }
-      if (!item || typeof item !== 'object') return null
-      const taskText = normalizeExecutionText(item.task || item.krok)
-      const title = normalizeExecutionText(item.title || item.step || item.action || item.task || item.krok)
-      const whatToDo = normalizeExecutionText(item.what_to_do || item.what || item.do || item.task || item.krok)
-      if (!title && !whatToDo) return null
-      return {
-        title: title || taskText,
-        what_to_do: whatToDo || title || taskText,
-        why_now: '',
-        expected_result: '',
-        source_type:
-          item.source_type === 'decision' || item.source_type === 'triz' || item.source_type === 'analysis'
-            ? item.source_type
-            : null,
-        source_ref: typeof item.source_ref === 'string' && item.source_ref.trim() ? item.source_ref.trim() : null,
-        derived_from_user_choice:
-          typeof item.derived_from_user_choice === 'boolean' ? item.derived_from_user_choice : null,
-      }
-    }, MAX_EXEC_ACTION_PLAN_ITEMS),
+        return coerceExecutionActionPlanItem(item, reportLang)
+      },
+      MAX_EXEC_ACTION_PLAN_ITEMS
+    ),
     decisions: normalizeExecutionList(report.decisions, (item) => {
       if (typeof item === 'string') {
         const tradeoff = item.trim()
@@ -878,7 +1087,7 @@ const assessExecutionReportQuality = (report) => {
     }).length
 
   const prioritiesComplete = countMeaningful(priorities, ['title'])
-  const actionPlanComplete = countMeaningful(actionPlan, ['title'])
+  const actionPlanComplete = countMeaningful(actionPlan, ['step'])
   const decisionsComplete = decisions.filter((item) => {
     if (!item || typeof item !== 'object') return false
     return normalizeExecutionText(item.tradeoff).length > 0
@@ -886,7 +1095,7 @@ const assessExecutionReportQuality = (report) => {
   const validationComplete = countMeaningful(validationLoop, ['check'])
 
   const prioritiesDistinct = countDistinctNonEmpty(priorities.map((item) => item?.title))
-  const actionPlanDistinct = countDistinctNonEmpty(actionPlan.map((item) => item?.title))
+  const actionPlanDistinct = countDistinctNonEmpty(actionPlan.map((item) => item?.step || item?.title))
   const decisionsDistinct = countDistinctNonEmpty(decisions.map((item) => item?.tradeoff))
   const validationDistinct = countDistinctNonEmpty(validationLoop.map((item) => item?.check))
 
@@ -894,7 +1103,7 @@ const assessExecutionReportQuality = (report) => {
     items.filter((item) => normalizeExecutionText(item?.[key]).length > 0 && normalizeExecutionText(item?.[key]).length < minLen)
       .length
   const prioritiesTooShort = countTooShort(priorities, 'title', 12)
-  const actionPlanTooShort = countTooShort(actionPlan, 'title', 12)
+  const actionPlanTooShort = countTooShort(actionPlan, 'step', 12)
   const decisionsTooShort = countTooShort(decisions, 'tradeoff', 16)
   const validationTooShort = countTooShort(validationLoop, 'check', 12)
 
@@ -1046,7 +1255,7 @@ const isExecutionReportUsable = (report) => {
     )
   const sectionsWithMeaningfulContent = [
     hasMeaningfulItem(priorities, ['title', 'why_it_matters', 'risk_of_ignoring']),
-    hasMeaningfulItem(actionPlan, ['title', 'what_to_do', 'why_now', 'expected_result']),
+    hasMeaningfulItem(actionPlan, ['step', 'details', 'done_when']),
     hasMeaningfulItem(decisions, ['tradeoff', 'option_a', 'option_b']),
     hasMeaningfulItem(validationLoop, ['check', 'how_to_check', 'positive_result_means', 'negative_result_means']),
   ].filter(Boolean).length
@@ -1075,7 +1284,7 @@ const getExecutionReportPersistableStats = (report) => {
     )
   const sectionsWithMeaningfulContent = [
     hasMeaningfulItem(priorities, ['title', 'why_it_matters', 'risk_of_ignoring']),
-    hasMeaningfulItem(actionPlan, ['title', 'what_to_do', 'why_now', 'expected_result']),
+    hasMeaningfulItem(actionPlan, ['step', 'details', 'done_when']),
     hasMeaningfulItem(decisions, ['tradeoff', 'option_a', 'option_b']),
     hasMeaningfulItem(validationLoop, ['check', 'how_to_check', 'positive_result_means', 'negative_result_means']),
   ].filter(Boolean).length
@@ -1101,8 +1310,8 @@ const countDecisionOptions = (report) => {
   }
 }
 
-const mergeDecisionConsequences = (baseReport, enrichedDecisions) => {
-  const report = normalizeExecutionReport(baseReport)
+const mergeDecisionConsequences = (baseReport, enrichedDecisions, reportLang = 'en') => {
+  const report = normalizeExecutionReport(baseReport, reportLang)
   const normalizedEnriched = normalizeExecutionList(
     enrichedDecisions,
     (item) => {
@@ -1173,7 +1382,7 @@ const validateAndNormalizeReport = (payload) => {
       section_intro: '',
       contradictions: [],
     },
-    execution_report: normalizeExecutionReport(null),
+    execution_report: normalizeExecutionReport(null, 'en'),
     source_snapshot: null,
   }
   if (!payload || typeof payload !== 'object') return { ...empty }
@@ -1237,7 +1446,7 @@ const validateAndNormalizeReport = (payload) => {
   const items = Array.isArray(value.items) ? value.items : []
   const recommendations = normalizeRecommendations(value.recommendations)
   const triz = normalizeTriz(value.triz)
-  const execution_report = normalizeExecutionReport(value.execution_report)
+  const execution_report = normalizeExecutionReport(value.execution_report, lang || 'en')
   return {
     lang,
     summary,
@@ -1347,7 +1556,7 @@ const ensureExecutionNextSessionFocus = (report, reportLang) => {
   const existing = normalizeExecutionText(report.next_session_focus)
   if (existing) return report
   const firstAction = Array.isArray(report.action_plan)
-    ? normalizeExecutionText(report.action_plan?.[0]?.title)
+    ? normalizeExecutionText(report.action_plan?.[0]?.step || report.action_plan?.[0]?.title)
     : ''
   const firstPriority = Array.isArray(report.priorities)
     ? normalizeExecutionText(report.priorities?.[0]?.title)
@@ -1439,7 +1648,7 @@ const validateExecutionPlanOnly = (report) => {
   const actionPlan = Array.isArray(report.action_plan) ? report.action_plan : []
   const validationLoop = Array.isArray(report.validation_loop) ? report.validation_loop : []
   const meaningfulPriorities = priorities.filter((item) => normalizeExecutionText(item?.title).length > 0).length
-  const meaningfulActions = actionPlan.filter((item) => normalizeExecutionText(item?.title).length > 0).length
+  const meaningfulActions = actionPlan.filter((item) => normalizeExecutionText(item?.step || item?.title).length > 0).length
   const meaningfulValidation = validationLoop.filter((item) => normalizeExecutionText(item?.check).length > 0).length
   const sectionsWithContent = [meaningfulPriorities > 0, meaningfulActions > 0, meaningfulValidation > 0, normalizeExecutionText(report.next_session_focus).length > 0].filter(Boolean).length
   if (sectionsWithContent < 2) errors.push('execution_report_plan_below_threshold')
@@ -2629,11 +2838,11 @@ export const handleReportUpdate = async (req, res) => {
       const responseMeta = {}
       const responseExecution = { planGenerated: false, planSkippedReason: null }
 
-      if (executionMode === 'plan_from_decisions_only' || executionMode === 'plan_from_decisions') {
-        const incomingExecutionReport =
-          body.execution_report && typeof body.execution_report === 'object'
-            ? normalizeExecutionReport(body.execution_report)
-            : null
+	      if (executionMode === 'plan_from_decisions_only' || executionMode === 'plan_from_decisions') {
+	        const incomingExecutionReport =
+	          body.execution_report && typeof body.execution_report === 'object'
+	            ? normalizeExecutionReport(body.execution_report, requestedLang || 'en')
+	            : null
         const incomingDecisions = Array.isArray(incomingExecutionReport?.decisions)
           ? incomingExecutionReport.decisions
           : []
@@ -2796,18 +3005,24 @@ export const handleReportUpdate = async (req, res) => {
             }
           : item
       )
-      const normalizedExecutionReport = normalizeExecutionReport(normalizedReport.execution_report ?? null)
+	      const normalizedExecutionReport = normalizeExecutionReport(
+	        normalizedReport.execution_report ?? null,
+	        normalizedReport.lang || requestedLang || 'en'
+	      )
       const invalidatesPlan = selectionChanged && normalizedExecutionReport?.stage === 'plan_generated'
-      const nextExecutionReport = invalidatesPlan
-        ? normalizeExecutionReport({
-            ...normalizedExecutionReport,
-            stage: 'awaiting_decisions',
-            priorities: [],
-            action_plan: [],
-            validation_loop: [],
-            next_session_focus: '',
-          })
-        : normalizedExecutionReport
+	      const nextExecutionReport = invalidatesPlan
+	        ? normalizeExecutionReport(
+	          {
+	            ...normalizedExecutionReport,
+	            stage: 'awaiting_decisions',
+	            priorities: [],
+	            action_plan: [],
+	            validation_loop: [],
+	            next_session_focus: '',
+	          },
+	          normalizedReport.lang || requestedLang || 'en'
+	        )
+	        : normalizedExecutionReport
       const nextSummary = sanitizeReportPayload({
         ...normalizedReport,
         triz: normalizedTriz,
@@ -2881,10 +3096,10 @@ export const handleReportUpdate = async (req, res) => {
       hasExistingExecutionReport: Boolean(existingNormalized?.execution_report),
     })
     const executionPlanOnly = executionMode === 'plan_from_decisions_only'
-    const executionReportOverride =
-      body.execution_report && typeof body.execution_report === 'object'
-        ? normalizeExecutionReport(body.execution_report)
-        : null
+	    const executionReportOverride =
+	      body.execution_report && typeof body.execution_report === 'object'
+	        ? normalizeExecutionReport(body.execution_report, reportLang)
+	        : null
 
     const itemsFromDb = items.map((item) => ({
       id: item.id,
@@ -3276,7 +3491,7 @@ export const handleReportUpdate = async (req, res) => {
       let summaryCandidate = phaseASanitized.summary
       let recommendationsCandidate = normalizeRecommendations(phaseASanitized.recommendations)
       let trizCandidate = normalizeTriz(phaseASanitized.triz)
-      let executionReportCandidate = normalizeExecutionReport(phaseASanitized.execution_report)
+	      let executionReportCandidate = normalizeExecutionReport(phaseASanitized.execution_report, reportLang)
       let summaryValidation = validateSummary(summaryCandidate, itemsFromDb.length, reportLang, {
         requireNarrative: true,
       })
@@ -3559,13 +3774,15 @@ export const handleReportUpdate = async (req, res) => {
                     risk_of_ignoring: 'string',
                   },
                 ],
-                action_plan: [
-                  {
-                    title: 'string',
-                    expected_result: 'string',
-                    what_to_do: 'string',
-                  },
-                ],
+	                action_plan: [
+	                  {
+	                    step: 'string',
+	                    status: '"pending" | "in_progress" | "completed"',
+	                    details: 'string',
+	                    technology_options: ['string'],
+	                    done_when: 'string',
+	                  },
+	                ],
                 decisions: [
                   {
                     tradeoff: 'string',
@@ -3607,29 +3824,38 @@ export const handleReportUpdate = async (req, res) => {
               'When you include option_a and option_b, they must be two concrete alternative directions for that same tradeoff (not a new topic).',
               'Use exactly these field names and no aliases.',
               'Do not use string shortcuts instead of objects inside priorities, action_plan, decisions, or validation_loop.',
-              'Lean shape only. Prioritize durable fields that will be persisted and displayed: priorities.title, action_plan.title, action_plan.what_to_do, action_plan.expected_result, decisions.tradeoff, decisions.option_a, decisions.option_b, decisions.consequence_a, decisions.consequence_b, validation_loop.check, next_session_focus, map_context.coverage_summary, goal, headline.',
-              'Make titles specific and project-grounded, not generic labels.',
-              'Each priorities item must contain exactly: title.',
+	              'Lean shape only. Prioritize durable fields that will be persisted and displayed: priorities.title, action_plan.step, action_plan.status, action_plan.details, action_plan.technology_options, action_plan.done_when, decisions.tradeoff, decisions.option_a, decisions.option_b, decisions.consequence_a, decisions.consequence_b, validation_loop.check, next_session_focus, map_context.coverage_summary, goal, headline.',
+	              'Make steps specific and project-grounded, not generic labels.',
+	              'Each priorities item must contain exactly: title.',
               'Action plan must have two conceptual layers.',
               'Layer 1: contradiction-linked actions. Start from the selected or strongly supported contradictions that the user chose to work with. For each selected contradiction, create one or more concrete actions only when the material supports it.',
               'Layer 2: broader synthesis actions. After contradiction-linked actions, add actions derived from the full board material, summary, recommendations, perspective map, supporting items, and the user’s choices in Key decisions to make.',
               'The user must be able to see why actions were created: actions should visibly connect either to a selected contradiction or to a concrete decision/user choice.',
               'Use contradictions as visible anchors, not as cages. Do not limit the content of actions to the contradiction title.',
-              'For contradiction-linked actions, include the contradiction title or a short recognizable version of it in the action title.',
+	              'For contradiction-linked actions, include the contradiction title (or a short recognizable version) in action_plan.step or action_plan.details.',
               'For broader synthesis actions, ground them in selected decision directions, unresolved risks, repeated patterns, missing validation steps, or practical constraints from the material.',
               'Order the action plan as follows: first actions linked to selected/supported contradictions, then broader synthesis actions.',
               'Each action must be concrete enough that the user knows what to do next, on what object/scope, and what practical result it should produce.',
-              'Avoid generic action titles such as "Analyze options", "Define priorities", "Validate assumptions", unless the title includes a concrete project-specific object.',
+	              'Avoid generic steps such as "Analyze options", "Define priorities", "Validate assumptions", unless the step includes a concrete project-specific object.',
               'Do not force one action per contradiction. Prefer fewer useful actions over mechanical coverage.',
               'Do not create artificial actions only to match the number of contradictions.',
               'If a contradiction is selected but the material does not support a concrete action, reflect it through a broader validation or decision action instead of inventing a weak action.',
               'Use Key decisions to make as decision context. If the user has already chosen a direction, the action should operationalize that choice instead of reopening the decision.',
               'If a key decision is still unresolved, create an action that helps resolve it through a small test, comparison, prototype, or constraint check.',
               'Validation loop should test the most important assumptions behind the selected contradictions and key decisions, not generic product quality.',
-              'Each action_plan item must contain exactly: title, what_to_do, expected_result.',
-              'A good action changes the project state.',
-              'A good action creates something, tests something, compares something, prototypes something, implements something, removes a constraint, reduces uncertainty, or validates a risky assumption using a concrete artifact or experiment.',
-              'Avoid meta-workshop actions.',
+	              'Each action_plan item must contain exactly: step, status, details, technology_options, done_when.',
+	              'status values MUST stay in English: pending, in_progress, completed.',
+	              'For a new plan: set the first item status=in_progress and all remaining items status=pending.',
+	              'There must be exactly ONE in_progress item while the plan is not complete.',
+	              'Do NOT output completed in a new plan unless you are updating a plan that already contains completed items.',
+	              'Never output noun-phrase topic steps. Every step must start with an imperative verb.',
+	              'step must be short and readable (ideally 3-8 words). Do not cram details into step.',
+	              'Put engineering/context detail into details, technology_options, and done_when.',
+	              'technology_options must be an array with 0-3 practical options; use [] only when options do not make sense.',
+	              'done_when must be a concrete completion condition (not a vague benefit).',
+	              'For buildable physical/product concepts, split vague work into execution phases where relevant: design → select technologies/materials → build prototype → test in usage context → evaluate cost/manufacturability.',
+	              'A good action changes the project state and produces an artifact, test result, or decision-enabling evidence.',
+	              'Avoid meta-workshop actions.',
               'Avoid actions whose only output is discussion, clarification, definition, prioritization, or choosing later.',
               'Do not write actions that merely ask the user to define acceptance criteria, define success signals, clarify priorities, analyze options, validate assumptions, turn a signal into an experiment, or add kill conditions.',
               'Forbidden phrases as action titles or main action instructions unless immediately followed by a concrete project-specific object, scope, method, and expected output:',
@@ -3648,7 +3874,7 @@ export const handleReportUpdate = async (req, res) => {
               'If an action involves validation, specify what will be built/tested, with whom or under what condition, what will be measured, and what concrete decision the result will enable.',
               'If an action involves a decision, operationalize the decision into a concrete product/prototype/business step; do not reopen the decision.',
               'If the material is ambiguous, choose the smallest concrete next move supported by the material instead of asking the user to clarify.',
-              'Do not return action_plan items with title only; every action must have title, what_to_do, expected_result.',
+	              'Do not return incomplete action_plan items; every action must have non-empty step and done_when, and details when the action needs context.',
               'Each decisions item must contain tradeoff and may optionally contain option_a, option_b, consequence_a, and consequence_b.',
               'For each decision, try to provide option_a and option_b as short alternative decision directions grounded in the project material.',
               'If option_a or option_b cannot be supported from the material, omit them instead of inventing weak or generic options.',
@@ -3687,8 +3913,8 @@ export const handleReportUpdate = async (req, res) => {
 
       const buildExecutionReportTaskInstructions = (strictJson = false) =>
         reportLang === 'en'
-          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report. Build an action-oriented execution report with priorities, decisions, a two-layer action plan, validation, and next session focus.\n\nFor this task, act as a product execution strategist, not a workshop facilitator. Do not moderate discussion, ask the user to clarify, or generate meta-workshop prompts. Generate actions that move the project forward in the real world.\n\nThe action plan must first include actions visibly linked to selected/supported contradictions, using the contradiction title or a short recognizable version of it in the action title. Then add broader synthesis actions derived from the full material and the user’s choices in Key decisions to make.\n\nEach action_plan item must contain exactly title, what_to_do, and expected_result. A good action changes the project state: it creates, tests, compares, prototypes, implements, removes a constraint, reduces uncertainty, or validates a risky assumption using a concrete artifact or experiment.\n\nAvoid meta-workshop actions whose only output is discussion, clarification, definition, prioritization, or choosing later. Do not write actions such as 'Define acceptance criteria', 'Set acceptance criteria', 'Define a success signal', 'Set a success signal', 'Clarify priorities', 'Pick a priority', 'Analyze options', 'Validate assumptions', 'Turn a signal into an experiment', 'Add a kill condition', 'Narrow the MVP', or 'Set one hard constraint' unless the action immediately specifies the concrete project object, scope, method, and expected output.\n\nIf validation is needed, specify what will be built/tested, with whom or under what condition, what will be measured, and what decision the result will enable. If the user has already chosen a decision direction, operationalize it instead of reopening the decision. If the material is ambiguous, choose the smallest concrete next move supported by the material instead of asking the user to clarify.\n\nBe concrete, concise, project-specific, and grounded in the provided material. Use contradictions as anchors, not cages. Do not force one action per contradiction and do not invent weak actions just to cover every contradiction. Avoid generic filler, template phrasing, and meta-instruction wording.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, do not translate keys, do not use aliases or synonyms such as krok, decyzja, cel, metoda, task, output, and omit incomplete items rather than returning malformed ones.' : ''}`
-          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report. Zbuduj raport nastawiony na działanie: priorytety, decyzje, dwuwarstwowy plan działania, walidację i fokus kolejnej sesji.\n\nW tym zadaniu działaj jak strateg wykonania produktu, a nie moderator warsztatu. Nie moderuj dyskusji, nie proś użytkownika o doprecyzowanie i nie generuj promptów warsztatowych. Generuj akcje, które realnie przesuwają projekt do przodu.\n\nPlan działania powinien najpierw zawierać akcje wyraźnie powiązane z wybranymi lub dobrze wspartymi sprzecznościami, używając tytułu sprzeczności albo krótkiej rozpoznawalnej wersji tego tytułu w tytule akcji. Następnie dodaj szersze akcje syntetyczne wynikające z całego materiału i wyborów użytkownika w sekcji Key decisions to make.\n\nKażdy element action_plan musi zawierać dokładnie: title, what_to_do i expected_result. Dobra akcja zmienia stan projektu: tworzy coś, testuje coś, porównuje coś, prototypuje coś, wdraża coś, usuwa ograniczenie, zmniejsza niepewność albo waliduje ryzykowne założenie przez konkretny artefakt lub eksperyment.\n\nUnikaj meta-akcji warsztatowych, których jedynym wynikiem jest dyskusja, doprecyzowanie, definiowanie, priorytetyzowanie albo późniejszy wybór. Nie pisz akcji typu: 'Define acceptance criteria', 'Set acceptance criteria', 'Define a success signal', 'Set a success signal', 'Clarify priorities', 'Pick a priority', 'Analyze options', 'Validate assumptions', 'Turn a signal into an experiment', 'Add a kill condition', 'Narrow the MVP', 'Set one hard constraint', chyba że akcja od razu wskazuje konkretny obiekt projektu, zakres, metodę i oczekiwany rezultat.\n\nJeśli potrzebna jest walidacja, wskaż co ma zostać zbudowane lub przetestowane, z kim albo w jakich warunkach, co będzie mierzone i jaką decyzję umożliwi wynik. Jeśli użytkownik wybrał już kierunek decyzji, przełóż go na działanie zamiast ponownie otwierać decyzję. Jeśli materiał jest niejednoznaczny, wybierz najmniejszy konkretny następny ruch wsparty materiałem zamiast prosić użytkownika o doprecyzowanie.\n\nPisz konkretnie, zwięźle, projektowo i wyłącznie na podstawie dostarczonego materiału. Traktuj sprzeczności jako kotwice, a nie ograniczenia. Nie wymuszaj jednej akcji na każdą sprzeczność i nie wymyślaj słabych akcji tylko po to, żeby pokryć każdą sprzeczność. Unikaj generycznych wypełniaczy, szablonowych sformułowań i meta-instrukcji.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, nie tłumacz kluczy, nie używaj aliasów ani synonimów takich jak krok, decyzja, cel, metoda, task, output i pomijaj niekompletne elementy zamiast zwracać błędne.' : ''}`
+          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report.\n\nAct as a product execution strategist, not a workshop facilitator. Do not moderate discussion, ask the user to clarify, or generate meta-workshop prompts. Generate actions that move the project forward in the real world.\n\nThe action plan must be a clear, executable sequence. Do NOT output noun-phrase topics. Every action_plan.step must start with an imperative verb (e.g. Design, Build, Test, Compare, Select, Estimate, Define, Validate).\n\nRequired action_plan item shape (no aliases): { step, status, details, technology_options, done_when }.\n- status values MUST stay in English: pending | in_progress | completed.\n- For a NEW plan: set the FIRST item status=in_progress and ALL remaining items status=pending.\n- There must be EXACTLY ONE in_progress item while the plan is not complete.\n- Do NOT output completed in a new plan unless you are updating a plan that already contains completed items.\n- step must be short and readable (ideally 3–8 words). Do not cram detail into step.\n- Put engineering/context detail into details, technology_options, and done_when.\n- technology_options must be an array with 0–3 practical options. Use [] only when options do not make sense.\n- done_when must be a concrete completion condition (not a vague benefit).\n\nStructure: first include contradiction-linked actions (when supported), then broader synthesis actions grounded in decisions, risks, and constraints.\n\nFor buildable physical/product concepts, split vague work into execution phases where relevant: design → select technologies/materials → build prototype → test in usage context → evaluate cost/manufacturability.\n\nIf the user has already chosen a decision direction, operationalize it instead of reopening the decision. If the material is ambiguous, choose the smallest concrete next move supported by the material instead of asking the user to clarify.\n\nBe concrete, concise, project-specific, and grounded in the provided material. Use contradictions as anchors, not cages.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, no aliases, omit incomplete items rather than returning malformed ones.' : ''}`
+          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report.\n\nDziałaj jak strateg wykonania produktu, a nie moderator warsztatu. Nie moderuj dyskusji, nie proś użytkownika o doprecyzowanie i nie generuj promptów warsztatowych. Generuj akcje, które realnie przesuwają projekt do przodu.\n\nPlan działania ma być klarowną sekwencją wykonalnych kroków. NIE wypisuj tematów jako fraz rzeczownikowych. Każdy action_plan.step musi zaczynać się czasownikiem w trybie rozkazującym (np. Zaprojektuj, Zbuduj, Przetestuj, Porównaj, Dobierz, Oszacuj, Zdefiniuj, Zweryfikuj).\n\nWymagany kształt elementu action_plan (bez aliasów): { step, status, details, technology_options, done_when }.\n- status zawsze po angielsku: pending | in_progress | completed.\n- Dla NOWEGO planu: pierwszy element status=in_progress, wszystkie pozostałe status=pending.\n- Ma być DOKŁADNIE jeden in_progress, dopóki plan nie jest ukończony.\n- Nie zwracaj completed w nowym planie, chyba że aktualizujesz plan, który już zawiera completed.\n- step ma być krótki i czytelny (najlepiej 3–8 słów). Nie upychaj szczegółów w step.\n- Szczegóły inżynieryjne i kontekst wpisuj do details, technology_options i done_when.\n- technology_options to tablica 0–3 praktycznych opcji; użyj [] tylko gdy opcje nie mają sensu.\n- done_when to konkretny warunek ukończenia (nie korzyść).\n\nStruktura: najpierw akcje powiązane ze sprzecznościami (jeśli materiał na to pozwala), a potem szersze akcje syntetyczne zakotwiczone w decyzjach, ryzykach i ograniczeniach.\n\nDla rzeczy budowalnych/fizycznych dziel pracę na fazy, gdy to ma sens: projekt → dobór technologii/materiałów → prototyp → test w kontekście użycia → ocena kosztu/wykonalności.\n\nJeśli użytkownik wybrał już kierunek decyzji, przełóż go na działanie zamiast ponownie otwierać decyzję. Jeśli materiał jest niejednoznaczny, wybierz najmniejszy konkretny następny ruch wsparty materiałem zamiast prosić o doprecyzowanie.\n\nPisz konkretnie, zwięźle, projektowo i wyłącznie na podstawie dostarczonego materiału. Traktuj sprzeczności jako kotwice, a nie ograniczenia.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, bez aliasów; pomijaj niekompletne elementy zamiast zwracać błędne.' : ''}`
 
       const buildDecisionEnrichmentPrompt = (decisions) =>
         JSON.stringify({
@@ -3996,9 +4222,11 @@ export const handleReportUpdate = async (req, res) => {
           lang: reportLang,
           actions: Array.isArray(actions)
             ? actions.map((item) => ({
-                title: normalizeExecutionText(item?.title),
-                what_to_do: normalizeExecutionText(item?.what_to_do),
-                expected_result: normalizeExecutionText(item?.expected_result),
+                step: normalizeExecutionText(item?.step || item?.title),
+                status: normalizeExecutionStatus(item?.status),
+                details: normalizeExecutionText(item?.details || item?.what_to_do),
+                technology_options: normalizeExecutionTechnologyOptions(item?.technology_options),
+                done_when: normalizeExecutionText(item?.done_when || item?.expected_result),
                 source_type: item?.source_type ?? null,
                 derived_from_user_choice: Boolean(item?.derived_from_user_choice),
               }))
@@ -4007,9 +4235,11 @@ export const handleReportUpdate = async (req, res) => {
             output_schema: {
               action_plan: [
                 {
-                  title: 'string',
-                  what_to_do: 'string',
-                  expected_result: 'string',
+                  step: 'string',
+                  status: '"pending" | "in_progress" | "completed"',
+                  details: 'string',
+                  technology_options: ['string'],
+                  done_when: 'string',
                 },
               ],
             },
@@ -4022,9 +4252,14 @@ export const handleReportUpdate = async (req, res) => {
               'Do NOT split one action into multiple actions.',
               'Do NOT add or remove actions.',
               'Keep each action semantically aligned with the input action at the same index.',
-              'Do NOT include any source labels like "Decyzja:", "Podejście TRIZ:", "Z tablicy:", "From the board:" in titles or text.',
+              'Preserve status values. Do NOT change statuses.',
+              'Do NOT include any source labels like "Decyzja:", "Podejście TRIZ:", "Z tablicy:", "From the board:" in step/details/done_when.',
               'Write in one consistent style: concrete, specific, natural language.',
               'Act as a product execution strategist, not a workshop facilitator. Do not generate meta-workshop prompts.',
+              'Never output noun-phrase topics. Every step must start with an imperative verb and be short (ideally 3-8 words).',
+              'Keep step short; move detail into details, technology_options, and done_when.',
+              'technology_options must have 0-3 practical options.',
+              'done_when must be a concrete completion condition.',
               'A good rewrite keeps the action concrete and state-changing: build, test, compare, prototype, implement, remove a constraint, reduce uncertainty, or validate a risky assumption with a concrete artifact or experiment.',
               'Avoid meta-workshop actions whose only output is discussion, clarification, definition, prioritization, or choosing later.',
               'Do not write or preserve action titles that are only process, such as: "Define acceptance criteria", "Set acceptance criteria", "Define a success signal", "Set a success signal", "Clarify priorities", "Pick a priority", "Analyze options", "Validate assumptions", "Turn a signal into an experiment", "Add a kill condition", "Narrow the MVP", "Set one hard constraint" unless immediately followed by a concrete project object, scope, method, and expected output.',
@@ -4032,9 +4267,9 @@ export const handleReportUpdate = async (req, res) => {
               'Avoid dry template verbs like "wdroż wybraną opcję", "zweryfikuj", "zrób pierwszy prototyp/test", or "z jasnym sygnałem pass/fail". Replace with concrete project actions and concrete artifacts.',
               'Across the whole plan, vary action types by real-world artifacts and steps (prototype build, user test setup, implementation slice, integration, content/spec creation, instrumentation, packaging/ops), not workshop moves.',
               'Avoid repeating the same sentence pattern across actions (especially not one pattern per category).',
-              'Do not start most bullets with the same words. Vary phrasing naturally.',
+              'Do not start most steps with the same word. Vary phrasing naturally.',
               'Paraphrase input material; do not copy full decision titles or full board sentences as the core of the bullet.',
-              'For expected_result, include a short measurable outcome or acceptance criterion when possible.',
+              'For done_when, include a short measurable outcome or acceptance criterion when possible.',
               reportLang === 'en' ? 'Output must be in English.' : 'Całość po polsku.',
             ],
           },
@@ -4413,16 +4648,24 @@ export const handleReportUpdate = async (req, res) => {
                 logLlmMeta('execution-report', execResult)
               }
               if (execResult?.ok && execResult.data && typeof execResult.data === 'object') {
-                const generated = normalizeExecutionReport(execResult.data)
+                const generated = normalizeExecutionReport(execResult.data, reportLang)
+                const allowCompleted = Boolean(
+                  Array.isArray(existingNormalized?.execution_report?.action_plan) &&
+                    existingNormalized.execution_report.action_plan.some((a) => a?.status === 'completed')
+                )
+                const generatedWithStatuses = {
+                  ...generated,
+                  action_plan: initializeActionPlanStatuses(generated.action_plan, { allowCompleted }),
+                }
                 executionReportCandidate = normalizeExecutionReport({
                   ...executionReportDefaults,
-                  ...generated,
+                  ...generatedWithStatuses,
                   stage: 'plan_generated',
                   // Preserve the user's selected decisions (incl. selected_option) as the committed context.
                   decisions: existingDecisions,
                   supporting_items: executionSupportingItems,
                   source_snapshot: phaseASanitized.source_snapshot ?? null,
-                })
+                }, reportLang)
                 executionReportCandidate = ensureExecutionNextSessionFocus(executionReportCandidate, reportLang)
                 executionReportValidation = validateExecutionPlanOnly(executionReportCandidate)
                 responseExecution.planGenerated =
@@ -4563,31 +4806,38 @@ export const handleReportUpdate = async (req, res) => {
                 ? planResult.data.analysis_actions
                 : []
 
-              const toActionTitle = (value) => normalizeExecutionText(value?.title || value?.task || value?.step || value?.action || value)
-              const toActionBody = (value) => normalizeExecutionText(value?.what_to_do || value?.what || value?.do || '')
-              const toSuccess = (value) => normalizeExecutionText(value?.success_criteria || value?.success || value?.criteria || '')
+	              const toActionStep = (value) =>
+	                normalizeExecutionText(value?.step || value?.title || value?.task || value?.action || value)
+	              const toActionDetails = (value) =>
+	                normalizeExecutionText(value?.details || value?.what_to_do || value?.what || value?.do || '')
+	              const toDoneWhen = (value) =>
+	                normalizeExecutionText(
+	                  value?.done_when || value?.doneWhen || value?.success_criteria || value?.success || value?.criteria || ''
+	                )
 
-              const choiceActions = llmChoiceActionsRaw
-                .filter((item) => item && typeof item === 'object')
-                .map((item) => ({
-                  title: toActionTitle(item),
-                  what_to_do: toActionBody(item),
-                  expected_result: toSuccess(item),
-                  source_ref: normalizeExecutionText(item?.source_ref),
-                }))
-                .filter((item) => item.title)
+	              const choiceActions = llmChoiceActionsRaw
+	                .filter((item) => item && typeof item === 'object')
+	                .map((item) => ({
+	                  step: toActionStep(item),
+	                  details: toActionDetails(item),
+	                  done_when: toDoneWhen(item),
+	                  technology_options: [],
+	                  source_ref: normalizeExecutionText(item?.source_ref),
+	                }))
+	                .filter((item) => item.step)
 
-              const analysisActions = llmAnalysisActionsRaw
-                .filter((item) => item && typeof item === 'object')
-                .map((item) => ({
-                  title: toActionTitle(item),
-                  what_to_do: toActionBody(item),
-                  expected_result: toSuccess(item),
-                }))
-                .filter((item) => item.title)
+	              const analysisActions = llmAnalysisActionsRaw
+	                .filter((item) => item && typeof item === 'object')
+	                .map((item) => ({
+	                  step: toActionStep(item),
+	                  details: toActionDetails(item),
+	                  done_when: toDoneWhen(item),
+	                  technology_options: [],
+	                }))
+	                .filter((item) => item.step)
 
-              const looksLikeSourceLabel = (title) =>
-                /^(\s*(decyzja|podejście triz|triz approach|z tablicy|from the board)\s*:)/i.test(String(title || '').trim())
+	              const looksLikeSourceLabel = (text) =>
+	                /^(\s*(decyzja|podejście triz|triz approach|z tablicy|from the board)\s*:)/i.test(String(text || '').trim())
 
               const sanitizeActionText = (text) => {
                 const value = normalizeExecutionText(text)
@@ -4662,39 +4912,38 @@ export const handleReportUpdate = async (req, res) => {
                     `Write a kill condition: when you would drop this direction`,
                 ]
                 const items = []
-                selectedDecisions.forEach((d) => {
-                  const opt = String(d.selected).toUpperCase()
-                  const seed = hashSeed(`${d.tradeoff}:${opt}`)
-                  const base = shorten(d.tradeoff, 8)
-                  const move = reportLang === 'en' ? pick(decisionMovesEn, seed) : pick(decisionMovesPl, seed)
-                  items.push({
-                    title:
-                      reportLang === 'en'
-                        ? `${move(base, opt)}`
-                        : `${move(base, opt)}`,
-                    what_to_do: '',
-                    expected_result: '',
-                    source_type: 'decision',
-                    source_ref: `decision:${normalizeQualityKey(d.tradeoff)}:${String(d.selected)}`,
-                    derived_from_user_choice: true,
-                  })
-                })
-                selectedTrizApproaches.forEach((a) => {
-                  const label = shorten(a.approach_title || a.contradiction_title || '', 9)
-                  const seed = hashSeed(`triz:${a.contradiction_index}:${a.approach_index}:${label}`)
-                  const move = reportLang === 'en' ? pick(trizMovesEn, seed) : pick(trizMovesPl, seed)
-                  items.push({
-                    title:
-                      reportLang === 'en'
-                        ? `${move(label)}`
-                        : `${move(label)}`,
-                    what_to_do: '',
-                    expected_result: '',
-                    source_type: 'triz',
-                    source_ref: `triz:${a.contradiction_index}:${a.approach_index}`,
-                    derived_from_user_choice: true,
-                  })
-                })
+	                selectedDecisions.forEach((d) => {
+	                  const opt = String(d.selected).toUpperCase()
+	                  const seed = hashSeed(`${d.tradeoff}:${opt}`)
+	                  const base = shorten(d.tradeoff, 8)
+	                  const move = reportLang === 'en' ? pick(decisionMovesEn, seed) : pick(decisionMovesPl, seed)
+	                  items.push({
+	                    step: rewriteStepToImperative(
+	                      reportLang === 'en' ? `${move(base, opt)}` : `${move(base, opt)}`,
+	                      reportLang
+	                    ),
+	                    details: '',
+	                    technology_options: [],
+	                    done_when: '',
+	                    source_type: 'decision',
+	                    source_ref: `decision:${normalizeQualityKey(d.tradeoff)}:${String(d.selected)}`,
+	                    derived_from_user_choice: true,
+	                  })
+	                })
+	                selectedTrizApproaches.forEach((a) => {
+	                  const label = shorten(a.approach_title || a.contradiction_title || '', 9)
+	                  const seed = hashSeed(`triz:${a.contradiction_index}:${a.approach_index}:${label}`)
+	                  const move = reportLang === 'en' ? pick(trizMovesEn, seed) : pick(trizMovesPl, seed)
+	                  items.push({
+	                    step: rewriteStepToImperative(reportLang === 'en' ? `${move(label)}` : `${move(label)}`, reportLang),
+	                    details: '',
+	                    technology_options: [],
+	                    done_when: '',
+	                    source_type: 'triz',
+	                    source_ref: `triz:${a.contradiction_index}:${a.approach_index}`,
+	                    derived_from_user_choice: true,
+	                  })
+	                })
                 return items
               }
 
@@ -4737,48 +4986,52 @@ export const handleReportUpdate = async (req, res) => {
                   return Math.abs(h)
                 }
                 const pick = (arr, seed) => arr[seed % arr.length]
-                for (let i = 0; i < needed; i += 1) {
-                  const hint = base[i % Math.max(1, base.length)] || ''
-                  const short = shorten(hint, 10) || (reportLang === 'en' ? 'a key assumption' : 'kluczowe założenie')
-                  const seed = hashSeed(`analysis:${i}:${short}`)
-                  const move = reportLang === 'en' ? pick(analysisMovesEn, seed) : pick(analysisMovesPl, seed)
-                  actions.push({
-                    title: `${move(short)}`,
-                    what_to_do: '',
-                    expected_result: '',
-                    source_type: 'analysis',
-                    source_ref: `analysis:${i}`,
-                    derived_from_user_choice: false,
-                  })
-                }
+	                for (let i = 0; i < needed; i += 1) {
+	                  const hint = base[i % Math.max(1, base.length)] || ''
+	                  const short = shorten(hint, 10) || (reportLang === 'en' ? 'a key assumption' : 'kluczowe założenie')
+	                  const seed = hashSeed(`analysis:${i}:${short}`)
+	                  const move = reportLang === 'en' ? pick(analysisMovesEn, seed) : pick(analysisMovesPl, seed)
+	                  actions.push({
+	                    step: rewriteStepToImperative(`${move(short)}`, reportLang),
+	                    details: '',
+	                    technology_options: [],
+	                    done_when: '',
+	                    source_type: 'analysis',
+	                    source_ref: `analysis:${i}`,
+	                    derived_from_user_choice: false,
+	                  })
+	                }
                 return actions
               }
 
-              let finalChoiceActions = choiceActions.map((a, index) => ({
-                title: sanitizeActionText(a.title),
-                what_to_do: sanitizeActionText(a.what_to_do),
-                expected_result: sanitizeActionText(a.expected_result),
-                why_now: '',
-                source_type: a.source_ref && String(a.source_ref).startsWith('triz:') ? 'triz' : 'decision',
-                source_ref: a.source_ref || `choice:${index}`,
-                derived_from_user_choice: true,
-              }))
-              const usedChoiceRepair =
-                finalChoiceActions.some((a) => looksLikeSourceLabel(a.title)) ||
-                finalChoiceActions.length !== requiredChoiceCount
-              if (finalChoiceActions.some((a) => looksLikeSourceLabel(a.title)) || finalChoiceActions.length !== requiredChoiceCount) {
-                finalChoiceActions = buildChoiceRepairActions()
-              }
+	              let finalChoiceActions = choiceActions.map((a, index) => ({
+	                step: sanitizeActionText(a.step),
+	                details: sanitizeActionText(a.details),
+	                technology_options: normalizeExecutionTechnologyOptions(a.technology_options),
+	                done_when: sanitizeActionText(a.done_when),
+	                source_type: a.source_ref && String(a.source_ref).startsWith('triz:') ? 'triz' : 'decision',
+	                source_ref: a.source_ref || `choice:${index}`,
+	                derived_from_user_choice: true,
+	              }))
+	              const usedChoiceRepair =
+	                finalChoiceActions.some((a) => looksLikeSourceLabel(a.step)) ||
+	                finalChoiceActions.length !== requiredChoiceCount
+	              if (
+	                finalChoiceActions.some((a) => looksLikeSourceLabel(a.step)) ||
+	                finalChoiceActions.length !== requiredChoiceCount
+	              ) {
+	                finalChoiceActions = buildChoiceRepairActions()
+	              }
 
-              let finalAnalysisActions = analysisActions.map((a, index) => ({
-                title: sanitizeActionText(a.title),
-                what_to_do: sanitizeActionText(a.what_to_do),
-                expected_result: sanitizeActionText(a.expected_result),
-                why_now: '',
-                source_type: 'analysis',
-                source_ref: `analysis:${index}`,
-                derived_from_user_choice: false,
-              }))
+	              let finalAnalysisActions = analysisActions.map((a, index) => ({
+	                step: sanitizeActionText(a.step),
+	                details: sanitizeActionText(a.details),
+	                technology_options: normalizeExecutionTechnologyOptions(a.technology_options),
+	                done_when: sanitizeActionText(a.done_when),
+	                source_type: 'analysis',
+	                source_ref: `analysis:${index}`,
+	                derived_from_user_choice: false,
+	              }))
               const usedAnalysisRepair = finalAnalysisActions.length < 3
               if (finalAnalysisActions.length < 3) {
                 finalAnalysisActions = [
@@ -4787,7 +5040,11 @@ export const handleReportUpdate = async (req, res) => {
                 ]
               }
 
-              let forcedActionPlan = [...finalChoiceActions, ...finalAnalysisActions].slice(0, MAX_EXEC_ACTION_PLAN_ITEMS)
+	              let forcedActionPlan = [...finalChoiceActions, ...finalAnalysisActions].slice(
+	                0,
+	                MAX_EXEC_ACTION_PLAN_ITEMS
+	              )
+	              forcedActionPlan = initializeActionPlanStatuses(forcedActionPlan, { allowCompleted: false })
 
               if (usedChoiceRepair || usedAnalysisRepair) {
                 try {
@@ -4807,40 +5064,42 @@ export const handleReportUpdate = async (req, res) => {
                     })
                     logLlmMeta('action-plan-rewrite', rewriteResult)
                   }
-                  if (
-                    rewriteResult?.ok &&
-                    Array.isArray(rewriteResult.data) &&
-                    rewriteResult.data.length === forcedActionPlan.length
-                  ) {
-                    const rewritten = rewriteResult.data
-                      .map((item, index) => ({
-                        ...forcedActionPlan[index],
-                        title: sanitizeActionText(normalizeExecutionText(item?.title)),
-                        what_to_do: sanitizeActionText(normalizeExecutionText(item?.what_to_do)),
-                        expected_result: sanitizeActionText(normalizeExecutionText(item?.expected_result)),
-                      }))
-                      .filter((item) => normalizeExecutionText(item?.title))
-                    if (rewritten.length === forcedActionPlan.length) {
-                      forcedActionPlan = rewritten
-                    }
-                  }
+	                  if (
+	                    rewriteResult?.ok &&
+	                    Array.isArray(rewriteResult.data) &&
+	                    rewriteResult.data.length === forcedActionPlan.length
+	                  ) {
+	                    const rewritten = rewriteResult.data
+	                      .map((item, index) => ({
+	                        ...forcedActionPlan[index],
+	                        step: sanitizeActionText(normalizeExecutionText(item?.step)),
+	                        status: normalizeExecutionStatus(item?.status || forcedActionPlan[index]?.status),
+	                        details: sanitizeActionText(normalizeExecutionText(item?.details)),
+	                        technology_options: normalizeExecutionTechnologyOptions(item?.technology_options),
+	                        done_when: sanitizeActionText(normalizeExecutionText(item?.done_when)),
+	                      }))
+	                      .filter((item) => normalizeExecutionText(item?.step))
+	                    if (rewritten.length === forcedActionPlan.length) {
+	                      forcedActionPlan = rewritten
+	                    }
+	                  }
                 } catch (error) {
                   console.error('[report:update] action-plan-rewrite exception:', error)
                 }
               }
 
-              executionReportCandidate = normalizeExecutionReport({
-                ...executionReportDefaults,
-                ...executionReportCandidate,
-                stage: 'plan_generated',
-                priorities: planOk && Array.isArray(planResult.data.priorities) ? planResult.data.priorities : [],
-                action_plan: forcedActionPlan,
+	              executionReportCandidate = normalizeExecutionReport({
+	                ...executionReportDefaults,
+	                ...executionReportCandidate,
+	                stage: 'plan_generated',
+	                priorities: planOk && Array.isArray(planResult.data.priorities) ? planResult.data.priorities : [],
+	                action_plan: forcedActionPlan,
                 validation_loop:
                   planOk && Array.isArray(planResult.data.validation_loop) ? planResult.data.validation_loop : [],
                 next_session_focus: planOk ? normalizeExecutionText(planResult.data.next_session_focus) : '',
                 supporting_items: executionSupportingItems,
                 source_snapshot: phaseASanitized.source_snapshot ?? null,
-              })
+	              }, reportLang)
               executionReportCandidate = ensureExecutionNextSessionFocus(executionReportCandidate, reportLang)
               executionReportValidation = validateExecutionPlanOnly(executionReportCandidate)
               responseExecution.planGenerated = true
@@ -5020,9 +5279,9 @@ export const handleReportUpdate = async (req, res) => {
             }
             return trizValidation.ok ? trizCandidate : finalTriz
           })()
-      const existingExecutionReport = phaseASanitized.execution_report
-        ? normalizeExecutionReport(phaseASanitized.execution_report)
-        : null
+	      const existingExecutionReport = phaseASanitized.execution_report
+	        ? normalizeExecutionReport(phaseASanitized.execution_report, reportLang)
+	        : null
       const existingExecutionValidation =
         existingExecutionReport?.stage === 'plan_generated'
           ? validateExecutionPlanOnly(existingExecutionReport)
@@ -5159,10 +5418,11 @@ export const handleReportUpdate = async (req, res) => {
             logLlmMeta('decisions-enrich', decisionsEnrichResult)
           }
           if (decisionsEnrichResult?.ok && Array.isArray(decisionsEnrichResult.data)) {
-            const enrichedExecutionReport = mergeDecisionConsequences(
-              finalExecutionReport,
-              decisionsEnrichResult.data
-            )
+	            const enrichedExecutionReport = mergeDecisionConsequences(
+	              finalExecutionReport,
+	              decisionsEnrichResult.data,
+	              reportLang
+	            )
             const enrichmentCoverage = countDecisionOptions(enrichedExecutionReport)
             console.log('[report:update][step3] decisions-enrich output', {
               input: decisionsForEnrichment.length,
@@ -5329,11 +5589,11 @@ export const handleReportUpdate = async (req, res) => {
         reportId: reportRes.data?.id ?? null,
         ok: true,
       })
-      const savedExecFromUpdate =
-        updateRes?.data?.summary_json?.execution_report &&
-        typeof updateRes.data.summary_json.execution_report === 'object'
-          ? normalizeExecutionReport(updateRes.data.summary_json.execution_report)
-          : null
+	      const savedExecFromUpdate =
+	        updateRes?.data?.summary_json?.execution_report &&
+	        typeof updateRes.data.summary_json.execution_report === 'object'
+	          ? normalizeExecutionReport(updateRes.data.summary_json.execution_report, reportLang)
+	          : null
       console.log('[REPORT FINALIZE DEBUG][backend][response-shape]', {
         requestId,
         sessionId,
@@ -5362,11 +5622,11 @@ export const handleReportUpdate = async (req, res) => {
           res.status(500).json({ ok: false, error: finalReportRes.error })
           return
         }
-        const savedExec =
-          finalReportRes.data?.summary_json?.execution_report &&
-          typeof finalReportRes.data.summary_json.execution_report === 'object'
-            ? normalizeExecutionReport(finalReportRes.data.summary_json.execution_report)
-            : null
+	        const savedExec =
+	          finalReportRes.data?.summary_json?.execution_report &&
+	          typeof finalReportRes.data.summary_json.execution_report === 'object'
+	            ? normalizeExecutionReport(finalReportRes.data.summary_json.execution_report, reportLang)
+	            : null
         console.log('[REPORT FINALIZE DEBUG][backend][after-save]', {
           requestId,
           sessionId,

@@ -79,17 +79,15 @@ export const reportCopy: Record<
     reportUpdateDisabledTooltip: string
     reportOutdatedPrint: string
     classicReportView: string
-    actionPlanView: string
-    yourDataTitle: string
-    whereYouAreTitle: string
-    prioritiesTitle: string
-    actionPlanSectionTitle: string
-    actionPlanOtherLabel: string
-    decisionsTitle: string
-    validationTitle: string
-    whatNextTitle: string
-    actionPlanEmpty: string
-    mapContextTitle: string
+	    actionPlanView: string
+	    yourDataTitle: string
+	    whereYouAreTitle: string
+	    actionPlanSectionTitle: string
+	    actionPlanOtherLabel: string
+	    decisionsTitle: string
+	    whatNextTitle: string
+	    actionPlanEmpty: string
+	    mapContextTitle: string
     strongestArea: string
     weakestArea: string
     decisionRiskNote: string
@@ -189,17 +187,15 @@ export const reportCopy: Record<
     reportOutdatedPrint:
       'The report does not yet reflect the latest board entries. This applies to the Executive summary, Key trade-offs in your project, Perspective / questions map, and Recommendations / next steps sections.',
     classicReportView: 'Classic report',
-    actionPlanView: 'Action Plan',
-    yourDataTitle: 'Your input',
-    whereYouAreTitle: 'Where you are now',
-    prioritiesTitle: 'Priorities',
-    actionPlanSectionTitle: 'Action plan',
-    actionPlanOtherLabel: 'Other',
-    decisionsTitle: 'Key decisions to make',
-    validationTitle: 'What to validate',
-    whatNextTitle: 'What next',
-    actionPlanEmpty: 'This action-focused variant is not available for this report yet. Update the report to generate it.',
-    mapContextTitle: 'Current interpretation',
+	    actionPlanView: 'Action Plan',
+	    yourDataTitle: 'Your input',
+	    whereYouAreTitle: 'Where you are now',
+	    actionPlanSectionTitle: 'Action plan',
+	    actionPlanOtherLabel: 'Other',
+	    decisionsTitle: 'Key decisions to make',
+	    whatNextTitle: 'What next',
+	    actionPlanEmpty: 'This action-focused variant is not available for this report yet. Update the report to generate it.',
+	    mapContextTitle: 'Current interpretation',
     strongestArea: 'Strongest area',
     weakestArea: 'Weakest area',
     decisionRiskNote: 'Decision risk note',
@@ -299,17 +295,15 @@ export const reportCopy: Record<
     reportOutdatedPrint:
       'Raport nie odzwierciedla jeszcze najnowszych wpisów na tablicy. Dotyczy to rozdziałów Podsumowanie, Kluczowe kompromisy w Twoim projekcie, Mapa perspektyw / pytań oraz Rekomendacje / następne kroki.',
     classicReportView: 'Raport klasyczny',
-    actionPlanView: 'Plan działania',
-    yourDataTitle: 'Twoje dane',
-    whereYouAreTitle: 'Gdzie jesteś teraz',
-    prioritiesTitle: 'Priorytety',
-    actionPlanSectionTitle: 'Plan działania',
-    actionPlanOtherLabel: 'Inne',
-    decisionsTitle: 'Kluczowe decyzje do podjęcia',
-    validationTitle: 'Co zweryfikować',
-    whatNextTitle: 'Co dalej',
-    actionPlanEmpty: 'Ten wariant nastawiony na działanie nie jest jeszcze dostępny dla tego raportu. Zaktualizuj raport, aby go wygenerować.',
-    mapContextTitle: 'Obecna interpretacja',
+	    actionPlanView: 'Plan działania',
+	    yourDataTitle: 'Twoje dane',
+	    whereYouAreTitle: 'Gdzie jesteś teraz',
+	    actionPlanSectionTitle: 'Plan działania',
+	    actionPlanOtherLabel: 'Inne',
+	    decisionsTitle: 'Kluczowe decyzje do podjęcia',
+	    whatNextTitle: 'Co dalej',
+	    actionPlanEmpty: 'Ten wariant nastawiony na działanie nie jest jeszcze dostępny dla tego raportu. Zaktualizuj raport, aby go wygenerować.',
+	    mapContextTitle: 'Obecna interpretacja',
     strongestArea: 'Najsilniej opisany obszar',
     weakestArea: 'Najsłabiej opisany obszar',
     decisionRiskNote: 'Ryzyko decyzyjne',

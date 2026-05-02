@@ -67,11 +67,14 @@ export type ReportExecutionPriority = {
   risk_of_ignoring: string
 }
 
+export type ReportExecutionActionStatus = 'pending' | 'in_progress' | 'completed'
+
 export type ReportExecutionAction = {
-  title: string
-  what_to_do: string
-  why_now: string
-  expected_result: string
+  step: string
+  status: ReportExecutionActionStatus
+  details: string
+  technology_options: string[]
+  done_when: string
   source_type?: 'decision' | 'triz' | 'analysis' | null
   source_ref?: string | null
   derived_from_user_choice?: boolean | null
