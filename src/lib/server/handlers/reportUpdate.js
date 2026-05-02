@@ -5302,7 +5302,7 @@ export const handleReportUpdate = async (req, res) => {
 	                  const asForms = (nom, gen, acc, kind = 'generic') => ({ nom, gen, acc, kind })
 	                  const asFormsSame = (value, kind = 'generic') => asForms(value, value, value, kind)
 	                  if (lang === 'en') {
-	                    if (!text) return asFormsSame('the key product component')
+	                    if (!text) return null
 	                    if (/\b(mocowan|plecak|backpack)\b/.test(text)) return asFormsSame('the backpack mounting system')
 	                    if (/\b(skala|oznaczen|marking|markings|indicator)\b/.test(text)) return asFormsSame('the segment marking scale')
 	                    if (/\b(materiał|material|aluminium|aluminum|kompozyt|composite|carbon|węgl)\b/.test(text)) {
@@ -5314,10 +5314,10 @@ export const handleReportUpdate = async (req, res) => {
 	                    if (/\b(blokad|zatrzask|mechanizm|lock|latch|segment|długo|length)\b/.test(text)) {
 	                      return asFormsSame('the segment locking mechanism')
 	                    }
-	                    return asFormsSame('the key product component')
+	                    return null
 	                  }
 	                  // pl
-	                  if (!text) return asFormsSame('kluczowy element produktu')
+	                  if (!text) return null
 	                  if (/\b(mocowan|plecak|backpack)\b/.test(text)) {
 	                    return asForms('mocowanie plecakowe', 'mocowania plecakowego', 'mocowanie plecakowe')
 	                  }
@@ -5337,8 +5337,47 @@ export const handleReportUpdate = async (req, res) => {
 	                      'mechanizm blokady segmentów'
 	                    )
 	                  }
-	                  return asFormsSame('kluczowy element produktu')
+	                  return null
 	                }
+
+	              const isForbiddenGenericPlaceholder = (text) => {
+	                const value = normalizeExecutionText(text).toLowerCase()
+	                if (!value) return false
+	                if (value.includes('kluczowy element produktu')) return true
+	                if (value.includes('element rozwiązania')) return true
+	                // "system" without qualifier is too generic (allow e.g. "system mocowania plecakowego")
+	                if (/\bsystem\b/.test(value) && !/\bsystem\b.*\b(mocowan|plecak|blokad|zatrzask|segment|oznacze|kijk|pole)\b/.test(value)) {
+	                  return true
+	                }
+	                return false
+	              }
+
+	              const doneWhenForVerb = (verb, lang) => {
+	                const v = String(verb || '').toLowerCase()
+	                if (lang === 'en') {
+	                  if (v.startsWith('design')) return 'A solution design is ready.'
+	                  if (v.startsWith('build')) return 'A working prototype is ready.'
+	                  if (v.startsWith('test')) return 'Test results are collected and assessed.'
+	                  if (v.startsWith('estimate')) return 'The production cost is estimated.'
+	                  if (v.startsWith('define')) return 'Requirements are written and agreed.'
+	                  return 'A concrete deliverable is ready.'
+	                }
+	                // pl
+	                if (v.startsWith('zaprojektuj')) return 'Powstał projekt rozwiązania.'
+	                if (v.startsWith('zbuduj')) return 'Działający prototyp jest gotowy.'
+	                if (v.startsWith('przetestuj') || v.startsWith('przeprowadź')) return 'Wyniki testu są zebrane i ocenione.'
+	                if (v.startsWith('oszacuj')) return 'Oszacowano koszt produkcji.'
+	                if (v.startsWith('zdefiniuj')) return 'Wymagania są spisane i uzgodnione.'
+	                return 'Powstał konkretny rezultat.'
+	              }
+
+	              const tryInferObject = (lang, ...candidates) => {
+	                for (const c of candidates) {
+	                  const obj = inferProductObject(c, lang)
+	                  if (obj) return obj
+	                }
+	                return null
+	              }
 
 	              const buildChoiceRepairActions = () => {
 	                const shorten = (value, maxWords = 10) => {
@@ -5358,56 +5397,62 @@ export const handleReportUpdate = async (req, res) => {
                   return Math.abs(h)
                 }
 	                const pick = (arr, seed) => arr[seed % arr.length]
-	                const decisionMovesPl = [
-	                  (obj) => `Zdefiniuj wymagania ${obj.gen}`,
-	                  (obj) => `Zaprojektuj ${obj.acc}`,
-	                  (obj) => `Zbuduj prototyp ${obj.gen}`,
-	                  (obj) => `Przetestuj ${obj.acc} w terenie`,
-	                  (obj) => obj.kind === 'cost' ? 'Oszacuj koszt produkcji rozwiązania' : `Oszacuj koszt ${obj.gen}`,
-	                ]
-	                const decisionMovesEn = [
-	                  (obj) => `Define requirements for ${obj.acc}`,
-	                  (obj) => `Design ${obj.acc}`,
-	                  (obj) => `Build a prototype of ${obj.acc}`,
-	                  (obj) => `Test ${obj.acc} in real use`,
-	                  (obj) => obj.kind === 'cost' ? 'Estimate the solution production cost' : `Estimate the cost of ${obj.acc}`,
-	                ]
+		                const decisionMovesPl = [
+		                  { verb: 'Zdefiniuj', make: (obj) => `Zdefiniuj wymagania ${obj.gen}` },
+		                  { verb: 'Zaprojektuj', make: (obj) => `Zaprojektuj ${obj.acc}` },
+		                  { verb: 'Zbuduj', make: (obj) => `Zbuduj prototyp ${obj.gen}` },
+		                  { verb: 'Przetestuj', make: (obj) => `Przetestuj ${obj.acc} w terenie` },
+		                  {
+		                    verb: 'Oszacuj',
+		                    make: (obj) => (obj.kind === 'cost' ? 'Oszacuj koszt produkcji rozwiązania' : `Oszacuj koszt ${obj.gen}`),
+		                  },
+		                ]
+		                const decisionMovesEn = [
+		                  { verb: 'Define', make: (obj) => `Define requirements for ${obj.acc}` },
+		                  { verb: 'Design', make: (obj) => `Design ${obj.acc}` },
+		                  { verb: 'Build', make: (obj) => `Build a prototype of ${obj.acc}` },
+		                  { verb: 'Test', make: (obj) => `Test ${obj.acc} in real use` },
+		                  {
+		                    verb: 'Estimate',
+		                    make: (obj) => (obj.kind === 'cost' ? 'Estimate the solution production cost' : `Estimate the cost of ${obj.acc}`),
+		                  },
+		                ]
 		                const trizMovesPl = [
-		                  (obj) => `Zaprojektuj ${obj.acc}`,
-		                  (obj) => `Zbuduj prototyp ${obj.gen}`,
-		                  (obj) => `Przetestuj ${obj.acc} w użyciu`,
-		                  (obj) => `Dobierz technologię dla ${obj.gen}`,
-		                  (obj) => `Oceń wykonalność ${obj.gen}`,
+		                  { verb: 'Zaprojektuj', make: (obj) => `Zaprojektuj ${obj.acc}` },
+		                  { verb: 'Zbuduj', make: (obj) => `Zbuduj prototyp ${obj.gen}` },
+		                  { verb: 'Przetestuj', make: (obj) => `Przetestuj ${obj.acc} w użyciu` },
+		                  { verb: 'Dobierz', make: (obj) => `Dobierz technologię dla ${obj.gen}` },
+		                  { verb: 'Oceń', make: (obj) => `Oceń wykonalność ${obj.gen}` },
 		                ]
 		                const trizMovesEn = [
-		                  (obj) => `Design ${obj.acc}`,
-		                  (obj) => `Build a prototype of ${obj.acc}`,
-		                  (obj) => `Test ${obj.acc} in use`,
-		                  (obj) => `Select a technology for ${obj.acc}`,
-		                  (obj) => `Evaluate feasibility of ${obj.acc}`,
+		                  { verb: 'Design', make: (obj) => `Design ${obj.acc}` },
+		                  { verb: 'Build', make: (obj) => `Build a prototype of ${obj.acc}` },
+		                  { verb: 'Test', make: (obj) => `Test ${obj.acc} in use` },
+		                  { verb: 'Select', make: (obj) => `Select a technology for ${obj.acc}` },
+		                  { verb: 'Evaluate', make: (obj) => `Evaluate feasibility of ${obj.acc}` },
 		                ]
-	                const items = []
-		                selectedDecisions.forEach((d) => {
-		                  const seed = hashSeed(`${d.tradeoff}:${String(d.selected)}`)
-		                  const obj = inferProductObject(d.tradeoff, reportLang)
-		                  const move = reportLang === 'en' ? pick(decisionMovesEn, seed) : pick(decisionMovesPl, seed)
-		                  items.push({
-		                    step: rewriteStepToImperative(
-		                      reportLang === 'en' ? `${move(obj)}` : `${move(obj)}`,
-		                      reportLang
-		                    ),
-		                    details: '',
-		                    technology_options: [],
-		                    done_when:
-		                      reportLang === 'en'
-		                        ? 'An artifact exists and can be reviewed.'
-		                        : 'Powstaje artefakt, który da się ocenić.',
-		                    source_type: 'decision',
-		                    source_ref: `decision:${normalizeQualityKey(d.tradeoff)}:${String(d.selected)}`,
-		                    derived_from_user_choice: true,
-		                  })
-		                })
-		                selectedTrizApproaches.forEach((a) => {
+		                const items = []
+			                selectedDecisions.forEach((d) => {
+			                  const seed = hashSeed(`${d.tradeoff}:${String(d.selected)}`)
+			                  const obj = tryInferObject(reportLang, d.tradeoff)
+			                  if (!obj) return
+			                  const moveObj = reportLang === 'en' ? pick(decisionMovesEn, seed) : pick(decisionMovesPl, seed)
+			                  const rawStep = moveObj.make(obj)
+			                  if (isForbiddenGenericPlaceholder(rawStep)) return
+			                  items.push({
+			                    step: rewriteStepToImperative(
+			                      reportLang === 'en' ? `${rawStep}` : `${rawStep}`,
+			                      reportLang
+			                    ),
+			                    details: '',
+			                    technology_options: [],
+			                    done_when: doneWhenForVerb(moveObj.verb, reportLang),
+			                    source_type: 'decision',
+			                    source_ref: `decision:${normalizeQualityKey(d.tradeoff)}:${String(d.selected)}`,
+			                    derived_from_user_choice: true,
+			                  })
+			                })
+			                selectedTrizApproaches.forEach((a) => {
 		                  const rawLabel = a.approach_title || a.contradiction_title || ''
 		                  let labelCandidate = normalizeExecutionText(rawLabel)
 		                  if (!labelCandidate) labelCandidate = normalizeExecutionText(a.contradiction_title) || ''
@@ -5417,25 +5462,31 @@ export const handleReportUpdate = async (req, res) => {
 		                    labelCandidate = labelCandidate.split(/\s+/).slice(1).join(' ').trim()
 		                  }
 		                  const label = shorten(labelCandidate || rawLabel, 10)
-		                  const seed = hashSeed(`triz:${a.contradiction_index}:${a.approach_index}:${label}`)
-		                  const move = reportLang === 'en' ? pick(trizMovesEn, seed) : pick(trizMovesPl, seed)
-		                  const labelForms = inferProductObject(label, reportLang)
-		                  items.push({
-		                    step: rewriteStepToImperative(
-		                      reportLang === 'en' ? `${move(labelForms)}` : `${move(labelForms)}`,
-		                      reportLang
-		                    ),
-		                    details: '',
-		                    technology_options: [],
-		                    done_when:
-		                      reportLang === 'en'
-		                        ? 'A concrete prototype/test/design output is ready.'
-		                        : 'Gotowy jest konkretny wynik: projekt/prototyp/test.',
-		                    source_type: 'triz',
-		                    source_ref: `triz:${a.contradiction_index}:${a.approach_index}`,
-		                    derived_from_user_choice: true,
-		                  })
-		                })
+			                  const seed = hashSeed(`triz:${a.contradiction_index}:${a.approach_index}:${label}`)
+			                  const moveObj = reportLang === 'en' ? pick(trizMovesEn, seed) : pick(trizMovesPl, seed)
+			                  const labelForms = tryInferObject(
+			                    reportLang,
+			                    label,
+			                    a.approach_title,
+			                    a.approach_description,
+			                    a.contradiction_title
+			                  )
+			                  if (!labelForms) return
+			                  const rawStep = moveObj.make(labelForms)
+			                  if (isForbiddenGenericPlaceholder(rawStep)) return
+			                  items.push({
+			                    step: rewriteStepToImperative(
+			                      reportLang === 'en' ? `${rawStep}` : `${rawStep}`,
+			                      reportLang
+			                    ),
+			                    details: '',
+			                    technology_options: [],
+			                    done_when: doneWhenForVerb(moveObj.verb, reportLang),
+			                    source_type: 'triz',
+			                    source_ref: `triz:${a.contradiction_index}:${a.approach_index}`,
+			                    derived_from_user_choice: true,
+			                  })
+			                })
 	                return items
 	              }
 
@@ -5448,18 +5499,24 @@ export const handleReportUpdate = async (req, res) => {
                 const candidates = [...tensions, ...themes].map((x) => normalizeExecutionText(x)).filter(Boolean)
                 const base = candidates.length ? candidates : executionSupportingItems.map((i) => normalizeExecutionText(i?.text)).filter(Boolean)
 	                const analysisMovesPl = [
-	                  (obj) => `Zdefiniuj wymagania ${obj.gen}`,
-	                  (obj) => `Zaprojektuj ${obj.acc}`,
-	                  (obj) => `Zbuduj prototyp ${obj.gen}`,
-	                  (obj) => `Przetestuj ${obj.acc} w użyciu`,
-	                  (obj) => obj.kind === 'cost' ? 'Oszacuj koszt produkcji rozwiązania' : `Oszacuj koszt ${obj.gen}`,
+	                  { verb: 'Zdefiniuj', make: (obj) => `Zdefiniuj wymagania ${obj.gen}` },
+	                  { verb: 'Zaprojektuj', make: (obj) => `Zaprojektuj ${obj.acc}` },
+	                  { verb: 'Zbuduj', make: (obj) => `Zbuduj prototyp ${obj.gen}` },
+	                  { verb: 'Przetestuj', make: (obj) => `Przetestuj ${obj.acc} w użyciu` },
+	                  {
+	                    verb: 'Oszacuj',
+	                    make: (obj) => (obj.kind === 'cost' ? 'Oszacuj koszt produkcji rozwiązania' : `Oszacuj koszt ${obj.gen}`),
+	                  },
 	                ]
 	                const analysisMovesEn = [
-	                  (obj) => `Define requirements for ${obj.acc}`,
-	                  (obj) => `Design ${obj.acc}`,
-	                  (obj) => `Build a prototype of ${obj.acc}`,
-	                  (obj) => `Test ${obj.acc} in use`,
-	                  (obj) => obj.kind === 'cost' ? 'Estimate the solution production cost' : `Estimate manufacturing cost for ${obj.acc}`,
+	                  { verb: 'Define', make: (obj) => `Define requirements for ${obj.acc}` },
+	                  { verb: 'Design', make: (obj) => `Design ${obj.acc}` },
+	                  { verb: 'Build', make: (obj) => `Build a prototype of ${obj.acc}` },
+	                  { verb: 'Test', make: (obj) => `Test ${obj.acc} in use` },
+	                  {
+	                    verb: 'Estimate',
+	                    make: (obj) => (obj.kind === 'cost' ? 'Estimate the solution production cost' : `Estimate manufacturing cost for ${obj.acc}`),
+	                  },
 	                ]
                 const shorten = (value, maxWords = 12) => {
                   const text = normalizeExecutionText(value).replace(/[“”"']/g, '').trim()
@@ -5480,17 +5537,17 @@ export const handleReportUpdate = async (req, res) => {
                 const pick = (arr, seed) => arr[seed % arr.length]
 	                for (let i = 0; i < needed; i += 1) {
 		                  const hint = base[i % Math.max(1, base.length)] || ''
-		                  const obj = inferProductObject(hint, reportLang)
+		                  const obj = tryInferObject(reportLang, hint)
+		                  if (!obj) return
 		                  const seed = hashSeed(`analysis:${i}:${obj.nom}`)
-		                  const move = reportLang === 'en' ? pick(analysisMovesEn, seed) : pick(analysisMovesPl, seed)
+		                  const moveObj = reportLang === 'en' ? pick(analysisMovesEn, seed) : pick(analysisMovesPl, seed)
+		                  const rawStep = moveObj.make(obj)
+		                  if (isForbiddenGenericPlaceholder(rawStep)) return
 		                  actions.push({
-		                    step: rewriteStepToImperative(`${move(obj)}`, reportLang),
+		                    step: rewriteStepToImperative(`${rawStep}`, reportLang),
 		                    details: '',
 		                    technology_options: [],
-		                    done_when:
-		                      reportLang === 'en'
-		                        ? 'A concrete build/design/test artifact exists.'
-		                        : 'Powstaje konkretny artefakt: projekt/prototyp/test.',
+		                    done_when: doneWhenForVerb(moveObj.verb, reportLang),
 		                    source_type: 'analysis',
 		                    source_ref: `analysis:${i}`,
 		                    derived_from_user_choice: false,
