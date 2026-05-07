@@ -685,6 +685,10 @@ const normalizeExecutionTechnologyOptions = (value) => {
   return items
 }
 
+// NOTE: Action plan readability depends on preserving natural LLM wording.
+// Keep normalization minimal for any user-facing plan text; avoid forcing rigid verbs,
+// truncating titles, or inventing placeholder "done_when"/tags that flatten the output.
+
 export const sanitizeExecutionActionStep = (rawStep, reportLang) => {
   const lang = reportLang === 'pl' ? 'pl' : 'en'
   let value = normalizeExecutionText(rawStep)
@@ -1072,23 +1076,13 @@ const coerceExecutionActionPlanItem = (item, lang) => {
 
   if (!stepCandidate && !detailsCandidate && !doneWhenCandidate) return null
 
-  const nounRewrite = looksLikeNounPhrase(stepCandidate, lang)
-    ? rewriteNounPhraseActionStep(stepCandidate, detailsCandidate, lang)
-    : ''
-  let step = rewriteStepToImperative(nounRewrite || stepCandidate, lang)
+  // Preserve natural phrasing from the LLM/user as much as possible.
+  // We only remove leaked meta-prefixes and keep optional fields optional.
+  let step = sanitizeExecutionActionStep(stepCandidate, lang)
+  step = stripLeadingMetaPrefixes(step, lang)
   if (isLikelyTradeoffTitle(step) || isLikelyTradeoffTitle(stepCandidate)) return null
-  let details = normalizeExecutionText(detailsCandidate)
-  const done_when = normalizeExecutionText(doneWhenCandidate)
-
-  {
-    const words = step.split(/\s+/).filter(Boolean)
-    if (words.length > 8) {
-      const head = words.slice(0, 8).join(' ')
-      const tail = words.slice(8).join(' ').trim()
-      if (tail && !details) details = tail
-      step = head
-    }
-  }
+  const details = sanitizeExecutionDetailText(detailsCandidate)
+  const done_when = sanitizeExecutionDetailText(doneWhenCandidate)
 
   const trimDangling = (value, locale) => {
     const text = normalizeExecutionText(value)
@@ -1108,10 +1102,6 @@ const coerceExecutionActionPlanItem = (item, lang) => {
 
   step = trimDangling(step, lang)
   step = sanitizeExecutionActionStep(step, lang)
-  if (lang === 'pl' && step && !startsWithImperativeVerb(step, 'pl')) {
-    step = rewriteStepToImperative(step, 'pl')
-    step = trimDangling(step, 'pl')
-  }
   step = stripLeadingMetaPrefixes(step, lang)
   if (!step) return null
 
@@ -1136,6 +1126,55 @@ const coerceExecutionActionPlanItem = (item, lang) => {
   }
 }
 
+const MAX_EXEC_ROADMAP_PHASES = 6
+
+const coerceExecutionRoadmapPhase = (value, lang) => {
+  if (!value || typeof value !== 'object') return null
+  const title = normalizeExecutionText(value.title || value.phase_title || value.name)
+  const narrative = sanitizeExecutionDetailText(value.narrative || value.what || value.context)
+  const why = sanitizeExecutionDetailText(value.why || value.why_it_matters || value.reason)
+  const risks_reduced = sanitizeExecutionDetailText(
+    value.risks_reduced || value.risks || value.uncertainty_reduced
+  )
+  const exit_criteria = sanitizeExecutionDetailText(value.exit_criteria || value.exit || value.gate)
+  const actionsRaw = Array.isArray(value.actions) ? value.actions : []
+  const actions = actionsRaw
+    .map((a) => {
+      if (typeof a === 'string') {
+        const text = sanitizeExecutionDetailText(a)
+        return text ? { text } : null
+      }
+      if (!a || typeof a !== 'object') return null
+      const text = sanitizeExecutionDetailText(a.text || a.action || a.step)
+      if (!text) return null
+      const validation_gate = sanitizeExecutionDetailText(a.validation_gate || a.validation || a.gate)
+      return {
+        text,
+        ...(validation_gate ? { validation_gate } : {}),
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 12)
+
+  const hasAny =
+    Boolean(title) ||
+    Boolean(narrative) ||
+    Boolean(why) ||
+    Boolean(risks_reduced) ||
+    Boolean(exit_criteria) ||
+    actions.length > 0
+  if (!hasAny) return null
+
+  return {
+    title: title || (lang === 'pl' ? 'Etap' : 'Phase'),
+    narrative,
+    why,
+    risks_reduced,
+    actions,
+    ...(exit_criteria ? { exit_criteria } : {}),
+  }
+}
+
 const normalizeExecutionReport = (value, reportLang = 'en') => {
   const empty = {
     stage: null,
@@ -1148,6 +1187,7 @@ const normalizeExecutionReport = (value, reportLang = 'en') => {
       decision_risk_note: null,
     },
     priorities: [],
+    roadmap_phases: [],
     action_plan: [],
     decisions: [],
     validation_loop: [],
@@ -1162,6 +1202,8 @@ const normalizeExecutionReport = (value, reportLang = 'en') => {
     if (rawStage === 'awaiting_decisions' || rawStage === 'plan_generated') return rawStage
     const hasPlan =
       (Array.isArray(report.priorities) && report.priorities.length > 0) ||
+      (Array.isArray(report.roadmap_phases) && report.roadmap_phases.length > 0) ||
+      (Array.isArray(report.roadmapPhases) && report.roadmapPhases.length > 0) ||
       (Array.isArray(report.action_plan) && report.action_plan.length > 0) ||
       (Array.isArray(report.validation_loop) && report.validation_loop.length > 0) ||
       normalizeExecutionText(report.next_session_focus || report.nextSessionFocus).length > 0
@@ -1205,7 +1247,7 @@ const normalizeExecutionReport = (value, reportLang = 'en') => {
               : null,
         }
       : empty.map_context,
-    priorities: normalizeExecutionList(report.priorities, (item) => {
+	    priorities: normalizeExecutionList(report.priorities, (item) => {
       if (typeof item === 'string') {
         const title = item.trim()
         if (!title) return null
@@ -1225,10 +1267,15 @@ const normalizeExecutionReport = (value, reportLang = 'en') => {
         impact: normalizeExecutionImpact(item.impact),
         risk_of_ignoring: '',
       }
-    }),
-    action_plan: normalizeExecutionList(
-      report.action_plan,
-      (item) => {
+	    }),
+	    roadmap_phases: normalizeExecutionList(
+	      report.roadmap_phases || report.roadmapPhases,
+	      (item) => coerceExecutionRoadmapPhase(item, reportLang === 'pl' ? 'pl' : 'en'),
+	      MAX_EXEC_ROADMAP_PHASES
+	    ),
+	    action_plan: normalizeExecutionList(
+	      report.action_plan,
+	      (item) => {
         if (typeof item === 'string') {
           const text = item.trim()
           if (!text) return null
@@ -1317,6 +1364,11 @@ const normalizeExecutionReport = (value, reportLang = 'en') => {
 
 const assessExecutionReportQuality = (report) => {
   const priorities = Array.isArray(report?.priorities) ? report.priorities : []
+  const roadmapPhases = Array.isArray(report?.roadmap_phases)
+    ? report.roadmap_phases
+    : Array.isArray(report?.roadmapPhases)
+      ? report.roadmapPhases
+      : []
   const actionPlan = Array.isArray(report?.action_plan) ? report.action_plan : []
   const decisions = Array.isArray(report?.decisions) ? report.decisions : []
   const validationLoop = Array.isArray(report?.validation_loop) ? report.validation_loop : []
@@ -1327,6 +1379,14 @@ const assessExecutionReportQuality = (report) => {
     }).length
 
   const prioritiesComplete = countMeaningful(priorities, ['title'])
+  const roadmapComplete = roadmapPhases.filter((phase) => {
+    if (!phase || typeof phase !== 'object') return false
+    const titleOk = normalizeExecutionText(phase.title).length > 0
+    const narrativeOk = normalizeExecutionText(phase.narrative || phase.why || phase.risks_reduced).length > 0
+    const actions = Array.isArray(phase.actions) ? phase.actions : []
+    const actionsOk = actions.some((a) => normalizeExecutionText(a?.text || a).length > 0)
+    return titleOk && (narrativeOk || actionsOk)
+  }).length
   const actionPlanComplete = countMeaningful(actionPlan, ['step'])
   const decisionsComplete = decisions.filter((item) => {
     if (!item || typeof item !== 'object') return false
@@ -1335,6 +1395,7 @@ const assessExecutionReportQuality = (report) => {
   const validationComplete = countMeaningful(validationLoop, ['check'])
 
   const prioritiesDistinct = countDistinctNonEmpty(priorities.map((item) => item?.title))
+  const roadmapDistinct = countDistinctNonEmpty(roadmapPhases.map((p) => p?.title))
   const actionPlanDistinct = countDistinctNonEmpty(actionPlan.map((item) => item?.step || item?.title))
   const decisionsDistinct = countDistinctNonEmpty(decisions.map((item) => item?.tradeoff))
   const validationDistinct = countDistinctNonEmpty(validationLoop.map((item) => item?.check))
@@ -1359,21 +1420,21 @@ const assessExecutionReportQuality = (report) => {
 
   const countUnderTargetSections = [
     prioritiesComplete < Math.min(TARGET_EXEC_PRIORITIES, 2),
-    actionPlanComplete < Math.min(TARGET_EXEC_ACTION_PLAN, 2),
+    Math.max(actionPlanComplete, roadmapComplete) < Math.min(TARGET_EXEC_ACTION_PLAN, 2),
     decisionsComplete < Math.min(TARGET_EXEC_DECISIONS, 1),
     validationComplete < Math.min(TARGET_EXEC_VALIDATION, 1),
   ].filter(Boolean).length
 
   const sectionsWithContent = [
     prioritiesComplete > 0,
-    actionPlanComplete > 0,
+    actionPlanComplete > 0 || roadmapComplete > 0,
     decisionsComplete > 0,
     validationComplete > 0,
   ].filter(Boolean).length
 
   const duplicatePenalty = [
     prioritiesDistinct < Math.min(prioritiesComplete, 2),
-    actionPlanDistinct < Math.min(actionPlanComplete, 2),
+    Math.max(actionPlanDistinct, roadmapDistinct) < Math.min(Math.max(actionPlanComplete, roadmapComplete), 2),
     decisionsDistinct < Math.min(decisionsComplete, 2),
     validationDistinct < Math.min(validationComplete, 2),
   ].filter(Boolean).length
@@ -1387,7 +1448,7 @@ const assessExecutionReportQuality = (report) => {
   const placeholderPenalty =
     Math.min(2, placeholderDecisions) + Math.min(1, placeholderOptions)
 
-  const qualityScore = sectionsWithContent * 3 + Math.min(4, prioritiesComplete) + Math.min(4, actionPlanComplete) +
+  const qualityScore = sectionsWithContent * 3 + Math.min(4, prioritiesComplete) + Math.min(4, Math.max(actionPlanComplete, roadmapComplete)) +
     Math.min(3, decisionsComplete) + Math.min(3, validationComplete) -
     (duplicatePenalty * 2 + Math.min(4, tooShortPenalty) + placeholderPenalty + Math.min(2, countUnderTargetSections))
 
@@ -1885,10 +1946,24 @@ const validateExecutionPlanOnly = (report) => {
   if (!Array.isArray(report.action_plan)) errors.push('execution_report_action_plan_not_array')
   if (!Array.isArray(report.validation_loop)) errors.push('execution_report_validation_not_array')
   const priorities = Array.isArray(report.priorities) ? report.priorities : []
+  const roadmapPhases = Array.isArray(report.roadmap_phases)
+    ? report.roadmap_phases
+    : Array.isArray(report.roadmapPhases)
+      ? report.roadmapPhases
+      : []
   const actionPlan = Array.isArray(report.action_plan) ? report.action_plan : []
   const validationLoop = Array.isArray(report.validation_loop) ? report.validation_loop : []
   const meaningfulPriorities = priorities.filter((item) => normalizeExecutionText(item?.title).length > 0).length
-  const meaningfulActions = actionPlan.filter((item) => normalizeExecutionText(item?.step || item?.title).length > 0).length
+  const meaningfulRoadmap = roadmapPhases.filter((phase) => {
+    if (!phase || typeof phase !== 'object') return false
+    const titleOk = normalizeExecutionText(phase?.title).length > 0
+    const actions = Array.isArray(phase?.actions) ? phase.actions : []
+    const actionsOk = actions.some((a) => normalizeExecutionText(a?.text || a).length > 0)
+    return titleOk && actionsOk
+  }).length
+  const meaningfulActions =
+    actionPlan.filter((item) => normalizeExecutionText(item?.step || item?.title).length > 0).length ||
+    meaningfulRoadmap
   const meaningfulValidation = validationLoop.filter((item) => normalizeExecutionText(item?.check).length > 0).length
   const sectionsWithContent = [meaningfulPriorities > 0, meaningfulActions > 0, meaningfulValidation > 0, normalizeExecutionText(report.next_session_focus).length > 0].filter(Boolean).length
   if (sectionsWithContent < 2) errors.push('execution_report_plan_below_threshold')
@@ -4006,23 +4081,33 @@ export const handleReportUpdate = async (req, res) => {
                   weakest_area: 'string|null',
                   decision_risk_note: 'string|null',
                 },
-                priorities: [
-                  {
-                    title: 'string',
-                    why_it_matters: 'string',
-                    impact: 'high|medium|low',
-                    risk_of_ignoring: 'string',
-                  },
-                ],
-	                action_plan: [
+	                priorities: [
 	                  {
-	                    step: 'string',
-	                    status: '"pending" | "in_progress" | "completed"',
-	                    details: 'string',
-	                    technology_options: ['string'],
-	                    done_when: 'string',
+	                    title: 'string',
+	                    why_it_matters: 'string',
+	                    impact: 'high|medium|low',
+	                    risk_of_ignoring: 'string',
 	                  },
 	                ],
+	                roadmap_phases: [
+	                  {
+	                    title: 'string',
+	                    narrative: 'string',
+	                    why: 'string',
+	                    risks_reduced: 'string',
+	                    actions: [{ text: 'string', validation_gate: 'string' }],
+	                    exit_criteria: 'string',
+	                  },
+	                ],
+		                action_plan: [
+		                  {
+		                    step: 'string',
+		                    status: '"pending" | "in_progress" | "completed"',
+		                    details: 'string',
+		                    technology_options: ['string'],
+		                    done_when: 'string',
+		                  },
+		                ],
                 decisions: [
                   {
                     tradeoff: 'string',
@@ -4063,38 +4148,14 @@ export const handleReportUpdate = async (req, res) => {
               'When you create a TRIZ-aligned decision, keep decisions[i].tradeoff semantically close to the relevant contradiction title.',
               'When you include option_a and option_b, they must be two concrete alternative directions for that same tradeoff (not a new topic).',
               'Use exactly these field names and no aliases.',
-              'Do not use string shortcuts instead of objects inside priorities, action_plan, decisions, or validation_loop.',
-	              'Lean shape only. Prioritize durable fields that will be persisted and displayed: priorities.title, action_plan.step, action_plan.status, action_plan.details, action_plan.technology_options, action_plan.done_when, decisions.tradeoff, decisions.option_a, decisions.option_b, decisions.consequence_a, decisions.consequence_b, validation_loop.check, next_session_focus, map_context.coverage_summary, goal, headline.',
-	              'Make steps specific and project-grounded, not generic labels.',
-	              'Each priorities item must contain exactly: title.',
-	              'Action plan must have two conceptual layers.',
-	              'Layer 1: contradiction-linked actions. Start from the selected or strongly supported contradictions that the user chose to work with. For each selected contradiction, create one or more concrete actions only when the material supports it.',
-	              'Layer 2: broader synthesis actions. After contradiction-linked actions, add actions derived from the full board material, summary, recommendations, perspective map, supporting items, and the user’s choices in Key decisions to make.',
-	              'The user must be able to see why actions were created: actions should visibly connect either to a selected contradiction or to a concrete decision/user choice.',
-	              'Use contradictions as visible anchors, not as cages. Do not limit the content of actions to the contradiction title.',
-		              'Keep source links via source_type/source_ref (or other metadata), not by copying titles into step.',
-		              'Never include contradiction titles, decision tradeoffs, or solution/approach titles in action_plan.step.',
-	              'For broader synthesis actions, ground them in selected decision directions, unresolved risks, repeated patterns, missing validation steps, or practical constraints from the material.',
-              'Order the action plan as follows: first actions linked to selected/supported contradictions, then broader synthesis actions.',
-              'Each action must be concrete enough that the user knows what to do next, on what object/scope, and what practical result it should produce.',
-	              'Avoid generic steps such as "Analyze options", "Define priorities", "Validate assumptions", unless the step includes a concrete project-specific object.',
-              'Do not force one action per contradiction. Prefer fewer useful actions over mechanical coverage.',
-              'Do not create artificial actions only to match the number of contradictions.',
-              'If a contradiction is selected but the material does not support a concrete action, reflect it through a broader validation or decision action instead of inventing a weak action.',
-              'Use Key decisions to make as decision context. If the user has already chosen a direction, the action should operationalize that choice instead of reopening the decision.',
-              'If a key decision is still unresolved, create an action that helps resolve it through a small test, comparison, prototype, or constraint check.',
-              'Validation loop should test the most important assumptions behind the selected contradictions and key decisions, not generic product quality.',
-	              'Each action_plan item must contain exactly: step, status, details, technology_options, done_when.',
-	              'status values MUST stay in English: pending, in_progress, completed.',
-	              'For a new plan: set the first item status=in_progress and all remaining items status=pending.',
-	              'There must be exactly ONE in_progress item while the plan is not complete.',
-	              'Do NOT output completed in a new plan unless you are updating a plan that already contains completed items.',
-	              'Never output noun-phrase topic steps. Every step must start with an imperative verb.',
-	              'step must be short and readable (ideally 3-8 words). Do not cram details into step.',
-	              'Put engineering/context detail into details, technology_options, and done_when.',
-	              'technology_options must be an array with 0-3 practical options; use [] only when options do not make sense.',
-	              'done_when must be a concrete completion condition (not a vague benefit).',
-	              'For buildable physical/product concepts, split vague work into execution phases where relevant: design → select technologies/materials → build prototype → test in usage context → evaluate cost/manufacturability.',
+              'Do not use string shortcuts instead of objects inside priorities, roadmap_phases, action_plan, decisions, or validation_loop.',
+              'Lean shape only. Prioritize durable fields that will be persisted and displayed: priorities.title, roadmap_phases, decisions, validation_loop.check, next_session_focus, map_context.coverage_summary, goal, headline.',
+              'Write like an experienced product engineer / product advisor. The plan should read like a coherent roadmap, not a checklist or Jira backlog.',
+              'Prefer roadmap_phases over action_plan: group work into 4–6 meaningful phases (few, high-signal).',
+              'For each phase: explain what happens now, why it matters, what uncertainty/risk it reduces, concrete actions to take, and what validation/decision gate should happen before moving on.',
+              'Use contradictions and decisions as anchors (when supported), but do not force mechanical coverage.',
+              'Keep source links via source_type/source_ref (or other metadata), not by copying titles into phase/action text.',
+              'Avoid filling mechanical fields (done_when/technology_options) with weak placeholders. If action_plan is present, it can be short and minimal; it is OK for action_plan to be empty when roadmap_phases are strong.',
 	              'A good action changes the project state and produces an artifact, test result, or decision-enabling evidence.',
 	              'Avoid meta-workshop actions.',
               'Avoid actions whose only output is discussion, clarification, definition, prioritization, or choosing later.',
@@ -4154,8 +4215,8 @@ export const handleReportUpdate = async (req, res) => {
 
       const buildExecutionReportTaskInstructions = (strictJson = false) =>
         reportLang === 'en'
-          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report.\n\nAct as a product execution strategist, not a workshop facilitator. Do not moderate discussion, ask the user to clarify, or generate meta-workshop prompts. Generate actions that move the project forward in the real world.\n\nThe action plan must be a clear, executable sequence. Do NOT output noun-phrase topics. Every action_plan.step must start with an imperative verb (e.g. Design, Build, Test, Compare, Select, Estimate, Define, Validate).\n\nRequired action_plan item shape (no aliases): { step, status, details, technology_options, done_when }.\n- status values MUST stay in English: pending | in_progress | completed.\n- For a NEW plan: set the FIRST item status=in_progress and ALL remaining items status=pending.\n- There must be EXACTLY ONE in_progress item while the plan is not complete.\n- Do NOT output completed in a new plan unless you are updating a plan that already contains completed items.\n- step must be short and readable (ideally 3–8 words). Do not cram detail into step.\n- Put engineering/context detail into details, technology_options, and done_when.\n- technology_options must be an array with 0–3 practical options. Use [] only when options do not make sense.\n- done_when must be a concrete completion condition (not a vague benefit).\n\nStructure: first include contradiction-linked actions (when supported), then broader synthesis actions grounded in decisions, risks, and constraints.\n\nFor buildable physical/product concepts, split vague work into execution phases where relevant: design → select technologies/materials → build prototype → test in usage context → evaluate cost/manufacturability.\n\nIf the user has already chosen a decision direction, operationalize it instead of reopening the decision. If the material is ambiguous, choose the smallest concrete next move supported by the material instead of asking the user to clarify.\n\nBe concrete, concise, project-specific, and grounded in the provided material. Use contradictions as anchors, not cages.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, no aliases, omit incomplete items rather than returning malformed ones.' : ''}`
-          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report.\n\nDziałaj jak strateg wykonania produktu, a nie moderator warsztatu. Nie moderuj dyskusji, nie proś użytkownika o doprecyzowanie i nie generuj promptów warsztatowych. Generuj akcje, które realnie przesuwają projekt do przodu.\n\nPlan działania ma być klarowną sekwencją wykonalnych kroków. NIE wypisuj tematów jako fraz rzeczownikowych. Każdy action_plan.step musi zaczynać się czasownikiem w trybie rozkazującym (np. Zaprojektuj, Zbuduj, Przetestuj, Porównaj, Dobierz, Oszacuj, Zdefiniuj, Zweryfikuj).\n\nWymagany kształt elementu action_plan (bez aliasów): { step, status, details, technology_options, done_when }.\n- status zawsze po angielsku: pending | in_progress | completed.\n- Dla NOWEGO planu: pierwszy element status=in_progress, wszystkie pozostałe status=pending.\n- Ma być DOKŁADNIE jeden in_progress, dopóki plan nie jest ukończony.\n- Nie zwracaj completed w nowym planie, chyba że aktualizujesz plan, który już zawiera completed.\n- step ma być krótki i czytelny (najlepiej 3–8 słów). Nie upychaj szczegółów w step.\n- Szczegóły inżynieryjne i kontekst wpisuj do details, technology_options i done_when.\n- technology_options to tablica 0–3 praktycznych opcji; użyj [] tylko gdy opcje nie mają sensu.\n- done_when to konkretny warunek ukończenia (nie korzyść).\n\nStruktura: najpierw akcje powiązane ze sprzecznościami (jeśli materiał na to pozwala), a potem szersze akcje syntetyczne zakotwiczone w decyzjach, ryzykach i ograniczeniach.\n\nDla rzeczy budowalnych/fizycznych dziel pracę na fazy, gdy to ma sens: projekt → dobór technologii/materiałów → prototyp → test w kontekście użycia → ocena kosztu/wykonalności.\n\nJeśli użytkownik wybrał już kierunek decyzji, przełóż go na działanie zamiast ponownie otwierać decyzję. Jeśli materiał jest niejednoznaczny, wybierz najmniejszy konkretny następny ruch wsparty materiałem zamiast prosić o doprecyzowanie.\n\nPisz konkretnie, zwięźle, projektowo i wyłącznie na podstawie dostarczonego materiału. Traktuj sprzeczności jako kotwice, a nie ograniczenia.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, bez aliasów; pomijaj niekompletne elementy zamiast zwracać błędne.' : ''}`
+          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report.\n\nWrite like an experienced product engineer / product advisor. Do not facilitate a workshop. Do not ask the user to clarify. Do not generate generic checklists.\n\nGoal: produce a coherent product development roadmap, not a Jira backlog.\n- Prefer execution_report.roadmap_phases (4–6 phases) over execution_report.action_plan.\n- Each phase should explain: what happens now, why it matters, what uncertainty/risk it reduces, concrete actions, and a validation/decision gate before moving on.\n- Use concrete details from the provided material. Preserve ambiguity where a decision still needs testing.\n- Avoid mechanical fields: omit or keep empty anything you cannot support (e.g. technology_options, done_when).\n\nIf you include action_plan, keep it short and natural. Do not force imperative verbs or rigid 3–8 word titles.\n\nUse contradictions/decisions as anchors when supported, but do not force mechanical coverage.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, no aliases.' : ''}`
+          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report.\n\nPisz jak doświadczony product engineer / doradca produktowo-inżynieryjny. Nie moderuj warsztatu. Nie proś o doprecyzowanie. Nie generuj generycznych checklist.\n\nCel: spójna mapa drogowa rozwoju produktu, a nie backlog z Jiry.\n- Preferuj execution_report.roadmap_phases (4–6 etapów) zamiast execution_report.action_plan.\n- Każdy etap ma wyjaśnić: co robimy teraz, dlaczego to ważne, jakie ryzyko/niewiadomą redukuje, jakie konkretne działania podejmujemy oraz jaki gate walidacyjny/decyzyjny zamyka etap.\n- Używaj konkretów z materiału. Zachowuj niepewność tam, gdzie potrzebny jest test/porównanie.\n- Unikaj mechanicznych pól: pomijaj (albo zostaw puste) to, czego nie da się sensownie uzasadnić (np. technology_options, done_when).\n\nJeśli dodajesz action_plan, niech będzie krótki i naturalny. Nie wymuszaj trybu rozkazującego ani sztucznie krótkich tytułów.\n\nTraktuj sprzeczności/decyzje jako kotwice, ale nie wymuszaj mechanicznego pokrycia.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, bez aliasów.' : ''}`
 
       const buildDecisionEnrichmentPrompt = (decisions) =>
         JSON.stringify({
@@ -4541,6 +4602,78 @@ export const handleReportUpdate = async (req, res) => {
             escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
           },
           maxOutputTokens: 1200,
+          rateLimiter: limiter,
+          rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        })
+
+      const buildRoadmapFromActionPlanPrompt = (actions, context = {}) =>
+        JSON.stringify({
+          lang: reportLang,
+          project_hint: {
+            headline: normalizeExecutionText(context?.headline),
+            goal: normalizeExecutionText(context?.goal),
+          },
+          decisions: Array.isArray(context?.decisions) ? context.decisions : [],
+          triz: context?.triz ?? null,
+          supporting_items: Array.isArray(context?.supporting_items) ? context.supporting_items : [],
+          action_plan: Array.isArray(actions)
+            ? actions.map((item) => ({
+                step: normalizeExecutionText(item?.step || item?.title),
+                details: normalizeExecutionText(item?.details || item?.what_to_do),
+                done_when: normalizeExecutionText(item?.done_when || item?.expected_result),
+              }))
+            : [],
+          requirements: {
+            output_schema: {
+              roadmap_phases: [
+                {
+                  title: 'string',
+                  narrative: 'string',
+                  why: 'string',
+                  risks_reduced: 'string',
+                  actions: [{ text: 'string', validation_gate: 'string' }],
+                  exit_criteria: 'string',
+                },
+              ],
+            },
+            notes: [
+              'Return exactly one valid JSON object and nothing else.',
+              'The JSON must contain only: roadmap_phases.',
+              'Write like an experienced product engineer / product advisor.',
+              'Convert the input into a coherent roadmap of 4–6 phases (not a checklist).',
+              'Each phase should explain what happens now, why it matters, what uncertainty/risk it reduces, concrete actions, and a validation/decision gate.',
+              'Use concrete details from the provided material. Do not invent missing evidence.',
+              'Avoid generic project-management wording. Avoid rigid imperative verbs as titles.',
+              reportLang === 'en' ? 'Output must be in English.' : 'Całość po polsku.',
+            ],
+          },
+        })
+
+      const runRoadmapFromActionPlan = async (actions, options = {}) =>
+        runLlmTask({
+          apiKey: process.env.OPENAI_API_KEY,
+          aiSupportEnabled: true,
+          task: 'report-action-plan-roadmap',
+          input: buildRoadmapFromActionPlanPrompt(actions, options.context || {}),
+          sessionId,
+          language: llmLanguage,
+          taskInstructions:
+            reportLang === 'en'
+              ? 'Return a single valid JSON object only. No markdown. No text before or after JSON. Key: roadmap_phases.'
+              : 'Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: roadmap_phases.',
+          parseResponse: (value) => {
+            const parseAttempt = safeParseJson(value)
+            const parsed = parseAttempt.parsed
+            const raw = parsed?.roadmap_phases
+            return Array.isArray(raw) ? raw : null
+          },
+          fallbackData: null,
+          models: {
+            default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
+            preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
+            escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
+          },
+          maxOutputTokens: 1400,
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
         })
@@ -5121,7 +5254,8 @@ export const handleReportUpdate = async (req, res) => {
                 executionReportCandidate = ensureExecutionNextSessionFocus(executionReportCandidate, reportLang)
                 executionReportValidation = validateExecutionPlanOnly(executionReportCandidate)
                 responseExecution.planGenerated =
-                  Array.isArray(executionReportCandidate?.action_plan) && executionReportCandidate.action_plan.length > 0
+                  (Array.isArray(executionReportCandidate?.roadmap_phases) && executionReportCandidate.roadmap_phases.length > 0) ||
+                  (Array.isArray(executionReportCandidate?.action_plan) && executionReportCandidate.action_plan.length > 0)
                 console.log('[REPORT FINALIZE DEBUG][backend][after-final-plan-llm]', {
                   requestId,
                   sessionId,
@@ -6042,13 +6176,61 @@ export const handleReportUpdate = async (req, res) => {
         }
       }
 
-      if (finalExecutionReport && Array.isArray(finalExecutionReport.action_plan) && finalExecutionReport.action_plan.length) {
-        const polishedPlan = await polishActionPlanCopyWithLlm(finalExecutionReport.action_plan, reportLang, {
-          headline: finalExecutionReport.headline,
-          goal: finalExecutionReport.goal,
-        })
-        finalExecutionReport = { ...finalExecutionReport, action_plan: polishedPlan }
+      const looksLikeChecklistActionPlan = (actionPlan, lang) => {
+        const items = Array.isArray(actionPlan) ? actionPlan : []
+        if (items.length < 3) return false
+        const verbsPl = ['zaprojektuj', 'zdefiniuj', 'przeprowadź', 'przetestuj', 'zbuduj', 'zweryfikuj', 'oszacuj', 'dobierz']
+        const verbsEn = ['design', 'define', 'run', 'test', 'build', 'validate', 'estimate', 'compare', 'select']
+        const verbs = lang === 'pl' ? verbsPl : verbsEn
+        const hits = items.filter((x) => {
+          const step = normalizeExecutionText(x?.step || x?.title).toLowerCase()
+          if (!step) return false
+          return verbs.some((v) => step.startsWith(v + ' ') || step === v)
+        }).length
+        return hits >= Math.ceil(items.length * 0.6)
       }
+
+      if (
+        finalExecutionReport &&
+        !(Array.isArray(finalExecutionReport.roadmap_phases) && finalExecutionReport.roadmap_phases.length > 0) &&
+        Array.isArray(finalExecutionReport.action_plan) &&
+        finalExecutionReport.action_plan.length > 0 &&
+        looksLikeChecklistActionPlan(finalExecutionReport.action_plan, reportLang)
+      ) {
+        try {
+          const roadmapRes = await runRoadmapFromActionPlan(finalExecutionReport.action_plan, {
+            context: {
+              headline: finalExecutionReport.headline,
+              goal: finalExecutionReport.goal,
+              decisions: finalExecutionReport.decisions,
+              triz: finalTrizResolved,
+              supporting_items: finalExecutionReport.supporting_items,
+            },
+          })
+          if (roadmapRes?.ok && Array.isArray(roadmapRes.data)) {
+            finalExecutionReport = normalizeExecutionReport(
+              { ...finalExecutionReport, roadmap_phases: roadmapRes.data },
+              reportLang
+            )
+          }
+        } catch (error) {
+          console.error('[report:update] roadmap-from-action-plan exception:', error)
+        }
+      }
+
+      const shouldPolishActionPlanCopy =
+        process.env.REPORT_ACTION_PLAN_COPY_POLISH === '1' &&
+        !(Array.isArray(finalExecutionReport?.roadmap_phases) && finalExecutionReport.roadmap_phases.length > 0) &&
+        finalExecutionReport &&
+	        Array.isArray(finalExecutionReport.action_plan) &&
+	        finalExecutionReport.action_plan.length > 0
+	      if (shouldPolishActionPlanCopy) {
+	        const polishedPlan = await polishActionPlanCopyWithLlm(finalExecutionReport.action_plan, reportLang, {
+	          headline: finalExecutionReport.headline,
+	          goal: finalExecutionReport.goal,
+	        })
+	        finalExecutionReport = { ...finalExecutionReport, action_plan: polishedPlan }
+	      }
       logExecutionReportShape('final', finalExecutionReport)
       logExecutionDecisionCoverage('final', finalExecutionReport)
       console.log('[report:update][step3] action-plan overwrite', actionPlanDecision)

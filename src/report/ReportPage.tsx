@@ -2741,17 +2741,60 @@ export const ReportPage = ({
 
             <section id="action-plan" className="report-section">
               <h2>{t.actionPlanSectionTitle}</h2>
-              {normalizedExecutionReport?.stage !== 'plan_generated' ? (
-                <p className="report-section-placeholder">
-                  {language === 'pl'
-                    ? 'Najpierw podejmij kluczowe decyzje, aby wygenerować tę sekcję.'
-                    : 'Make your key decisions first to generate this section.'}
-                </p>
-	              ) : (executionReportPlanRenderable || hasLeanExecutionReport) && normalizedExecutionReport?.action_plan?.length ? (
-	                (() => {
-	                  const actions = normalizedExecutionReport.action_plan
-	                  const normalizeKey = (value: string) =>
-                    String(value || '')
+	              {normalizedExecutionReport?.stage !== 'plan_generated' ? (
+	                <p className="report-section-placeholder">
+	                  {language === 'pl'
+	                    ? 'Najpierw podejmij kluczowe decyzje, aby wygenerować tę sekcję.'
+	                    : 'Make your key decisions first to generate this section.'}
+	                </p>
+		              ) : (executionReportPlanRenderable || hasLeanExecutionReport) &&
+		                  Array.isArray((normalizedExecutionReport as any)?.roadmap_phases) &&
+		                  (normalizedExecutionReport as any).roadmap_phases.length ? (
+		                (() => {
+		                  const phases = (normalizedExecutionReport as any).roadmap_phases as any[]
+		                  const safe = (value: unknown) => sanitizeReportText(String(value || '').trim())
+		                  return (
+		                    <ol className="report-action-plan-grouped__list">
+		                      {phases.map((phase, idx) => {
+		                        const title = safe(phase?.title) || (language === 'pl' ? `Etap ${idx + 1}` : `Phase ${idx + 1}`)
+		                        const narrative = safe(phase?.narrative)
+		                        const why = safe(phase?.why)
+		                        const risks = safe(phase?.risks_reduced)
+		                        const exit = safe(phase?.exit_criteria)
+		                        const actions = Array.isArray(phase?.actions) ? phase.actions : []
+		                        const bullets = actions
+		                          .map((a: any) => {
+		                            const text = safe(a?.text || a)
+		                            const gate = safe(a?.validation_gate)
+		                            if (!text && !gate) return ''
+		                            return gate ? `${text} (${gate})`.trim() : text
+		                          })
+		                          .filter(Boolean)
+		                        return (
+		                          <li key={`roadmap-phase-${idx}`} className="report-action-plan-grouped__item">
+		                            <div className="report-action-plan-grouped__header">{title}</div>
+		                            {narrative ? <div className="muted report-action-plan-grouped__subheader">{narrative}</div> : null}
+		                            {why ? <div className="muted report-action-plan-grouped__subheader">{why}</div> : null}
+		                            {risks ? <div className="muted report-action-plan-grouped__subheader">{risks}</div> : null}
+		                            {bullets.length ? (
+		                              <ul className="report-action-plan-grouped__bullets">
+		                                {bullets.map((b: string, bi: number) => (
+		                                  <li key={`roadmap-phase-${idx}-a-${bi}`}>{b}</li>
+		                                ))}
+		                              </ul>
+		                            ) : null}
+		                            {exit ? <div className="muted report-action-plan-grouped__subheader">{exit}</div> : null}
+		                          </li>
+		                        )
+		                      })}
+		                    </ol>
+		                  )
+		                })()
+		              ) : (executionReportPlanRenderable || hasLeanExecutionReport) && normalizedExecutionReport?.action_plan?.length ? (
+		                (() => {
+		                  const actions = normalizedExecutionReport.action_plan
+		                  const normalizeKey = (value: string) =>
+		                    String(value || '')
                       .toLowerCase()
                       .normalize('NFKD')
                       .replace(/[\u0300-\u036f]/g, '')
