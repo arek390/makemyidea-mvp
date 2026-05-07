@@ -5490,11 +5490,11 @@ export const handleReportUpdate = async (req, res) => {
 	                return items
 	              }
 
-	              const buildAnalysisRepairActions = (needed) => {
-	                const actions = []
-                const tensions = Array.isArray(analysisJson?.tensions_or_opportunities)
-                  ? analysisJson.tensions_or_opportunities
-                  : []
+		              const buildAnalysisRepairActions = (needed) => {
+		                const actions = []
+	                const tensions = Array.isArray(analysisJson?.tensions_or_opportunities)
+	                  ? analysisJson.tensions_or_opportunities
+	                  : []
                 const themes = Array.isArray(analysisJson?.key_themes) ? analysisJson.key_themes : []
                 const candidates = [...tensions, ...themes].map((x) => normalizeExecutionText(x)).filter(Boolean)
                 const base = candidates.length ? candidates : executionSupportingItems.map((i) => normalizeExecutionText(i?.text)).filter(Boolean)
@@ -5525,36 +5525,53 @@ export const handleReportUpdate = async (req, res) => {
                   if (words.length <= maxWords) return text
                   return `${words.slice(0, maxWords).join(' ')}…`
                 }
-                const hashSeed = (value) => {
-                  const raw = normalizeQualityKey(value)
-                  let h = 0
-                  for (let i = 0; i < raw.length; i += 1) {
-                    h = (h << 5) - h + raw.charCodeAt(i)
-                    h |= 0
-                  }
-                  return Math.abs(h)
-                }
-                const pick = (arr, seed) => arr[seed % arr.length]
-	                for (let i = 0; i < needed; i += 1) {
-		                  const hint = base[i % Math.max(1, base.length)] || ''
-		                  const obj = tryInferObject(reportLang, hint)
-		                  if (!obj) return
-		                  const seed = hashSeed(`analysis:${i}:${obj.nom}`)
-		                  const moveObj = reportLang === 'en' ? pick(analysisMovesEn, seed) : pick(analysisMovesPl, seed)
-		                  const rawStep = moveObj.make(obj)
-		                  if (isForbiddenGenericPlaceholder(rawStep)) return
-		                  actions.push({
-		                    step: rewriteStepToImperative(`${rawStep}`, reportLang),
-		                    details: '',
-		                    technology_options: [],
-		                    done_when: doneWhenForVerb(moveObj.verb, reportLang),
-		                    source_type: 'analysis',
-		                    source_ref: `analysis:${i}`,
-		                    derived_from_user_choice: false,
-		                  })
-		                }
-	                return actions
-	              }
+	                const hashSeed = (value) => {
+	                  const raw = normalizeQualityKey(value)
+	                  let h = 0
+	                  for (let i = 0; i < raw.length; i += 1) {
+	                    h = (h << 5) - h + raw.charCodeAt(i)
+	                    h |= 0
+	                  }
+	                  return Math.abs(h)
+	                }
+	                const pick = (arr, seed) => arr[seed % arr.length]
+		                for (let i = 0; i < needed; i += 1) {
+			                  const hint = base[i % Math.max(1, base.length)] || ''
+			                  const obj =
+			                    tryInferObject(reportLang, hint) ||
+			                    (reportLang === 'en'
+			                      ? { acc: 'the solution', gen: 'the solution', nom: 'solution' }
+			                      : { acc: 'rozwiązanie', gen: 'rozwiązania', nom: 'rozwiązanie' })
+			                  const seed = hashSeed(`analysis:${i}:${obj.nom}`)
+			                  const moveObj = reportLang === 'en' ? pick(analysisMovesEn, seed) : pick(analysisMovesPl, seed)
+			                  const rawStep = moveObj.make(obj)
+			                  if (isForbiddenGenericPlaceholder(rawStep)) {
+			                    actions.push({
+			                      step:
+			                        reportLang === 'en'
+			                          ? 'Review constraints and assumptions for the solution'
+			                          : 'Przejrzyj ograniczenia i założenia dla rozwiązania',
+			                      details: '',
+			                      technology_options: [],
+			                      done_when: reportLang === 'en' ? 'Constraints are documented.' : 'Ograniczenia są spisane.',
+			                      source_type: 'analysis',
+			                      source_ref: `analysis:${i}`,
+			                      derived_from_user_choice: false,
+			                    })
+			                    continue
+			                  }
+			                  actions.push({
+			                    step: rewriteStepToImperative(`${rawStep}`, reportLang),
+			                    details: '',
+			                    technology_options: [],
+			                    done_when: doneWhenForVerb(moveObj.verb, reportLang),
+			                    source_type: 'analysis',
+			                    source_ref: `analysis:${i}`,
+			                    derived_from_user_choice: false,
+			                  })
+			                }
+		                return actions
+		              }
 
 	              let finalChoiceActions = choiceActions.map((a, index) => ({
 	                step: sanitizeActionText(a.step),
