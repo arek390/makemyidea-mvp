@@ -2943,18 +2943,20 @@ export const ReportPage = ({
 		                              <p className="report-action-plan-grouped__rationale">{why}</p>
 		                            ) : null}
 		                            {risk ? (
-		                              <div className="report-action-plan-grouped__callout">
-		                                <span className="report-action-plan-grouped__label">
-		                                  {language === 'pl' ? 'Ryzyko / kompromis' : 'Risk / trade-off'}
-		                                </span>
+		                              <p className="report-action-plan-grouped__callout">
+		                                <strong>
+		                                  {language === 'pl' ? 'Największe ryzyko:' : 'Biggest risk:'}
+		                                </strong>{' '}
 		                                <span>{risk}</span>
-		                              </div>
+		                              </p>
 		                            ) : null}
 		                            {bullets.length ? (
-		                              <div>
-		                                <div className="report-action-plan-grouped__label">
-		                                  {language === 'pl' ? 'Na tym etapie' : 'In this phase'}
-		                                </div>
+		                              <div className="report-action-plan-grouped__actions">
+		                                <p className="report-action-plan-grouped__lead">
+		                                  <strong>
+		                                    {language === 'pl' ? 'Co robimy:' : 'What we do:'}
+		                                  </strong>
+		                                </p>
 		                                <ul className="report-action-plan-grouped__bullets">
 		                                  {bullets.map((b: string, bi: number) => (
 		                                    <li key={`roadmap-phase-${idx}-a-${bi}`}>{b}</li>
@@ -2963,20 +2965,20 @@ export const ReportPage = ({
 		                              </div>
 		                            ) : null}
 		                            {validation ? (
-		                              <div className="report-action-plan-grouped__validation">
-		                                <span className="report-action-plan-grouped__label">
-		                                  {language === 'pl' ? 'Walidacja / test' : 'Validation / test'}
-		                                </span>
+		                              <p className="report-action-plan-grouped__validation">
+		                                <strong>
+		                                  {language === 'pl' ? 'Sygnał, że to działa:' : 'Signal it works:'}
+		                                </strong>{' '}
 		                                <span>{validation}</span>
-		                              </div>
+		                              </p>
 		                            ) : null}
 		                            {decision ? (
-		                              <div className="report-action-plan-grouped__decision">
-		                                <span className="report-action-plan-grouped__label">
-		                                  {language === 'pl' ? 'Decyzja po etapie' : 'Decision unlocked'}
-		                                </span>
+		                              <p className="report-action-plan-grouped__decision">
+		                                <strong>
+		                                  {language === 'pl' ? 'Jeśli to potwierdzisz, możesz:' : 'If confirmed, you can:'}
+		                                </strong>{' '}
 		                                <span>{decision}</span>
-		                              </div>
+		                              </p>
 		                            ) : null}
 		                          </li>
 		                        )
