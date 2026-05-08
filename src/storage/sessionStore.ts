@@ -86,11 +86,17 @@ export type ReportExecutionRoadmapAction = {
 }
 
 export type ReportExecutionRoadmapPhase = {
-  title: string
-  narrative: string
-  why: string
-  risks_reduced: string
-  actions: ReportExecutionRoadmapAction[]
+  phase_title: string
+  why_this_phase_matters: string
+  key_risk_or_tradeoff: string
+  concrete_actions: string[]
+  validation_or_test: string
+  decision_unlocked: string
+  title?: string
+  narrative?: string
+  why?: string
+  risks_reduced?: string
+  actions?: ReportExecutionRoadmapAction[]
   exit_criteria?: string
 }
 

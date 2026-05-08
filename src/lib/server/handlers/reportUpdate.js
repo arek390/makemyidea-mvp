@@ -618,7 +618,7 @@ const mergeTrizKeepingSupportedExisting = ({ existingTriz, generatedTriz, suppor
 
 const normalizeExecutionList = (value, itemNormalizer, limit = 5) => {
   if (!Array.isArray(value)) return []
-  return value.map((item) => itemNormalizer(item)).filter(Boolean).slice(0, limit)
+  return value.map((item, index) => itemNormalizer(item, index)).filter(Boolean).slice(0, limit)
 }
 
 const normalizeExecutionText = (value) => (typeof value === 'string' ? value.trim() : '')
@@ -1128,50 +1128,73 @@ const coerceExecutionActionPlanItem = (item, lang) => {
 
 const MAX_EXEC_ROADMAP_PHASES = 6
 
-const coerceExecutionRoadmapPhase = (value, lang) => {
+const isGenericRoadmapPhaseTitle = (value) => {
+  const key = normalizeQualityKey(value)
+  if (!key) return true
+  if (/^(etap|faza)(\s+\d+)?$/.test(key)) return true
+  if (/^(phase|stage)(\s+\d+)?$/.test(key)) return true
+  return false
+}
+
+const coerceExecutionRoadmapPhase = (value, lang, index = 0) => {
   if (!value || typeof value !== 'object') return null
-  const title = normalizeExecutionText(value.title || value.phase_title || value.name)
-  const narrative = sanitizeExecutionDetailText(value.narrative || value.what || value.context)
-  const why = sanitizeExecutionDetailText(value.why || value.why_it_matters || value.reason)
-  const risks_reduced = sanitizeExecutionDetailText(
-    value.risks_reduced || value.risks || value.uncertainty_reduced
+  const rawTitle = normalizeExecutionText(value.phase_title || value.title || value.name)
+  const why_this_phase_matters = sanitizeExecutionDetailText(
+    value.why_this_phase_matters || value.why || value.why_it_matters || value.reason || value.narrative
   )
-  const exit_criteria = sanitizeExecutionDetailText(value.exit_criteria || value.exit || value.gate)
-  const actionsRaw = Array.isArray(value.actions) ? value.actions : []
-  const actions = actionsRaw
+  const key_risk_or_tradeoff = sanitizeExecutionDetailText(
+    value.key_risk_or_tradeoff ||
+      value.risks_reduced ||
+      value.risks ||
+      value.uncertainty_reduced ||
+      value.tradeoff
+  )
+  const validation_or_test = sanitizeExecutionDetailText(
+    value.validation_or_test || value.validation || value.test || value.exit_criteria
+  )
+  const decision_unlocked = sanitizeExecutionDetailText(
+    value.decision_unlocked || value.decision || value.exit || value.gate
+  )
+  const actionsRaw = Array.isArray(value.concrete_actions)
+    ? value.concrete_actions
+    : Array.isArray(value.actions)
+      ? value.actions
+      : []
+  const concrete_actions = actionsRaw
     .map((a) => {
-      if (typeof a === 'string') {
-        const text = sanitizeExecutionDetailText(a)
-        return text ? { text } : null
-      }
-      if (!a || typeof a !== 'object') return null
+      if (typeof a === 'string') return sanitizeExecutionDetailText(a)
+      if (!a || typeof a !== 'object') return ''
       const text = sanitizeExecutionDetailText(a.text || a.action || a.step)
-      if (!text) return null
-      const validation_gate = sanitizeExecutionDetailText(a.validation_gate || a.validation || a.gate)
-      return {
-        text,
-        ...(validation_gate ? { validation_gate } : {}),
-      }
+      const gate = sanitizeExecutionDetailText(a.validation_gate || a.validation || a.gate)
+      return [text, gate].filter(Boolean).join(' — ')
     })
     .filter(Boolean)
     .slice(0, 12)
 
-  const hasAny =
-    Boolean(title) ||
-    Boolean(narrative) ||
-    Boolean(why) ||
-    Boolean(risks_reduced) ||
-    Boolean(exit_criteria) ||
-    actions.length > 0
-  if (!hasAny) return null
+  const hasSourceContent =
+    Boolean(rawTitle && !isGenericRoadmapPhaseTitle(rawTitle)) ||
+    Boolean(why_this_phase_matters) ||
+    Boolean(key_risk_or_tradeoff) ||
+    Boolean(validation_or_test) ||
+    Boolean(decision_unlocked) ||
+    concrete_actions.length > 0
+  if (!hasSourceContent) return null
+
+  const phaseTitleFromContext = (() => {
+    const source = key_risk_or_tradeoff || why_this_phase_matters || validation_or_test || concrete_actions[0] || ''
+    const words = normalizeExecutionText(source).split(/\s+/).filter(Boolean).slice(0, 9).join(' ')
+    if (!words) return lang === 'pl' ? `Etap ${index + 1} — ogranicz kluczową niewiadomą` : `Phase ${index + 1} — reduce the key uncertainty`
+    return lang === 'pl' ? `Etap ${index + 1} — ${words}` : `Phase ${index + 1} — ${words}`
+  })()
+  const phase_title = isGenericRoadmapPhaseTitle(rawTitle) ? phaseTitleFromContext : rawTitle
 
   return {
-    title: title || (lang === 'pl' ? 'Etap' : 'Phase'),
-    narrative,
-    why,
-    risks_reduced,
-    actions,
-    ...(exit_criteria ? { exit_criteria } : {}),
+    phase_title,
+    why_this_phase_matters,
+    key_risk_or_tradeoff,
+    concrete_actions,
+    validation_or_test,
+    decision_unlocked,
   }
 }
 
@@ -1270,7 +1293,7 @@ const normalizeExecutionReport = (value, reportLang = 'en') => {
 	    }),
 	    roadmap_phases: normalizeExecutionList(
 	      report.roadmap_phases || report.roadmapPhases,
-	      (item) => coerceExecutionRoadmapPhase(item, reportLang === 'pl' ? 'pl' : 'en'),
+	      (item, index) => coerceExecutionRoadmapPhase(item, reportLang === 'pl' ? 'pl' : 'en', index),
 	      MAX_EXEC_ROADMAP_PHASES
 	    ),
 	    action_plan: normalizeExecutionList(
@@ -1379,14 +1402,27 @@ const assessExecutionReportQuality = (report) => {
     }).length
 
   const prioritiesComplete = countMeaningful(priorities, ['title'])
-  const roadmapComplete = roadmapPhases.filter((phase) => {
-    if (!phase || typeof phase !== 'object') return false
-    const titleOk = normalizeExecutionText(phase.title).length > 0
-    const narrativeOk = normalizeExecutionText(phase.narrative || phase.why || phase.risks_reduced).length > 0
-    const actions = Array.isArray(phase.actions) ? phase.actions : []
+	  const roadmapComplete = roadmapPhases.filter((phase) => {
+	    if (!phase || typeof phase !== 'object') return false
+    const titleOk = normalizeExecutionText(phase.phase_title || phase.title).length > 0
+    const narrativeOk =
+      normalizeExecutionText(
+        phase.why_this_phase_matters ||
+          phase.key_risk_or_tradeoff ||
+          phase.validation_or_test ||
+          phase.decision_unlocked ||
+          phase.narrative ||
+          phase.why ||
+          phase.risks_reduced
+      ).length > 0
+    const actions = Array.isArray(phase.concrete_actions)
+      ? phase.concrete_actions
+      : Array.isArray(phase.actions)
+        ? phase.actions
+        : []
     const actionsOk = actions.some((a) => normalizeExecutionText(a?.text || a).length > 0)
-    return titleOk && (narrativeOk || actionsOk)
-  }).length
+	    return titleOk && (narrativeOk || actionsOk)
+	  }).length
   const actionPlanComplete = countMeaningful(actionPlan, ['step'])
   const decisionsComplete = decisions.filter((item) => {
     if (!item || typeof item !== 'object') return false
@@ -1562,10 +1598,22 @@ const isExecutionReportUsable = (report) => {
         phase &&
         typeof phase === 'object' &&
         (
-          normalizeExecutionText(phase.title).length > 0 ||
-          normalizeExecutionText(phase.narrative).length > 0 ||
-          (Array.isArray(phase.actions) &&
-            phase.actions.some((action) => normalizeExecutionText(action?.text || action).length > 0))
+          normalizeExecutionText(phase.phase_title || phase.title).length > 0 ||
+          normalizeExecutionText(
+            phase.why_this_phase_matters ||
+              phase.key_risk_or_tradeoff ||
+              phase.validation_or_test ||
+              phase.decision_unlocked ||
+              phase.narrative
+          ).length > 0 ||
+          (
+            Array.isArray(phase.concrete_actions) &&
+            phase.concrete_actions.some((action) => normalizeExecutionText(action?.text || action).length > 0)
+          ) ||
+          (
+            Array.isArray(phase.actions) &&
+            phase.actions.some((action) => normalizeExecutionText(action?.text || action).length > 0)
+          )
         )
     ),
     hasMeaningfulItem(actionPlan, ['step', 'details', 'done_when']),
@@ -1603,10 +1651,22 @@ const getExecutionReportPersistableStats = (report) => {
         phase &&
         typeof phase === 'object' &&
         (
-          normalizeExecutionText(phase.title).length > 0 ||
-          normalizeExecutionText(phase.narrative).length > 0 ||
-          (Array.isArray(phase.actions) &&
-            phase.actions.some((action) => normalizeExecutionText(action?.text || action).length > 0))
+          normalizeExecutionText(phase.phase_title || phase.title).length > 0 ||
+          normalizeExecutionText(
+            phase.why_this_phase_matters ||
+              phase.key_risk_or_tradeoff ||
+              phase.validation_or_test ||
+              phase.decision_unlocked ||
+              phase.narrative
+          ).length > 0 ||
+          (
+            Array.isArray(phase.concrete_actions) &&
+            phase.concrete_actions.some((action) => normalizeExecutionText(action?.text || action).length > 0)
+          ) ||
+          (
+            Array.isArray(phase.actions) &&
+            phase.actions.some((action) => normalizeExecutionText(action?.text || action).length > 0)
+          )
         )
     ),
     hasMeaningfulItem(actionPlan, ['step', 'details', 'done_when']),
@@ -1978,13 +2038,27 @@ const validateExecutionPlanOnly = (report) => {
   const actionPlan = Array.isArray(report.action_plan) ? report.action_plan : []
   const validationLoop = Array.isArray(report.validation_loop) ? report.validation_loop : []
   const meaningfulPriorities = priorities.filter((item) => normalizeExecutionText(item?.title).length > 0).length
-  const meaningfulRoadmap = roadmapPhases.filter((phase) => {
-    if (!phase || typeof phase !== 'object') return false
-    const titleOk = normalizeExecutionText(phase?.title).length > 0
-    const actions = Array.isArray(phase?.actions) ? phase.actions : []
+	  const meaningfulRoadmap = roadmapPhases.filter((phase) => {
+	    if (!phase || typeof phase !== 'object') return false
+    const titleOk = normalizeExecutionText(phase?.phase_title || phase?.title).length > 0
+    const narrativeOk = normalizeExecutionText(
+      phase?.why_this_phase_matters ||
+        phase?.key_risk_or_tradeoff ||
+        phase?.validation_or_test ||
+        phase?.decision_unlocked ||
+        phase?.narrative ||
+        phase?.why ||
+        phase?.risks_reduced ||
+        phase?.exit_criteria
+    ).length > 0
+    const actions = Array.isArray(phase?.concrete_actions)
+      ? phase.concrete_actions
+      : Array.isArray(phase?.actions)
+        ? phase.actions
+        : []
     const actionsOk = actions.some((a) => normalizeExecutionText(a?.text || a).length > 0)
-    return titleOk && actionsOk
-  }).length
+	    return titleOk && (narrativeOk || actionsOk)
+	  }).length
   const meaningfulActions =
     actionPlan.filter((item) => normalizeExecutionText(item?.step || item?.title).length > 0).length ||
     meaningfulRoadmap
@@ -4115,16 +4189,16 @@ export const handleReportUpdate = async (req, res) => {
 	                    risk_of_ignoring: 'string',
 	                  },
 	                ],
-	                roadmap_phases: [
-	                  {
-	                    title: 'string',
-	                    narrative: 'string',
-	                    why: 'string',
-	                    risks_reduced: 'string',
-	                    actions: [{ text: 'string', validation_gate: 'string' }],
-	                    exit_criteria: 'string',
-	                  },
-	                ],
+		                roadmap_phases: [
+		                  {
+		                    phase_title: 'string',
+		                    why_this_phase_matters: 'string',
+		                    key_risk_or_tradeoff: 'string',
+		                    concrete_actions: ['string'],
+		                    validation_or_test: 'string',
+		                    decision_unlocked: 'string',
+		                  },
+		                ],
 		                action_plan: [
 		                  {
 		                    step: 'string',
@@ -4178,9 +4252,12 @@ export const handleReportUpdate = async (req, res) => {
               'Lean shape only. Prioritize durable fields that will be persisted and displayed: priorities.title, roadmap_phases, decisions, validation_loop.check, next_session_focus, map_context.coverage_summary, goal, headline.',
               'Write like a senior product engineer, technical founder, or R&D lead. The plan should read like a coherent roadmap with operational substance, not an executive summary and not a Jira backlog.',
               'Prefer roadmap_phases over action_plan: group work into 4–6 meaningful phases (few, high-signal).',
-              'Each roadmap phase must contain a short narrative plus 2–4 concrete actions. Actions should name the thing to build/test/check, the practical test or implementation slice, what will be observed/measured, and the decision unlocked by that evidence.',
-              'For each phase: explain what happens now, why it matters, what uncertainty/risk it reduces, concrete actions to take, and what validation/decision gate should happen before moving on.',
+              'Each roadmap phase must contain exactly these primary fields: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.',
+              'The most important fields are why_this_phase_matters, key_risk_or_tradeoff, validation_or_test, and decision_unlocked. concrete_actions are supporting detail, not the main structure.',
+              'phase_title must be semantic and specific. Never return only "Etap", "Faza", "Phase", or "Stage"; name the core uncertainty, milestone, or engineering objective.',
+              'concrete_actions should contain 2–4 short actions, but the surrounding reasoning must explain sequencing, uncertainty reduction, and tradeoffs.',
               'Avoid generic strategic filler such as "develop the product", "optimize the experience", "prepare for market", "improve UX", or "scale the solution" unless the same sentence names the concrete artifact, test condition, metric, and decision.',
+              'Avoid generic lifecycle endings such as preparing marketing materials or launching the product unless the phase is grounded in concrete product-readiness evidence.',
               'Prefer embedded product/R&D actions: prototype variants, material/geometry comparisons, integration spikes, user handling tests, cost checks, manufacturability checks, instrumentation, packaging or compliance checks when relevant.',
               'Use contradictions and decisions as anchors (when supported), but do not force mechanical coverage.',
               'Keep source links via source_type/source_ref (or other metadata), not by copying titles into phase/action text.',
@@ -4221,7 +4298,7 @@ export const handleReportUpdate = async (req, res) => {
               'It is better to return fewer items than to return incomplete items.',
               `priorities: target exactly ${TARGET_EXEC_PRIORITIES} items when material supports it; otherwise return at least 2 and at most 5.`,
               'roadmap_phases: target 4 to 6 phases when material supports it; otherwise return 3 broader phases with concrete actions.',
-              'roadmap_phases.actions: target 2 to 4 concrete actions per phase. Fewer is acceptable only when the material is sparse.',
+              'roadmap_phases.concrete_actions: target 2 to 4 concrete actions per phase. Fewer is acceptable only when the material is sparse.',
               `action_plan: optional legacy fallback; if used, return at most ${TARGET_EXEC_ACTION_PLAN} natural items in logical order.`,
               `decisions: target exactly ${TARGET_EXEC_DECISIONS} items when material supports it; otherwise return 2 to 5 items.`,
               `validation_loop: target exactly ${TARGET_EXEC_VALIDATION} items when material supports it; otherwise return 2 to 5 items.`,
@@ -4246,8 +4323,8 @@ export const handleReportUpdate = async (req, res) => {
 
       const buildExecutionReportTaskInstructions = (strictJson = false) =>
         reportLang === 'en'
-          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report.\n\nWrite like a senior product engineer, technical founder, or R&D lead. Do not facilitate a workshop. Do not ask the user to clarify. Do not generate generic checklists or executive summaries.\n\nGoal: produce a structured but natural actionable product-development roadmap.\n- Prefer execution_report.roadmap_phases (4–6 phases) over execution_report.action_plan.\n- Each phase needs narrative plus 2–4 concrete actions. Each action should specify what to build/test/check, the practical experiment or implementation slice, what to observe/measure, and what decision it unlocks.\n- Include explicit risks, experiments, validations, and tradeoffs. Preserve ambiguity where a decision still needs testing.\n- Avoid filler like "develop the product", "optimize the experience", or "prepare for market" unless immediately tied to a concrete artifact/test/metric/decision.\n- Avoid mechanical fields: omit or keep empty anything you cannot support (e.g. technology_options, done_when).\n\nIf you include action_plan, keep it short and natural. Do not force imperative verbs or rigid 3–8 word titles.\n\nUse contradictions/decisions as anchors when supported, but do not force mechanical coverage.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, no aliases.' : ''}`
-          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report.\n\nPisz jak senior product engineer, technical founder albo lider R&D. Nie moderuj warsztatu. Nie proś o doprecyzowanie. Nie generuj generycznych checklist ani executive summary.\n\nCel: ustrukturyzowana, naturalna i wykonalna mapa drogowa rozwoju produktu.\n- Preferuj execution_report.roadmap_phases (4–6 etapów) zamiast execution_report.action_plan.\n- Każdy etap ma mieć narrację oraz 2–4 konkretne działania. Każde działanie powinno mówić co zbudować/przetestować/sprawdzić, jaki eksperyment albo fragment implementacji wykonać, co obserwować/mierzyć i jaką decyzję to odblokuje.\n- Uwzględniaj konkretne ryzyka, eksperymenty, walidacje i kompromisy. Zachowuj niepewność tam, gdzie potrzebny jest test/porównanie.\n- Unikaj wypełniaczy typu "rozwinąć produkt", "zoptymalizować doświadczenie", "przygotować do rynku", jeśli od razu nie wskazujesz konkretnego artefaktu/testu/metryki/decyzji.\n- Unikaj mechanicznych pól: pomijaj (albo zostaw puste) to, czego nie da się sensownie uzasadnić (np. technology_options, done_when).\n\nJeśli dodajesz action_plan, niech będzie krótki i naturalny. Nie wymuszaj trybu rozkazującego ani sztucznie krótkich tytułów.\n\nTraktuj sprzeczności/decyzje jako kotwice, ale nie wymuszaj mechanicznego pokrycia.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, bez aliasów.' : ''}`
+          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report.\n\nWrite like a senior product engineer, technical founder, or R&D lead. Do not facilitate a workshop. Do not ask the user to clarify. Do not generate generic checklists or executive summaries.\n\nGoal: produce a structured but natural actionable product-development roadmap where phase reasoning is the main artifact.\n- Prefer execution_report.roadmap_phases (4–6 phases) over execution_report.action_plan.\n- Each roadmap phase must use exactly these fields: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title must name a concrete uncertainty, milestone, or engineering objective. Never return only "Phase", "Stage", "Etap", or "Faza".\n- why_this_phase_matters should explain sequencing: why this should happen before the next phase.\n- key_risk_or_tradeoff should state the product/engineering risk or tradeoff being reduced.\n- concrete_actions should contain 2–4 specific build/test/check actions, but actions are secondary to the phase logic.\n- validation_or_test should name the practical test, prototype comparison, metric, observed behavior, or constraint check.\n- decision_unlocked should state what decision the team can make after the phase.\n- Avoid filler like "develop the product", "optimize the experience", or "prepare for market" unless immediately tied to a concrete artifact/test/metric/decision.\n- Avoid mechanical fields: omit or keep empty anything you cannot support (e.g. technology_options, done_when).\n\nIf you include action_plan, keep it short and natural. Do not force imperative verbs or rigid 3–8 word titles.\n\nUse contradictions/decisions as anchors when supported, but do not force mechanical coverage.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, no aliases.' : ''}`
+          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report.\n\nPisz jak senior product engineer, technical founder albo lider R&D. Nie moderuj warsztatu. Nie proś o doprecyzowanie. Nie generuj generycznych checklist ani executive summary.\n\nCel: ustrukturyzowana, naturalna i wykonalna mapa drogowa rozwoju produktu, w której logika etapu jest głównym artefaktem.\n- Preferuj execution_report.roadmap_phases (4–6 etapów) zamiast execution_report.action_plan.\n- Każdy etap roadmapy musi używać dokładnie pól: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title ma nazwać konkretną niewiadomą, kamień milowy albo cel inżynieryjny. Nigdy nie zwracaj samego "Etap", "Faza", "Phase" ani "Stage".\n- why_this_phase_matters ma wyjaśniać sekwencję: dlaczego ten etap powinien wydarzyć się przed następnym.\n- key_risk_or_tradeoff ma nazwać redukowane ryzyko produktowe/inżynieryjne albo kompromis.\n- concrete_actions ma zawierać 2–4 konkretne działania typu zbuduj/przetestuj/sprawdź, ale działania są drugorzędne wobec logiki etapu.\n- validation_or_test ma nazwać praktyczny test, porównanie prototypów, metrykę, obserwowane zachowanie albo sprawdzenie ograniczenia.\n- decision_unlocked ma powiedzieć, jaką decyzję zespół może podjąć po etapie.\n- Unikaj wypełniaczy typu "rozwinąć produkt", "zoptymalizować doświadczenie", "przygotować do rynku", jeśli od razu nie wskazujesz konkretnego artefaktu/testu/metryki/decyzji.\n- Unikaj mechanicznych pól: pomijaj (albo zostaw puste) to, czego nie da się sensownie uzasadnić (np. technology_options, done_when).\n\nJeśli dodajesz action_plan, niech będzie krótki i naturalny. Nie wymuszaj trybu rozkazującego ani sztucznie krótkich tytułów.\n\nTraktuj sprzeczności/decyzje jako kotwice, ale nie wymuszaj mechanicznego pokrycia.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, bez aliasów.' : ''}`
 
       const logRawLlmResponse = ({ task, model, content }) => {
         if (!diagnosticsEnabled) return
@@ -4672,12 +4749,12 @@ export const handleReportUpdate = async (req, res) => {
             output_schema: {
               roadmap_phases: [
                 {
-                  title: 'string',
-                  narrative: 'string',
-                  why: 'string',
-                  risks_reduced: 'string',
-                  actions: [{ text: 'string', validation_gate: 'string' }],
-                  exit_criteria: 'string',
+                  phase_title: 'string',
+                  why_this_phase_matters: 'string',
+                  key_risk_or_tradeoff: 'string',
+                  concrete_actions: ['string'],
+                  validation_or_test: 'string',
+                  decision_unlocked: 'string',
                 },
               ],
             },
@@ -4685,11 +4762,17 @@ export const handleReportUpdate = async (req, res) => {
               'Return exactly one valid JSON object and nothing else.',
               'The JSON must contain only: roadmap_phases.',
               'Write like a senior product engineer, technical founder, or R&D lead.',
-              'Convert the input into a coherent roadmap of 4–6 phases (not a checklist and not an executive summary).',
-              'Each phase must include narrative plus 2–4 concrete actions. Each action should name what to build/test/check, the practical experiment or implementation slice, what to observe/measure, and what decision it unlocks.',
-              'Each phase should explain what happens now, why it matters, what uncertainty/risk it reduces, concrete actions, and a validation/decision gate.',
+              'Convert the input into a coherent roadmap of 4–6 phases where phase reasoning is primary (not a checklist and not an executive summary).',
+              'Each phase must include exactly: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.',
+              'phase_title must name the concrete uncertainty, milestone, or engineering objective. Never return only "Etap", "Faza", "Phase", or "Stage".',
+              'why_this_phase_matters should explain why this phase comes before the next one.',
+              'key_risk_or_tradeoff should name the risk/tradeoff reduced by this phase.',
+              'concrete_actions should contain 2–4 specific build/test/check actions, but actions are secondary to the reasoning.',
+              'validation_or_test should describe the practical test, prototype comparison, metric, observed behavior, or constraint check.',
+              'decision_unlocked should state the decision the team can make after the phase.',
               'Use concrete details from the provided material. Do not invent missing evidence.',
               'Avoid generic strategic filler such as "develop the product", "optimize the experience", "prepare for market", "improve UX", or "scale the solution" unless the same sentence names the concrete artifact, test condition, metric, and decision.',
+              'Avoid generic lifecycle endings such as preparing marketing materials or launching unless grounded in concrete product-readiness evidence.',
               'Avoid generic project-management wording. Avoid rigid imperative verbs as titles.',
               reportLang === 'en' ? 'Output must be in English.' : 'Całość po polsku.',
             ],
@@ -6261,21 +6344,24 @@ export const handleReportUpdate = async (req, res) => {
           const actions = items.slice(start, Math.max(start + 1, end))
           if (!actions.length) continue
           chunks.push({
-            title: titles[i] || (lang === 'en' ? `Phase ${i + 1}` : `Etap ${i + 1}`),
-            narrative:
+            phase_title: titles[i] || (lang === 'en' ? `Phase ${i + 1} — reduce the next uncertainty` : `Etap ${i + 1} — ogranicz kolejną niewiadomą`),
+            why_this_phase_matters:
               lang === 'en'
-                ? 'Turn the existing task list into one practical product-development phase and keep the work tied to evidence, not generic progress.'
-                : 'Zamień istniejące zadania w jeden praktyczny etap rozwoju produktu i oprzyj go na dowodach, a nie ogólnym postępie.',
-            why:
+                ? 'This phase keeps the roadmap tied to evidence and prevents the work from becoming generic product progress.'
+                : 'Ten etap utrzymuje roadmapę przy dowodach i zapobiega zamianie pracy w ogólny postęp produktowy.',
+            key_risk_or_tradeoff:
               lang === 'en'
-                ? 'This keeps the roadmap actionable while avoiding a flat backlog.'
-                : 'To utrzymuje plan jako wykonalną roadmapę, bez powrotu do płaskiego backlogu.',
-            risks_reduced:
+                ? 'The main risk is committing to a direction before the next technical or product uncertainty has been checked.'
+                : 'Główne ryzyko to wejście w kierunek, zanim sprawdzona zostanie kolejna niewiadoma techniczna lub produktowa.',
+            concrete_actions: actions
+              .map((item) => [item.text, item.validation_gate].filter(Boolean).join(' — '))
+              .filter(Boolean)
+              .slice(0, 4),
+            validation_or_test:
               lang === 'en'
-                ? 'Reduces the risk of committing to a direction before the next technical or product uncertainty is checked.'
-                : 'Zmniejsza ryzyko wejścia w kierunek, zanim sprawdzona zostanie kolejna niewiadoma techniczna lub produktowa.',
-            actions,
-            exit_criteria:
+                ? 'Compare the produced evidence against the phase actions and note which assumptions were confirmed, weakened, or still unresolved.'
+                : 'Porównaj zebrane dowody z działaniami etapu i zanotuj, które założenia się potwierdziły, osłabły albo nadal są nierozstrzygnięte.',
+            decision_unlocked:
               lang === 'en'
                 ? 'Move on only after the evidence is strong enough to choose the next build direction.'
                 : 'Przejdź dalej dopiero wtedy, gdy zebrane dowody pozwalają wybrać kolejny kierunek budowy.',

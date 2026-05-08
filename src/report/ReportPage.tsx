@@ -104,6 +104,29 @@ const normalizeAiSummary = (value: unknown): AiSummary => {
   }
 }
 
+const isGenericRoadmapPhaseTitle = (value: string) => {
+  const key = value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+  if (!key) return true
+  return /^(etap|faza|phase|stage)(\s+\d+)?$/.test(key)
+}
+
+const buildRoadmapPhaseTitle = (rawTitle: string, index: number, ...sources: string[]) => {
+  if (rawTitle && !isGenericRoadmapPhaseTitle(rawTitle)) return rawTitle
+  const words = sources
+    .find((source) => source.trim())
+    ?.split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 9)
+    .join(' ')
+  return words ? `Phase ${index + 1} — ${words}` : `Phase ${index + 1} — reduce the next uncertainty`
+}
+
 const normalizeExecutionReport = (value: unknown): ReportExecutionReport => {
   const empty: ReportExecutionReport = {
     stage: null,
@@ -181,9 +204,9 @@ const normalizeExecutionReport = (value: unknown): ReportExecutionReport => {
 	    roadmap_phases: Array.isArray(report.roadmap_phases) || Array.isArray(report.roadmapPhases)
 	      ? ((Array.isArray(report.roadmap_phases) ? report.roadmap_phases : report.roadmapPhases) as unknown[])
 	          .filter((item) => item && typeof item === 'object')
-	          .map((item) => {
+	          .map((item, index) => {
 	            const current = item as Record<string, unknown>
-	            const actions = Array.isArray(current.actions)
+	            const legacyActions = Array.isArray(current.actions)
 	              ? (current.actions as unknown[])
 	                  .map((action) => {
 	                    if (typeof action === 'string') {
@@ -202,27 +225,80 @@ const normalizeExecutionReport = (value: unknown): ReportExecutionReport => {
 	                  })
 	                  .filter((action) => action.text || action.validation_gate)
 	              : []
+	            const concreteActions = Array.isArray(current.concrete_actions)
+	              ? (current.concrete_actions as unknown[])
+	                  .map((action) => {
+	                    if (typeof action === 'string') return toText(action)
+	                    if (!action || typeof action !== 'object') return ''
+	                    const actionRecord = action as Record<string, unknown>
+	                    const text = toText(actionRecord.text) || toText(actionRecord.action) || toText(actionRecord.step)
+	                    const gate =
+	                      toText(actionRecord.validation_gate) ||
+	                      toText(actionRecord.validation) ||
+	                      toText(actionRecord.gate)
+	                    return [text, gate].filter(Boolean).join(' — ')
+	                  })
+	                  .filter(Boolean)
+	              : legacyActions
+	                  .map((action) => [action.text, action.validation_gate].filter(Boolean).join(' — '))
+	                  .filter(Boolean)
+	            const whyThisPhaseMatters =
+	              toText(current.why_this_phase_matters) ||
+	              toText(current.why) ||
+	              toText(current.why_it_matters) ||
+	              toText(current.reason) ||
+	              toText(current.narrative)
+	            const keyRiskOrTradeoff =
+	              toText(current.key_risk_or_tradeoff) ||
+	              toText(current.risks_reduced) ||
+	              toText(current.risks) ||
+	              toText(current.uncertainty_reduced) ||
+	              toText(current.tradeoff)
+	            const validationOrTest =
+	              toText(current.validation_or_test) ||
+	              toText(current.validation) ||
+	              toText(current.test) ||
+	              toText(current.exit_criteria)
+	            const decisionUnlocked =
+	              toText(current.decision_unlocked) ||
+	              toText(current.decision) ||
+	              toText(current.exit) ||
+	              toText(current.gate)
+	            const rawPhaseTitle = toText(current.phase_title) || toText(current.title) || toText(current.name)
+	            const hasSourceContent =
+	              Boolean(rawPhaseTitle && !isGenericRoadmapPhaseTitle(rawPhaseTitle)) ||
+	              Boolean(whyThisPhaseMatters) ||
+	              Boolean(keyRiskOrTradeoff) ||
+	              Boolean(validationOrTest) ||
+	              Boolean(decisionUnlocked) ||
+	              concreteActions.length > 0
+	            const phaseTitle = hasSourceContent
+	              ? buildRoadmapPhaseTitle(
+	                  rawPhaseTitle,
+	                  index,
+	                  keyRiskOrTradeoff,
+	                  whyThisPhaseMatters,
+	                  validationOrTest,
+	                  concreteActions[0] || ''
+	                )
+	              : ''
 	            return {
-	              title: toText(current.title) || toText(current.phase_title) || toText(current.name),
-	              narrative: toText(current.narrative) || toText(current.what) || toText(current.context),
-	              why: toText(current.why) || toText(current.why_it_matters) || toText(current.reason),
-	              risks_reduced:
-	                toText(current.risks_reduced) ||
-	                toText(current.risks) ||
-	                toText(current.uncertainty_reduced),
-	              actions,
-	              exit_criteria:
-	                toText(current.exit_criteria) || toText(current.exit) || toText(current.gate) || undefined,
+	              phase_title: phaseTitle,
+	              why_this_phase_matters: whyThisPhaseMatters,
+	              key_risk_or_tradeoff: keyRiskOrTradeoff,
+	              concrete_actions: concreteActions,
+	              validation_or_test: validationOrTest,
+	              decision_unlocked: decisionUnlocked,
 	            }
 	          })
 	          .filter(
 	            (phase) =>
-	              phase.title ||
-	              phase.narrative ||
-	              phase.why ||
-	              phase.risks_reduced ||
-	              phase.actions.length ||
-	              phase.exit_criteria
+	              phase.phase_title ||
+	              phase.why_this_phase_matters ||
+	              phase.key_risk_or_tradeoff ||
+	              phase.concrete_actions.length ||
+	              phase.validation_or_test ||
+	              phase.decision_unlocked
 	          )
 	      : [],
 	    action_plan: Array.isArray(report.action_plan)
@@ -399,8 +475,15 @@ const hasLeanExecutionReportContent = (report: ReportExecutionReport | null) => 
     Array.isArray(report.roadmap_phases) &&
       report.roadmap_phases.some(
         (phase) =>
-          sanitizeActionPlanDetail(phase.title) ||
-          sanitizeActionPlanDetail(phase.narrative) ||
+          sanitizeActionPlanDetail(phase.phase_title || phase.title) ||
+          sanitizeActionPlanDetail(
+            phase.why_this_phase_matters ||
+              phase.key_risk_or_tradeoff ||
+              phase.validation_or_test ||
+              phase.decision_unlocked ||
+              phase.narrative
+          ) ||
+          phase.concrete_actions?.some((action) => sanitizeActionPlanDetail(action)) ||
           phase.actions?.some((action) => sanitizeActionPlanDetail(action.text))
       ),
     Array.isArray(report.action_plan) && report.action_plan.some((item) => sanitizeActionPlanDetail(item.step)),
@@ -2830,34 +2913,71 @@ export const ReportPage = ({
 		                  return (
 		                    <ol className="report-action-plan-grouped__list">
 		                      {phases.map((phase, idx) => {
-		                        const title = safe(phase?.title) || (language === 'pl' ? `Etap ${idx + 1}` : `Phase ${idx + 1}`)
-		                        const narrative = safe(phase?.narrative)
-		                        const why = safe(phase?.why)
-		                        const risks = safe(phase?.risks_reduced)
-		                        const exit = safe(phase?.exit_criteria)
-		                        const actions = Array.isArray(phase?.actions) ? phase.actions : []
+		                        const title =
+		                          safe(phase?.phase_title || phase?.title) ||
+		                          (language === 'pl'
+		                            ? `Etap ${idx + 1} — ogranicz kolejną niewiadomą`
+		                            : `Phase ${idx + 1} — reduce the next uncertainty`)
+		                        const why = safe(phase?.why_this_phase_matters || phase?.why || phase?.narrative)
+		                        const risk = safe(phase?.key_risk_or_tradeoff || phase?.risks_reduced)
+		                        const validation = safe(phase?.validation_or_test || phase?.exit_criteria)
+		                        const decision = safe(phase?.decision_unlocked || phase?.decision)
+		                        const actions = Array.isArray(phase?.concrete_actions)
+		                          ? phase.concrete_actions
+		                          : Array.isArray(phase?.actions)
+		                            ? phase.actions
+		                            : []
 		                        const bullets = actions
 		                          .map((a: any) => {
+		                            if (typeof a === 'string') return safe(a)
 		                            const text = safe(a?.text || a)
 		                            const gate = safe(a?.validation_gate)
 		                            if (!text && !gate) return ''
-		                            return gate ? `${text} (${gate})`.trim() : text
+		                            return gate ? `${text} — ${gate}`.trim() : text
 		                          })
 		                          .filter(Boolean)
 		                        return (
 		                          <li key={`roadmap-phase-${idx}`} className="report-action-plan-grouped__item">
 		                            <div className="report-action-plan-grouped__header">{title}</div>
-		                            {narrative ? <div className="muted report-action-plan-grouped__subheader">{narrative}</div> : null}
-		                            {why ? <div className="muted report-action-plan-grouped__subheader">{why}</div> : null}
-		                            {risks ? <div className="muted report-action-plan-grouped__subheader">{risks}</div> : null}
-		                            {bullets.length ? (
-		                              <ul className="report-action-plan-grouped__bullets">
-		                                {bullets.map((b: string, bi: number) => (
-		                                  <li key={`roadmap-phase-${idx}-a-${bi}`}>{b}</li>
-		                                ))}
-		                              </ul>
+		                            {why ? (
+		                              <p className="report-action-plan-grouped__rationale">{why}</p>
 		                            ) : null}
-		                            {exit ? <div className="muted report-action-plan-grouped__subheader">{exit}</div> : null}
+		                            {risk ? (
+		                              <div className="report-action-plan-grouped__callout">
+		                                <span className="report-action-plan-grouped__label">
+		                                  {language === 'pl' ? 'Ryzyko / kompromis' : 'Risk / trade-off'}
+		                                </span>
+		                                <span>{risk}</span>
+		                              </div>
+		                            ) : null}
+		                            {bullets.length ? (
+		                              <div>
+		                                <div className="report-action-plan-grouped__label">
+		                                  {language === 'pl' ? 'Na tym etapie' : 'In this phase'}
+		                                </div>
+		                                <ul className="report-action-plan-grouped__bullets">
+		                                  {bullets.map((b: string, bi: number) => (
+		                                    <li key={`roadmap-phase-${idx}-a-${bi}`}>{b}</li>
+		                                  ))}
+		                                </ul>
+		                              </div>
+		                            ) : null}
+		                            {validation ? (
+		                              <div className="report-action-plan-grouped__validation">
+		                                <span className="report-action-plan-grouped__label">
+		                                  {language === 'pl' ? 'Walidacja / test' : 'Validation / test'}
+		                                </span>
+		                                <span>{validation}</span>
+		                              </div>
+		                            ) : null}
+		                            {decision ? (
+		                              <div className="report-action-plan-grouped__decision">
+		                                <span className="report-action-plan-grouped__label">
+		                                  {language === 'pl' ? 'Decyzja po etapie' : 'Decision unlocked'}
+		                                </span>
+		                                <span>{decision}</span>
+		                              </div>
+		                            ) : null}
 		                          </li>
 		                        )
 		                      })}
