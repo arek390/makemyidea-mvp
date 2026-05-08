@@ -114,9 +114,10 @@ const normalizeExecutionReport = (value: unknown): ReportExecutionReport => {
       strongest_area: null,
       weakest_area: null,
       decision_risk_note: null,
-    },
-    priorities: [],
-    action_plan: [],
+	    },
+	    priorities: [],
+	    roadmap_phases: [],
+	    action_plan: [],
     decisions: [],
     validation_loop: [],
     next_session_focus: '',
@@ -135,9 +136,11 @@ const normalizeExecutionReport = (value: unknown): ReportExecutionReport => {
   const stage = (() => {
     const raw = toText(report.stage)
     if (raw === 'awaiting_decisions' || raw === 'plan_generated') return raw
-    const hasPlan =
-      (Array.isArray(report.priorities) && report.priorities.length > 0) ||
-      (Array.isArray(report.action_plan) && report.action_plan.length > 0) ||
+	    const hasPlan =
+	      (Array.isArray(report.priorities) && report.priorities.length > 0) ||
+	      (Array.isArray(report.roadmap_phases) && report.roadmap_phases.length > 0) ||
+	      (Array.isArray(report.roadmapPhases) && report.roadmapPhases.length > 0) ||
+	      (Array.isArray(report.action_plan) && report.action_plan.length > 0) ||
       (Array.isArray(report.validation_loop) && report.validation_loop.length > 0) ||
       Boolean(toText(report.next_session_focus))
     return hasPlan ? 'plan_generated' : 'awaiting_decisions'
@@ -156,7 +159,7 @@ const normalizeExecutionReport = (value: unknown): ReportExecutionReport => {
               toText((report.map_context as Record<string, unknown>).decision_risk_note) || null,
           }
         : empty.map_context,
-    priorities: Array.isArray(report.priorities)
+	    priorities: Array.isArray(report.priorities)
       ? report.priorities
           .filter((item) => item && typeof item === 'object')
           .map((item) => {
@@ -173,8 +176,55 @@ const normalizeExecutionReport = (value: unknown): ReportExecutionReport => {
               risk_of_ignoring: toText(current.risk_of_ignoring),
             }
           })
-          .filter((item) => item.title || item.why_it_matters || item.risk_of_ignoring)
-      : [],
+	          .filter((item) => item.title || item.why_it_matters || item.risk_of_ignoring)
+	      : [],
+	    roadmap_phases: Array.isArray(report.roadmap_phases) || Array.isArray(report.roadmapPhases)
+	      ? ((Array.isArray(report.roadmap_phases) ? report.roadmap_phases : report.roadmapPhases) as unknown[])
+	          .filter((item) => item && typeof item === 'object')
+	          .map((item) => {
+	            const current = item as Record<string, unknown>
+	            const actions = Array.isArray(current.actions)
+	              ? (current.actions as unknown[])
+	                  .map((action) => {
+	                    if (typeof action === 'string') {
+	                      return { text: toText(action) }
+	                    }
+	                    if (!action || typeof action !== 'object') return { text: '' }
+	                    const actionRecord = action as Record<string, unknown>
+	                    return {
+	                      text: toText(actionRecord.text) || toText(actionRecord.action) || toText(actionRecord.step),
+	                      validation_gate:
+	                        toText(actionRecord.validation_gate) ||
+	                        toText(actionRecord.validation) ||
+	                        toText(actionRecord.gate) ||
+	                        undefined,
+	                    }
+	                  })
+	                  .filter((action) => action.text || action.validation_gate)
+	              : []
+	            return {
+	              title: toText(current.title) || toText(current.phase_title) || toText(current.name),
+	              narrative: toText(current.narrative) || toText(current.what) || toText(current.context),
+	              why: toText(current.why) || toText(current.why_it_matters) || toText(current.reason),
+	              risks_reduced:
+	                toText(current.risks_reduced) ||
+	                toText(current.risks) ||
+	                toText(current.uncertainty_reduced),
+	              actions,
+	              exit_criteria:
+	                toText(current.exit_criteria) || toText(current.exit) || toText(current.gate) || undefined,
+	            }
+	          })
+	          .filter(
+	            (phase) =>
+	              phase.title ||
+	              phase.narrative ||
+	              phase.why ||
+	              phase.risks_reduced ||
+	              phase.actions.length ||
+	              phase.exit_criteria
+	          )
+	      : [],
 	    action_plan: Array.isArray(report.action_plan)
 	      ? report.action_plan
 	          .filter((item) => item && typeof item === 'object')
@@ -346,6 +396,13 @@ const hasLeanExecutionReportContent = (report: ReportExecutionReport | null) => 
   if (!report) return false
   const sectionsWithContent = [
     Array.isArray(report.priorities) && report.priorities.some((item) => sanitizeActionPlanDetail(item.title)),
+    Array.isArray(report.roadmap_phases) &&
+      report.roadmap_phases.some(
+        (phase) =>
+          sanitizeActionPlanDetail(phase.title) ||
+          sanitizeActionPlanDetail(phase.narrative) ||
+          phase.actions?.some((action) => sanitizeActionPlanDetail(action.text))
+      ),
     Array.isArray(report.action_plan) && report.action_plan.some((item) => sanitizeActionPlanDetail(item.step)),
     Array.isArray(report.decisions) && report.decisions.some((item) => sanitizeActionPlanDetail(item.tradeoff)),
     Array.isArray(report.validation_loop) && report.validation_loop.some((item) => sanitizeActionPlanDetail(item.check)),
@@ -904,9 +961,10 @@ export const ReportPage = ({
     const invalidatesPlan = executionReport.stage === 'plan_generated'
     const nextExecutionReport: ReportExecutionReport = {
       ...executionReport,
-      stage: invalidatesPlan ? 'awaiting_decisions' : executionReport.stage,
-      priorities: invalidatesPlan ? [] : executionReport.priorities,
-      action_plan: invalidatesPlan ? [] : executionReport.action_plan,
+	      stage: invalidatesPlan ? 'awaiting_decisions' : executionReport.stage,
+	      priorities: invalidatesPlan ? [] : executionReport.priorities,
+	      roadmap_phases: invalidatesPlan ? [] : executionReport.roadmap_phases,
+	      action_plan: invalidatesPlan ? [] : executionReport.action_plan,
       validation_loop: invalidatesPlan ? [] : executionReport.validation_loop,
       next_session_focus: invalidatesPlan ? '' : executionReport.next_session_focus,
       decisions: executionReport.decisions.map((item, index) =>
@@ -1263,12 +1321,18 @@ export const ReportPage = ({
       const getExecutionReportShape = (value: any) => {
         const isObject = Boolean(value && typeof value === 'object' && !Array.isArray(value))
         const stageRaw = isObject ? (value as any).stage ?? (value as any).execution_report_stage ?? null : null
-        const actionPlanRaw =
-          isObject && Array.isArray((value as any).action_plan)
-            ? (value as any).action_plan
-            : isObject && Array.isArray((value as any).actionPlan)
-              ? (value as any).actionPlan
-              : null
+	        const actionPlanRaw =
+	          isObject && Array.isArray((value as any).action_plan)
+	            ? (value as any).action_plan
+	            : isObject && Array.isArray((value as any).actionPlan)
+	              ? (value as any).actionPlan
+	              : null
+	        const roadmapPhasesRaw =
+	          isObject && Array.isArray((value as any).roadmap_phases)
+	            ? (value as any).roadmap_phases
+	            : isObject && Array.isArray((value as any).roadmapPhases)
+	              ? (value as any).roadmapPhases
+	              : null
         const validationLoopRaw =
           isObject && Array.isArray((value as any).validation_loop)
             ? (value as any).validation_loop
@@ -1278,8 +1342,9 @@ export const ReportPage = ({
         return {
           type: typeof value,
           keys: isObject ? Object.keys(value) : null,
-          stage: typeof stageRaw === 'string' ? stageRaw : null,
-          actionPlanLen: Array.isArray(actionPlanRaw) ? actionPlanRaw.length : null,
+	          stage: typeof stageRaw === 'string' ? stageRaw : null,
+	          roadmapPhasesLen: Array.isArray(roadmapPhasesRaw) ? roadmapPhasesRaw.length : null,
+	          actionPlanLen: Array.isArray(actionPlanRaw) ? actionPlanRaw.length : null,
           decisionsLen: isObject && Array.isArray((value as any).decisions) ? (value as any).decisions.length : null,
           prioritiesLen:
             isObject && Array.isArray((value as any).priorities) ? (value as any).priorities.length : null,
@@ -1298,9 +1363,10 @@ export const ReportPage = ({
               ? v.execution_report_stage
               : null
         return {
-          ...v,
-          ...(stage ? { stage } : {}),
-          ...(v.action_plan == null && Array.isArray(v.actionPlan) ? { action_plan: v.actionPlan } : {}),
+	          ...v,
+	          ...(stage ? { stage } : {}),
+	          ...(v.roadmap_phases == null && Array.isArray(v.roadmapPhases) ? { roadmap_phases: v.roadmapPhases } : {}),
+	          ...(v.action_plan == null && Array.isArray(v.actionPlan) ? { action_plan: v.actionPlan } : {}),
           ...(v.validation_loop == null && Array.isArray(v.validationLoop) ? { validation_loop: v.validationLoop } : {}),
         }
       }
@@ -1308,8 +1374,9 @@ export const ReportPage = ({
       const isExecutionReportAcceptable = (value: any) => {
         const shape = getExecutionReportShape(value)
         const stage = (shape.stage || '').toLowerCase()
-        if (stage === 'plan_generated') return true
-        if ((shape.actionPlanLen ?? 0) > 0) return true
+	        if (stage === 'plan_generated') return true
+	        if ((shape.roadmapPhasesLen ?? 0) > 0) return true
+	        if ((shape.actionPlanLen ?? 0) > 0) return true
         if ((shape.decisionsLen ?? 0) > 0) return true
         return false
       }
@@ -1362,9 +1429,12 @@ export const ReportPage = ({
           planSkippedReason: execution?.planSkippedReason ?? null,
           detectedExecutionPath,
           returnedExecutionReportStage: executionReportReturned?.stage ?? null,
-          returnedActionPlanLen: Array.isArray(executionReportReturned?.action_plan)
-            ? executionReportReturned?.action_plan.length
-            : null,
+	          returnedActionPlanLen: Array.isArray(executionReportReturned?.action_plan)
+	            ? executionReportReturned?.action_plan.length
+	            : null,
+	          returnedRoadmapPhasesLen: Array.isArray(executionReportReturned?.roadmap_phases)
+	            ? executionReportReturned?.roadmap_phases.length
+	            : null,
           returnedDecisionsLen: Array.isArray(executionReportReturned?.decisions)
             ? executionReportReturned?.decisions.length
             : null,
@@ -1942,19 +2012,23 @@ export const ReportPage = ({
     [executionReport]
   )
   const hasLeanExecutionReport = hasLeanExecutionReportContent(normalizedExecutionReport)
-  const executionReportPlanRenderable = Boolean(
-    normalizedExecutionReport?.stage === 'plan_generated' &&
-      (normalizedExecutionReport?.action_plan?.length ||
-        normalizedExecutionReport?.priorities?.length ||
-        normalizedExecutionReport?.validation_loop?.length)
-  )
+	  const executionReportPlanRenderable = Boolean(
+	    normalizedExecutionReport?.stage === 'plan_generated' &&
+	      (normalizedExecutionReport?.roadmap_phases?.length ||
+	        normalizedExecutionReport?.action_plan?.length ||
+	        normalizedExecutionReport?.priorities?.length ||
+	        normalizedExecutionReport?.validation_loop?.length)
+	  )
   useEffect(() => {
     if (reportVariant !== 'action') return
     console.info('[REPORT RENDER DEBUG][execution]', {
       stage: normalizedExecutionReport?.stage ?? null,
-      actionPlanLen: Array.isArray(normalizedExecutionReport?.action_plan)
-        ? normalizedExecutionReport?.action_plan.length
-        : null,
+	      actionPlanLen: Array.isArray(normalizedExecutionReport?.action_plan)
+	        ? normalizedExecutionReport?.action_plan.length
+	        : null,
+	      roadmapPhasesLen: Array.isArray(normalizedExecutionReport?.roadmap_phases)
+	        ? normalizedExecutionReport?.roadmap_phases.length
+	        : null,
       prioritiesLen: Array.isArray(normalizedExecutionReport?.priorities)
         ? normalizedExecutionReport?.priorities.length
         : null,

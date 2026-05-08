@@ -180,6 +180,7 @@ export const runLlmTask = async ({
   sessionId = null,
   skipPreprocess = false,
   forceEscalation = false,
+  onRawResponse = null,
 }) => {
   let usageTotals = buildEmptyUsage()
   const finalize = async (payload) => {
@@ -343,6 +344,9 @@ export const runLlmTask = async ({
     } catch (err) {
       logCoachSuggestError(err)
       throw err
+    }
+    if (typeof onRawResponse === 'function') {
+      onRawResponse({ task, model, content: result.content })
     }
     const parsed = parseResponse(result.content)
     if (!parsed) {

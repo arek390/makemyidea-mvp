@@ -1544,6 +1544,7 @@ const assessDecisionTrizAlignment = ({ triz, executionReport }) => {
 const isExecutionReportUsable = (report) => {
   if (!report || typeof report !== 'object') return false
   const priorities = Array.isArray(report.priorities) ? report.priorities : []
+  const roadmapPhases = Array.isArray(report.roadmap_phases) ? report.roadmap_phases : []
   const actionPlan = Array.isArray(report.action_plan) ? report.action_plan : []
   const decisions = Array.isArray(report.decisions) ? report.decisions : []
   const validationLoop = Array.isArray(report.validation_loop) ? report.validation_loop : []
@@ -1556,6 +1557,17 @@ const isExecutionReportUsable = (report) => {
     )
   const sectionsWithMeaningfulContent = [
     hasMeaningfulItem(priorities, ['title', 'why_it_matters', 'risk_of_ignoring']),
+    roadmapPhases.some(
+      (phase) =>
+        phase &&
+        typeof phase === 'object' &&
+        (
+          normalizeExecutionText(phase.title).length > 0 ||
+          normalizeExecutionText(phase.narrative).length > 0 ||
+          (Array.isArray(phase.actions) &&
+            phase.actions.some((action) => normalizeExecutionText(action?.text || action).length > 0))
+        )
+    ),
     hasMeaningfulItem(actionPlan, ['step', 'details', 'done_when']),
     hasMeaningfulItem(decisions, ['tradeoff', 'option_a', 'option_b']),
     hasMeaningfulItem(validationLoop, ['check', 'how_to_check', 'positive_result_means', 'negative_result_means']),
@@ -1573,6 +1585,7 @@ const getExecutionReportPersistableStats = (report) => {
     }
   }
   const priorities = Array.isArray(report.priorities) ? report.priorities : []
+  const roadmapPhases = Array.isArray(report.roadmap_phases) ? report.roadmap_phases : []
   const actionPlan = Array.isArray(report.action_plan) ? report.action_plan : []
   const decisions = Array.isArray(report.decisions) ? report.decisions : []
   const validationLoop = Array.isArray(report.validation_loop) ? report.validation_loop : []
@@ -1585,6 +1598,17 @@ const getExecutionReportPersistableStats = (report) => {
     )
   const sectionsWithMeaningfulContent = [
     hasMeaningfulItem(priorities, ['title', 'why_it_matters', 'risk_of_ignoring']),
+    roadmapPhases.some(
+      (phase) =>
+        phase &&
+        typeof phase === 'object' &&
+        (
+          normalizeExecutionText(phase.title).length > 0 ||
+          normalizeExecutionText(phase.narrative).length > 0 ||
+          (Array.isArray(phase.actions) &&
+            phase.actions.some((action) => normalizeExecutionText(action?.text || action).length > 0))
+        )
+    ),
     hasMeaningfulItem(actionPlan, ['step', 'details', 'done_when']),
     hasMeaningfulItem(decisions, ['tradeoff', 'option_a', 'option_b']),
     hasMeaningfulItem(validationLoop, ['check', 'how_to_check', 'positive_result_means', 'negative_result_means']),
@@ -2089,8 +2113,9 @@ const logExecutionReportShape = (label, report) => {
       typeof report.map_context?.coverage_summary === 'string' &&
         report.map_context.coverage_summary.trim()
     ),
-    priorities: Array.isArray(report.priorities) ? report.priorities.length : null,
-    actionPlan: Array.isArray(report.action_plan) ? report.action_plan.length : null,
+	    priorities: Array.isArray(report.priorities) ? report.priorities.length : null,
+	    roadmapPhases: Array.isArray(report.roadmap_phases) ? report.roadmap_phases.length : null,
+	    actionPlan: Array.isArray(report.action_plan) ? report.action_plan.length : null,
     decisions: Array.isArray(report.decisions) ? report.decisions.length : null,
     validationLoop: Array.isArray(report.validation_loop) ? report.validation_loop.length : null,
     hasNextSessionFocus: Boolean(
@@ -2106,8 +2131,9 @@ const logExecutionReportSamples = (label, report) => {
     return
   }
   console.log(`[report:update][step3] ${label} action-plan samples`, {
-    priority0: Array.isArray(report.priorities) ? report.priorities[0] ?? null : null,
-    action0: Array.isArray(report.action_plan) ? report.action_plan[0] ?? null : null,
+	    priority0: Array.isArray(report.priorities) ? report.priorities[0] ?? null : null,
+	    roadmapPhase0: Array.isArray(report.roadmap_phases) ? report.roadmap_phases[0] ?? null : null,
+	    action0: Array.isArray(report.action_plan) ? report.action_plan[0] ?? null : null,
     decision0: Array.isArray(report.decisions) ? report.decisions[0] ?? null : null,
     validation0: Array.isArray(report.validation_loop) ? report.validation_loop[0] ?? null : null,
   })
@@ -3797,7 +3823,7 @@ export const handleReportUpdate = async (req, res) => {
             escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
           },
           timeoutMs: REPORT_LLM_TIMEOUT_MS,
-          maxOutputTokens: 1800,
+	          maxOutputTokens: 1800,
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
         })
@@ -4223,6 +4249,18 @@ export const handleReportUpdate = async (req, res) => {
           ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report.\n\nWrite like a senior product engineer, technical founder, or R&D lead. Do not facilitate a workshop. Do not ask the user to clarify. Do not generate generic checklists or executive summaries.\n\nGoal: produce a structured but natural actionable product-development roadmap.\n- Prefer execution_report.roadmap_phases (4–6 phases) over execution_report.action_plan.\n- Each phase needs narrative plus 2–4 concrete actions. Each action should specify what to build/test/check, the practical experiment or implementation slice, what to observe/measure, and what decision it unlocks.\n- Include explicit risks, experiments, validations, and tradeoffs. Preserve ambiguity where a decision still needs testing.\n- Avoid filler like "develop the product", "optimize the experience", or "prepare for market" unless immediately tied to a concrete artifact/test/metric/decision.\n- Avoid mechanical fields: omit or keep empty anything you cannot support (e.g. technology_options, done_when).\n\nIf you include action_plan, keep it short and natural. Do not force imperative verbs or rigid 3–8 word titles.\n\nUse contradictions/decisions as anchors when supported, but do not force mechanical coverage.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, no aliases.' : ''}`
           : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report.\n\nPisz jak senior product engineer, technical founder albo lider R&D. Nie moderuj warsztatu. Nie proś o doprecyzowanie. Nie generuj generycznych checklist ani executive summary.\n\nCel: ustrukturyzowana, naturalna i wykonalna mapa drogowa rozwoju produktu.\n- Preferuj execution_report.roadmap_phases (4–6 etapów) zamiast execution_report.action_plan.\n- Każdy etap ma mieć narrację oraz 2–4 konkretne działania. Każde działanie powinno mówić co zbudować/przetestować/sprawdzić, jaki eksperyment albo fragment implementacji wykonać, co obserwować/mierzyć i jaką decyzję to odblokuje.\n- Uwzględniaj konkretne ryzyka, eksperymenty, walidacje i kompromisy. Zachowuj niepewność tam, gdzie potrzebny jest test/porównanie.\n- Unikaj wypełniaczy typu "rozwinąć produkt", "zoptymalizować doświadczenie", "przygotować do rynku", jeśli od razu nie wskazujesz konkretnego artefaktu/testu/metryki/decyzji.\n- Unikaj mechanicznych pól: pomijaj (albo zostaw puste) to, czego nie da się sensownie uzasadnić (np. technology_options, done_when).\n\nJeśli dodajesz action_plan, niech będzie krótki i naturalny. Nie wymuszaj trybu rozkazującego ani sztucznie krótkich tytułów.\n\nTraktuj sprzeczności/decyzje jako kotwice, ale nie wymuszaj mechanicznego pokrycia.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, bez aliasów.' : ''}`
 
+      const logRawLlmResponse = ({ task, model, content }) => {
+        if (!diagnosticsEnabled) return
+        console.log('[report:update][llm_raw_response]', {
+          requestId,
+          sessionId,
+          task,
+          model: model ?? null,
+          charLen: typeof content === 'string' ? content.length : null,
+          content,
+        })
+      }
+
       const buildDecisionEnrichmentPrompt = (decisions) =>
         JSON.stringify({
           lang: reportLang,
@@ -4458,9 +4496,10 @@ export const handleReportUpdate = async (req, res) => {
             preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
             escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
           },
-          maxOutputTokens: 1800,
+          maxOutputTokens: 2600,
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+          onRawResponse: logRawLlmResponse,
         })
 
       const runExecutionDecisionsOnly = async (modelOverride, options = {}) =>
@@ -4522,6 +4561,7 @@ export const handleReportUpdate = async (req, res) => {
           maxOutputTokens: 1200,
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+          onRawResponse: logRawLlmResponse,
         })
 
       const buildActionPlanRewritePrompt = (actions) =>
@@ -4680,9 +4720,10 @@ export const handleReportUpdate = async (req, res) => {
             preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
             escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
           },
-          maxOutputTokens: 1400,
+          maxOutputTokens: 2200,
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+          onRawResponse: logRawLlmResponse,
         })
 
       const buildActionPlanCopyPolishPrompt = (actions, context = {}) =>
@@ -6098,9 +6139,12 @@ export const handleReportUpdate = async (req, res) => {
 	        console.log('[report:update][diagnostics] action_plan_quality', {
 	          requestId,
 	          reportLang,
-	          actionPlanLen: Array.isArray(finalExecutionReport?.action_plan)
-	            ? finalExecutionReport.action_plan.length
-	            : null,
+	        actionPlanLen: Array.isArray(finalExecutionReport?.action_plan)
+	          ? finalExecutionReport.action_plan.length
+	          : null,
+	        roadmapPhasesLen: Array.isArray(finalExecutionReport?.roadmap_phases)
+	          ? finalExecutionReport.roadmap_phases.length
+	          : null,
 	          ...diag,
 	        })
 	      }
@@ -6197,12 +6241,54 @@ export const handleReportUpdate = async (req, res) => {
         return hits >= Math.ceil(items.length * 0.6)
       }
 
+      const buildFallbackRoadmapFromActionPlan = (actionPlan, lang) => {
+        const items = (Array.isArray(actionPlan) ? actionPlan : [])
+          .map((item) => ({
+            text: normalizeExecutionText(item?.details || item?.step || item?.title),
+            validation_gate: normalizeExecutionText(item?.done_when),
+          }))
+          .filter((item) => item.text || item.validation_gate)
+        if (!items.length) return []
+        const titles =
+          lang === 'en'
+            ? ['Reduce the riskiest unknowns', 'Build and compare the first solution slice', 'Validate use and execution constraints', 'Decide what is ready to commit']
+            : ['Ogranicz najważniejsze niewiadome', 'Zbuduj i porównaj pierwszy wariant rozwiązania', 'Sprawdź użycie oraz ograniczenia wykonawcze', 'Podejmij decyzję, co warto rozwijać dalej']
+        const chunks = []
+        const targetCount = Math.min(4, Math.max(3, Math.ceil(items.length / 3)))
+        for (let i = 0; i < targetCount; i += 1) {
+          const start = Math.floor((items.length * i) / targetCount)
+          const end = Math.floor((items.length * (i + 1)) / targetCount)
+          const actions = items.slice(start, Math.max(start + 1, end))
+          if (!actions.length) continue
+          chunks.push({
+            title: titles[i] || (lang === 'en' ? `Phase ${i + 1}` : `Etap ${i + 1}`),
+            narrative:
+              lang === 'en'
+                ? 'Turn the existing task list into one practical product-development phase and keep the work tied to evidence, not generic progress.'
+                : 'Zamień istniejące zadania w jeden praktyczny etap rozwoju produktu i oprzyj go na dowodach, a nie ogólnym postępie.',
+            why:
+              lang === 'en'
+                ? 'This keeps the roadmap actionable while avoiding a flat backlog.'
+                : 'To utrzymuje plan jako wykonalną roadmapę, bez powrotu do płaskiego backlogu.',
+            risks_reduced:
+              lang === 'en'
+                ? 'Reduces the risk of committing to a direction before the next technical or product uncertainty is checked.'
+                : 'Zmniejsza ryzyko wejścia w kierunek, zanim sprawdzona zostanie kolejna niewiadoma techniczna lub produktowa.',
+            actions,
+            exit_criteria:
+              lang === 'en'
+                ? 'Move on only after the evidence is strong enough to choose the next build direction.'
+                : 'Przejdź dalej dopiero wtedy, gdy zebrane dowody pozwalają wybrać kolejny kierunek budowy.',
+          })
+        }
+        return chunks
+      }
+
       if (
         finalExecutionReport &&
         !(Array.isArray(finalExecutionReport.roadmap_phases) && finalExecutionReport.roadmap_phases.length > 0) &&
         Array.isArray(finalExecutionReport.action_plan) &&
-        finalExecutionReport.action_plan.length > 0 &&
-        looksLikeChecklistActionPlan(finalExecutionReport.action_plan, reportLang)
+        finalExecutionReport.action_plan.length > 0
       ) {
         try {
           const roadmapRes = await runRoadmapFromActionPlan(finalExecutionReport.action_plan, {
@@ -6219,10 +6305,37 @@ export const handleReportUpdate = async (req, res) => {
               { ...finalExecutionReport, roadmap_phases: roadmapRes.data },
               reportLang
             )
+          } else {
+            finalExecutionReport = normalizeExecutionReport(
+              {
+                ...finalExecutionReport,
+                roadmap_phases: buildFallbackRoadmapFromActionPlan(finalExecutionReport.action_plan, reportLang),
+              },
+              reportLang
+            )
           }
         } catch (error) {
           console.error('[report:update] roadmap-from-action-plan exception:', error)
+          finalExecutionReport = normalizeExecutionReport(
+            {
+              ...finalExecutionReport,
+              roadmap_phases: buildFallbackRoadmapFromActionPlan(finalExecutionReport.action_plan, reportLang),
+            },
+            reportLang
+          )
         }
+      }
+
+      if (Array.isArray(finalExecutionReport?.roadmap_phases) && finalExecutionReport.roadmap_phases.length > 0) {
+        finalExecutionReport = normalizeExecutionReport(
+          {
+            ...finalExecutionReport,
+            // Roadmap phases are now the primary artifact. Keep legacy checklist tasks out of
+            // new saves so old UI adapters cannot dominate the report rendering.
+            action_plan: [],
+          },
+          reportLang
+        )
       }
 
       const shouldPolishActionPlanCopy =
@@ -6376,9 +6489,12 @@ export const handleReportUpdate = async (req, res) => {
         requestId,
         sessionId,
         returnedExecutionReportStage: savedExecFromUpdate?.stage ?? null,
-        returnedActionPlanLen: Array.isArray(savedExecFromUpdate?.action_plan)
-          ? savedExecFromUpdate.action_plan.length
-          : null,
+	        returnedActionPlanLen: Array.isArray(savedExecFromUpdate?.action_plan)
+	          ? savedExecFromUpdate.action_plan.length
+	          : null,
+	        returnedRoadmapPhasesLen: Array.isArray(savedExecFromUpdate?.roadmap_phases)
+	          ? savedExecFromUpdate.roadmap_phases.length
+	          : null,
         returnedDecisionsLen: Array.isArray(savedExecFromUpdate?.decisions)
           ? savedExecFromUpdate.decisions.length
           : null,
@@ -6412,9 +6528,12 @@ export const handleReportUpdate = async (req, res) => {
           ok: true,
           returnedUpdatedAt: finalReportRes.data?.updated_at ?? null,
           returnedSourceUpdatedAt: finalReportRes.data?.source_updated_at ?? null,
-          returnedExecutionReportStage: savedExec?.stage ?? null,
-          returnedActionPlanLen: Array.isArray(savedExec?.action_plan) ? savedExec.action_plan.length : null,
-        })
+	          returnedExecutionReportStage: savedExec?.stage ?? null,
+	          returnedActionPlanLen: Array.isArray(savedExec?.action_plan) ? savedExec.action_plan.length : null,
+	          returnedRoadmapPhasesLen: Array.isArray(savedExec?.roadmap_phases)
+	            ? savedExec.roadmap_phases.length
+	            : null,
+	        })
         res.status(200).json({
           ok: true,
           report: finalReportRes.data ?? null,

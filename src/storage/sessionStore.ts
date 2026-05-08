@@ -80,6 +80,20 @@ export type ReportExecutionAction = {
   derived_from_user_choice?: boolean | null
 }
 
+export type ReportExecutionRoadmapAction = {
+  text: string
+  validation_gate?: string
+}
+
+export type ReportExecutionRoadmapPhase = {
+  title: string
+  narrative: string
+  why: string
+  risks_reduced: string
+  actions: ReportExecutionRoadmapAction[]
+  exit_criteria?: string
+}
+
 export type ReportExecutionDecision = {
   contradiction_index?: number | null
   tradeoff: string
@@ -105,6 +119,7 @@ export type ReportExecutionReport = {
   goal: string
   map_context: ReportExecutionMapContext
   priorities: ReportExecutionPriority[]
+  roadmap_phases?: ReportExecutionRoadmapPhase[]
   action_plan: ReportExecutionAction[]
   decisions: ReportExecutionDecision[]
   validation_loop: ReportExecutionValidation[]
