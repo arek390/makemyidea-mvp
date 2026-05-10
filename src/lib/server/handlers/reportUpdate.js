@@ -4149,6 +4149,42 @@ export const handleReportUpdate = async (req, res) => {
           }
         })
       }
+      const summarizeRoadmapPhaseDiagnostics = (report) =>
+        (Array.isArray(report?.roadmap_phases) ? report.roadmap_phases : [])
+          .slice(0, 8)
+          .map((phase) => ({
+            phase_title: normalizeExecutionText(phase?.phase_title || phase?.title),
+            why_this_phase_matters: previewDiagnosticText(
+              normalizeExecutionText(phase?.why_this_phase_matters || phase?.why || phase?.reason),
+              260
+            ),
+            key_risk_or_tradeoff: previewDiagnosticText(
+              normalizeExecutionText(phase?.key_risk_or_tradeoff || phase?.risk || phase?.tradeoff),
+              220
+            ),
+            concrete_actions: Array.isArray(phase?.concrete_actions)
+              ? phase.concrete_actions.map((item) => normalizeExecutionText(item)).filter(Boolean).slice(0, 5)
+              : [],
+            validation_or_test: previewDiagnosticText(
+              normalizeExecutionText(phase?.validation_or_test || phase?.validation || phase?.test),
+              220
+            ),
+            decision_unlocked: previewDiagnosticText(
+              normalizeExecutionText(phase?.decision_unlocked || phase?.decision || phase?.gate),
+              220
+            ),
+          }))
+      const diagnosticHash = (value) => {
+        const text = String(value ?? '')
+        let hash = 0
+        for (let i = 0; i < text.length; i += 1) {
+          hash = (hash << 5) - hash + text.charCodeAt(i)
+          hash |= 0
+        }
+        return String(hash)
+      }
+      const roadmapDiagnosticSignature = (report) =>
+        diagnosticHash(JSON.stringify(summarizeRoadmapPhaseDiagnostics(report)))
       const shouldRetryForDecisionOptionCoverage = (coverage) =>
         Array.isArray(coverage) &&
         coverage.some(
@@ -4302,6 +4338,8 @@ export const handleReportUpdate = async (req, res) => {
             ? currentlySelected
               ? mergedCurrent
               : Array.from(new Set([...mergedCurrent, approachIndex]))
+            : selectionMode === 'remove'
+              ? mergedCurrent.filter((idx) => idx !== approachIndex)
             : [approachIndex]
       const currentTitles = Array.isArray(contradiction.selected_approach_titles)
         ? contradiction.selected_approach_titles.filter((t) => typeof t === 'string').map((t) => String(t).trim()).filter(Boolean)
@@ -4321,6 +4359,8 @@ export const handleReportUpdate = async (req, res) => {
             ? currentlySelected
               ? mergedTitles
               : Array.from(new Set([...mergedTitles, ...(nextTitle ? [nextTitle] : [])]))
+            : selectionMode === 'remove'
+              ? mergedTitles.filter((t) => t !== nextTitle)
             : nextTitle
               ? [nextTitle]
               : []
@@ -4532,6 +4572,9 @@ export const handleReportUpdate = async (req, res) => {
         execution_mode: executionMode,
         selectedDecisionsReceived: countSelectedDecisions(executionReportOverride),
         explicitSelectedDecisionsReceived: selectedDecisionsOverride?.length ?? 0,
+        selectedDecisionDirectionContextsReceived: (selectedDecisionsOverride || [])
+          .map((decision) => buildDecisionDirectionContext(decision))
+          .filter(Boolean),
         selectedTrizApproachesReceived: countSelectedTrizApproaches(trizOverride),
         explicitSelectedTrizApproachesReceived: selectedTrizApproachesOverride?.length ?? 0,
         selectedTrizContradictionsReceived: new Set(
@@ -5161,22 +5204,25 @@ export const handleReportUpdate = async (req, res) => {
         selectedTrizApproachesOverride && selectedTrizApproachesOverride.length
           ? selectedTrizApproachesOverride
           : buildSelectedTrizApproaches(trizCandidate)
-      const getSelectedDecisionsForPrompt = () =>
-        Array.isArray(executionReportCandidate?.decisions)
-          ? (selectedDecisionsOverride && selectedDecisionsOverride.length
-              ? selectedDecisionsOverride
-              : executionReportCandidate.decisions)
-              .map((d) => ({
-                contradiction_index: d?.contradiction_index ?? null,
-                tradeoff: normalizeExecutionText(d?.tradeoff),
-                option_a: normalizeExecutionText(d?.option_a),
-                option_b: normalizeExecutionText(d?.option_b),
-                consequence_a: normalizeExecutionText(d?.consequence_a),
-                consequence_b: normalizeExecutionText(d?.consequence_b),
-                selected_option: normalizeExecutionSelectedOption(d?.selected_option),
-              }))
-              .filter((d) => d.tradeoff && (d.selected_option === 'a' || d.selected_option === 'b'))
-          : []
+      const getSelectedDecisionsForPrompt = () => {
+        const source =
+          selectedDecisionsOverride && selectedDecisionsOverride.length
+            ? selectedDecisionsOverride
+            : Array.isArray(executionReportCandidate?.decisions)
+              ? executionReportCandidate.decisions
+              : []
+        return source
+          .map((d) => ({
+            contradiction_index: d?.contradiction_index ?? null,
+            tradeoff: normalizeExecutionText(d?.tradeoff),
+            option_a: normalizeExecutionText(d?.option_a),
+            option_b: normalizeExecutionText(d?.option_b),
+            consequence_a: normalizeExecutionText(d?.consequence_a),
+            consequence_b: normalizeExecutionText(d?.consequence_b),
+            selected_option: normalizeExecutionSelectedOption(d?.selected_option),
+          }))
+          .filter((d) => d.tradeoff && (d.selected_option === 'a' || d.selected_option === 'b'))
+      }
       const getDecisionDirectionContextsForPrompt = () =>
         getSelectedDecisionsForPrompt()
           .map((decision) => buildDecisionDirectionContext(decision))
@@ -5782,6 +5828,7 @@ export const handleReportUpdate = async (req, res) => {
           maxOutputTokens: 2600,
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+          skipPreprocess: true,
           onRawResponse: logRawLlmResponse,
         })
 
@@ -6615,11 +6662,16 @@ export const handleReportUpdate = async (req, res) => {
                       selected_option: d.selected_option,
                     }))
                   : selectedDecisionsForFinal
+              const committedDecisionsForFinalPlan =
+                selectedDecisionsForPrompt && selectedDecisionsForPrompt.length
+                  ? selectedDecisionsForPrompt
+                  : existingDecisions
               const selectedTrizApproachesForFinal = buildSelectedTrizApproaches(trizCandidate)
               const selectedTrizApproachesForPrompt =
                 selectedTrizApproachesOverride && selectedTrizApproachesOverride.length
                   ? selectedTrizApproachesOverride
                   : selectedTrizApproachesForFinal
+              const existingRoadmapSignature = roadmapDiagnosticSignature(executionReportCandidate)
               const selectedRoadmapThemesForPrompt = buildSelectedRoadmapThemes(
                 selectedTrizApproachesForPrompt,
                 reportLang
@@ -6648,6 +6700,14 @@ export const handleReportUpdate = async (req, res) => {
                 reportActionPlanCalled: true,
                 selectedDecisionsCount: selectedDecisionsForPrompt.length,
                 selectedDecisionOptions: selectedDecisionsForPrompt,
+                selectedDecisionPayloadHash: diagnosticHash(JSON.stringify(selectedDecisionsForPrompt)),
+                selectedDecisionsSource: selectedDecisionsOverride && selectedDecisionsOverride.length
+                  ? 'explicit_request_payload'
+                  : 'execution_report_candidate',
+                executionReportCandidateSource,
+                executionReportCandidateStage: executionReportCandidate?.stage ?? null,
+                existingRoadmapSignature,
+                executionReportCandidateRoadmapPhases: summarizeRoadmapPhaseDiagnostics(executionReportCandidate),
                 selectedDecisionDirectionDiagnostics: selectedDecisionsForPrompt.map((decision) => {
                   const selected = normalizeExecutionSelectedOption(decision?.selected_option)
                   return {
@@ -6671,6 +6731,7 @@ export const handleReportUpdate = async (req, res) => {
                   .filter(Boolean),
                 scopedRoadmapPromptMode: approachInterpretationsForPrompt.length > 0,
                 scopedSupportingItemsCount: buildScopedSupportingItemsForPrompt().length,
+                approachInterpretationsHash: diagnosticHash(JSON.stringify(approachInterpretationsForPrompt)),
                 approachInterpretationSummary: approachInterpretationsForPrompt.map((item) => ({
                   approach_title: item?.selected_approach?.approach_title,
                   interpreted_direction: item?.interpreted_direction,
@@ -6716,6 +6777,9 @@ export const handleReportUpdate = async (req, res) => {
                 supportingItemsCount: Array.isArray(executionSupportingItems) ? executionSupportingItems.length : null,
                 decisionsCount: existingDecisions.length,
                 promptCharLen: typeof promptForLen === 'string' ? promptForLen.length : null,
+                promptHash: diagnosticHash(promptForLen),
+                promptPreview: previewDiagnosticText(promptForLen, 3000),
+                llmRouterSkipPreprocess: true,
               })
               let actionPlanUsageAlreadyRecorded = false
               let execResult = await runExecutionReport(undefined, { strictJson: true })
@@ -6755,7 +6819,7 @@ export const handleReportUpdate = async (req, res) => {
                   containsDoneWhen: rawSummary.containsDoneWhen ?? null,
                   parseError: parse?.recoveryError || parse?.parseError || null,
                   validationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
-                  ...(actionPlanDiagnosticsEnabled && rawSummary.rawOutputPreview
+                  ...((actionPlanDiagnosticsEnabled || diagnosticsEnabled) && rawSummary.rawOutputPreview
                     ? { rawOutputPreview: rawSummary.rawOutputPreview }
                     : {}),
                 })
@@ -6793,12 +6857,21 @@ export const handleReportUpdate = async (req, res) => {
                   selectedApproachCoveragePercent: firstScopeAlignment.selectedApproachCoveragePercent,
                   unrelatedRoadmapTopicPercent: firstScopeAlignment.unrelatedRoadmapTopicPercent,
                   decisionOptionCoverage: firstDecisionOptionCoverage,
-                  outsideSelectedScopePhaseTitles: firstScopeAlignment.outsideSelectedScopePhaseTitles,
-                  rawRoadmapPhaseTitles: Array.isArray(execResult.data?.roadmap_phases)
-                    ? execResult.data.roadmap_phases
-                        .map((phase) => normalizeExecutionText(phase?.phase_title || phase?.title))
+	                  outsideSelectedScopePhaseTitles: firstScopeAlignment.outsideSelectedScopePhaseTitles,
+                  existingRoadmapSignature,
+                  rawRoadmapSignature: roadmapDiagnosticSignature(execResult.data),
+                  normalizedRoadmapSignature: roadmapDiagnosticSignature(firstGeneratedForCoverage),
+                  rawSameAsExistingRoadmap:
+                    roadmapDiagnosticSignature(execResult.data) === existingRoadmapSignature,
+                  normalizedSameAsExistingRoadmap:
+                    roadmapDiagnosticSignature(firstGeneratedForCoverage) === existingRoadmapSignature,
+	                  rawRoadmapPhaseTitles: Array.isArray(execResult.data?.roadmap_phases)
+	                    ? execResult.data.roadmap_phases
+	                        .map((phase) => normalizeExecutionText(phase?.phase_title || phase?.title))
                         .filter(Boolean)
                     : [],
+                  rawRoadmapPhases: summarizeRoadmapPhaseDiagnostics(execResult.data),
+                  normalizedRoadmapPhases: summarizeRoadmapPhaseDiagnostics(firstGeneratedForCoverage),
                   normalizedRoadmapPhaseTitles: firstCoverage.phaseTitles,
                   retryNeeded: firstCoverageRetryNeeded,
                 })
@@ -6861,6 +6934,14 @@ export const handleReportUpdate = async (req, res) => {
                     hasData: Boolean(retryResult?.data),
                     model: retryResult?.meta?.modelUsed ?? null,
                     tokens: retryResult?.meta?.tokens ?? null,
+                    ...((actionPlanDiagnosticsEnabled || diagnosticsEnabled) &&
+                    actionPlanRawResponses.get('report-action-plan')?.content
+                      ? {
+                          rawOutputPreview: summarizeRawOutput(
+                            actionPlanRawResponses.get('report-action-plan')?.content
+                          ).rawOutputPreview,
+                        }
+                      : {}),
                   })
                   if (retryResult?.ok && retryResult.data && typeof retryResult.data === 'object') {
                     const retryGeneratedForCoverage = normalizeExecutionReport(retryResult.data, reportLang)
@@ -6890,13 +6971,22 @@ export const handleReportUpdate = async (req, res) => {
                       roadmapBreadthScore: retryScopeAlignment.roadmapBreadthScore,
                       selectedApproachCoveragePercent: retryScopeAlignment.selectedApproachCoveragePercent,
                       unrelatedRoadmapTopicPercent: retryScopeAlignment.unrelatedRoadmapTopicPercent,
-                      decisionOptionCoverage: retryDecisionOptionCoverage,
-                      outsideSelectedScopePhaseTitles: retryScopeAlignment.outsideSelectedScopePhaseTitles,
-                      rawRoadmapPhaseTitles: Array.isArray(retryResult.data?.roadmap_phases)
-                        ? retryResult.data.roadmap_phases
-                            .map((phase) => normalizeExecutionText(phase?.phase_title || phase?.title))
+	                      decisionOptionCoverage: retryDecisionOptionCoverage,
+	                      outsideSelectedScopePhaseTitles: retryScopeAlignment.outsideSelectedScopePhaseTitles,
+                      existingRoadmapSignature,
+                      rawRoadmapSignature: roadmapDiagnosticSignature(retryResult.data),
+                      normalizedRoadmapSignature: roadmapDiagnosticSignature(retryGeneratedForCoverage),
+                      rawSameAsExistingRoadmap:
+                        roadmapDiagnosticSignature(retryResult.data) === existingRoadmapSignature,
+                      normalizedSameAsExistingRoadmap:
+                        roadmapDiagnosticSignature(retryGeneratedForCoverage) === existingRoadmapSignature,
+	                      rawRoadmapPhaseTitles: Array.isArray(retryResult.data?.roadmap_phases)
+	                        ? retryResult.data.roadmap_phases
+	                            .map((phase) => normalizeExecutionText(phase?.phase_title || phase?.title))
                             .filter(Boolean)
                         : [],
+                      rawRoadmapPhases: summarizeRoadmapPhaseDiagnostics(retryResult.data),
+                      normalizedRoadmapPhases: summarizeRoadmapPhaseDiagnostics(retryGeneratedForCoverage),
                       normalizedRoadmapPhaseTitles: retryCoverage.phaseTitles,
                     })
                     execResult = retryResult
@@ -6972,9 +7062,14 @@ export const handleReportUpdate = async (req, res) => {
                   roadmapBreadthScore: normalizedScopeAlignment.roadmapBreadthScore,
                   selectedApproachCoveragePercent: normalizedScopeAlignment.selectedApproachCoveragePercent,
                   unrelatedRoadmapTopicPercent: normalizedScopeAlignment.unrelatedRoadmapTopicPercent,
-                  decisionOptionCoverage: normalizedDecisionOptionCoverage,
-                  outsideSelectedScopePhaseTitles: normalizedScopeAlignment.outsideSelectedScopePhaseTitles,
-                  normalizedRoadmapPhaseTitles: normalizedCoverage.phaseTitles,
+	                  decisionOptionCoverage: normalizedDecisionOptionCoverage,
+	                  outsideSelectedScopePhaseTitles: normalizedScopeAlignment.outsideSelectedScopePhaseTitles,
+                  existingRoadmapSignature,
+                  normalizedRoadmapSignature: roadmapDiagnosticSignature(generated),
+                  normalizedSameAsExistingRoadmap:
+                    roadmapDiagnosticSignature(generated) === existingRoadmapSignature,
+	                  normalizedRoadmapPhases: summarizeRoadmapPhaseDiagnostics(generated),
+	                  normalizedRoadmapPhaseTitles: normalizedCoverage.phaseTitles,
                   fallbackOrRewriteTriggered: false,
                 })
                 const allowCompleted = Boolean(
@@ -6993,11 +7088,11 @@ export const handleReportUpdate = async (req, res) => {
                 const previousExecutionReportCandidate = executionReportCandidate
                 executionReportCandidate = normalizeExecutionReport({
                   ...executionReportDefaults,
-                  ...generatedWithStatuses,
-                  stage: 'plan_generated',
-                  // Preserve the user's selected decisions (incl. selected_option) as the committed context.
-                  decisions: existingDecisions,
-                  supporting_items: executionSupportingItems,
+	                  ...generatedWithStatuses,
+	                  stage: 'plan_generated',
+	                  // Preserve the user's selected decisions (incl. selected_option) as the committed context.
+	                  decisions: committedDecisionsForFinalPlan,
+	                  supporting_items: executionSupportingItems,
                   source_snapshot: phaseASanitized.source_snapshot ?? null,
                 }, reportLang)
                 executionReportCandidateSource = 'report-action-plan'
@@ -7052,13 +7147,19 @@ export const handleReportUpdate = async (req, res) => {
                   validationLoopLen: Array.isArray(executionReportCandidate?.validation_loop)
                     ? executionReportCandidate.validation_loop.length
                     : null,
-                  nextSessionFocus: Boolean(
-                    typeof executionReportCandidate?.next_session_focus === 'string' &&
-                      executionReportCandidate.next_session_focus.trim()
-                  ),
-                  validationErrors: executionReportValidation?.errors ?? null,
-                  planGenerated: responseExecution.planGenerated,
-                })
+	                  nextSessionFocus: Boolean(
+	                    typeof executionReportCandidate?.next_session_focus === 'string' &&
+	                      executionReportCandidate.next_session_focus.trim()
+	                  ),
+                  finalSelectedDecisions: Array.isArray(executionReportCandidate?.decisions)
+                    ? executionReportCandidate.decisions.map((decision) => buildDecisionDirectionContext(decision)).filter(Boolean)
+                    : [],
+                  finalRoadmapSignature: roadmapDiagnosticSignature(executionReportCandidate),
+                  finalSameAsExistingRoadmap:
+                    roadmapDiagnosticSignature(executionReportCandidate) === existingRoadmapSignature,
+	                  validationErrors: executionReportValidation?.errors ?? null,
+	                  planGenerated: responseExecution.planGenerated,
+	                })
               } else {
                 logFinalizeTrace('parsed_report_action_plan_before_normalization', null, {
                   requestId,

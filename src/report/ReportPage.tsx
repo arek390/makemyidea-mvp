@@ -1071,6 +1071,7 @@ export const ReportPage = ({
   )
   const pendingDecisionPersistRef = useRef<Promise<void> | null>(null)
   const pendingTrizPersistRef = useRef<Promise<void> | null>(null)
+  const trizSelectionVersionRef = useRef(0)
   const [reportVariant, setReportVariant] = useState<'classic' | 'action'>('action')
   const lastBoardChangeAt = Number(snapshot.sourceUpdatedAt || 0) || null
   const [reportUpdatedAt, setReportUpdatedAt] = useState<number | null>(
@@ -1309,6 +1310,7 @@ export const ReportPage = ({
     }
     setReportMetaLoaded(false)
     let cancelled = false
+    const trizVersionAtRequestStart = trizSelectionVersionRef.current
 	    ;(async () => {
 	      try {
 	        const record = await fetchReportBySessionId(reportSessionId)
@@ -1325,7 +1327,9 @@ export const ReportPage = ({
         setReportRecommendations(
           normalizeRecommendations(sanitizeReportPayload(record.recommendations))
         )
-        setReportTriz(record.triz ? normalizeTriz(sanitizeReportPayload(record.triz)) : null)
+        if (trizSelectionVersionRef.current === trizVersionAtRequestStart) {
+          setReportTriz(record.triz ? normalizeTriz(sanitizeReportPayload(record.triz)) : null)
+        }
         setExecutionReport(mergedExecutionReport)
         if (!aiSummary && record.summary) {
           setAiSummary(normalizeAiSummary(sanitizeReportPayload(record.summary)))
@@ -1490,6 +1494,24 @@ export const ReportPage = ({
         const selectedTrizContradictionCount = new Set(
           selectedTrizApproaches.map((item: any) => item?.contradiction_index)
         ).size
+        const selectedDecisionDiagnostics = Array.isArray(payload.selected_decisions)
+          ? payload.selected_decisions.map((d: any) => {
+              const selected = d?.selected_option === 'a' || d?.selected_option === 'b' ? d.selected_option : null
+              const selectedOptionText = selected === 'a' ? d?.option_a : selected === 'b' ? d?.option_b : ''
+              const selectedConsequence = selected === 'a' ? d?.consequence_a : selected === 'b' ? d?.consequence_b : ''
+              const rejectedOptionText = selected === 'a' ? d?.option_b : selected === 'b' ? d?.option_a : ''
+              const rejectedConsequence = selected === 'a' ? d?.consequence_b : selected === 'b' ? d?.consequence_a : ''
+              return {
+                contradiction_index: d?.contradiction_index ?? null,
+                tradeoff: d?.tradeoff ?? '',
+                selected_option: selected,
+                selected_option_text: selectedOptionText || '',
+                selected_option_consequence: selectedConsequence || '',
+                rejected_option_text: rejectedOptionText || '',
+                rejected_option_consequence: rejectedConsequence || '',
+              }
+            })
+          : []
         console.log('[REPORT FINALIZE DEBUG][frontend][before-post]', {
           reportVariant,
           execution_mode: mode,
@@ -1499,6 +1521,7 @@ export const ReportPage = ({
           decisionsCount: decisions.length,
           selectedDecisionsCount: selectedOptions.filter((x) => x === 'a' || x === 'b').length,
           selectedOptions,
+          selectedDecisionDiagnostics,
           decisionsAllSelected,
           hasTriz: Boolean(triz),
           trizContradictionsCount: contradictions.length,
@@ -1915,6 +1938,7 @@ export const ReportPage = ({
           }
         : executionReport
 
+      trizSelectionVersionRef.current += 1
       setReportTriz(nextTriz)
       if (invalidatesPlan && nextExecutionReport) {
         setExecutionReport(nextExecutionReport)
@@ -1930,7 +1954,9 @@ export const ReportPage = ({
         updatedAt: Date.now(),
       })
       if (!client || !reportSessionId) return
+      const previousPersist = pendingTrizPersistRef.current ?? Promise.resolve()
       const persistPromise = (async () => {
+        await previousPersist
         const sessionRes = client ? await client.auth.getSession() : null
         const token = sessionRes?.data?.session?.access_token || ''
         const response = await fetch('/api/report?action=update', {
@@ -1948,7 +1974,7 @@ export const ReportPage = ({
               contradiction_index: contradictionIndex,
               approach_index: solutionIndex,
               approach_title: solutionTitle,
-              mode: 'toggle',
+              mode: has ? 'remove' : 'add',
             },
           }),
         })
@@ -1964,8 +1990,6 @@ export const ReportPage = ({
           )
         }
         reportMetaRef.current = nextReportMeta
-        const refreshed = await fetchReportBySessionId(reportSessionId)
-        if (refreshed) applyReportRecord(refreshed)
       })()
       pendingTrizPersistRef.current = persistPromise.then(() => undefined).catch(() => undefined)
       await persistPromise
