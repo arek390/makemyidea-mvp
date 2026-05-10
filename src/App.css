@@ -3337,23 +3337,33 @@
 
 .report-action-plan-grouped__item {
   display: grid;
-  gap: 0.65rem;
-  padding: 1rem;
-  border: 1px solid rgba(63, 45, 21, 0.12);
+  gap: 0.75rem;
+  padding: 1rem 1.05rem;
+  border: 1px solid rgba(63, 45, 21, 0.11);
   border-radius: 8px;
-  background: rgba(255, 250, 241, 0.72);
+  background: rgba(255, 252, 247, 0.78);
 }
 
 .report-action-plan-grouped__header {
-  font-weight: 800;
+  display: flex;
+  gap: 0.65rem;
+  align-items: baseline;
+  font-weight: 780;
   color: #3f2d15;
   line-height: 1.25;
+}
+
+.report-action-plan-grouped__index {
+  flex: 0 0 auto;
+  color: #8a6a3c;
+  font-size: 0.82rem;
+  font-weight: 700;
 }
 
 .report-action-plan-grouped__rationale {
   margin: 0;
   color: #5d4a31;
-  line-height: 1.55;
+  line-height: 1.6;
 }
 
 .report-action-plan-grouped__subheader {
@@ -3367,11 +3377,19 @@
   line-height: 1.35;
 }
 
-.report-action-plan-grouped__bullets {
-  margin: 0.2rem 0 0;
-  padding-left: 1.2rem;
+.report-action-plan-grouped__actions {
+  margin-top: -0.1rem;
+}
+
+.report-action-plan-grouped__moves {
+  margin: 0;
+  padding-left: 1.05rem;
   color: #4b3a24;
-  line-height: 1.5;
+  line-height: 1.55;
+}
+
+.report-action-plan-grouped__moves li + li {
+  margin-top: 0.25rem;
 }
 
 .report-action-plan-grouped__callout,
@@ -3387,6 +3405,22 @@
 
 .report-action-plan-grouped__decision {
   border-left: 3px solid rgba(112, 79, 31, 0.45);
+}
+
+.report-action-plan-grouped__memo {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border-left: 3px solid rgba(77, 107, 91, 0.4);
+  border-radius: 8px;
+  background: rgba(77, 107, 91, 0.08);
+  color: #435246;
+  line-height: 1.55;
+}
+
+.report-action-plan-grouped__memo p {
+  margin: 0;
 }
 
 .report-action-plan-grouped__other {

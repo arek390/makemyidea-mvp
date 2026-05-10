@@ -3069,49 +3069,31 @@ export const ReportPage = ({
 		                            return gate ? `${text} — ${gate}`.trim() : text
 		                          })
 		                          .filter(Boolean)
+                              .slice(0, 3)
 		                        return (
 		                          <li key={`roadmap-phase-${idx}`} className="report-action-plan-grouped__item">
-		                            <div className="report-action-plan-grouped__header">{title}</div>
+		                            <div className="report-action-plan-grouped__header">
+		                              <span className="report-action-plan-grouped__index">{idx + 1}</span>
+		                              <span>{title}</span>
+		                            </div>
 		                            {why ? (
 		                              <p className="report-action-plan-grouped__rationale">{why}</p>
 		                            ) : null}
-		                            {risk ? (
-		                              <p className="report-action-plan-grouped__callout">
-		                                <strong>
-		                                  {language === 'pl' ? 'Największe ryzyko:' : 'Biggest risk:'}
-		                                </strong>{' '}
-		                                <span>{risk}</span>
-		                              </p>
-		                            ) : null}
 		                            {bullets.length ? (
 		                              <div className="report-action-plan-grouped__actions">
-		                                <p className="report-action-plan-grouped__lead">
-		                                  <strong>
-		                                    {language === 'pl' ? 'Co robimy:' : 'What we do:'}
-		                                  </strong>
-		                                </p>
-		                                <ul className="report-action-plan-grouped__bullets">
+		                                <ul className="report-action-plan-grouped__moves">
 		                                  {bullets.map((b: string, bi: number) => (
 		                                    <li key={`roadmap-phase-${idx}-a-${bi}`}>{b}</li>
 		                                  ))}
 		                                </ul>
 		                              </div>
 		                            ) : null}
-		                            {validation ? (
-		                              <p className="report-action-plan-grouped__validation">
-		                                <strong>
-		                                  {language === 'pl' ? 'Sygnał, że to działa:' : 'Signal it works:'}
-		                                </strong>{' '}
-		                                <span>{validation}</span>
-		                              </p>
-		                            ) : null}
-		                            {decision ? (
-		                              <p className="report-action-plan-grouped__decision">
-		                                <strong>
-		                                  {language === 'pl' ? 'Jeśli to potwierdzisz, możesz:' : 'If confirmed, you can:'}
-		                                </strong>{' '}
-		                                <span>{decision}</span>
-		                              </p>
+		                            {risk || validation || decision ? (
+		                              <div className="report-action-plan-grouped__memo">
+		                                {risk ? <p>{risk}</p> : null}
+		                                {validation ? <p>{validation}</p> : null}
+		                                {decision ? <p>{decision}</p> : null}
+		                              </div>
 		                            ) : null}
 		                          </li>
 		                        )
