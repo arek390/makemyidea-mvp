@@ -1429,10 +1429,10 @@ export const ReportPage = ({
                   ? [c.selected_approach_index]
                   : []
               const indices = Array.from(
-                new Set(
+                new Set<number>(
                   indicesRaw
                     .map((idx: unknown) => (typeof idx === 'number' ? idx : Number(idx)))
-                    .filter((idx: number) => Number.isFinite(idx))
+                    .filter((idx: number): idx is number => Number.isFinite(idx))
                     .map((idx: number) => Math.max(0, Math.floor(idx)))
                     .filter((idx: number) => idx >= 0 && idx < rendered.length)
                 )
