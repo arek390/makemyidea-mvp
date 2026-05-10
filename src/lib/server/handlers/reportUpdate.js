@@ -3616,6 +3616,230 @@ export const handleReportUpdate = async (req, res) => {
               : 'Twórz pracę roadmapy tylko z tego wybranego tematu i wymienionych wybranych podejść.',
         }))
       }
+      const selectedDecisionOptionText = (decision) => {
+        const selected = normalizeExecutionSelectedOption(decision?.selected_option)
+        if (selected === 'a') return normalizeExecutionText(decision?.option_a)
+        if (selected === 'b') return normalizeExecutionText(decision?.option_b)
+        return ''
+      }
+      const decisionLensFlags = (decisions) => {
+        const text = normalizeCoverageText(
+          (Array.isArray(decisions) ? decisions : [])
+            .map((decision) =>
+              [
+                decision?.tradeoff,
+                selectedDecisionOptionText(decision),
+                decision?.option_a,
+                decision?.option_b,
+              ]
+                .map((value) => normalizeExecutionText(value))
+                .filter(Boolean)
+                .join(' ')
+            )
+            .join(' ')
+        )
+        return {
+          simplify:
+            /\b(simple|simpl|basic|minimal|limit|limited|reduce|reduc|prosty|prosta|proste|podstaw|ogranicz|minimaln|mvp)\b/.test(
+              text
+            ),
+          cost:
+            /\b(cost|cheap|cheaper|price|budget|koszt|tani|tansz|cena|budzet|budzet)\b/.test(text),
+          reliability:
+            /\b(reliab|durab|robust|stable|trwal|trwał|niezawod|stabil)\b/.test(text),
+          complexity:
+            /\b(complex|complexity|skomplik|zlozon|złożon|overengineer|overengineering)\b/.test(text),
+          mvp:
+            /\b(mvp|minimum|minimal|basic|podstaw|najprost|pierwsz)\b/.test(text),
+          power:
+            /\b(power|battery|bater|akumulator|zasil|ac|dc|mains|sieci)\b/.test(text),
+          lightweight:
+            /\b(lightweight|light|weight|mass|lekki|lekka|lekkie|masa|wage|waga)\b/.test(text),
+        }
+      }
+      const approachDomainFlags = (approach) => {
+        const text = normalizeCoverageText(
+          `${approach?.approach_title || ''} ${approach?.approach_description || ''} ${approach?.contradiction_title || ''}`
+        )
+        return {
+          smart:
+            /\b(smart|app|aplikac|interface|interfejs|ui|ux|communication|komunik|standard|protocol|protokol|electronic|elektronik|software|oprogram|modul|module|modular)\b/.test(
+              text
+            ),
+          modular: /\b(modul|module|modular)\b/.test(text),
+          electronics: /\b(electronic|elektronik|pcb|sensor|czujnik|control|sterow)\b/.test(text),
+          app: /\b(app|aplikac|interface|interfejs|ui|ux)\b/.test(text),
+          communication: /\b(communication|komunik|standard|protocol|protokol|connect|laczn|łączn)\b/.test(text),
+          materials: /\b(kompozyt|composite|material|materia|alumin|carbon|weglo|wlokn)\b/.test(text),
+          power: /\b(power|battery|bater|akumulator|zasil|ac|dc)\b/.test(text),
+          regulation: /\b(regul|mechanizm|adjust|hinge|joint)\b/.test(text),
+        }
+      }
+      const decisionAffectsApproach = (decision, approach) => {
+        const decisionText = normalizeCoverageText(
+          [
+            decision?.tradeoff,
+            selectedDecisionOptionText(decision),
+            decision?.option_a,
+            decision?.option_b,
+          ]
+            .map((value) => normalizeExecutionText(value))
+            .filter(Boolean)
+            .join(' ')
+        )
+        const approachText = normalizeCoverageText(
+          `${approach?.approach_title || ''} ${approach?.approach_description || ''} ${approach?.contradiction_title || ''}`
+        )
+        const sharedStems = coverageStems(`${decisionText} ${approachText}`).filter(
+          (stem) => decisionText.includes(stem) && approachText.includes(stem)
+        )
+        if (sharedStems.length > 0) return true
+        const domain = approachDomainFlags(approach)
+        if (domain.smart && /\b(smart|app|aplikac|interface|interfejs|communication|komunik|electronic|elektronik|software|oprogram)\b/.test(decisionText)) return true
+        if (domain.materials && /\b(material|kompozyt|composite|weight|masa|lekki|lightweight)\b/.test(decisionText)) return true
+        if (domain.power && /\b(power|zasil|battery|bater|ac|dc)\b/.test(decisionText)) return true
+        if (domain.regulation && /\b(regul|mechanizm|adjust|trwal|durab)\b/.test(decisionText)) return true
+        return false
+      }
+      const buildApproachInterpretations = (selectedApproaches, selectedDecisions, selectedThemes, reportLangForTheme = 'en') => {
+        const approaches = Array.isArray(selectedApproaches) ? selectedApproaches : []
+        const decisions = Array.isArray(selectedDecisions) ? selectedDecisions : []
+        const themes = Array.isArray(selectedThemes) ? selectedThemes : []
+        const lens = decisionLensFlags(decisions)
+        return approaches.map((approach) => {
+          const inferredTheme = inferSelectedApproachTheme(approach, reportLangForTheme)
+          const domain = approachDomainFlags(approach)
+          const affectedDecisions = decisions
+            .filter((decision) => decisionAffectsApproach(decision, approach))
+            .map((decision) => ({
+              tradeoff: normalizeExecutionText(decision?.tradeoff),
+              selected_option: normalizeExecutionSelectedOption(decision?.selected_option),
+              selected_option_text: selectedDecisionOptionText(decision),
+            }))
+            .filter((decision) => decision.tradeoff || decision.selected_option_text)
+          const shouldSimplify = lens.simplify && (domain.smart || domain.modular || domain.electronics || domain.app || domain.communication)
+          const shouldValidateFirst = domain.materials || domain.power || domain.regulation || lens.reliability
+          const shouldPostpone = shouldSimplify && (domain.modular || domain.electronics)
+          const interpretation =
+            shouldPostpone
+              ? reportLangForTheme === 'en'
+                ? 'Treat as optional MVP complexity unless it clearly reduces risk or cost.'
+                : 'Traktuj jako opcjonalną złożoność MVP, chyba że wyraźnie zmniejsza ryzyko albo koszt.'
+              : shouldSimplify
+                ? reportLangForTheme === 'en'
+                  ? 'Simplify to the smallest useful version under the selected decision constraints.'
+                  : 'Uprość do najmniejszej użytecznej wersji zgodnej z wybranymi decyzjami.'
+                : shouldValidateFirst
+                  ? reportLangForTheme === 'en'
+                    ? 'Validate with a focused prototype before it becomes a committed product direction.'
+                    : 'Zweryfikuj celowym prototypem, zanim stanie się trwałym kierunkiem produktu.'
+                  : reportLangForTheme === 'en'
+                    ? 'Keep only the part that directly supports the selected product direction.'
+                    : 'Zostaw tylko ten zakres, który bezpośrednio wspiera wybrany kierunek produktu.'
+          const recommendedScope =
+            shouldPostpone
+              ? reportLangForTheme === 'en'
+                ? 'prototype-first; postpone full implementation'
+                : 'najpierw prototyp; pełną implementację odłóż'
+              : shouldSimplify
+                ? reportLangForTheme === 'en'
+                  ? 'simplify for MVP'
+                  : 'uprość pod MVP'
+                : shouldValidateFirst
+                  ? reportLangForTheme === 'en'
+                    ? 'validate-first'
+                    : 'najpierw walidacja'
+                  : reportLangForTheme === 'en'
+                    ? 'keep if it changes the next build decision'
+                    : 'zostaw, jeśli zmienia najbliższą decyzję budowy'
+          const keepPostponeOrReject =
+            shouldPostpone
+              ? 'postpone'
+              : shouldSimplify
+                ? 'simplify'
+                : shouldValidateFirst
+                  ? 'validate-first'
+                  : 'keep'
+          const keyTradeoff =
+            shouldSimplify
+              ? reportLangForTheme === 'en'
+                ? 'MVP usefulness versus development time, end-user cost, reliability, and team competence.'
+                : 'Użyteczność MVP kontra czas developmentu, koszt dla użytkownika, niezawodność i kompetencje zespołu.'
+              : lens.lightweight && domain.materials
+                ? reportLangForTheme === 'en'
+                  ? 'Weight reduction versus stiffness, stability, cost, and manufacturing repeatability.'
+                  : 'Redukcja masy kontra sztywność, stabilność, koszt i powtarzalność produkcji.'
+                : reportLangForTheme === 'en'
+                  ? 'Evidence gained now versus complexity added too early.'
+                  : 'Dowód uzyskany teraz kontra złożoność dodana zbyt wcześnie.'
+          const mvpRelevance =
+            shouldPostpone
+              ? reportLangForTheme === 'en'
+                ? 'conditional; include only if it reduces MVP risk or cost'
+                : 'warunkowa; uwzględnij tylko jeśli zmniejsza ryzyko albo koszt MVP'
+              : shouldSimplify
+                ? reportLangForTheme === 'en'
+                  ? 'high, but only in its simplest usable form'
+                  : 'wysoka, ale tylko w najprostszej użytecznej formie'
+                : reportLangForTheme === 'en'
+                  ? 'high if it changes the next prototype decision'
+                  : 'wysoka, jeśli zmienia najbliższą decyzję prototypową'
+          const risk =
+            shouldSimplify || shouldPostpone
+              ? reportLangForTheme === 'en'
+                ? 'Extra features can increase development time, user cost, reliability risk, and implementation complexity.'
+                : 'Dodatkowe funkcje mogą zwiększyć czas developmentu, koszt dla użytkownika, ryzyko niezawodności i złożoność wdrożenia.'
+              : lens.lightweight && domain.materials
+                ? reportLangForTheme === 'en'
+                  ? 'A lighter material can hurt stiffness, stability, cost, or manufacturing repeatability.'
+                  : 'Lżejszy materiał może pogorszyć sztywność, stabilność, koszt albo powtarzalność produkcji.'
+                : reportLangForTheme === 'en'
+                  ? 'The approach can add work before the team has enough evidence to justify it.'
+                  : 'Podejście może dodać pracę zanim zespół ma wystarczający dowód, że warto.'
+          const dependency =
+            domain.communication
+              ? reportLangForTheme === 'en'
+                ? 'Depends on the minimal interface and electronics scope chosen for MVP.'
+                : 'Zależy od minimalnego zakresu interfejsu i elektroniki wybranego dla MVP.'
+              : domain.modular || domain.electronics
+                ? reportLangForTheme === 'en'
+                  ? 'Depends on whether modularity reduces MVP risk more than it increases complexity.'
+                  : 'Zależy od tego, czy modułowość zmniejsza ryzyko MVP bardziej niż zwiększa złożoność.'
+                : domain.materials
+                  ? reportLangForTheme === 'en'
+                    ? 'Depends on mechanical prototype evidence: stiffness, stability, weight, and repeatability.'
+                    : 'Zależy od dowodu z prototypu mechanicznego: sztywności, stabilności, masy i powtarzalności.'
+                  : reportLangForTheme === 'en'
+                    ? 'Depends on the next prototype result and selected decision constraints.'
+                    : 'Zależy od wyniku najbliższego prototypu i ograniczeń z wybranych decyzji.'
+          return {
+            selected_approach: {
+              contradiction_index: approach?.contradiction_index ?? null,
+              contradiction_title: normalizeExecutionText(approach?.contradiction_title),
+              approach_index: approach?.approach_index ?? null,
+              approach_title: normalizeExecutionText(approach?.approach_title),
+              approach_description: normalizeExecutionText(approach?.approach_description),
+              theme_title:
+                themes.find((theme) =>
+                  Array.isArray(theme?.approach_titles) &&
+                  theme.approach_titles.includes(normalizeExecutionText(approach?.approach_title))
+                )?.theme_title || inferredTheme.title,
+            },
+            affected_by_decisions: affectedDecisions,
+            interpretation,
+            rationale: interpretation,
+            mvp_relevance: mvpRelevance,
+            risk,
+            dependency,
+            recommended_scope: recommendedScope,
+            recommended_treatment: keepPostponeOrReject,
+            simplify_or_expand: shouldSimplify || shouldPostpone ? 'simplify' : 'keep_narrow',
+            prototype_priority: shouldValidateFirst || shouldSimplify ? 'high' : 'medium',
+            postpone_or_keep: keepPostponeOrReject,
+            key_tradeoff: keyTradeoff,
+          }
+        })
+      }
       const evaluateSelectedTrizCoverage = (report, selectedApproaches) => {
         const selected = Array.isArray(selectedApproaches) ? selectedApproaches : []
         const roadmapText = normalizeCoverageText(extractRoadmapCoverageText(report))
@@ -3717,6 +3941,10 @@ export const handleReportUpdate = async (req, res) => {
             /\b(material|kompozyt|composite|smart|app|aplikac|interfejs|interface|power|zasil|battery|bater|ac|dc|regul|mechanizm|production|produkc|manufactur|wdrozen|modul|module|electronic|elektronik|software|oprogram|led|base|podstaw|stabil)\b/.test(
               titleText
             )
+          const genericUmbrellaTitle =
+            /\b(smart|power|zasil|battery|bater|production|produkc|wdrozen|product|produkt|full|pelny|pelna|system)\b/.test(
+              titleText
+            )
           return {
             title,
             text,
@@ -3724,10 +3952,12 @@ export const handleReportUpdate = async (req, res) => {
             titleMatchesSelectedScope,
             genericProductCategory,
             genericTitleCategory,
+            genericUmbrellaTitle,
             outsideSelectedScope:
               selected.length > 0 &&
               ((!matchesSelectedScope && (genericProductCategory || selected.length === 1)) ||
-                (genericTitleCategory && !titleMatchesSelectedScope)),
+                (genericTitleCategory && !titleMatchesSelectedScope && !matchesSelectedScope) ||
+                (genericUmbrellaTitle && !titleMatchesSelectedScope)),
           }
         })
         const representedThemes = themeCoverage
@@ -4774,6 +5004,13 @@ export const handleReportUpdate = async (req, res) => {
           : []
       const getSelectedRoadmapThemesForPrompt = () =>
         buildSelectedRoadmapThemes(getSelectedTrizApproachesForPrompt(), reportLang)
+      const getApproachInterpretationsForPrompt = () =>
+        buildApproachInterpretations(
+          getSelectedTrizApproachesForPrompt(),
+          getSelectedDecisionsForPrompt(),
+          getSelectedRoadmapThemesForPrompt(),
+          reportLang
+        )
 
       const buildExecutionReportPrompt = (strictJson = false, retryReasons = []) =>
         JSON.stringify({
@@ -4784,16 +5021,18 @@ export const handleReportUpdate = async (req, res) => {
           triz: trizCandidate,
           selected_triz_approaches: getSelectedTrizApproachesForPrompt(),
           selected_roadmap_themes: getSelectedRoadmapThemesForPrompt(),
+          approach_interpretations: getApproachInterpretationsForPrompt(),
           selected_decisions: getSelectedDecisionsForPrompt(),
           roadmap_scope_contract: {
-            primary_scope_source: 'selected_roadmap_themes',
+            primary_scope_source: 'approach_interpretations',
             selected_approach_count: getSelectedTrizApproachesForPrompt().length,
             selected_theme_count: getSelectedRoadmapThemesForPrompt().length,
-            decision_role: 'constraints_only',
+            interpreted_approach_count: getApproachInterpretationsForPrompt().length,
+            decision_role: 'interpretation_lens_only',
             synthesis_rule:
               getSelectedTrizApproachesForPrompt().length === 1
-                ? 'Generate a narrow roadmap around the single selected approach and its immediate validation chain.'
-                : 'Cluster selected approaches into coherent themes and generate phases only from those themes.',
+                ? 'Generate a narrow roadmap from the single approach_interpretations item and its immediate validation chain.'
+                : 'Cluster approach_interpretations into coherent phases. Decisions constrain, simplify, postpone, or reject selected approaches; decisions are not roadmap topics.',
           },
           perspective_map: perspectiveCounts,
           source_snapshot: phaseASanitized.source_snapshot ?? null,
@@ -4864,15 +5103,19 @@ export const handleReportUpdate = async (req, res) => {
               'Avoid generic consulting language and repeated observations.',
               'Use the summary, recommendations, TRIZ, and perspective map only as synthesis inputs grounded in the board material.',
               'If selected_decisions is non-empty, treat those choices as committed. Do not contradict or reopen selected options.',
-              'Roadmap architecture when selected_roadmap_themes is non-empty: build roadmap phases from selected_roadmap_themes first. Do not start from a generic full-product roadmap template.',
-              'When present, selected_roadmap_themes are synthesized from selected_triz_approaches and define WHAT gets explored. selected_decisions only define WHICH direction is allowed.',
+              'Roadmap architecture when approach_interpretations is non-empty: build roadmap phases from approach_interpretations first. Do not start from a generic full-product roadmap template.',
+              'approach_interpretations are the semantic source of the roadmap: selected TRIZ approaches define WHAT gets explored; selected decisions define HOW each approach is interpreted, constrained, simplified, prioritized, postponed, or rejected.',
+              'When present, selected_roadmap_themes are only clustering helpers. Do not generate phases directly from broad product categories when approach_interpretations gives a narrower interpretation.',
               'If selected_triz_approaches is non-empty, treat those selected approaches as required design inputs and the primary roadmap scope, not optional background context.',
-              'Do not automatically generate dedicated phases for materials, smart systems, power, regulation, modularity, or production. Such phases are allowed only when they map to selected_roadmap_themes or are strictly required by selected_decisions as a constraint.',
+              'A/B decisions are not roadmap topics. They are interpretation lenses for selected approaches. A decision like simple smart functionality should reduce/simplify selected smart approaches, not create a generic smart-functions phase.',
+              'Example: if selected approaches are app interface, modular electronics, and communication standards, and the selected decision says to keep smart functionality simple, the roadmap should decide the simplest viable interface, test whether modular electronics are worth MVP complexity, choose minimal/cheap communication standards, and possibly postpone or reject excess complexity.',
+              'Generate roadmap phases from the interaction between approach_interpretations and selected_decisions. The phase should answer what to keep, simplify, postpone, reject, prototype first, or validate first.',
+              'Do not automatically generate dedicated phases for materials, smart systems, power, regulation, modularity, or production. Such phases are allowed only when they map to approach_interpretations or are strictly required as a constraint inside an interpreted selected approach.',
               'Every selected_triz_approaches item must either appear directly in one roadmap phase or be explicitly merged with a related selected approach in that phase. Do not ignore selected approaches.',
               'If many selected_triz_approaches are present, group related approaches into fewer phases, but make the grouping traceable by naming the concrete approach themes in phase_title, why_this_phase_matters, concrete_actions, validation_or_test, or decision_unlocked.',
               'A roadmap generated with 9 selected approaches must visibly differ from a roadmap generated with only 3 selected approaches. The extra selected approaches should change what gets prototyped, tested, checked, integrated, or deliberately postponed.',
-              'Priority rule: selected_decisions constrain the overall direction; selected_roadmap_themes and selected_triz_approaches determine what is prototyped, tested, validated, or integrated inside that direction. Do not let selected decisions create unrelated roadmap phases.',
-              'Do not create roadmap phases for unselected TRIZ approaches unless strictly required by a selected_decision. If such work is unavoidable, keep it as a constraint inside a selected-theme phase, not as a separate roadmap scope.',
+              'Priority rule: approach_interpretations determine what is prototyped, tested, validated, simplified, postponed, or integrated. selected_decisions constrain those interpretations but must not create unrelated roadmap phases.',
+              'Do not create roadmap phases for unselected TRIZ approaches unless strictly required by a selected_decision. If such work is unavoidable, keep it as a constraint inside an interpreted selected-approach phase, not as a separate roadmap scope.',
               'If selected_triz_approaches has exactly 1 item, generate a focused roadmap around that one approach and its immediate validation chain. Do not produce a broad full-product roadmap.',
               'If selected_triz_approaches has multiple items, cluster only selected approaches into coherent phases and keep each selected approach traceable.',
               'For goal: write one short, human-readable session goal sentence. Describe what the user is trying to achieve through this session and the intended practical outcome. Make it sound like a product/decision goal, not an instruction to the model. Use plain natural language. Do NOT mention analysis, material, board, synthesis, mapping, or generating a sequence.',
@@ -4891,7 +5134,7 @@ export const handleReportUpdate = async (req, res) => {
               'Do not use string shortcuts instead of objects inside priorities, roadmap_phases, action_plan, decisions, or validation_loop.',
               'Lean shape only. Prioritize durable fields that will be persisted and displayed: priorities.title, roadmap_phases, decisions, validation_loop.check, next_session_focus, map_context.coverage_summary, goal, headline.',
               'Write like a senior product engineer, technical founder, or R&D lead advising a real team. The roadmap should read like practical product-development reasoning, not an executive summary, Jira backlog, requirements document, or consulting template.',
-              'Prefer roadmap_phases over action_plan: group work into a few meaningful phases. When selected_roadmap_themes is non-empty, derive those phases from selected_roadmap_themes. Use 3–4 phases for a single selected approach and 4–6 only when multiple selected themes justify it.',
+              'Prefer roadmap_phases over action_plan: group work into a few meaningful phases. When approach_interpretations is non-empty, derive those phases from approach_interpretations. Use 3–4 phases for a single selected approach and 4–6 only when multiple interpreted approaches justify it.',
               'Each roadmap phase must contain exactly these primary fields: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.',
               'The most important output is sequencing logic, engineering judgment, uncertainty reduction, tradeoff thinking, and practical constraint reasoning. Actions support that reasoning; reasoning must not merely introduce a task list.',
               'phase_title must be semantic and specific. Never return only "Etap", "Faza", "Phase", or "Stage"; name the uncertainty, product proof point, engineering risk, or milestone being reduced.',
@@ -4959,9 +5202,9 @@ export const handleReportUpdate = async (req, res) => {
               'If you cannot support a section, return fewer items but keep at least 2 sections with real content.',
               ...(retryReasons.length
                 ? [
-                    'RETRY SCOPE CORRECTION: the previous roadmap missed selected_triz_approaches or drifted into generic product phases. Rewrite the roadmap from selected_roadmap_themes as the primary scope.',
-                    'In this retry, do not use selected_decisions to create broad product phases. Use them only to filter and constrain the selected TRIZ approach work.',
-                    'Remove generic material/smart/power/regulation/production phases unless they map to selected_roadmap_themes.',
+                    'RETRY SCOPE CORRECTION: the previous roadmap missed selected_triz_approaches or drifted into generic product phases. Rewrite the roadmap from approach_interpretations as the primary scope.',
+                    'In this retry, do not use selected_decisions to create broad product phases. Use them only as interpretation lenses for selected TRIZ approach work.',
+                    'Remove generic material/smart/power/regulation/production phases unless they map to approach_interpretations.',
                     'Name or clearly reference the missing selected approach themes inside phase text.',
                   ]
                 : []),
@@ -4983,8 +5226,8 @@ export const handleReportUpdate = async (req, res) => {
       const buildExecutionReportTaskInstructions = (strictJson = false) => {
         const baseInstructions =
           reportLang === 'en'
-          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report.\n\nWrite like a senior product engineer, technical founder, or R&D lead advising a real team. Do not facilitate a workshop. Do not ask the user to clarify. Do not generate a checklist, Jira backlog, requirements document, or executive summary.\n\nGoal: produce a structured but natural product-development roadmap where phase reasoning is the main artifact.\nStyle (very important):\n- Write like an advisor: short paragraphs, concrete language, mild uncertainty where appropriate.\n- No visible mechanics: do NOT write labels/headings like \"RISK:\", \"VALIDATION:\", \"DECISION:\", \"Biggest risk\", \"What we do\", \"Signal it works\", no ALL CAPS, no schema-like phrasing.\n- Prefer observable signals and constraints over abstract nouns (avoid: assessment, analysis, implementation, ensuring, preparation, optimization).\n- Avoid waterfall vibes: allow iteration, pivots, and conditional plans; explicitly say what is not worth optimizing yet when relevant.\n- Include practical engineering judgment: premature complexity, overengineering risk, cost/weight/footprint/setup friction/manufacturing repeatability when supported.\n\n- Prefer execution_report.roadmap_phases (4–6 phases) over execution_report.action_plan.\n- Each roadmap phase must use exactly these fields: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title must name a concrete uncertainty, milestone, or engineering objective. Never return only \"Phase\", \"Stage\", \"Etap\", or \"Faza\".\n- why_this_phase_matters should explain why this matters now, what uncertainty is being reduced, and what should intentionally wait.\n- key_risk_or_tradeoff should sound like a realistic caution, not a label: what could invalidate this direction, what complexity may not be justified, or what constraint can break the plan.\n- concrete_actions should contain 2–3 specific build/test/check moves max. Actions are supporting evidence, not the center of the roadmap.\n- validation_or_test should name the signal that justifies continuing, pivoting, or stopping.\n- decision_unlocked should read like an unlocked next strategic move (a concrete founder/R&D decision), not a report label. Prefer direct, practical, decision-oriented sentences (often starting with an imperative verb), and you may omit it when it would be redundant or forced.\n- Avoid filler like \"develop the product\", \"optimize the experience\", \"perform evaluation\", or \"prepare for market\" unless immediately tied to a concrete artifact/test/metric/decision.\n- Avoid mechanical fields: omit or keep empty anything you cannot support (e.g. technology_options, done_when).\n\nIf you include action_plan, keep it short and natural. Do not force imperative verbs or rigid 3–8 word titles.\n\nSelected choices priority:\n- selected_decisions are hard direction constraints.\n- selected_triz_approaches are required design inputs inside that direction.\n- Every selected TRIZ approach must be directly represented in a roadmap phase or explicitly merged with a related selected approach.\n- If 9 approaches are selected, the roadmap must visibly cover broader prototype/test/integration work than when only 3 are selected.\n\nUse contradictions/decisions as anchors when supported, but do not force mechanical coverage.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, no aliases.' : ''}`
-          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report.\n\nPisz jak senior product engineer, technical founder albo lider R&D doradzający prawdziwemu zespołowi. Nie moderuj warsztatu. Nie proś o doprecyzowanie. Nie generuj checklisty, backlogu Jira, dokumentu wymagań ani executive summary.\n\nCel: ustrukturyzowana, naturalna mapa drogowa rozwoju produktu, w której logika etapu jest głównym artefaktem.\nStyl (bardzo ważne):\n- Pisz jak doradca-inżynier: krótkie akapity, konkret, lekka niepewność tam, gdzie to uczciwe.\n- Bez widocznej mechaniki: nie pisz etykiet/nagłówków typu \"RYZYKO:\", \"WALIDACJA:\", \"DECYZJA:\", \"Największe ryzyko\", \"Co robimy\", \"Sygnał, że to działa\", bez CAPS LOCKA i bez brzmienia jak szablon.\n- Preferuj sygnały do zaobserwowania i ograniczenia zamiast abstraktów (unikaj: ocena, analiza, implementacja, zapewnienie, przygotowanie, optymalizacja).\n- Unikaj waterfallu: dopuszczaj iteracje, pivoty i warunkowe plany; jeśli ma sens, powiedz wprost, czego nie warto jeszcze optymalizować.\n- Dodawaj praktyczny osąd inżynierski: przedwczesna złożoność, ryzyko overengineeringu, koszt/masa/footprint/tarcie konfiguracji/powtarzalność produkcji, jeśli wynika to z materiału.\n\n- Preferuj execution_report.roadmap_phases (4–6 etapów) zamiast execution_report.action_plan.\n- Każdy etap roadmapy musi używać dokładnie pól: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title ma nazwać konkretną niewiadomą, kamień milowy albo cel inżynieryjny. Nigdy nie zwracaj samego \"Etap\", \"Faza\", \"Phase\" ani \"Stage\".\n- why_this_phase_matters ma wyjaśniać, dlaczego to ważne teraz, jaką niewiadomą redukuje i co celowo powinno poczekać.\n- key_risk_or_tradeoff ma brzmieć jak realistyczna przestroga, nie etykieta: co może unieważnić kierunek, jaka złożoność może nie mieć uzasadnienia albo jakie ograniczenie może złamać plan.\n- concrete_actions ma zawierać maksymalnie 2–3 konkretne ruchy typu zbuduj/przetestuj/sprawdź. Działania wspierają rozumowanie, nie są centrum roadmapy.\n- validation_or_test ma nazwać sygnał, który uzasadnia kontynuację, pivot albo zatrzymanie.\n- decision_unlocked ma brzmieć jak “odblokowany kolejny ruch” (konkretna decyzja founder/R&D), a nie jak etykieta z raportu. Preferuj tryb decyzyjny i praktyczny, często od czasownika w trybie rozkazującym: \"Zdecyduj…\", \"Podejmij decyzję…\", \"Wybierz…\", \"Ogranicz…\", \"Przejdź dalej dopiero gdy…\", \"Zostaw… jeśli…\". Unikaj brzmienia typu \"Decyzja o…\", \"Wybór…\", \"Potwierdzenie…\", \"Ocena zasadności…\". Możesz pominąć decision_unlocked, jeśli byłoby naciągane lub powtarzałoby inne zdanie.\n- Unikaj wypełniaczy typu \"rozwinąć produkt\", \"zoptymalizować doświadczenie\", \"przeprowadzić ewaluację\", \"przygotować do rynku\", jeśli od razu nie wskazujesz konkretnego artefaktu/testu/metryki/decyzji.\n- Unikaj mechanicznych pól: pomijaj (albo zostaw puste) to, czego nie da się sensownie uzasadnić (np. technology_options, done_when).\n\nJeśli dodajesz action_plan, niech będzie krótki i naturalny. Nie wymuszaj trybu rozkazującego ani sztucznie krótkich tytułów.\n\nPriorytet wybranych kierunków:\n- selected_decisions są twardymi ograniczeniami kierunku.\n- selected_triz_approaches są wymaganymi wejściami projektowymi wewnątrz tego kierunku.\n- Każde wybrane podejście TRIZ musi być bezpośrednio reprezentowane w etapie roadmapy albo jawnie scalone z pokrewnym wybranym podejściem.\n- Jeśli wybrano 9 podejść, roadmapa musi widocznie obejmować szerszą pracę prototypową/testową/integracyjną niż przy 3 podejściach.\n\nTraktuj sprzeczności/decyzje jako kotwice, ale nie wymuszaj mechanicznego pokrycia.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, bez aliasów.' : ''}`
+          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report.\n\nWrite like a senior product engineer, technical founder, or R&D lead advising a real team. Do not facilitate a workshop. Do not ask the user to clarify. Do not generate a checklist, Jira backlog, requirements document, or executive summary.\n\nGoal: produce a structured but natural product-development roadmap where phase reasoning is the main artifact.\nStyle (very important):\n- Write like an advisor: short paragraphs, concrete language, mild uncertainty where appropriate.\n- No visible mechanics: do NOT write labels/headings like \"RISK:\", \"VALIDATION:\", \"DECISION:\", \"Biggest risk\", \"What we do\", \"Signal it works\", no ALL CAPS, no schema-like phrasing.\n- Prefer observable signals and constraints over abstract nouns (avoid: assessment, analysis, implementation, ensuring, preparation, optimization).\n- Avoid waterfall vibes: allow iteration, pivots, and conditional plans; explicitly say what is not worth optimizing yet when relevant.\n- Include practical engineering judgment: premature complexity, overengineering risk, cost/weight/footprint/setup friction/manufacturing repeatability when supported.\n\n- Prefer execution_report.roadmap_phases (4–6 phases) over execution_report.action_plan.\n- Each roadmap phase must use exactly these fields: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title must name a concrete uncertainty, milestone, or engineering objective. Never return only \"Phase\", \"Stage\", \"Etap\", or \"Faza\".\n- why_this_phase_matters should explain why this matters now, what uncertainty is being reduced, and what should intentionally wait.\n- key_risk_or_tradeoff should sound like a realistic caution, not a label: what could invalidate this direction, what complexity may not be justified, or what constraint can break the plan.\n- concrete_actions should contain 2–3 specific build/test/check moves max. Actions are supporting evidence, not the center of the roadmap.\n- validation_or_test should name the signal that justifies continuing, pivoting, or stopping.\n- decision_unlocked should read like an unlocked next strategic move (a concrete founder/R&D decision), not a report label. Prefer direct, practical, decision-oriented sentences (often starting with an imperative verb), and you may omit it when it would be redundant or forced.\n- Avoid filler like \"develop the product\", \"optimize the experience\", \"perform evaluation\", or \"prepare for market\" unless immediately tied to a concrete artifact/test/metric/decision.\n- Avoid mechanical fields: omit or keep empty anything you cannot support (e.g. technology_options, done_when).\n\nIf you include action_plan, keep it short and natural. Do not force imperative verbs or rigid 3–8 word titles.\n\nSelected choices priority:\n- approach_interpretations are the primary roadmap source.\n- selected_triz_approaches define WHAT gets explored.\n- selected_decisions define HOW selected approaches are interpreted, constrained, simplified, prioritized, postponed, or rejected; they are not roadmap topics.\n- Every selected TRIZ approach must be directly represented in a roadmap phase or explicitly merged with a related selected approach.\n- If 9 approaches are selected, the roadmap must visibly cover broader prototype/test/integration work than when only 3 are selected.\n\nUse contradictions/decisions as anchors when supported, but do not force mechanical coverage.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, no aliases.' : ''}`
+          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report.\n\nPisz jak senior product engineer, technical founder albo lider R&D doradzający prawdziwemu zespołowi. Nie moderuj warsztatu. Nie proś o doprecyzowanie. Nie generuj checklisty, backlogu Jira, dokumentu wymagań ani executive summary.\n\nCel: ustrukturyzowana, naturalna mapa drogowa rozwoju produktu, w której logika etapu jest głównym artefaktem.\nStyl (bardzo ważne):\n- Pisz jak doradca-inżynier: krótkie akapity, konkret, lekka niepewność tam, gdzie to uczciwe.\n- Bez widocznej mechaniki: nie pisz etykiet/nagłówków typu \"RYZYKO:\", \"WALIDACJA:\", \"DECYZJA:\", \"Największe ryzyko\", \"Co robimy\", \"Sygnał, że to działa\", bez CAPS LOCKA i bez brzmienia jak szablon.\n- Preferuj sygnały do zaobserwowania i ograniczenia zamiast abstraktów (unikaj: ocena, analiza, implementacja, zapewnienie, przygotowanie, optymalizacja).\n- Unikaj waterfallu: dopuszczaj iteracje, pivoty i warunkowe plany; jeśli ma sens, powiedz wprost, czego nie warto jeszcze optymalizować.\n- Dodawaj praktyczny osąd inżynierski: przedwczesna złożoność, ryzyko overengineeringu, koszt/masa/footprint/tarcie konfiguracji/powtarzalność produkcji, jeśli wynika to z materiału.\n\n- Preferuj execution_report.roadmap_phases (4–6 etapów) zamiast execution_report.action_plan.\n- Każdy etap roadmapy musi używać dokładnie pól: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title ma nazwać konkretną niewiadomą, kamień milowy albo cel inżynieryjny. Nigdy nie zwracaj samego \"Etap\", \"Faza\", \"Phase\" ani \"Stage\".\n- why_this_phase_matters ma wyjaśniać, dlaczego to ważne teraz, jaką niewiadomą redukuje i co celowo powinno poczekać.\n- key_risk_or_tradeoff ma brzmieć jak realistyczna przestroga, nie etykieta: co może unieważnić kierunek, jaka złożoność może nie mieć uzasadnienia albo jakie ograniczenie może złamać plan.\n- concrete_actions ma zawierać maksymalnie 2–3 konkretne ruchy typu zbuduj/przetestuj/sprawdź. Działania wspierają rozumowanie, nie są centrum roadmapy.\n- validation_or_test ma nazwać sygnał, który uzasadnia kontynuację, pivot albo zatrzymanie.\n- decision_unlocked ma brzmieć jak “odblokowany kolejny ruch” (konkretna decyzja founder/R&D), a nie jak etykieta z raportu. Preferuj tryb decyzyjny i praktyczny, często od czasownika w trybie rozkazującym: \"Zdecyduj…\", \"Podejmij decyzję…\", \"Wybierz…\", \"Ogranicz…\", \"Przejdź dalej dopiero gdy…\", \"Zostaw… jeśli…\". Unikaj brzmienia typu \"Decyzja o…\", \"Wybór…\", \"Potwierdzenie…\", \"Ocena zasadności…\". Możesz pominąć decision_unlocked, jeśli byłoby naciągane lub powtarzałoby inne zdanie.\n- Unikaj wypełniaczy typu \"rozwinąć produkt\", \"zoptymalizować doświadczenie\", \"przeprowadzić ewaluację\", \"przygotować do rynku\", jeśli od razu nie wskazujesz konkretnego artefaktu/testu/metryki/decyzji.\n- Unikaj mechanicznych pól: pomijaj (albo zostaw puste) to, czego nie da się sensownie uzasadnić (np. technology_options, done_when).\n\nJeśli dodajesz action_plan, niech będzie krótki i naturalny. Nie wymuszaj trybu rozkazującego ani sztucznie krótkich tytułów.\n\nPriorytet wybranych kierunków:\n- approach_interpretations są głównym źródłem roadmapy.\n- selected_triz_approaches definiują, CO ma być eksplorowane.\n- selected_decisions definiują, JAK wybrane podejścia są interpretowane, ograniczane, upraszczane, priorytetyzowane, odkładane albo odrzucane; nie są tematami roadmapy.\n- Każde wybrane podejście TRIZ musi być bezpośrednio reprezentowane w etapie roadmapy albo jawnie scalone z pokrewnym wybranym podejściem.\n- Jeśli wybrano 9 podejść, roadmapa musi widocznie obejmować szerszą pracę prototypową/testową/integracyjną niż przy 3 podejściach.\n\nTraktuj sprzeczności/decyzje jako kotwice, ale nie wymuszaj mechanicznego pokrycia.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, bez aliasów.' : ''}`
 
         const roadmapLanguageInstructions =
           reportLang === 'en'
@@ -4992,8 +5235,8 @@ export const handleReportUpdate = async (req, res) => {
             : 'Język roadmapy: roadmap_phases.concrete_actions mają brzmieć jak bezpośrednie, praktyczne instrukcje, nie bezosobowe bezokoliczniki. Zaczynaj od trybu rozkazującego: "Zaprojektuj", "Zbuduj", "Przetestuj", "Zmierz", "Porównaj", "Sprawdź", "Wybierz" zamiast "Zaprojektować", "Zbudować", "Przetestować", "Zmierzyć", "Porównać", "Sprawdzić", "Wybrać". Jeśli validation_or_test albo decision_unlocked zaczyna się od "Czy", zapisz to jako poprawne pytanie i zakończ znakiem "?".'
         const selectedScopeInstructions =
           reportLang === 'en'
-            ? 'Selected scope rule: when selected_roadmap_themes is non-empty, selected_roadmap_themes define the roadmap. selected_decisions are constraints only. Do not generate broad product phases from selected decisions when they are unrelated to selected_roadmap_themes. If exactly one selected_triz_approaches item is present, every roadmap phase must stay inside that one approach scope.'
-            : 'Reguła zakresu: gdy selected_roadmap_themes nie jest puste, selected_roadmap_themes definiują roadmapę. selected_decisions są tylko ograniczeniami. Nie generuj szerokich faz produktowych z samych decyzji, jeśli nie wynikają z selected_roadmap_themes. Jeśli jest dokładnie jedno selected_triz_approaches, każdy etap roadmapy musi pozostać w zakresie tego jednego podejścia.'
+            ? 'Selected scope rule: when approach_interpretations is non-empty, approach_interpretations define the roadmap. selected_decisions are interpretation lenses only. Do not generate broad product phases from selected decisions when they are unrelated to interpreted selected approaches. If exactly one selected_triz_approaches item is present, every roadmap phase must stay inside that one interpreted approach scope.'
+            : 'Reguła zakresu: gdy approach_interpretations nie jest puste, approach_interpretations definiują roadmapę. selected_decisions są tylko soczewką interpretacji. Nie generuj szerokich faz produktowych z samych decyzji, jeśli nie wynikają z interpretowanych wybranych podejść. Jeśli jest dokładnie jedno selected_triz_approaches, każdy etap roadmapy musi pozostać w zakresie tego jednego interpretowanego podejścia.'
         return `${baseInstructions}\n\n${roadmapLanguageInstructions}\n\n${selectedScopeInstructions}`
       }
 
@@ -6102,6 +6345,8 @@ export const handleReportUpdate = async (req, res) => {
               const selectedDecisionsForFinal = existingDecisions
                 .map((d) => ({
                   tradeoff: normalizeExecutionText(d?.tradeoff),
+                  option_a: normalizeExecutionText(d?.option_a),
+                  option_b: normalizeExecutionText(d?.option_b),
                   selected_option: normalizeExecutionSelectedOption(d?.selected_option),
                 }))
                 .filter((d) => d.tradeoff && (d.selected_option === 'a' || d.selected_option === 'b'))
@@ -6109,6 +6354,8 @@ export const handleReportUpdate = async (req, res) => {
                 selectedDecisionsOverride && selectedDecisionsOverride.length
                   ? selectedDecisionsOverride.map((d) => ({
                       tradeoff: d.tradeoff,
+                      option_a: d.option_a,
+                      option_b: d.option_b,
                       selected_option: d.selected_option,
                     }))
                   : selectedDecisionsForFinal
@@ -6119,6 +6366,12 @@ export const handleReportUpdate = async (req, res) => {
                   : selectedTrizApproachesForFinal
               const selectedRoadmapThemesForPrompt = buildSelectedRoadmapThemes(
                 selectedTrizApproachesForPrompt,
+                reportLang
+              )
+              const approachInterpretationsForPrompt = buildApproachInterpretations(
+                selectedTrizApproachesForPrompt,
+                selectedDecisionsForPrompt,
+                selectedRoadmapThemesForPrompt,
                 reportLang
               )
               const promptForLen = buildExecutionReportPrompt(true, [])
@@ -6146,6 +6399,15 @@ export const handleReportUpdate = async (req, res) => {
                 selectedRoadmapThemeTitles: selectedRoadmapThemesForPrompt
                   .map((theme) => theme?.theme_title)
                   .filter(Boolean),
+                approachInterpretationSummary: approachInterpretationsForPrompt.map((item) => ({
+                  approach_title: item?.selected_approach?.approach_title,
+                  recommended_scope: item?.recommended_scope,
+                  recommended_treatment: item?.recommended_treatment,
+                  postpone_or_keep: item?.postpone_or_keep,
+                  affected_decisions_count: Array.isArray(item?.affected_by_decisions)
+                    ? item.affected_by_decisions.length
+                    : 0,
+                })),
                 promptPayloadSummary: {
                   selected_decisions: selectedDecisionsForPrompt,
                   selected_triz_approaches: selectedTrizApproachesForPrompt.map((item) => ({
@@ -6159,6 +6421,17 @@ export const handleReportUpdate = async (req, res) => {
                     theme_title: theme.theme_title,
                     approach_titles: theme.approach_titles,
                     scope_mode: theme.scope_mode,
+                  })),
+                  approach_interpretations: approachInterpretationsForPrompt.map((item) => ({
+                    approach_title: item?.selected_approach?.approach_title,
+                    affected_by_decisions: item?.affected_by_decisions,
+                    recommended_scope: item?.recommended_scope,
+                    recommended_treatment: item?.recommended_treatment,
+                    mvp_relevance: item?.mvp_relevance,
+                    risk: item?.risk,
+                    dependency: item?.dependency,
+                    postpone_or_keep: item?.postpone_or_keep,
+                    key_tradeoff: item?.key_tradeoff,
                   })),
                 },
                 supportingItemsCount: Array.isArray(executionSupportingItems) ? executionSupportingItems.length : null,
