@@ -987,6 +987,12 @@ export const ReportPage = ({
   const t = reportCopy[language]
   const reportLogoUrl = new URL('../../logo/logo_makemyideawork.png', import.meta.url).href
   const reportMetaRef = useRef<any>(snapshot.reportMeta ?? null)
+  useEffect(() => {
+    console.log('[build]', {
+      commit: import.meta.env.VITE_COMMIT_SHA,
+      buildTime: import.meta.env.VITE_BUILD_TIME,
+    })
+  }, [])
   const initialReport = validateAndNormalizeReport({
     summary: snapshot.reportMeta?.summary ?? null,
     ideas: snapshot.ideas ?? null,
@@ -2095,35 +2101,83 @@ export const ReportPage = ({
     [executionReport]
   )
   const hasLeanExecutionReport = hasLeanExecutionReportContent(normalizedExecutionReport)
-	  const executionReportPlanRenderable = Boolean(
+  const executionReportPlanRenderable = Boolean(
 	    normalizedExecutionReport?.stage === 'plan_generated' &&
 	      (normalizedExecutionReport?.roadmap_phases?.length ||
 	        normalizedExecutionReport?.action_plan?.length ||
 	        normalizedExecutionReport?.priorities?.length ||
 	        normalizedExecutionReport?.validation_loop?.length)
 	  )
+  const executionReportRenderBranch = useMemo<'roadmap_phases' | 'legacy_action_plan' | 'empty'>(() => {
+    if (
+      normalizedExecutionReport?.stage === 'plan_generated' &&
+      (executionReportPlanRenderable || hasLeanExecutionReport) &&
+      Array.isArray(normalizedExecutionReport?.roadmap_phases) &&
+      normalizedExecutionReport.roadmap_phases.length
+    ) {
+      return 'roadmap_phases'
+    }
+    if (
+      normalizedExecutionReport?.stage === 'plan_generated' &&
+      (executionReportPlanRenderable || hasLeanExecutionReport) &&
+      Array.isArray(normalizedExecutionReport?.action_plan) &&
+      normalizedExecutionReport.action_plan.length
+    ) {
+      return 'legacy_action_plan'
+    }
+    return 'empty'
+  }, [normalizedExecutionReport, executionReportPlanRenderable, hasLeanExecutionReport])
   useEffect(() => {
     if (reportVariant !== 'action') return
+    const actionPlan = Array.isArray(normalizedExecutionReport?.action_plan)
+      ? normalizedExecutionReport.action_plan
+      : []
     console.info('[REPORT RENDER DEBUG][execution]', {
       stage: normalizedExecutionReport?.stage ?? null,
+      roadmapPhasesLen: Array.isArray(normalizedExecutionReport?.roadmap_phases)
+        ? normalizedExecutionReport?.roadmap_phases.length
+        : null,
 	      actionPlanLen: Array.isArray(normalizedExecutionReport?.action_plan)
 	        ? normalizedExecutionReport?.action_plan.length
 	        : null,
-	      roadmapPhasesLen: Array.isArray(normalizedExecutionReport?.roadmap_phases)
-	        ? normalizedExecutionReport?.roadmap_phases.length
-	        : null,
-      prioritiesLen: Array.isArray(normalizedExecutionReport?.priorities)
-        ? normalizedExecutionReport?.priorities.length
-        : null,
       validationLoopLen: Array.isArray(normalizedExecutionReport?.validation_loop)
         ? normalizedExecutionReport?.validation_loop.length
+        : null,
+      decisionsLen: Array.isArray(normalizedExecutionReport?.decisions)
+        ? normalizedExecutionReport.decisions.length
+        : null,
+      renderBranch: executionReportRenderBranch,
+      hasTechnologyOptions: actionPlan.some(
+        (item) => Array.isArray(item.technology_options) && item.technology_options.length > 0
+      ),
+      hasDoneWhen: actionPlan.some((item) => Boolean(String(item.done_when || '').trim())),
+      prioritiesLen: Array.isArray(normalizedExecutionReport?.priorities)
+        ? normalizedExecutionReport?.priorities.length
         : null,
       hasLeanExecutionReport,
       renderableByStage: executionReportPlanRenderable,
       hiddenByLeanGate: Boolean(executionReportPlanRenderable && !hasLeanExecutionReport),
       source: 'executionReport state used by render',
     })
-  }, [reportVariant, normalizedExecutionReport, hasLeanExecutionReport, executionReportPlanRenderable])
+  }, [
+    reportVariant,
+    normalizedExecutionReport,
+    hasLeanExecutionReport,
+    executionReportPlanRenderable,
+    executionReportRenderBranch,
+  ])
+  useEffect(() => {
+    if (reportVariant !== 'action') return
+    console.log('[REPORT RENDER DEBUG][execution][branch]', {
+      branch:
+        executionReportRenderBranch === 'roadmap_phases'
+          ? 'roadmap_phases branch'
+          : executionReportRenderBranch === 'legacy_action_plan'
+            ? 'legacy action_plan branch'
+            : 'fallback/empty branch',
+      renderBranch: executionReportRenderBranch,
+    })
+  }, [reportVariant, executionReportRenderBranch])
   const decisionsAllSelected = Boolean(
     normalizedExecutionReport?.decisions?.length &&
       normalizedExecutionReport.decisions.every(

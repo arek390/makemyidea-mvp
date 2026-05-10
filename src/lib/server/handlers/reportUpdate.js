@@ -185,6 +185,17 @@ const safeParseJson = (value) => {
   }
 }
 
+const isEnvEnabled = (value) => value === true || /^(1|true|yes|on)$/i.test(String(value || '').trim())
+
+const previewDiagnosticText = (value, maxChars) => String(value ?? '').slice(0, maxChars)
+
+const looksLikeTruncatedJson = (value) => {
+  const raw = String(value ?? '').trim()
+  if (!raw) return false
+  const last = raw[raw.length - 1]
+  return last !== '}' && last !== ']'
+}
+
 const normalizeRecommendations = (value) => {
   const defaultRecommendations = {
     based_on_user_ideas: [],
@@ -2199,6 +2210,83 @@ const logExecutionReportShape = (label, report) => {
   })
 }
 
+const getActionPlanDiagnosticShape = (report) => {
+  if (!report || typeof report !== 'object') {
+    return {
+      stage: null,
+      prioritiesLen: null,
+      roadmapPhasesLen: null,
+      actionPlanLen: null,
+      validationLoopLen: null,
+      decisionsLen: null,
+      hasGoal: false,
+      hasCoverageSummary: false,
+      hasNextSessionFocus: false,
+      sampleRoadmapPhaseTitle: null,
+      sampleRoadmapPhaseKeys: null,
+      sampleActionPlanStep: null,
+      sampleActionPlanKeys: null,
+      hasTechnologyOptions: false,
+      hasDoneWhen: false,
+    }
+  }
+  const roadmapPhases = Array.isArray(report.roadmap_phases)
+    ? report.roadmap_phases
+    : Array.isArray(report.roadmapPhases)
+      ? report.roadmapPhases
+      : []
+  const actionPlan = Array.isArray(report.action_plan)
+    ? report.action_plan
+    : Array.isArray(report.actionPlan)
+      ? report.actionPlan
+      : []
+  const priorities = Array.isArray(report.priorities) ? report.priorities : []
+  const validationLoop = Array.isArray(report.validation_loop)
+    ? report.validation_loop
+    : Array.isArray(report.validationLoop)
+      ? report.validationLoop
+      : []
+  const decisions = Array.isArray(report.decisions) ? report.decisions : []
+  const sampleRoadmapPhase = roadmapPhases.find((item) => item && typeof item === 'object') || null
+  const sampleActionPlan = actionPlan.find((item) => item && typeof item === 'object') || null
+  return {
+    stage: typeof report.stage === 'string' ? report.stage : null,
+    prioritiesLen: priorities.length,
+    roadmapPhasesLen: roadmapPhases.length,
+    actionPlanLen: actionPlan.length,
+    validationLoopLen: validationLoop.length,
+    decisionsLen: decisions.length,
+    hasGoal: Boolean(normalizeExecutionText(report.goal || report.objective || report.primary_goal)),
+    hasCoverageSummary: Boolean(
+      normalizeExecutionText(
+        report.map_context?.coverage_summary ||
+          report.map_context?.coverageSummary ||
+          report.map_context?.summary
+      )
+    ),
+    hasNextSessionFocus: Boolean(normalizeExecutionText(report.next_session_focus || report.nextSessionFocus)),
+    sampleRoadmapPhaseTitle: sampleRoadmapPhase
+      ? normalizeExecutionText(sampleRoadmapPhase.phase_title || sampleRoadmapPhase.title)
+      : null,
+    sampleRoadmapPhaseKeys: sampleRoadmapPhase ? Object.keys(sampleRoadmapPhase) : null,
+    sampleActionPlanStep: sampleActionPlan
+      ? normalizeExecutionText(sampleActionPlan.step || sampleActionPlan.title)
+      : null,
+    sampleActionPlanKeys: sampleActionPlan ? Object.keys(sampleActionPlan) : null,
+    hasTechnologyOptions: actionPlan.some(
+      (item) => Array.isArray(item?.technology_options) && item.technology_options.length > 0
+    ),
+    hasDoneWhen: actionPlan.some((item) => Boolean(normalizeExecutionText(item?.done_when || item?.doneWhen))),
+  }
+}
+
+const logActionPlanDiagnosticShape = (label, report, extra = {}) => {
+  console.log(`[REPORT FINALIZE DEBUG][backend][shape][${label}]`, {
+    ...extra,
+    ...getActionPlanDiagnosticShape(report),
+  })
+}
+
 const logExecutionReportSamples = (label, report) => {
   if (!report || typeof report !== 'object') {
     console.log(`[report:update][step3] ${label} action-plan samples: missing`)
@@ -3223,6 +3311,9 @@ export const handleReportUpdate = async (req, res) => {
   }
   try {
     const diagnosticsEnabled = req?.headers?.['x-diagnostics'] === '1'
+    const actionPlanDiagnosticsEnabled = isEnvEnabled(process.env.ACTION_PLAN_DIAGNOSTICS)
+    const disableActionPlanRewrite = isEnvEnabled(process.env.DISABLE_ACTION_PLAN_REWRITE)
+    const disableExecPlanFallback = isEnvEnabled(process.env.DISABLE_EXEC_PLAN_FALLBACK)
     const requestId =
       req?.headers?.['x-request-id'] ||
       (typeof req?.headers?.get === 'function' ? req.headers.get('x-request-id') : '') ||
@@ -4326,15 +4417,88 @@ export const handleReportUpdate = async (req, res) => {
           ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report.\n\nWrite like a senior product engineer, technical founder, or R&D lead. Do not facilitate a workshop. Do not ask the user to clarify. Do not generate generic checklists or executive summaries.\n\nGoal: produce a structured but natural actionable product-development roadmap where phase reasoning is the main artifact.\nStyle (very important):\n- Write like an advisor: short paragraphs, concrete language, mild uncertainty where appropriate.\n- No visible mechanics: do NOT write headings/labels like \"RISK:\", \"VALIDATION:\", \"DECISION:\", no ALL CAPS, no schema-like phrasing.\n- Prefer observable signals and constraints over abstract nouns (avoid: assessment, analysis, implementation, ensuring).\n- Avoid waterfall vibes: allow iteration, pivots, and conditional plans; explicitly say what is not worth optimizing yet when relevant.\n\n- Prefer execution_report.roadmap_phases (4–6 phases) over execution_report.action_plan.\n- Each roadmap phase must use exactly these fields: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title must name a concrete uncertainty, milestone, or engineering objective. Never return only \"Phase\", \"Stage\", \"Etap\", or \"Faza\".\n- why_this_phase_matters should explain sequencing: why this should happen before the next phase.\n- key_risk_or_tradeoff should state the product/engineering risk or tradeoff being reduced.\n- concrete_actions should contain 2–4 specific build/test/check actions, but actions are secondary to the phase logic.\n- validation_or_test should name the practical test, prototype comparison, metric, observed behavior, or constraint check.\n- decision_unlocked should state what decision the team can make after the phase.\n- Avoid filler like \"develop the product\", \"optimize the experience\", or \"prepare for market\" unless immediately tied to a concrete artifact/test/metric/decision.\n- Avoid mechanical fields: omit or keep empty anything you cannot support (e.g. technology_options, done_when).\n\nIf you include action_plan, keep it short and natural. Do not force imperative verbs or rigid 3–8 word titles.\n\nUse contradictions/decisions as anchors when supported, but do not force mechanical coverage.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, no aliases.' : ''}`
           : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report.\n\nPisz jak senior product engineer, technical founder albo lider R&D. Nie moderuj warsztatu. Nie proś o doprecyzowanie. Nie generuj generycznych checklist ani executive summary.\n\nCel: ustrukturyzowana, naturalna i wykonalna mapa drogowa rozwoju produktu, w której logika etapu jest głównym artefaktem.\nStyl (bardzo ważne):\n- Pisz jak doradca-inżynier: krótkie akapity, konkret, lekka niepewność tam, gdzie to uczciwe.\n- Bez widocznej mechaniki: nie pisz nagłówków/etykiet typu \"RYZYKO:\", \"WALIDACJA:\", \"DECYZJA:\", bez CAPS LOCKA, bez brzmienia jak szablon.\n- Preferuj sygnały do zaobserwowania i ograniczenia zamiast abstraktów (unikaj: ocena, analiza, implementacja, zapewnienie, przygotowanie).\n- Unikaj waterfallu: dopuszczaj iteracje, pivoty i warunkowe plany; jeśli ma sens, powiedz wprost, czego nie warto jeszcze optymalizować.\n\n- Preferuj execution_report.roadmap_phases (4–6 etapów) zamiast execution_report.action_plan.\n- Każdy etap roadmapy musi używać dokładnie pól: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title ma nazwać konkretną niewiadomą, kamień milowy albo cel inżynieryjny. Nigdy nie zwracaj samego \"Etap\", \"Faza\", \"Phase\" ani \"Stage\".\n- why_this_phase_matters ma wyjaśniać sekwencję: dlaczego ten etap powinien wydarzyć się przed następnym.\n- key_risk_or_tradeoff ma nazwać redukowane ryzyko produktowe/inżynieryjne albo kompromis.\n- concrete_actions ma zawierać 2–4 konkretne działania typu zbuduj/przetestuj/sprawdź, ale działania są drugorzędne wobec logiki etapu.\n- validation_or_test ma nazwać praktyczny test, porównanie prototypów, metrykę, obserwowane zachowanie albo sprawdzenie ograniczenia.\n- decision_unlocked ma powiedzieć, jaką decyzję zespół może podjąć po etapie.\n- Unikaj wypełniaczy typu \"rozwinąć produkt\", \"zoptymalizować doświadczenie\", \"przygotować do rynku\", jeśli od razu nie wskazujesz konkretnego artefaktu/testu/metryki/decyzji.\n- Unikaj mechanicznych pól: pomijaj (albo zostaw puste) to, czego nie da się sensownie uzasadnić (np. technology_options, done_when).\n\nJeśli dodajesz action_plan, niech będzie krótki i naturalny. Nie wymuszaj trybu rozkazującego ani sztucznie krótkich tytułów.\n\nTraktuj sprzeczności/decyzje jako kotwice, ale nie wymuszaj mechanicznego pokrycia.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, bez aliasów.' : ''}`
 
+      const actionPlanRawResponses = new Map()
+      const actionPlanParseResults = new Map()
+
+      const summarizeRawOutput = (content) => {
+        const raw = typeof content === 'string' ? content : String(content ?? '')
+        return {
+          rawOutputLen: raw.length,
+          rawOutputPreview: previewDiagnosticText(raw, 3000),
+          rawOutputTail: previewDiagnosticText(raw.slice(Math.max(0, raw.length - 1000)), 1000),
+          containsRoadmapPhases: raw.includes('roadmap_phases'),
+          containsActionPlan: raw.includes('action_plan'),
+          containsTechnologyOptions: raw.includes('technology_options'),
+          containsDoneWhen: raw.includes('done_when'),
+          containsRyzyko: raw.includes('RYZYKO'),
+          containsWalidacja: raw.includes('WALIDACJA'),
+          looksTruncated: looksLikeTruncatedJson(raw),
+        }
+      }
+
       const logRawLlmResponse = ({ task, model, content }) => {
-        if (!diagnosticsEnabled) return
-        console.log('[report:update][llm_raw_response]', {
+        actionPlanRawResponses.set(task, { model: model ?? null, content })
+        if (!actionPlanDiagnosticsEnabled) return
+        console.log('[REPORT FINALIZE DEBUG][backend][llm-raw]', {
           requestId,
           sessionId,
           task,
           model: model ?? null,
-          charLen: typeof content === 'string' ? content.length : null,
-          content,
+          ...summarizeRawOutput(content),
+        })
+      }
+
+      const logActionPlanParseResult = (task, value, parseAttempt, parsedShape) => {
+        actionPlanParseResults.set(task, {
+          parseError: parseAttempt?.error
+            ? {
+                name: parseAttempt.error?.name ?? null,
+                message: parseAttempt.error?.message ?? String(parseAttempt.error),
+              }
+            : null,
+          recoveryError: parseAttempt?.recoveryError
+            ? {
+                name: parseAttempt.recoveryError?.name ?? null,
+                message: parseAttempt.recoveryError?.message ?? String(parseAttempt.recoveryError),
+              }
+            : null,
+          recovered: Boolean(parseAttempt?.recovered),
+          parsedShape,
+        })
+        if (!actionPlanDiagnosticsEnabled) return
+        const parseError = parseAttempt?.recoveryError || parseAttempt?.error || null
+        console.log('[REPORT FINALIZE DEBUG][backend][llm-parse]', {
+          requestId,
+          sessionId,
+          task,
+          parsed: Boolean(parseAttempt?.parsed),
+          recovered: Boolean(parseAttempt?.recovered),
+          parseError: parseError
+            ? {
+                name: parseError?.name ?? null,
+                message: parseError?.message ?? String(parseError),
+              }
+            : null,
+          parsedShape,
+          ...summarizeRawOutput(value),
+        })
+      }
+
+      const logActionPlanLlmCallResult = (task, promptCharLen, result) => {
+        if (!actionPlanDiagnosticsEnabled) return
+        const raw = actionPlanRawResponses.get(task)
+        const parse = actionPlanParseResults.get(task)
+        console.log('[REPORT FINALIZE DEBUG][backend][llm-result]', {
+          requestId,
+          sessionId,
+          task,
+          promptCharLen,
+          model: result?.meta?.modelUsed ?? raw?.model ?? null,
+          tokens: result?.meta?.tokens ?? null,
+          llmOk: Boolean(result?.ok),
+          hasData: Boolean(result?.data),
+          parseError: parse?.recoveryError || parse?.parseError || null,
+          ...(raw ? summarizeRawOutput(raw.content) : {}),
         })
       }
 
@@ -4565,6 +4729,12 @@ export const handleReportUpdate = async (req, res) => {
             const raw = parsed?.execution_report && typeof parsed.execution_report === 'object'
               ? parsed.execution_report
               : parsed
+            logActionPlanParseResult(
+              'report-action-plan',
+              value,
+              parseAttempt,
+              getActionPlanDiagnosticShape(raw)
+            )
             return raw && typeof raw === 'object' ? raw : null
           },
           fallbackData: null,
@@ -4627,6 +4797,23 @@ export const handleReportUpdate = async (req, res) => {
           parseResponse: (value) => {
             const parseAttempt = safeParseJson(value)
             const parsed = parseAttempt.parsed
+            logActionPlanParseResult(
+              'report-execution-plan-from-decisions',
+              value,
+              parseAttempt,
+              parsed && typeof parsed === 'object'
+                ? {
+                    prioritiesLen: Array.isArray(parsed.priorities) ? parsed.priorities.length : null,
+                    choiceActionsLen: Array.isArray(parsed.choice_actions) ? parsed.choice_actions.length : null,
+                    analysisActionsLen: Array.isArray(parsed.analysis_actions)
+                      ? parsed.analysis_actions.length
+                      : null,
+                    validationLoopLen: Array.isArray(parsed.validation_loop)
+                      ? parsed.validation_loop.length
+                      : null,
+                  }
+                : null
+            )
             return parsed && typeof parsed === 'object' ? parsed : null
           },
           fallbackData: null,
@@ -4715,6 +4902,12 @@ export const handleReportUpdate = async (req, res) => {
             const parseAttempt = safeParseJson(value)
             const parsed = parseAttempt.parsed
             const raw = parsed?.action_plan
+            logActionPlanParseResult(
+              'report-action-plan-rewrite',
+              value,
+              parseAttempt,
+              { actionPlanLen: Array.isArray(raw) ? raw.length : null }
+            )
             return Array.isArray(raw) ? raw : null
           },
           fallbackData: null,
@@ -4726,6 +4919,7 @@ export const handleReportUpdate = async (req, res) => {
           maxOutputTokens: 1200,
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+          onRawResponse: logRawLlmResponse,
         })
 
       const buildRoadmapFromActionPlanPrompt = (actions, context = {}) =>
@@ -4795,6 +4989,12 @@ export const handleReportUpdate = async (req, res) => {
             const parseAttempt = safeParseJson(value)
             const parsed = parseAttempt.parsed
             const raw = parsed?.roadmap_phases
+            logActionPlanParseResult(
+              'report-action-plan-roadmap',
+              value,
+              parseAttempt,
+              { roadmapPhasesLen: Array.isArray(raw) ? raw.length : null }
+            )
             return Array.isArray(raw) ? raw : null
           },
           fallbackData: null,
@@ -5290,6 +5490,7 @@ export const handleReportUpdate = async (req, res) => {
           // "Finalize action plan" uses `execution_mode=plan_from_decisions_only`.
           // In that mode, once all decisions are selected, we still want a proper `execution_report.action_plan`
           // generated via the main `report-action-plan` prompt architecture (two-layer plan).
+          let previousFinalPlanAttempt = null
           console.log('[report:update][exec] finalize_gate', {
             requestId,
             executionPlanOnly,
@@ -5348,6 +5549,14 @@ export const handleReportUpdate = async (req, res) => {
                 promptCharLen: typeof promptForLen === 'string' ? promptForLen.length : null,
               })
               const execResult = await runExecutionReport(undefined, { strictJson: true })
+              logActionPlanLlmCallResult('report-action-plan', promptForLen.length, execResult)
+              const reportActionPlanParse = actionPlanParseResults.get('report-action-plan') || null
+              previousFinalPlanAttempt = {
+                llmOk: Boolean(execResult?.ok),
+                hasData: Boolean(execResult?.data),
+                validationErrors: null,
+                parseError: reportActionPlanParse?.recoveryError || reportActionPlanParse?.parseError || null,
+              }
               if (execResult?.meta) {
                 responseMeta.execution_report_action_plan = execResult.meta
                 await recordAiUsageBestEffort({
@@ -5364,7 +5573,15 @@ export const handleReportUpdate = async (req, res) => {
                 logLlmMeta('execution-report', execResult)
               }
               if (execResult?.ok && execResult.data && typeof execResult.data === 'object') {
+                logActionPlanDiagnosticShape('before-normalize-report-action-plan', execResult.data, {
+                  requestId,
+                  sessionId,
+                })
                 const generated = normalizeExecutionReport(execResult.data, reportLang)
+                logActionPlanDiagnosticShape('after-normalize-report-action-plan', generated, {
+                  requestId,
+                  sessionId,
+                })
                 const allowCompleted = Boolean(
                   Array.isArray(existingNormalized?.execution_report?.action_plan) &&
                     existingNormalized.execution_report.action_plan.some((a) => a?.status === 'completed')
@@ -5382,8 +5599,17 @@ export const handleReportUpdate = async (req, res) => {
                   supporting_items: executionSupportingItems,
                   source_snapshot: phaseASanitized.source_snapshot ?? null,
                 }, reportLang)
+                logActionPlanDiagnosticShape('after-coerce-final-plan-candidate', executionReportCandidate, {
+                  requestId,
+                  sessionId,
+                })
                 executionReportCandidate = ensureExecutionNextSessionFocus(executionReportCandidate, reportLang)
+                logActionPlanDiagnosticShape('after-ensure-next-session-focus-final-plan', executionReportCandidate, {
+                  requestId,
+                  sessionId,
+                })
                 executionReportValidation = validateExecutionPlanOnly(executionReportCandidate)
+                previousFinalPlanAttempt.validationErrors = executionReportValidation?.errors ?? null
                 responseExecution.planGenerated =
                   (Array.isArray(executionReportCandidate?.roadmap_phases) && executionReportCandidate.roadmap_phases.length > 0) ||
                   (Array.isArray(executionReportCandidate?.action_plan) && executionReportCandidate.action_plan.length > 0)
@@ -5395,6 +5621,9 @@ export const handleReportUpdate = async (req, res) => {
                   normalizedStage: executionReportCandidate?.stage ?? null,
                   prioritiesLen: Array.isArray(executionReportCandidate?.priorities)
                     ? executionReportCandidate.priorities.length
+                    : null,
+                  roadmapPhasesLen: Array.isArray(executionReportCandidate?.roadmap_phases)
+                    ? executionReportCandidate.roadmap_phases.length
                     : null,
                   actionPlanLen: Array.isArray(executionReportCandidate?.action_plan)
                     ? executionReportCandidate.action_plan.length
@@ -5417,6 +5646,7 @@ export const handleReportUpdate = async (req, res) => {
                   hasData: Boolean(execResult?.data),
                   normalizedStage: null,
                   prioritiesLen: null,
+                  roadmapPhasesLen: null,
                   actionPlanLen: null,
                   validationLoopLen: null,
                   nextSessionFocus: null,
@@ -5441,7 +5671,49 @@ export const handleReportUpdate = async (req, res) => {
             })
             // Keep responseExecution.planSkippedReason null: this was not "skipped", it used the main generator.
           } else if (hasAnySelections) {
+            const fallbackReason =
+              executionPlanOnly && allDecisionsSelected
+                ? previousFinalPlanAttempt?.llmOk === false
+                  ? 'REPORT_ACTION_PLAN_LLM_FAILED'
+                  : previousFinalPlanAttempt?.hasData === false
+                    ? 'REPORT_ACTION_PLAN_NO_DATA'
+                    : Array.isArray(previousFinalPlanAttempt?.validationErrors) &&
+                        previousFinalPlanAttempt.validationErrors.length
+                      ? 'REPORT_ACTION_PLAN_VALIDATION_FAILED'
+                      : 'REPORT_ACTION_PLAN_DID_NOT_GENERATE_PLAN'
+                : 'SELECTIONS_AVAILABLE_WITHOUT_GENERATED_PLAN'
+            if (disableExecPlanFallback && executionPlanOnly && allDecisionsSelected) {
+              console.log('[REPORT FINALIZE DEBUG][backend][fallback]', {
+                requestId,
+                sessionId,
+                fallbackTriggered: false,
+                skipped: true,
+                reason: 'DISABLE_EXEC_PLAN_FALLBACK',
+                previousLlmOk: previousFinalPlanAttempt?.llmOk ?? null,
+                previousHasData: previousFinalPlanAttempt?.hasData ?? null,
+                previousValidationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
+                previousParseError: previousFinalPlanAttempt?.parseError ?? null,
+              })
+              responseExecution.planGenerated = false
+              responseExecution.planSkippedReason = 'REPORT_ACTION_PLAN_FAILED_FALLBACK_DISABLED'
+            } else {
+            console.log('[REPORT FINALIZE DEBUG][backend][fallback]', {
+              requestId,
+              sessionId,
+              fallbackTriggered: true,
+              reason: fallbackReason,
+              previousLlmOk: previousFinalPlanAttempt?.llmOk ?? null,
+              previousHasData: previousFinalPlanAttempt?.hasData ?? null,
+              previousValidationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
+              previousParseError: previousFinalPlanAttempt?.parseError ?? null,
+            })
+            const planPromptForLen = buildExecutionPlanPrompt(true, [])
             const planResult = await runExecutionPlanFromDecisions(undefined, { strictJson: true })
+            logActionPlanLlmCallResult(
+              'report-execution-plan-from-decisions',
+              planPromptForLen.length,
+              planResult
+            )
             if (planResult?.meta) {
               responseMeta.execution_plan_from_decisions = planResult.meta
               await recordAiUsageBestEffort({
@@ -5881,8 +6153,42 @@ export const handleReportUpdate = async (req, res) => {
 	              forcedActionPlan = initializeActionPlanStatuses(forcedActionPlan, { allowCompleted: false })
 
               if (usedChoiceRepair || usedAnalysisRepair) {
+                const rewriteReason = [
+                  usedChoiceRepair ? 'CHOICE_REPAIR_USED_OR_COUNT_MISMATCH' : null,
+                  usedAnalysisRepair ? 'ANALYSIS_REPAIR_USED' : null,
+                ].filter(Boolean).join(',')
+                console.log('[REPORT FINALIZE DEBUG][backend][rewrite-before]', {
+                  requestId,
+                  sessionId,
+                  rewriteTriggered: !disableActionPlanRewrite,
+                  rewriteSkipped: disableActionPlanRewrite,
+                  inputActionPlanLen: forcedActionPlan.length,
+                  inputRoadmapPhasesLen: Array.isArray(executionReportCandidate?.roadmap_phases)
+                    ? executionReportCandidate.roadmap_phases.length
+                    : 0,
+                  reason: disableActionPlanRewrite ? 'DISABLE_ACTION_PLAN_REWRITE' : rewriteReason,
+                })
+                const rewriteSampleBefore = normalizeExecutionText(forcedActionPlan?.[0]?.step)
+                if (disableActionPlanRewrite) {
+                  console.log('[REPORT FINALIZE DEBUG][backend][rewrite-skipped]', {
+                    requestId,
+                    sessionId,
+                    reason: 'DISABLE_ACTION_PLAN_REWRITE',
+                    inputActionPlanLen: forcedActionPlan.length,
+                    inputRoadmapPhasesLen: Array.isArray(executionReportCandidate?.roadmap_phases)
+                      ? executionReportCandidate.roadmap_phases.length
+                      : 0,
+                    sampleBefore: rewriteSampleBefore,
+                  })
+                } else {
                 try {
+                  const rewritePromptForLen = buildActionPlanRewritePrompt(forcedActionPlan)
                   const rewriteResult = await runActionPlanRewrite(forcedActionPlan, { strictJson: true })
+                  logActionPlanLlmCallResult(
+                    'report-action-plan-rewrite',
+                    rewritePromptForLen.length,
+                    rewriteResult
+                  )
                   if (rewriteResult?.meta) {
                     responseMeta.action_plan_rewrite = rewriteResult.meta
                     await recordAiUsageBestEffort({
@@ -5917,11 +6223,37 @@ export const handleReportUpdate = async (req, res) => {
 	                      forcedActionPlan = rewritten
 	                    }
 	                  }
+                  console.log('[REPORT FINALIZE DEBUG][backend][rewrite-after]', {
+                    requestId,
+                    sessionId,
+                    outputActionPlanLen: forcedActionPlan.length,
+                    outputRoadmapPhasesLen: Array.isArray(executionReportCandidate?.roadmap_phases)
+                      ? executionReportCandidate.roadmap_phases.length
+                      : 0,
+                    sampleBefore: rewriteSampleBefore,
+                    sampleAfter: normalizeExecutionText(forcedActionPlan?.[0]?.step),
+                  })
                 } catch (error) {
                   console.error('[report:update] action-plan-rewrite exception:', error)
                 }
+                }
               }
 
+              logActionPlanDiagnosticShape('before-normalize-plan-from-decisions', {
+                ...executionReportDefaults,
+                ...executionReportCandidate,
+                stage: 'plan_generated',
+                priorities: planOk && Array.isArray(planResult.data.priorities) ? planResult.data.priorities : [],
+                action_plan: forcedActionPlan,
+                validation_loop:
+                  planOk && Array.isArray(planResult.data.validation_loop) ? planResult.data.validation_loop : [],
+                next_session_focus: planOk ? normalizeExecutionText(planResult.data.next_session_focus) : '',
+                supporting_items: executionSupportingItems,
+                source_snapshot: phaseASanitized.source_snapshot ?? null,
+              }, {
+                requestId,
+                sessionId,
+              })
 	              executionReportCandidate = normalizeExecutionReport({
 	                ...executionReportDefaults,
 	                ...executionReportCandidate,
@@ -5932,11 +6264,20 @@ export const handleReportUpdate = async (req, res) => {
                   planOk && Array.isArray(planResult.data.validation_loop) ? planResult.data.validation_loop : [],
                 next_session_focus: planOk ? normalizeExecutionText(planResult.data.next_session_focus) : '',
                 supporting_items: executionSupportingItems,
-                source_snapshot: phaseASanitized.source_snapshot ?? null,
+	                source_snapshot: phaseASanitized.source_snapshot ?? null,
 	              }, reportLang)
+              logActionPlanDiagnosticShape('after-normalize-plan-from-decisions', executionReportCandidate, {
+                requestId,
+                sessionId,
+              })
               executionReportCandidate = ensureExecutionNextSessionFocus(executionReportCandidate, reportLang)
+              logActionPlanDiagnosticShape('after-ensure-next-session-focus-plan-from-decisions', executionReportCandidate, {
+                requestId,
+                sessionId,
+              })
               executionReportValidation = validateExecutionPlanOnly(executionReportCandidate)
               responseExecution.planGenerated = true
+            }
             }
           } else {
             console.log('[report:update][step3] execution_plan_from_decisions_skipped', {
@@ -6131,6 +6472,10 @@ export const handleReportUpdate = async (req, res) => {
         stage: existingExecutionReport?.stage ?? null,
       })
       const generatedExecutionPersistable = getExecutionReportPersistableStats(executionReportCandidate)
+      logActionPlanDiagnosticShape('before-save-selection-generated-candidate', executionReportCandidate, {
+        requestId,
+        sessionId,
+      })
       const generatedDecisionOptions = countDecisionOptions(executionReportCandidate)
       const generatedExecutionValidation =
         executionReportCandidate?.stage === 'plan_generated'
@@ -6170,6 +6515,10 @@ export const handleReportUpdate = async (req, res) => {
                 source_snapshot: phaseASanitized.source_snapshot ?? null,
 	              }
 	        , reportLang)
+        logActionPlanDiagnosticShape('after-normalize-final-execution-report', finalExecutionReport, {
+          requestId,
+          sessionId,
+        })
         const finalDecisionOptions = countDecisionOptions(finalExecutionReport)
         const existingOptionTotal = (existingDecisionOptions.optionA || 0) + (existingDecisionOptions.optionB || 0)
         const finalOptionTotal = (finalDecisionOptions.optionA || 0) + (finalDecisionOptions.optionB || 0)
@@ -6186,7 +6535,7 @@ export const handleReportUpdate = async (req, res) => {
           decisionOptions: finalDecisionOptions,
           stage: executionReportCandidate?.stage ?? null,
         })
-	      } else if (hasUsableExistingExecutionReport) {
+      } else if (hasUsableExistingExecutionReport) {
 	        finalExecutionReport = normalizeExecutionReport(
           existingExecutionReport?.stage === 'plan_generated'
             ? ensureExecutionNextSessionFocus(
@@ -6203,6 +6552,10 @@ export const handleReportUpdate = async (req, res) => {
                 source_snapshot: phaseASanitized.source_snapshot ?? null,
 	              }
 	        , reportLang)
+        logActionPlanDiagnosticShape('after-preserve-existing-execution-report', finalExecutionReport, {
+          requestId,
+          sessionId,
+        })
         actionPlanDecision = 'execution_report_lean_preserved_existing_only_if_new_not_persistable'
         console.log('[report:update][step3] execution_report_lean_preserved_existing_only_if_new_not_persistable')
       } else if (!generatedExecutionPersistable.persistable) {
@@ -6377,6 +6730,13 @@ export const handleReportUpdate = async (req, res) => {
         finalExecutionReport.action_plan.length > 0
       ) {
         try {
+          const roadmapPromptForLen = buildRoadmapFromActionPlanPrompt(finalExecutionReport.action_plan, {
+            headline: finalExecutionReport.headline,
+            goal: finalExecutionReport.goal,
+            decisions: finalExecutionReport.decisions,
+            triz: finalTrizResolved,
+            supporting_items: finalExecutionReport.supporting_items,
+          })
           const roadmapRes = await runRoadmapFromActionPlan(finalExecutionReport.action_plan, {
             context: {
               headline: finalExecutionReport.headline,
@@ -6386,11 +6746,20 @@ export const handleReportUpdate = async (req, res) => {
               supporting_items: finalExecutionReport.supporting_items,
             },
           })
+          logActionPlanLlmCallResult(
+            'report-action-plan-roadmap',
+            roadmapPromptForLen.length,
+            roadmapRes
+          )
           if (roadmapRes?.ok && Array.isArray(roadmapRes.data)) {
             finalExecutionReport = normalizeExecutionReport(
               { ...finalExecutionReport, roadmap_phases: roadmapRes.data },
               reportLang
             )
+            logActionPlanDiagnosticShape('after-roadmap-from-action-plan-llm', finalExecutionReport, {
+              requestId,
+              sessionId,
+            })
           } else {
             finalExecutionReport = normalizeExecutionReport(
               {
@@ -6399,6 +6768,10 @@ export const handleReportUpdate = async (req, res) => {
               },
               reportLang
             )
+            logActionPlanDiagnosticShape('after-roadmap-from-action-plan-deterministic', finalExecutionReport, {
+              requestId,
+              sessionId,
+            })
           }
         } catch (error) {
           console.error('[report:update] roadmap-from-action-plan exception:', error)
@@ -6409,6 +6782,10 @@ export const handleReportUpdate = async (req, res) => {
             },
             reportLang
           )
+          logActionPlanDiagnosticShape('after-roadmap-from-action-plan-exception-fallback', finalExecutionReport, {
+            requestId,
+            sessionId,
+          })
         }
       }
 
@@ -6422,6 +6799,10 @@ export const handleReportUpdate = async (req, res) => {
           },
           reportLang
         )
+        logActionPlanDiagnosticShape('after-clear-legacy-action-plan-for-roadmap', finalExecutionReport, {
+          requestId,
+          sessionId,
+        })
       }
 
       const shouldPolishActionPlanCopy =
@@ -6436,6 +6817,10 @@ export const handleReportUpdate = async (req, res) => {
 	          goal: finalExecutionReport.goal,
 	        })
 	        finalExecutionReport = { ...finalExecutionReport, action_plan: polishedPlan }
+        logActionPlanDiagnosticShape('after-action-plan-copy-polish', finalExecutionReport, {
+          requestId,
+          sessionId,
+        })
 	      }
       logExecutionReportShape('final', finalExecutionReport)
       logExecutionDecisionCoverage('final', finalExecutionReport)
@@ -6522,12 +6907,23 @@ export const handleReportUpdate = async (req, res) => {
         triz: finalTrizResolved,
         execution_report: finalExecutionReport,
       }
+      logActionPlanDiagnosticShape('before-save-payload-execution-report', nextPayload.execution_report, {
+        requestId,
+        sessionId,
+      })
       const sanitized = sanitizeReportPayload(nextPayload)
+      logActionPlanDiagnosticShape('after-sanitize-save-payload-execution-report', sanitized.execution_report, {
+        requestId,
+        sessionId,
+      })
       console.log('[REPORT FINALIZE DEBUG][backend][before-save]', {
         requestId,
         sessionId,
         reportId: reportRes.data?.id ?? null,
         executionReportStage: finalExecutionReport?.stage ?? null,
+        roadmapPhasesLen: Array.isArray(finalExecutionReport?.roadmap_phases)
+          ? finalExecutionReport.roadmap_phases.length
+          : null,
         actionPlanLen: Array.isArray(finalExecutionReport?.action_plan)
           ? finalExecutionReport.action_plan.length
           : null,
@@ -6591,6 +6987,11 @@ export const handleReportUpdate = async (req, res) => {
           ? savedExecFromUpdate.validation_loop.length
           : null,
       })
+      logActionPlanDiagnosticShape('before-response-return', savedExecFromUpdate, {
+        requestId,
+        sessionId,
+        responseSource: 'updateRes',
+      })
       if (returnReport) {
         const finalReportRes = await supabaseAdmin
           .schema('public')
@@ -6620,6 +7021,15 @@ export const handleReportUpdate = async (req, res) => {
 	            ? savedExec.roadmap_phases.length
 	            : null,
 	        })
+        logActionPlanDiagnosticShape('after-save-refetch', savedExec, {
+          requestId,
+          sessionId,
+        })
+        logActionPlanDiagnosticShape('before-response-return', savedExec, {
+          requestId,
+          sessionId,
+          responseSource: 'refetch',
+        })
         res.status(200).json({
           ok: true,
           report: finalReportRes.data ?? null,
