@@ -1,7 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 
 const MAX_INPUT_CHARS = 10_000
-const ADMIN_EMAIL = 'makemyideawork@aremai.tech'
 
 export const readJsonBody = async (req) => {
   if (req.body && typeof req.body === 'object') return req.body
@@ -76,12 +75,25 @@ export const resolveDiagnosticsEnabled = async (req, res) => {
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : ''
     if (!token) return false
     const url = process.env.SUPABASE_URL || ''
-    const key = process.env.SUPABASE_ANON_KEY || ''
-    if (!url || !key) return false
-    const supabase = createClient(url, key, { auth: { persistSession: false } })
-    const { data, error } = await supabase.auth.getUser(token)
-    if (error || !data?.user?.email) return false
-    return String(data.user.email).toLowerCase() === ADMIN_EMAIL
+    const anonKey = process.env.SUPABASE_ANON_KEY || ''
+    const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+    if (!url || !anonKey) return false
+    // Use anon client to resolve the authenticated user id from the bearer token.
+    const authClient = createClient(url, anonKey, { auth: { persistSession: false } })
+    const { data, error } = await authClient.auth.getUser(token)
+    const userId = data?.user?.id ? String(data.user.id) : ''
+    if (error || !userId) return false
+    // Gate diagnostics by presence in admin_users (same rule as the admin panel).
+    if (!serviceKey) return false
+    const adminClient = createClient(url, serviceKey, { auth: { persistSession: false } })
+    const adminCheck = await adminClient
+      .schema('public')
+      .from('admin_users')
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (adminCheck.error || !adminCheck.data?.user_id) return false
+    return true
   } catch {
     return false
   }

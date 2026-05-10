@@ -59,7 +59,7 @@ import {
   isGuestMode,
   readGuestSessions,
 } from './lib/guest'
-import { DIAGNOSTICS_STORAGE_KEY, isAdminUser } from './lib/diagnostics'
+import { DIAGNOSTICS_STORAGE_KEY } from './lib/diagnostics'
 import { ReportPage } from './report/ReportPage'
 import { apiFetch } from './lib/apiFetch'
 import type { ReportSnapshot } from './report/exportCsv'
@@ -2576,7 +2576,7 @@ function App() {
     message?: string | null
     error?: string | null
   } | null>(null)
-  const isAdmin = useMemo(() => isAdminUser(authSession), [authSession])
+  const [isAdmin, setIsAdmin] = useState(false)
   const diagnosticsEnabledForUser = isAdmin && diagnosticsEnabled
   const [reportCreatePriceMinor, setReportCreatePriceMinor] = useState<number | null>(null)
   const [reportCreatePriceLoading, setReportCreatePriceLoading] = useState(false)
@@ -4740,6 +4740,40 @@ const isAuthFlowInProgress = () => {
     const stored = window.localStorage.getItem(DIAGNOSTICS_STORAGE_KEY)
     setDiagnosticsEnabled(stored === 'true')
   }, [authResolved, isAdmin])
+
+  useEffect(() => {
+    if (!authResolved) return
+    if (!client) {
+      setIsAdmin(false)
+      return
+    }
+    let cancelled = false
+    const run = async () => {
+      try {
+        const { data } = await client.auth.getSession()
+        const token = data.session?.access_token || ''
+        if (!token) {
+          if (!cancelled) setIsAdmin(false)
+          return
+        }
+        const res = await fetch('/api/admin?action=admin.check', {
+          headers: { Authorization: `Bearer ${token}` },
+        })
+        const payload = await res.json().catch(() => null)
+        if (!res.ok || !payload?.ok) {
+          if (!cancelled) setIsAdmin(false)
+          return
+        }
+        if (!cancelled) setIsAdmin(Boolean(payload.isAdmin))
+      } catch {
+        if (!cancelled) setIsAdmin(false)
+      }
+    }
+    void run()
+    return () => {
+      cancelled = true
+    }
+  }, [authResolved, authSession?.user?.id])
 
   useEffect(() => {
     if (!aiSupportEnabled) {
