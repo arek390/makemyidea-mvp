@@ -3043,6 +3043,34 @@ export const ReportPage = ({
 		                (() => {
 		                  const phases = (normalizedExecutionReport as any).roadmap_phases as any[]
 		                  const safe = (value: unknown) => sanitizeReportText(String(value || '').trim())
+		                  const formatRoadmapAdvisoryLine = (value: unknown) => {
+		                    const text = safe(value)
+		                    if (/^Czy\s/u.test(text) && !/\?\s*$/.test(text)) {
+		                      return `${text.replace(/[.!:;]\s*$/u, '')}?`
+		                    }
+		                    return text
+		                  }
+		                  const formatRoadmapActionBullet = (value: unknown) => {
+		                    const text = safe(value)
+		                    const leadingInfinitives: Array<[string, string]> = [
+		                      ['Zaprojektować', 'Zaprojektuj'],
+		                      ['Przetestować', 'Przetestuj'],
+		                      ['Ocenić', 'Oceń'],
+		                      ['Zbudować', 'Zbuduj'],
+		                      ['Zmierzyć', 'Zmierz'],
+		                      ['Porównać', 'Porównaj'],
+		                      ['Sprawdzić', 'Sprawdź'],
+		                      ['Wybrać', 'Wybierz'],
+		                    ]
+		                    for (const [infinitive, imperative] of leadingInfinitives) {
+		                      const prefix = text.slice(0, infinitive.length)
+		                      const boundary = text.length === infinitive.length || /\s/u.test(text.charAt(infinitive.length))
+		                      if (boundary && prefix.toLocaleLowerCase('pl-PL') === infinitive.toLocaleLowerCase('pl-PL')) {
+		                        return `${imperative}${text.slice(infinitive.length)}`
+		                      }
+		                    }
+		                    return text
+		                  }
 		                  return (
 		                    <ol className="report-action-plan-grouped__list">
 		                      {phases.map((phase, idx) => {
@@ -3052,9 +3080,9 @@ export const ReportPage = ({
 		                            ? `Etap ${idx + 1} — ogranicz kolejną niewiadomą`
 		                            : `Phase ${idx + 1} — reduce the next uncertainty`)
 		                        const why = safe(phase?.why_this_phase_matters || phase?.why || phase?.narrative)
-		                        const risk = safe(phase?.key_risk_or_tradeoff || phase?.risks_reduced)
-		                        const validation = safe(phase?.validation_or_test || phase?.exit_criteria)
-		                        const decision = safe(phase?.decision_unlocked || phase?.decision)
+		                        const risk = formatRoadmapAdvisoryLine(phase?.key_risk_or_tradeoff || phase?.risks_reduced)
+		                        const validation = formatRoadmapAdvisoryLine(phase?.validation_or_test || phase?.exit_criteria)
+		                        const decision = formatRoadmapAdvisoryLine(phase?.decision_unlocked || phase?.decision)
 		                        const advisoryItems = [
 		                          risk
 		                            ? {
@@ -3082,8 +3110,8 @@ export const ReportPage = ({
 		                            : []
 		                        const bullets = actions
 		                          .map((a: any) => {
-		                            if (typeof a === 'string') return safe(a)
-		                            const text = safe(a?.text || a)
+		                            if (typeof a === 'string') return formatRoadmapActionBullet(a)
+		                            const text = formatRoadmapActionBullet(a?.text || a)
 		                            const gate = safe(a?.validation_gate)
 		                            if (!text && !gate) return ''
 		                            return gate ? `${text} — ${gate}`.trim() : text
