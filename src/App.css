@@ -3409,18 +3409,24 @@
 
 .report-action-plan-grouped__memo {
   display: grid;
-  gap: 0.45rem;
+  gap: 0.5rem;
   margin: 0;
-  padding: 0.75rem 0.85rem;
-  border-left: 3px solid rgba(77, 107, 91, 0.4);
-  border-radius: 8px;
-  background: rgba(77, 107, 91, 0.08);
+  padding: 0.72rem 0.85rem;
+  border-left: 2px solid rgba(77, 107, 91, 0.28);
+  border-radius: 6px;
+  background: rgba(77, 107, 91, 0.055);
   color: #435246;
-  line-height: 1.55;
+  line-height: 1.58;
 }
 
 .report-action-plan-grouped__memo p {
   margin: 0;
+}
+
+.report-action-plan-grouped__memo-cue {
+  color: #6f7a70;
+  font-size: 0.82rem;
+  font-weight: 720;
 }
 
 .report-action-plan-grouped__other {

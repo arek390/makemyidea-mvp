@@ -3055,6 +3055,26 @@ export const ReportPage = ({
 		                        const risk = safe(phase?.key_risk_or_tradeoff || phase?.risks_reduced)
 		                        const validation = safe(phase?.validation_or_test || phase?.exit_criteria)
 		                        const decision = safe(phase?.decision_unlocked || phase?.decision)
+		                        const advisoryItems = [
+		                          risk
+		                            ? {
+		                                cue: language === 'pl' ? 'Największa niewiadoma:' : 'Main uncertainty:',
+		                                text: risk,
+		                              }
+		                            : null,
+		                          validation
+		                            ? {
+		                                cue: language === 'pl' ? 'Szukasz sygnału:' : 'Look for this signal:',
+		                                text: validation,
+		                              }
+		                            : null,
+		                          decision
+		                            ? {
+		                                cue: language === 'pl' ? 'Jeśli to się potwierdzi:' : 'If that holds:',
+		                                text: decision,
+		                              }
+		                            : null,
+		                        ].filter((item): item is { cue: string; text: string } => Boolean(item))
 		                        const actions = Array.isArray(phase?.concrete_actions)
 		                          ? phase.concrete_actions
 		                          : Array.isArray(phase?.actions)
@@ -3088,11 +3108,14 @@ export const ReportPage = ({
 		                                </ul>
 		                              </div>
 		                            ) : null}
-		                            {risk || validation || decision ? (
+		                            {advisoryItems.length ? (
 		                              <div className="report-action-plan-grouped__memo">
-		                                {risk ? <p>{risk}</p> : null}
-		                                {validation ? <p>{validation}</p> : null}
-		                                {decision ? <p>{decision}</p> : null}
+		                                {advisoryItems.map((item, advisoryIdx) => (
+		                                  <p key={`roadmap-phase-${idx}-advisory-${advisoryIdx}`}>
+		                                    <span className="report-action-plan-grouped__memo-cue">{item.cue}</span>{' '}
+		                                    {item.text}
+		                                  </p>
+		                                ))}
 		                              </div>
 		                            ) : null}
 		                          </li>
