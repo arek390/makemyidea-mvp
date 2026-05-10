@@ -3664,48 +3664,34 @@ export const handleReportUpdate = async (req, res) => {
         if (selected === 'b') return normalizeExecutionText(decision?.consequence_b)
         return ''
       }
-      const decisionLensFlags = (decisions) => {
-        const selectedText = normalizeCoverageText(
-          (Array.isArray(decisions) ? decisions : [])
-            .map((decision) =>
-              [
-                selectedDecisionOptionText(decision),
-                selectedDecisionConsequenceText(decision),
-              ]
-                .map((value) => normalizeExecutionText(value))
-                .filter(Boolean)
-                .join(' ')
-            )
-            .join(' ')
-        )
+      const rejectedDecisionOptionText = (decision) => {
+        const selected = normalizeExecutionSelectedOption(decision?.selected_option)
+        if (selected === 'a') return normalizeExecutionText(decision?.option_b)
+        if (selected === 'b') return normalizeExecutionText(decision?.option_a)
+        return ''
+      }
+      const rejectedDecisionConsequenceText = (decision) => {
+        const selected = normalizeExecutionSelectedOption(decision?.selected_option)
+        if (selected === 'a') return normalizeExecutionText(decision?.consequence_b)
+        if (selected === 'b') return normalizeExecutionText(decision?.consequence_a)
+        return ''
+      }
+      const buildDecisionDirectionContext = (decision) => {
+        const selected = normalizeExecutionSelectedOption(decision?.selected_option)
+        const selectedOptionText = selectedDecisionOptionText(decision)
+        const selectedConsequence = selectedDecisionConsequenceText(decision)
+        const rejectedOptionText = rejectedDecisionOptionText(decision)
+        const rejectedConsequence = rejectedDecisionConsequenceText(decision)
+        if (!(selected === 'a' || selected === 'b') || !selectedOptionText) return null
         return {
-          simplify:
-            /\b(simple|simpl|basic|minimal|limit|limited|reduce|reduc|prosty|prosta|proste|podstaw|ogranicz|minimaln|mvp)\b/.test(
-              selectedText
-            ),
-          implement:
-            /\b(implement|build|wdroz|wdroż|zbuduj|realiz|uruchom)\b/.test(selectedText),
-          integrate:
-            /\b(integrat|integration|ecosystem|ekosystem|voice|glos|głos|device|urzadzen|urządzen|standard|modular|modul|module|connect|komunik|laczn|łączn)\b/.test(
-              selectedText
-            ),
-          expand:
-            /\b(full|richer|advanced|more|complete|complex|rozbud|pelny|pełny|pelna|pełna|zaawans|bogatsz|szersz)\b/.test(
-              selectedText
-            ),
-          cost:
-            /\b(cost|cheap|cheaper|price|budget|koszt|tani|tansz|cena|budzet|budzet)\b/.test(selectedText),
-          reliability:
-            /\b(reliab|durab|robust|stable|trwal|trwał|niezawod|stabil)\b/.test(selectedText),
-          complexity:
-            /\b(complex|complexity|skomplik|zlozon|złożon|overengineer|overengineering)\b/.test(selectedText),
-          mvp:
-            /\b(mvp|minimum|minimal|basic|podstaw|najprost|pierwsz)\b/.test(selectedText),
-          power:
-            /\b(power|battery|bater|akumulator|zasil|ac|dc|mains|sieci)\b/.test(selectedText),
-          lightweight:
-            /\b(lightweight|light|weight|mass|lekki|lekka|lekkie|masa|wage|waga)\b/.test(selectedText),
-          selected_text: selectedText,
+          decision_title: normalizeExecutionText(decision?.tradeoff),
+          selected_option_key: selected.toUpperCase(),
+          selected_option_text: selectedOptionText,
+          selected_option_consequence: selectedConsequence,
+          rejected_option_text: rejectedOptionText,
+          rejected_option_consequence: rejectedConsequence,
+          derived_direction: [selectedOptionText, selectedConsequence].filter(Boolean).join(' - '),
+          forbidden_opposite_direction: [rejectedOptionText, rejectedConsequence].filter(Boolean).join(' - '),
         }
       }
       const approachDomainFlags = (approach) => {
@@ -3760,23 +3746,17 @@ export const handleReportUpdate = async (req, res) => {
           const inferredTheme = inferSelectedApproachTheme(approach, reportLangForTheme)
           const domain = approachDomainFlags(approach)
           const relatedDecisions = decisions.filter((decision) => decisionAffectsApproach(decision, approach))
-          const lens = decisionLensFlags(relatedDecisions.length ? relatedDecisions : decisions)
-          const selectedOptions = (relatedDecisions.length ? relatedDecisions : decisions)
-            .map((decision) => normalizeExecutionSelectedOption(decision?.selected_option))
-            .filter((selected) => selected === 'a' || selected === 'b')
-          const hasSelectedOptionB = selectedOptions.includes('b')
-          const hasSelectedOptionA = selectedOptions.includes('a')
-          const selectedOptionTextForApproach = normalizeCoverageText(
-            (relatedDecisions.length ? relatedDecisions : decisions)
-              .map((decision) => selectedDecisionOptionText(decision))
-              .filter(Boolean)
-              .join(' ')
-          )
-          const selectedBLooksSimplifying =
-            hasSelectedOptionB &&
-            /\b(simple|simpl|basic|minimal|limit|limited|reduce|reduc|prosty|prosta|proste|podstaw|ogranicz|minimaln|najprost)\b/.test(
-              selectedOptionTextForApproach
-            )
+          const decisionContexts = (relatedDecisions.length ? relatedDecisions : decisions)
+            .map((decision) => buildDecisionDirectionContext(decision))
+            .filter(Boolean)
+          const selectedDirectionText = decisionContexts
+            .map((item) => item.derived_direction)
+            .filter(Boolean)
+            .join(' | ')
+          const rejectedDirectionText = decisionContexts
+            .map((item) => item.forbidden_opposite_direction)
+            .filter(Boolean)
+            .join(' | ')
           const affectedDecisions = relatedDecisions
             .map((decision) => ({
               contradiction_index: decision?.contradiction_index ?? null,
@@ -3784,77 +3764,45 @@ export const handleReportUpdate = async (req, res) => {
               selected_option: normalizeExecutionSelectedOption(decision?.selected_option),
               selected_option_text: selectedDecisionOptionText(decision),
               selected_consequence_text: selectedDecisionConsequenceText(decision),
+              rejected_option_text: rejectedDecisionOptionText(decision),
+              rejected_consequence_text: rejectedDecisionConsequenceText(decision),
+              decision_direction_context: buildDecisionDirectionContext(decision),
             }))
             .filter((decision) => decision.tradeoff || decision.selected_option_text)
-          const shouldImplementIntegrated =
-            ((hasSelectedOptionB && !selectedBLooksSimplifying) || lens.implement || lens.integrate || lens.expand) &&
-            (domain.smart || domain.modular || domain.electronics || domain.app || domain.communication)
-          const shouldSimplify =
-            !shouldImplementIntegrated &&
-            (lens.simplify || hasSelectedOptionA) &&
-            (domain.smart || domain.modular || domain.electronics || domain.app || domain.communication)
-          const shouldValidateFirst = domain.materials || domain.power || domain.regulation || lens.reliability
-          const shouldPostpone = !shouldImplementIntegrated && shouldSimplify && (domain.modular || domain.electronics)
+          const shouldValidateFirst = domain.materials || domain.power || domain.regulation
+          const hasDecisionContext = decisionContexts.length > 0
           const interpretation =
-            shouldImplementIntegrated
+            hasDecisionContext
               ? reportLangForTheme === 'en'
-                ? 'Implement the chosen richer smart direction and manage complexity, cost, reliability, setup, and UX risks instead of reducing the scope back to basic controls.'
-                : 'Realizuj wybrany bogatszy kierunek smart i zarządzaj złożonością, kosztem, niezawodnością, konfiguracją oraz ryzykiem UX zamiast cofać zakres do podstawowego sterowania.'
-              : shouldPostpone
-              ? reportLangForTheme === 'en'
-                ? 'Treat as optional MVP complexity unless it clearly reduces risk or cost.'
-                : 'Traktuj jako opcjonalną złożoność MVP, chyba że wyraźnie zmniejsza ryzyko albo koszt.'
-              : shouldSimplify
+                ? `Interpret this selected approach through the chosen decision direction: ${selectedDirectionText}. Do not drift into the rejected direction: ${rejectedDirectionText || 'the unselected option'}.`
+                : `Interpretuj to wybrane podejście przez wybrany kierunek decyzji: ${selectedDirectionText}. Nie przechodź w odrzucony kierunek: ${rejectedDirectionText || 'niewybraną opcję'}.`
+              : shouldValidateFirst
                 ? reportLangForTheme === 'en'
-                  ? 'Simplify to the smallest useful version under the selected decision constraints.'
-                  : 'Uprość do najmniejszej użytecznej wersji zgodnej z wybranymi decyzjami.'
-                : shouldValidateFirst
-                  ? reportLangForTheme === 'en'
-                    ? 'Validate with a focused prototype before it becomes a committed product direction.'
-                    : 'Zweryfikuj celowym prototypem, zanim stanie się trwałym kierunkiem produktu.'
-                  : reportLangForTheme === 'en'
-                    ? 'Keep only the part that directly supports the selected product direction.'
-                    : 'Zostaw tylko ten zakres, który bezpośrednio wspiera wybrany kierunek produktu.'
+                  ? 'Validate with a focused prototype before it becomes a committed product direction.'
+                  : 'Zweryfikuj celowym prototypem, zanim stanie się trwałym kierunkiem produktu.'
+                : reportLangForTheme === 'en'
+                  ? 'Keep only the part that directly supports the selected product direction.'
+                  : 'Zostaw tylko ten zakres, który bezpośrednio wspiera wybrany kierunek produktu.'
           const recommendedScope =
-            shouldImplementIntegrated
+            hasDecisionContext
               ? reportLangForTheme === 'en'
-                ? 'implement and integrate selected smart scope'
-                : 'wdrażaj i integruj wybrany zakres smart'
-              : shouldPostpone
-              ? reportLangForTheme === 'en'
-                ? 'prototype-first; postpone full implementation'
-                : 'najpierw prototyp; pełną implementację odłóż'
-              : shouldSimplify
+                ? `follow selected decision direction: ${selectedDirectionText}`
+                : `podążaj za wybranym kierunkiem decyzji: ${selectedDirectionText}`
+              : shouldValidateFirst
                 ? reportLangForTheme === 'en'
-                  ? 'simplify for MVP'
-                  : 'uprość pod MVP'
-                : shouldValidateFirst
-                  ? reportLangForTheme === 'en'
-                    ? 'validate-first'
-                    : 'najpierw walidacja'
-                  : reportLangForTheme === 'en'
-                    ? 'keep if it changes the next build decision'
-                    : 'zostaw, jeśli zmienia najbliższą decyzję budowy'
-          const keepPostponeOrReject =
-            shouldImplementIntegrated
-              ? 'implement-integrate'
-              : shouldPostpone
-              ? 'postpone'
-              : shouldSimplify
-                ? 'simplify'
-                : shouldValidateFirst
                   ? 'validate-first'
-                  : 'keep'
+                  : 'najpierw walidacja'
+                : reportLangForTheme === 'en'
+                  ? 'keep if it changes the next build decision'
+                  : 'zostaw, jeśli zmienia najbliższą decyzję budowy'
+          const keepPostponeOrReject =
+            hasDecisionContext ? 'derive-from-selected-decision' : shouldValidateFirst ? 'validate-first' : 'keep'
           const keyTradeoff =
-            shouldImplementIntegrated
+            hasDecisionContext
               ? reportLangForTheme === 'en'
-                ? 'Chosen smart capability versus integration complexity, setup friction, reliability, UX clarity, team capacity, and end-user cost.'
-                : 'Wybrana funkcjonalność smart kontra złożoność integracji, tarcie konfiguracji, niezawodność, klarowność UX, kompetencje zespołu i koszt dla użytkownika.'
-              : shouldSimplify
-              ? reportLangForTheme === 'en'
-                ? 'MVP usefulness versus development time, end-user cost, reliability, and team competence.'
-                : 'Użyteczność MVP kontra czas developmentu, koszt dla użytkownika, niezawodność i kompetencje zespołu.'
-              : lens.lightweight && domain.materials
+                ? `Selected direction versus rejected alternative: ${selectedDirectionText} / ${rejectedDirectionText || 'unselected option'}.`
+                : `Wybrany kierunek kontra odrzucona alternatywa: ${selectedDirectionText} / ${rejectedDirectionText || 'niewybrana opcja'}.`
+              : domain.materials
                 ? reportLangForTheme === 'en'
                   ? 'Weight reduction versus stiffness, stability, cost, and manufacturing repeatability.'
                   : 'Redukcja masy kontra sztywność, stabilność, koszt i powtarzalność produkcji.'
@@ -3862,31 +3810,19 @@ export const handleReportUpdate = async (req, res) => {
                   ? 'Evidence gained now versus complexity added too early.'
                   : 'Dowód uzyskany teraz kontra złożoność dodana zbyt wcześnie.'
           const mvpRelevance =
-            shouldImplementIntegrated
+            hasDecisionContext
               ? reportLangForTheme === 'en'
-                ? 'high; define what stays in MVP and what moves to a later smart version'
-                : 'wysoka; określ, co zostaje w MVP, a co przechodzi do późniejszej wersji smart'
-              : shouldPostpone
-              ? reportLangForTheme === 'en'
-                ? 'conditional; include only if it reduces MVP risk or cost'
-                : 'warunkowa; uwzględnij tylko jeśli zmniejsza ryzyko albo koszt MVP'
-              : shouldSimplify
-                ? reportLangForTheme === 'en'
-                  ? 'high, but only in its simplest usable form'
-                  : 'wysoka, ale tylko w najprostszej użytecznej formie'
-                : reportLangForTheme === 'en'
-                  ? 'high if it changes the next prototype decision'
-                  : 'wysoka, jeśli zmienia najbliższą decyzję prototypową'
+                ? 'high when it directly implements or validates the selected option direction'
+                : 'wysoka, jeśli bezpośrednio wdraża albo waliduje wybrany kierunek opcji'
+              : reportLangForTheme === 'en'
+                ? 'high if it changes the next prototype decision'
+                : 'wysoka, jeśli zmienia najbliższą decyzję prototypową'
           const risk =
-            shouldImplementIntegrated
+            hasDecisionContext
               ? reportLangForTheme === 'en'
-                ? 'The selected richer direction can work, but integration, pairing/setup, latency, compatibility, reliability, and cost need active management.'
-                : 'Wybrany bogatszy kierunek może działać, ale integracja, parowanie/konfiguracja, opóźnienia, kompatybilność, niezawodność i koszt wymagają aktywnego zarządzania.'
-              : shouldSimplify || shouldPostpone
-              ? reportLangForTheme === 'en'
-                ? 'Extra features can increase development time, user cost, reliability risk, and implementation complexity.'
-                : 'Dodatkowe funkcje mogą zwiększyć czas developmentu, koszt dla użytkownika, ryzyko niezawodności i złożoność wdrożenia.'
-              : lens.lightweight && domain.materials
+                ? `The roadmap can accidentally optimize for the rejected option instead of the selected direction: ${selectedDirectionText}.`
+                : `Roadmapa może przypadkowo optymalizować pod odrzuconą opcję zamiast wybranego kierunku: ${selectedDirectionText}.`
+              : domain.materials
                 ? reportLangForTheme === 'en'
                   ? 'A lighter material can hurt stiffness, stability, cost, or manufacturing repeatability.'
                   : 'Lżejszy materiał może pogorszyć sztywność, stabilność, koszt albo powtarzalność produkcji.'
@@ -3894,22 +3830,10 @@ export const handleReportUpdate = async (req, res) => {
                   ? 'The approach can add work before the team has enough evidence to justify it.'
                   : 'Podejście może dodać pracę zanim zespół ma wystarczający dowód, że warto.'
           const dependency =
-            shouldImplementIntegrated && domain.communication
+            hasDecisionContext
               ? reportLangForTheme === 'en'
-                ? 'Depends on choosing a communication standard against range, cost, latency, compatibility, and setup effort.'
-                : 'Zależy od wyboru standardu komunikacji względem zasięgu, kosztu, opóźnień, kompatybilności i wysiłku konfiguracji.'
-              : shouldImplementIntegrated && (domain.modular || domain.electronics)
-                ? reportLangForTheme === 'en'
-                  ? 'Depends on the modular electronics architecture and the target smart feature set.'
-                  : 'Zależy od architektury modułowej elektroniki i docelowego zestawu funkcji smart.'
-                : domain.communication
-              ? reportLangForTheme === 'en'
-                ? 'Depends on the minimal interface and electronics scope chosen for MVP.'
-                : 'Zależy od minimalnego zakresu interfejsu i elektroniki wybranego dla MVP.'
-              : domain.modular || domain.electronics
-                ? reportLangForTheme === 'en'
-                  ? 'Depends on whether modularity reduces MVP risk more than it increases complexity.'
-                  : 'Zależy od tego, czy modułowość zmniejsza ryzyko MVP bardziej niż zwiększa złożoność.'
+                ? `Depends on staying consistent with the selected option: ${selectedDirectionText}.`
+                : `Zależy od spójności z wybraną opcją: ${selectedDirectionText}.`
                 : domain.materials
                   ? reportLangForTheme === 'en'
                     ? 'Depends on mechanical prototype evidence: stiffness, stability, weight, and repeatability.'
@@ -3936,28 +3860,16 @@ export const handleReportUpdate = async (req, res) => {
             mvp_relevance: mvpRelevance,
             risk,
             dependency,
-            interpreted_direction: shouldImplementIntegrated
-              ? 'implement-integrate'
-              : shouldPostpone
-                ? 'postpone'
-                : shouldSimplify
-                  ? 'simplify'
-                  : shouldValidateFirst
-                    ? 'validate-first'
-                    : 'keep',
+            interpreted_direction: hasDecisionContext
+              ? 'derive-from-selected-decision'
+              : shouldValidateFirst
+                ? 'validate-first'
+                : 'keep',
             recommended_scope: recommendedScope,
             recommended_treatment: keepPostponeOrReject,
-            selected_option_direction: hasSelectedOptionB && !selectedBLooksSimplifying
-              ? 'b_implement_integrate'
-              : hasSelectedOptionA || selectedBLooksSimplifying
-                ? 'a_simplify_or_b_simplifying'
-                : 'neutral',
-            simplify_or_expand: shouldImplementIntegrated
-              ? 'expand_manage'
-              : shouldSimplify || shouldPostpone
-                ? 'simplify'
-                : 'keep_narrow',
-            prototype_priority: shouldImplementIntegrated || shouldValidateFirst || shouldSimplify ? 'high' : 'medium',
+            decision_direction_contexts: decisionContexts,
+            simplify_or_expand: hasDecisionContext ? 'derive_from_selected_option_text' : 'keep_narrow',
+            prototype_priority: hasDecisionContext || shouldValidateFirst ? 'high' : 'medium',
             postpone_or_keep: keepPostponeOrReject,
             key_tradeoff: keyTradeoff,
           }
@@ -4205,81 +4117,35 @@ export const handleReportUpdate = async (req, res) => {
         return decisions.map((decision) => {
           const selected = normalizeExecutionSelectedOption(decision?.selected_option)
           const selectedText = selectedDecisionOptionText(decision)
-          const oppositeText =
-            selected === 'a'
-              ? normalizeExecutionText(decision?.option_b)
-              : selected === 'b'
-                ? normalizeExecutionText(decision?.option_a)
-                : ''
+          const oppositeText = [
+            rejectedDecisionOptionText(decision),
+            rejectedDecisionConsequenceText(decision),
+          ]
+            .filter(Boolean)
+            .join(' ')
           const selectedStems = decisionOptionStems(
             [selectedText, selectedDecisionConsequenceText(decision)].join(' ')
           )
           const oppositeStems = decisionOptionStems(oppositeText)
-          const direction = decisionLensFlags([decision])
-          const smartDecision = /\b(smart|app|aplikac|interface|interfejs|communication|komunik|electronic|elektronik|software|oprogram|modul|module|modular)\b/.test(
-            normalizeCoverageText(
-              [
-                decision?.tradeoff,
-                decision?.option_a,
-                decision?.option_b,
-                selectedText,
-                selectedDecisionConsequenceText(decision),
-              ]
-                .map((value) => normalizeExecutionText(value))
-                .filter(Boolean)
-                .join(' ')
-            )
-          )
-          const selectedBLooksSimplifying =
-            selected === 'b' &&
-            /\b(simple|simpl|basic|minimal|limit|limited|reduce|reduc|prosty|prosta|proste|podstaw|ogranicz|minimaln|najprost)\b/.test(
-              normalizeCoverageText(selectedText)
-            )
-          const interpretedDirection =
-            (selected === 'b' && smartDecision && !selectedBLooksSimplifying) ||
-            direction.integrate ||
-            direction.expand ||
-            direction.implement
-              ? 'implement-integrate'
-              : direction.simplify
-                ? 'simplify'
-                : 'neutral'
-          const directionConflict =
-            interpretedDirection === 'implement-integrate'
-              ? /\b(limit|limited|basic|minimaln|minimaliz|reduce|avoid|prosty|upros|podstawow|ogranicz|najprost|najwazniejszych sterowan|minimalny zestaw)\b/.test(roadmapMainDirectionText)
-              : interpretedDirection === 'simplify'
-                ? /\b(full|advanced|richer|complete|rozbud|pelny|pełny|zaawans)\b/.test(roadmapMainDirectionText)
-                : false
-          const forbiddenLanguageHits =
-            interpretedDirection === 'implement-integrate'
-              ? [
-                  ['limit', /\blimit\b/.test(roadmapMainDirectionText)],
-                  ['basic', /\bbasic\b/.test(roadmapMainDirectionText)],
-                  ['minimalizacja', /\b(minimaln|minimaliz)/.test(roadmapMainDirectionText)],
-                  ['uprość', /\bupros/.test(roadmapMainDirectionText)],
-                  ['ogranicz', /\bogranicz/.test(roadmapMainDirectionText)],
-                  ['podstawowe funkcje', /\bpodstawow/.test(roadmapMainDirectionText)],
-                  ['najprostsza wersja', /\bnajprost/.test(roadmapMainDirectionText)],
-                  ['minimalny zestaw', /\bminimaln/.test(roadmapMainDirectionText)],
-                ]
-                  .filter(([, hit]) => hit)
-                  .map(([label]) => label)
-              : []
+          const oppositeOptionLeak = oppositeStems.length
+            ? oppositeStems.some((stem) => roadmapText.includes(stem))
+            : false
+          const forbiddenLanguageHits = oppositeStems.filter((stem) => roadmapMainDirectionText.includes(stem))
+          const selectedOptionCovered = selectedStems.length
+            ? selectedStems.some((stem) => roadmapText.includes(stem))
+            : false
           return {
             contradiction_index: decision?.contradiction_index ?? null,
             tradeoff: normalizeExecutionText(decision?.tradeoff),
             selected_option: selected,
             selected_option_text: selectedText,
-            interpreted_direction: interpretedDirection,
-            selected_b_looks_simplifying: selectedBLooksSimplifying,
-            selected_option_covered: selectedStems.length
-              ? selectedStems.some((stem) => roadmapText.includes(stem))
-              : false,
-            opposite_option_leak: oppositeStems.length
-              ? oppositeStems.some((stem) => roadmapText.includes(stem))
-              : false,
+            decision_direction_context: buildDecisionDirectionContext(decision),
+            interpreted_direction: 'derive-from-selected-option-text',
+            selected_option_covered: selectedOptionCovered,
+            selected_option_missing: selectedStems.length > 0 && !selectedOptionCovered,
+            opposite_option_leak: oppositeOptionLeak,
             forbidden_language_hits: forbiddenLanguageHits,
-            direction_conflict: directionConflict,
+            direction_conflict: oppositeOptionLeak,
           }
         })
       }
@@ -4288,6 +4154,7 @@ export const handleReportUpdate = async (req, res) => {
         coverage.some(
           (item) =>
             item?.direction_conflict === true ||
+            item?.selected_option_missing === true ||
             (item?.interpreted_direction !== 'neutral' && item?.opposite_option_leak === true)
         )
 
@@ -5310,6 +5177,10 @@ export const handleReportUpdate = async (req, res) => {
               }))
               .filter((d) => d.tradeoff && (d.selected_option === 'a' || d.selected_option === 'b'))
           : []
+      const getDecisionDirectionContextsForPrompt = () =>
+        getSelectedDecisionsForPrompt()
+          .map((decision) => buildDecisionDirectionContext(decision))
+          .filter(Boolean)
       const getSelectedRoadmapThemesForPrompt = () =>
         buildSelectedRoadmapThemes(getSelectedTrizApproachesForPrompt(), reportLang)
       const getApproachInterpretationsForPrompt = () =>
@@ -5393,6 +5264,7 @@ export const handleReportUpdate = async (req, res) => {
           selected_roadmap_themes: getSelectedRoadmapThemesForPrompt(),
           approach_interpretations: getApproachInterpretationsForPrompt(),
           selected_decisions: getSelectedDecisionsForPrompt(),
+          decision_direction_contexts: getDecisionDirectionContextsForPrompt(),
           roadmap_scope_contract: {
             primary_scope_source: 'approach_interpretations',
             selected_approach_count: getSelectedTrizApproachesForPrompt().length,
@@ -5480,12 +5352,11 @@ export const handleReportUpdate = async (req, res) => {
               'approach_interpretations are the semantic source of the roadmap: selected TRIZ approaches define WHAT gets explored; selected decisions define HOW each approach is interpreted, constrained, simplified, prioritized, postponed, or rejected.',
               'When present, selected_roadmap_themes are only clustering helpers. Do not generate phases directly from broad product categories when approach_interpretations gives a narrower interpretation.',
               'If selected_triz_approaches is non-empty, treat those selected approaches as required design inputs and the primary roadmap scope, not optional background context.',
-              'A/B decisions are not roadmap topics. They are interpretation lenses for selected approaches. A decision like simple smart functionality should reduce/simplify selected smart approaches, not create a generic smart-functions phase.',
-              'Selected decision option direction is binding. If option A means limit/simplify, roadmap language should reduce scope and validate minimal value. If option B means fuller implementation/integration, roadmap language should support implementation and integration while managing risks.',
-              'Risk language must not override the selected decision. For an integration/advanced option, mention complexity, cost, reliability, setup, and UX risks as things to manage, not as reasons to revert to the simpler option.',
-              'For smart option B / implement-integrate direction, do not use "uprość", "ogranicz", "minimalizacja", "podstawowe funkcje", "minimalny zestaw", or "najprostsza wersja" as the main phase direction. Those words are allowed only as a secondary risk-control boundary inside a broader implementation/integration plan.',
-              'Example: if selected approaches are app interface, modular electronics, and communication standards, and the selected decision says to keep smart functionality simple, the roadmap should decide the simplest viable interface, test whether modular electronics are worth MVP complexity, choose minimal/cheap communication standards, and possibly postpone or reject excess complexity.',
-              'Example: if selected approaches are app interface, modular electronics, and communication standards, and the selected decision says to implement fuller smart integration, the roadmap should define the target smart feature set, design modular electronics, choose communication standards, build an integrated smart-control prototype, and test UX/reliability/setup/cost impact.',
+              'A/B decisions are not roadmap topics. They are local interpretation lenses for selected approaches. Never infer meaning from the letter A or B.',
+              'Selected decision option direction is binding because of selected_option_text and selected_option_consequence, not because of the option key. Treat rejected_option_text and rejected_option_consequence as the forbidden opposite direction.',
+              'Before writing roadmap phases, derive each decision direction from decision_direction_contexts in plain product/architecture language, e.g. AC-only architecture, hybrid AC+battery architecture, mechanical regulation, electronic regulation, light composite structure, heavier stable base, minimal smart scope, or advanced smart integration.',
+              'Use the derived decision direction only when it follows from the selected option text/consequence and contradiction context. Do not apply global simplify/expand, reduce/increase, min/max heuristics to option A or B.',
+              'Risk language must not override the selected option. Manage the risks of the chosen architecture/product direction instead of steering back to the rejected option.',
               'Generate roadmap phases from the interaction between approach_interpretations and selected_decisions. The phase should answer what to keep, simplify, postpone, reject, prototype first, or validate first.',
               'Do not automatically generate dedicated phases for materials, smart systems, power, regulation, modularity, or production. Such phases are allowed only when they map to approach_interpretations or are strictly required as a constraint inside an interpreted selected approach.',
               'Every selected_triz_approaches item must either appear directly in one roadmap phase or be explicitly merged with a related selected approach in that phase. Do not ignore selected approaches.',
@@ -5583,7 +5454,7 @@ export const handleReportUpdate = async (req, res) => {
                     'In this retry, do not use selected_decisions to create broad product phases. Use them only as interpretation lenses for selected TRIZ approach work.',
                     'Remove generic material/smart/power/regulation/production phases unless they map to approach_interpretations.',
                     'Reduce phase count when selected scope is narrow. One interpreted approach must not produce a full system roadmap.',
-                    'If retry focus mentions decision_option_coverage or DECISION_OPTION_DIRECTION_CONFLICT, rewrite roadmap language to follow the selected option direction. For implement/integrate decisions, do not use simplify/minimal/basic language as the main direction.',
+                    'If retry focus mentions decision_option_coverage or DECISION_OPTION_DIRECTION_CONFLICT, rewrite roadmap language to follow selected_option_text and selected_option_consequence, and remove drift into rejected_option_text or rejected_option_consequence.',
                     'Name or clearly reference the missing selected approach themes inside phase text.',
                   ]
                 : []),
@@ -6778,43 +6649,17 @@ export const handleReportUpdate = async (req, res) => {
                 selectedDecisionsCount: selectedDecisionsForPrompt.length,
                 selectedDecisionOptions: selectedDecisionsForPrompt,
                 selectedDecisionDirectionDiagnostics: selectedDecisionsForPrompt.map((decision) => {
-                  const direction = decisionLensFlags([decision])
                   const selected = normalizeExecutionSelectedOption(decision?.selected_option)
-                  const smartDecision = /\b(smart|app|aplikac|interface|interfejs|communication|komunik|electronic|elektronik|software|oprogram|modul|module|modular)\b/.test(
-                    normalizeCoverageText(
-                      [
-                        decision?.tradeoff,
-                        decision?.option_a,
-                        decision?.option_b,
-                        selectedDecisionOptionText(decision),
-                        selectedDecisionConsequenceText(decision),
-                      ]
-                        .map((value) => normalizeExecutionText(value))
-                        .filter(Boolean)
-                        .join(' ')
-                    )
-                  )
-                  const selectedBLooksSimplifying =
-                    selected === 'b' &&
-                    /\b(simple|simpl|basic|minimal|limit|limited|reduce|reduc|prosty|prosta|proste|podstaw|ogranicz|minimaln|najprost)\b/.test(
-                      normalizeCoverageText(selectedDecisionOptionText(decision))
-                    )
                   return {
                     contradiction_index: decision?.contradiction_index ?? null,
                     tradeoff: normalizeExecutionText(decision?.tradeoff),
                     selected_option: selected,
                     selected_option_text: selectedDecisionOptionText(decision),
                     selected_consequence_text: selectedDecisionConsequenceText(decision),
-                    selected_b_looks_simplifying: selectedBLooksSimplifying,
-                    interpreted_direction:
-                      (selected === 'b' && smartDecision && !selectedBLooksSimplifying) ||
-                      direction.integrate ||
-                      direction.expand ||
-                      direction.implement
-                        ? 'implement-integrate'
-                        : direction.simplify
-                          ? 'simplify'
-                          : 'neutral',
+                    rejected_option_text: rejectedDecisionOptionText(decision),
+                    rejected_consequence_text: rejectedDecisionConsequenceText(decision),
+                    decision_direction_context: buildDecisionDirectionContext(decision),
+                    interpreted_direction: 'derive-from-selected-option-text',
                   }
                 }),
                 selectedApproachesCount: selectedTrizApproachesForPrompt.length,
@@ -6829,7 +6674,7 @@ export const handleReportUpdate = async (req, res) => {
                 approachInterpretationSummary: approachInterpretationsForPrompt.map((item) => ({
                   approach_title: item?.selected_approach?.approach_title,
                   interpreted_direction: item?.interpreted_direction,
-                  selected_option_direction: item?.selected_option_direction,
+                  decision_direction_contexts: item?.decision_direction_contexts,
                   recommended_scope: item?.recommended_scope,
                   recommended_treatment: item?.recommended_treatment,
                   postpone_or_keep: item?.postpone_or_keep,
@@ -6839,6 +6684,9 @@ export const handleReportUpdate = async (req, res) => {
                 })),
                 promptPayloadSummary: {
                   selected_decisions: selectedDecisionsForPrompt,
+                  decision_direction_contexts: selectedDecisionsForPrompt
+                    .map((decision) => buildDecisionDirectionContext(decision))
+                    .filter(Boolean),
                   selected_triz_approaches: selectedTrizApproachesForPrompt.map((item) => ({
                     contradiction_index: item.contradiction_index,
                     approach_index: item.approach_index,
@@ -6855,7 +6703,7 @@ export const handleReportUpdate = async (req, res) => {
                     approach_title: item?.selected_approach?.approach_title,
                     affected_by_decisions: item?.affected_by_decisions,
                     interpreted_direction: item?.interpreted_direction,
-                    selected_option_direction: item?.selected_option_direction,
+                    decision_direction_contexts: item?.decision_direction_contexts,
                     recommended_scope: item?.recommended_scope,
                     recommended_treatment: item?.recommended_treatment,
                     mvp_relevance: item?.mvp_relevance,
