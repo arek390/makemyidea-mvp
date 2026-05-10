@@ -1210,6 +1210,111 @@ const stripRoadmapAdvisoryCueText = (value) => {
   return text.replace(leadingCuePattern, '').replace(/\s+/gu, ' ').trim()
 }
 
+const truncateRoadmapPhaseTitle = (value) => {
+  const text = normalizeExecutionText(value)
+  if (!text || text.length <= 110) return text
+  return `${text.slice(0, 107).trim()}...`
+}
+
+const lowerFirstRoadmapWord = (value) => {
+  const text = normalizeExecutionText(value)
+  if (!text) return ''
+  return `${text[0].toLowerCase()}${text.slice(1)}`
+}
+
+const isAbstractRoadmapPhaseTitleStart = (title, lang) => {
+  const key = normalizeQualityKey(title)
+  if (!key) return false
+  if (lang === 'pl') {
+    return /^(integracja|wdrozenie|optymalizacja|stabilna|modulowa)\b/.test(key)
+  }
+  return /^(integration|implementation|optimization|stable|modular)\b/.test(key)
+}
+
+const rewriteRoadmapPhaseTitleToImperative = (phase, lang) => {
+  const title = normalizeExecutionText(phase?.phase_title || phase?.title)
+  if (!title || startsWithImperativeVerb(title, lang)) return title
+  if (!isAbstractRoadmapPhaseTitleStart(title, lang)) return title
+
+  const actions = Array.isArray(phase?.concrete_actions) ? phase.concrete_actions : []
+  const firstImperativeAction = actions
+    .map((action) => normalizeExecutionText(action))
+    .find((action) => startsWithImperativeVerb(action, lang))
+  if (firstImperativeAction) {
+    return truncateRoadmapPhaseTitle(firstImperativeAction.replace(/[.;]\s*$/u, ''))
+  }
+
+  if (lang === 'pl') {
+    const titleLower = normalizeQualityKey(title)
+    if (/^integracja\b/.test(titleLower)) {
+      return truncateRoadmapPhaseTitle(title.replace(/^Integracja\s+/iu, 'Zintegruj '))
+    }
+    if (/^wdrozenie\b/.test(titleLower)) {
+      return truncateRoadmapPhaseTitle(title.replace(/^Wdrożenie\s+/iu, 'Wdroż '))
+    }
+    if (/^optymalizacja\b/.test(titleLower)) {
+      const rest = title.replace(/^Optymalizacja\s*/iu, '').trim()
+      return truncateRoadmapPhaseTitle(rest ? `Zmierz efekt optymalizacji ${lowerFirstRoadmapWord(rest)}` : 'Zmierz efekt optymalizacji')
+    }
+    if (/^stabilna\b/.test(titleLower)) {
+      if (/^stabilna podstawa\b/iu.test(title)) return 'Przetestuj stabilność podstawy'
+      if (/^stabilna konstrukcja\b/iu.test(title)) return 'Przetestuj stabilność konstrukcji'
+      const rest = title.replace(/^Stabilna\s*/iu, '').trim()
+      return truncateRoadmapPhaseTitle(rest ? `Przetestuj stabilność ${lowerFirstRoadmapWord(rest)}` : 'Przetestuj stabilność prototypu')
+    }
+    if (/^modulowa\b/.test(titleLower)) {
+      if (/^modułowa elektronika\b/iu.test(title)) return 'Zbuduj prototyp modułowej elektroniki'
+      if (/^modułowa konstrukcja\b/iu.test(title)) return 'Zbuduj prototyp modułowej konstrukcji'
+      return truncateRoadmapPhaseTitle(`Zbuduj prototyp: ${title}`)
+    }
+  } else {
+    const titleLower = normalizeQualityKey(title)
+    if (/^integration\b/.test(titleLower)) {
+      return truncateRoadmapPhaseTitle(title.replace(/^Integration\s+(of\s+)?/iu, 'Integrate '))
+    }
+    if (/^implementation\b/.test(titleLower)) {
+      return truncateRoadmapPhaseTitle(title.replace(/^Implementation\s+(of\s+)?/iu, 'Implement '))
+    }
+    if (/^optimization\b/.test(titleLower)) {
+      const rest = title.replace(/^Optimization\s*/iu, '').trim()
+      return truncateRoadmapPhaseTitle(rest ? `Measure optimization impact on ${lowerFirstRoadmapWord(rest)}` : 'Measure optimization impact')
+    }
+    if (/^stable\b/.test(titleLower)) {
+      const rest = title.replace(/^Stable\s*/iu, '').trim()
+      return truncateRoadmapPhaseTitle(rest ? `Test stability of ${lowerFirstRoadmapWord(rest)}` : 'Test prototype stability')
+    }
+    if (/^modular\b/.test(titleLower)) {
+      return truncateRoadmapPhaseTitle(`Build a modular prototype for ${lowerFirstRoadmapWord(title.replace(/^Modular\s*/iu, '').trim()) || 'the selected approach'}`)
+    }
+  }
+  return title
+}
+
+const applyRoadmapPhaseTitleQualityGuard = (report, lang) => {
+  const roadmapPhases = Array.isArray(report?.roadmap_phases) ? report.roadmap_phases : []
+  if (!roadmapPhases.length) {
+    return { report, changedTitles: [] }
+  }
+  const changedTitles = []
+  const nextPhases = roadmapPhases.map((phase, index) => {
+    const before = normalizeExecutionText(phase?.phase_title)
+    const after = rewriteRoadmapPhaseTitleToImperative(phase, lang)
+    if (after && before && after !== before) {
+      changedTitles.push({ index, before, after })
+      return { ...phase, phase_title: after }
+    }
+    return phase
+  })
+  if (!changedTitles.length) return { report, changedTitles }
+  return {
+    report: {
+      ...report,
+      roadmap_phases: nextPhases,
+    },
+    changedTitles,
+  }
+}
+
 const coerceExecutionRoadmapPhase = (value, lang, index = 0) => {
   if (!value || typeof value !== 'object') return null
   const rawTitle = normalizeExecutionText(value.phase_title || value.title || value.name)
@@ -5669,15 +5774,18 @@ export const handleReportUpdate = async (req, res) => {
                   'Treat selected_option_text and selected_option_consequence as binding. Treat rejected_option_text and rejected_option_consequence as forbidden opposite direction.',
                   'Do not generate a generic product lifecycle roadmap or a fixed materials/smart/power/regulation/production sequence.',
                   'Do not create phases for unselected approaches unless strictly required as a constraint inside a selected approach phase.',
+                  'Each roadmap phase must be a concrete validation sprint for the next 2-4 weeks, not a topic summary.',
+                  'phase_title must be imperative and action-oriented: Polish starts with Zbuduj, Przetestuj, Zmierz, Porównaj, Wybierz; English starts with Build, Test, Measure, Compare, Choose. Avoid abstract noun titles such as Integracja/Wdrożenie/Optymalizacja or Integration/Implementation/Optimization.',
+                  'concrete_actions must be 2-4 short physical or analytical tasks: build a prototype, run a test, measure a metric, compare variants, test with users, choose or reject a direction.',
+                  'Add provisional measurable thresholds when useful. Use "roboczy próg" / "working threshold" for inferred limits such as max weight, tilt angle, setup time, assembly cycles, runtime, failure rate, user acceptance, or cost ceiling.',
                   'Group selected approaches into coherent phases. Keep every selected approach traceable in a phase title, paragraph, action, signal, or decision.',
                   'Roadmap size must scale with selected scope: 1 approach => 2-3 focused phases; 2-4 approaches => 3-4 phases; 5+ approaches => 4-6 grouped phases only when integration justifies it.',
                   'If an approach_interpretations item says modular electronics should validate one simple MVP module first, do not make scalable variants, higher-version extensions, or full modular architecture active implementation work.',
                   'If an approach_interpretations item says modular electronics should implement advanced smart modular architecture, variants and extension paths may be active implementation work, with cost/reliability/setup-risk controls.',
                   'Risk language must manage the chosen direction, not steer back to the rejected option.',
                   'Write like a senior product engineer or R&D lead: concrete, advisory, practical, and not a template.',
-                  'concrete_actions must contain 2-3 direct practical instructions. In Polish use imperative verbs such as Zaprojektuj, Zbuduj, Przetestuj, Zmierz, Porównaj, Sprawdź, Wybierz.',
-                  'validation_or_test should name the signal that justifies continuing, pivoting, or stopping.',
-                  'decision_unlocked should be a concrete next founder/R&D move, not a report label. Avoid "Decyzja o...", "Wybór...", "Potwierdzenie...", "Ocena zasadności...".',
+                  'validation_or_test should name one measurable signal that justifies continuing, pivoting, or stopping, preferably with a threshold.',
+                  'decision_unlocked should be a concrete next founder/R&D action: Wybierz, Zdecyduj, Odrzuć, Zamroź, Przejdź dalej dopiero gdy. Avoid "Decyzja o...", "Wybór...", "Potwierdzenie...", "Ocena zasadności...".',
                   'If validation_or_test or decision_unlocked starts with "Czy", "Should", or "Can", write it as a proper question ending with "?".',
                   'Do not include technology_options or done_when. Do not return legacy checklist content.',
                   ...(retryReasons.length
@@ -5746,7 +5854,7 @@ export const handleReportUpdate = async (req, res) => {
               'phase_title must be semantic and specific. Never return only "Etap", "Faza", "Phase", or "Stage"; name the uncertainty, product proof point, engineering risk, or milestone being reduced.',
               'why_this_phase_matters should be a short advisory paragraph. Explain why this phase matters now, why it should happen before later work, and what is intentionally not worth optimizing yet.',
               'key_risk_or_tradeoff should read like a caution from an experienced builder. Mention overengineering, premature complexity, cost/weight/footprint/setup friction/manufacturing repeatability, or other concrete constraints when supported.',
-              'concrete_actions should contain 2–3 concrete moves max. Avoid long procedural lists. Use grounded build/test/check moves only when they clarify the phase reasoning.',
+              'concrete_actions should contain 2–4 concrete moves. Avoid long procedural lists. Use grounded build/test/check/measure/compare moves only when they clarify the phase reasoning.',
               'roadmap_phases.concrete_actions must read as direct practical instructions, not impersonal infinitives. In Polish, start with imperative verbs such as "Zaprojektuj", "Zbuduj", "Przetestuj", "Zmierz", "Porównaj", "Sprawdź", "Wybierz" instead of "Zaprojektować", "Zbudować", "Przetestować", "Zmierzyć", "Porównać", "Sprawdzić", "Wybrać". In English, start with imperative verbs such as "Design", "Build", "Test", "Measure", "Compare", "Check", "Choose".',
               'validation_or_test should name the signal that would justify continuing, pivoting, or stopping. Prefer observed user behavior, prototype comparison, metric, physical constraint, cost boundary, or feasibility check over abstract validation.',
               'decision_unlocked should read like an unlocked next strategic move (founder/R&D decision), not a report label. Prefer direct, practical, decision-oriented sentences (often starting with an imperative verb). In Polish: "Zdecyduj…", "Podejmij decyzję…", "Wybierz…", "Ogranicz…", "Przejdź dalej dopiero gdy…", "Zostaw… jeśli…". Avoid passive/document phrasing like "Decyzja o…", "Wybór…", "Potwierdzenie…", "Ocena zasadności…". It is OK to leave decision_unlocked empty when it would be redundant or forced.',
@@ -5839,8 +5947,8 @@ export const handleReportUpdate = async (req, res) => {
 
         const roadmapLanguageInstructions =
           reportLang === 'en'
-            ? 'Roadmap language: roadmap_phases.concrete_actions must read as direct practical instructions, not impersonal infinitives. Start with imperative verbs such as "Design", "Build", "Test", "Measure", "Compare", "Check", "Choose". If validation_or_test or decision_unlocked starts with "Should" or "Can", write it as a proper question and end it with "?".'
-            : 'Język roadmapy: roadmap_phases.concrete_actions mają brzmieć jak bezpośrednie, praktyczne instrukcje, nie bezosobowe bezokoliczniki. Zaczynaj od trybu rozkazującego: "Zaprojektuj", "Zbuduj", "Przetestuj", "Zmierz", "Porównaj", "Sprawdź", "Wybierz" zamiast "Zaprojektować", "Zbudować", "Przetestować", "Zmierzyć", "Porównać", "Sprawdzić", "Wybrać". Jeśli validation_or_test albo decision_unlocked zaczyna się od "Czy", zapisz to jako poprawne pytanie i zakończ znakiem "?".'
+            ? 'Roadmap language: phase_title and concrete_actions must read as direct practical instructions. Start with imperative verbs such as "Build", "Test", "Measure", "Compare", "Check", "Choose"; avoid abstract noun titles like Integration, Implementation, Optimization. If validation_or_test or decision_unlocked starts with "Should" or "Can", write it as a proper question and end it with "?".'
+            : 'Język roadmapy: phase_title i concrete_actions mają brzmieć jak bezpośrednie, praktyczne instrukcje. Zaczynaj od trybu rozkazującego: "Zbuduj", "Przetestuj", "Zmierz", "Porównaj", "Sprawdź", "Wybierz"; unikaj rzeczownikowych tytułów typu "Integracja", "Wdrożenie", "Optymalizacja". Jeśli validation_or_test albo decision_unlocked zaczyna się od "Czy", zapisz to jako poprawne pytanie i zakończ znakiem "?".'
         const selectedScopeInstructions =
           reportLang === 'en'
             ? 'Selected scope rule: when approach_interpretations is non-empty, generate the roadmap ONLY from approach_interpretations. selected_decisions are interpretation lenses only, and the selected option direction is binding. If the selected option is fuller implementation/integration, support that direction and manage risk instead of reverting to simplification. Do not generate broad product phases from selected decisions or full product context. If exactly one selected_triz_approaches item is present, return only 2-3 focused phases inside that one interpreted approach scope. Never append a generic production/readiness phase unless the interpreted approach requires it.'
@@ -6356,7 +6464,7 @@ export const handleReportUpdate = async (req, res) => {
               'phase_title must name the concrete uncertainty, milestone, or engineering objective. Never return only "Etap", "Faza", "Phase", or "Stage".',
               'why_this_phase_matters should explain why this phase matters now, why it comes before later work, and what should intentionally wait.',
               'key_risk_or_tradeoff should read like a practical caution: what could invalidate the direction, what complexity may be premature, or what tradeoff constrains the next move.',
-              'concrete_actions should contain 2–3 specific build/test/check moves max. Actions are supporting evidence, not the main artifact.',
+              'concrete_actions should contain 2–4 specific build/test/check/measure/compare moves. Actions are supporting evidence, not the main artifact.',
               'roadmap_phases.concrete_actions must read as direct practical instructions, not impersonal infinitives. In Polish, start with imperative verbs such as "Zaprojektuj", "Zbuduj", "Przetestuj", "Zmierz", "Porównaj", "Sprawdź", "Wybierz" instead of "Zaprojektować", "Zbudować", "Przetestować", "Zmierzyć", "Porównać", "Sprawdzić", "Wybrać". In English, start with imperative verbs such as "Design", "Build", "Test", "Measure", "Compare", "Check", "Choose".',
               'validation_or_test should describe the signal that justifies continuing, pivoting, or stopping: a practical test, prototype comparison, metric, observed behavior, or constraint check.',
               'decision_unlocked should read like an unlocked next strategic move (founder/R&D decision), not a report label. Prefer direct, practical, decision-oriented sentences (often starting with an imperative verb). Avoid passive/document phrasing like "Decision to…", "Choice of…", "Confirmation of…", "Assessment of…". It is OK to leave decision_unlocked empty when it would be redundant or forced.',
@@ -6368,7 +6476,7 @@ export const handleReportUpdate = async (req, res) => {
               'Avoid generic strategic filler such as "develop the product", "optimize the experience", "prepare for market", "improve UX", or "scale the solution" unless the same sentence names the concrete artifact, test condition, metric, and decision.',
               'Avoid generic lifecycle endings such as preparing marketing materials or launching unless grounded in concrete product-readiness evidence.',
               'Avoid abstract PM wording such as implementation, analysis, evaluation, ensuring, preparation, optimization, or validation when a concrete build/test/observe/compare/check phrasing is possible.',
-              'Avoid rigid imperative verbs as phase titles.',
+              'Phase titles should be action-oriented and may start with an imperative verb when it makes the sprint more executable.',
               reportLang === 'en' ? 'Output must be in English.' : 'Całość po polsku.',
             ],
           },
@@ -7169,7 +7277,9 @@ export const handleReportUpdate = async (req, res) => {
                 })
               }
               if (execResult?.ok && execResult.data && typeof execResult.data === 'object') {
-                const firstGeneratedForCoverage = normalizeExecutionReport(execResult.data, reportLang)
+                const firstNormalizedForCoverage = normalizeExecutionReport(execResult.data, reportLang)
+                const firstTitleGuard = applyRoadmapPhaseTitleQualityGuard(firstNormalizedForCoverage, reportLang)
+                const firstGeneratedForCoverage = firstTitleGuard.report
                 const firstCoverage = evaluateSelectedTrizCoverage(
                   firstGeneratedForCoverage,
                   selectedTrizApproachesForPrompt
@@ -7217,6 +7327,8 @@ export const handleReportUpdate = async (req, res) => {
                   rawRoadmapPhases: summarizeRoadmapPhaseDiagnostics(execResult.data),
                   normalizedRoadmapPhases: summarizeRoadmapPhaseDiagnostics(firstGeneratedForCoverage),
                   normalizedRoadmapPhaseTitles: firstCoverage.phaseTitles,
+                  roadmapTitleQualityGuardChanged: firstTitleGuard.changedTitles.length > 0,
+                  roadmapTitleQualityGuardChanges: firstTitleGuard.changedTitles,
                   retryNeeded: firstCoverageRetryNeeded,
                 })
                 if (firstCoverageRetryNeeded) {
@@ -7288,7 +7400,9 @@ export const handleReportUpdate = async (req, res) => {
                       : {}),
                   })
                   if (retryResult?.ok && retryResult.data && typeof retryResult.data === 'object') {
-                    const retryGeneratedForCoverage = normalizeExecutionReport(retryResult.data, reportLang)
+                    const retryNormalizedForCoverage = normalizeExecutionReport(retryResult.data, reportLang)
+                    const retryTitleGuard = applyRoadmapPhaseTitleQualityGuard(retryNormalizedForCoverage, reportLang)
+                    const retryGeneratedForCoverage = retryTitleGuard.report
                     const retryCoverage = evaluateSelectedTrizCoverage(
                       retryGeneratedForCoverage,
                       selectedTrizApproachesForPrompt
@@ -7332,6 +7446,8 @@ export const handleReportUpdate = async (req, res) => {
                       rawRoadmapPhases: summarizeRoadmapPhaseDiagnostics(retryResult.data),
                       normalizedRoadmapPhases: summarizeRoadmapPhaseDiagnostics(retryGeneratedForCoverage),
                       normalizedRoadmapPhaseTitles: retryCoverage.phaseTitles,
+                      roadmapTitleQualityGuardChanged: retryTitleGuard.changedTitles.length > 0,
+                      roadmapTitleQualityGuardChanges: retryTitleGuard.changedTitles,
                     })
                     execResult = retryResult
                     actionPlanUsageAlreadyRecorded = false
@@ -7392,7 +7508,9 @@ export const handleReportUpdate = async (req, res) => {
                   requestId,
                   sessionId,
                 })
-                const generated = normalizeExecutionReport(execResult.data, reportLang)
+                const normalizedGenerated = normalizeExecutionReport(execResult.data, reportLang)
+                const titleGuard = applyRoadmapPhaseTitleQualityGuard(normalizedGenerated, reportLang)
+                const generated = titleGuard.report
                 logFinalizeTrace('after_normalize_report_action_plan_result', generated, {
                   requestId,
                   sessionId,
@@ -7436,6 +7554,8 @@ export const handleReportUpdate = async (req, res) => {
                     roadmapDiagnosticSignature(generated) === existingRoadmapSignature,
 	                  normalizedRoadmapPhases: summarizeRoadmapPhaseDiagnostics(generated),
 	                  normalizedRoadmapPhaseTitles: normalizedCoverage.phaseTitles,
+                  roadmapTitleQualityGuardChanged: titleGuard.changedTitles.length > 0,
+                  roadmapTitleQualityGuardChanges: titleGuard.changedTitles,
                   fallbackOrRewriteTriggered: false,
                 })
                 const allowCompleted = Boolean(
@@ -7550,6 +7670,8 @@ export const handleReportUpdate = async (req, res) => {
 	                  staleRoadmapReturned: false,
 	                  abortedDueToLlmFailure: false,
 	                  validationErrors: executionReportValidation?.errors ?? null,
+                  roadmapTitleQualityGuardChanged: titleGuard.changedTitles.length > 0,
+                  roadmapTitleQualityGuardChanges: titleGuard.changedTitles,
 	                  planGenerated: responseExecution.planGenerated,
 	                })
 	              } else {
