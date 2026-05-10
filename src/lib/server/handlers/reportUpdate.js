@@ -3464,6 +3464,82 @@ export const handleReportUpdate = async (req, res) => {
                 .filter(Boolean)
             })
           : []
+      const extractRoadmapCoverageText = (report) => {
+        const phases = Array.isArray(report?.roadmap_phases) ? report.roadmap_phases : []
+        return phases
+          .map((phase) =>
+            [
+              phase?.phase_title,
+              phase?.why_this_phase_matters,
+              phase?.key_risk_or_tradeoff,
+              Array.isArray(phase?.concrete_actions) ? phase.concrete_actions.join(' ') : '',
+              phase?.validation_or_test,
+              phase?.decision_unlocked,
+            ]
+              .map((value) => normalizeExecutionText(value))
+              .filter(Boolean)
+              .join(' ')
+          )
+          .join(' ')
+      }
+      const normalizeCoverageText = (value) =>
+        normalizeExecutionText(value)
+          .toLowerCase()
+          .normalize('NFKD')
+          .replace(/[\u0300-\u036f]/g, '')
+          .replace(/[^a-z0-9\s]/g, ' ')
+          .replace(/\s+/g, ' ')
+          .trim()
+      const coverageStems = (value) =>
+        Array.from(
+          new Set(
+            normalizeCoverageText(value)
+              .split(/\s+/)
+              .map((word) => word.trim())
+              .filter((word) => word.length >= 4 && !['oraz', 'przez', 'with', 'from', 'that', 'this', 'into'].includes(word))
+              .map((word) => (word.length > 7 ? word.slice(0, 7) : word))
+          )
+        )
+      const evaluateSelectedTrizCoverage = (report, selectedApproaches) => {
+        const selected = Array.isArray(selectedApproaches) ? selectedApproaches : []
+        const roadmapText = normalizeCoverageText(extractRoadmapCoverageText(report))
+        const represented = []
+        const missing = []
+        selected.forEach((item) => {
+          const title = normalizeExecutionText(item?.approach_title)
+          const description = normalizeExecutionText(item?.approach_description)
+          const stems = coverageStems(`${title} ${description}`).filter((stem) => stem.length >= 4)
+          const titleStems = coverageStems(title)
+          const titleRepresented = titleStems.length
+            ? titleStems.some((stem) => roadmapText.includes(stem))
+            : false
+          const descriptionRepresented = stems.length
+            ? stems.some((stem) => roadmapText.includes(stem))
+            : false
+          const entry = {
+            title,
+            contradiction_index: item?.contradiction_index ?? null,
+            approach_index: item?.approach_index ?? null,
+          }
+          if (titleRepresented || descriptionRepresented) represented.push(entry)
+          else missing.push(entry)
+        })
+        return {
+          selectedCount: selected.length,
+          represented,
+          missing,
+          representedCount: represented.length,
+          missingCount: missing.length,
+          phaseTitles: Array.isArray(report?.roadmap_phases)
+            ? report.roadmap_phases.map((phase) => normalizeExecutionText(phase?.phase_title)).filter(Boolean)
+            : [],
+        }
+      }
+      const shouldRetryForTrizCoverage = (coverage) => {
+        if (!coverage?.selectedCount) return false
+        if (coverage.selectedCount <= 3) return coverage.missingCount > 0
+        return coverage.missingCount > coverage.representedCount
+      }
 
 	      if (isPlanFromDecisionsMode) {
 	        const incomingExecutionReport =
@@ -4556,6 +4632,9 @@ export const handleReportUpdate = async (req, res) => {
               'If many selected_triz_approaches are present, group related approaches into fewer phases, but make the grouping traceable by naming the concrete approach themes in phase_title, why_this_phase_matters, concrete_actions, validation_or_test, or decision_unlocked.',
               'A roadmap generated with 9 selected approaches must visibly differ from a roadmap generated with only 3 selected approaches. The extra selected approaches should change what gets prototyped, tested, checked, integrated, or deliberately postponed.',
               'Priority rule: selected_decisions constrain the overall direction; selected_triz_approaches determine what is prototyped, tested, validated, or integrated inside that direction. Do not let selected decisions erase selected TRIZ approaches.',
+              'Do not create roadmap phases for unselected TRIZ approaches unless strictly required by a selected_decision. If you include such work, explain why it is required as a constraint, not as a separate roadmap scope.',
+              'If selected_triz_approaches has exactly 1 item, generate a focused roadmap around that one approach. Do not produce a broad full-product roadmap.',
+              'If selected_triz_approaches has multiple items, group only selected approaches into coherent phases and keep each selected approach traceable.',
               'For goal: write one short, human-readable session goal sentence. Describe what the user is trying to achieve through this session and the intended practical outcome. Make it sound like a product/decision goal, not an instruction to the model. Use plain natural language. Do NOT mention analysis, material, board, synthesis, mapping, or generating a sequence.',
               'For map_context.coverage_summary: write a short, human, insight-driven paragraph (max 2-3 sentences). Address the user directly where natural. Describe what is actually happening in the user’s situation, not what appears on any board/data. Name the most visible tension/problem/pattern and what it means for the next decisions. Use plain language.',
               'Do NOT mention: board, signals, perspectives, dimensions, areas, counts, coverage, mapping. Do NOT describe the dataset; interpret it.',
@@ -4638,6 +4717,13 @@ export const handleReportUpdate = async (req, res) => {
               'Avoid duplicates: titles/tradeoffs/checks should be distinct and not paraphrases of each other.',
               'Avoid extremely short entries (e.g. 1-2 words) unless the material is truly sparse.',
               'If you cannot support a section, return fewer items but keep at least 2 sections with real content.',
+              ...(retryReasons.length
+                ? [
+                    'RETRY SCOPE CORRECTION: the previous roadmap missed selected_triz_approaches. Rewrite the roadmap so selected_triz_approaches are the primary roadmap scope.',
+                    'In this retry, do not use selected_decisions to create broad product phases. Use them only to filter and constrain the selected TRIZ approach work.',
+                    'Name or clearly reference the missing selected approach themes inside phase text.',
+                  ]
+                : []),
               ...(strictJson
                 ? [
                     'STRICT JSON MODE: follow the schema exactly or return fewer items.',
@@ -4663,7 +4749,11 @@ export const handleReportUpdate = async (req, res) => {
           reportLang === 'en'
             ? 'Roadmap language: roadmap_phases.concrete_actions must read as direct practical instructions, not impersonal infinitives. Start with imperative verbs such as "Design", "Build", "Test", "Measure", "Compare", "Check", "Choose". If validation_or_test or decision_unlocked starts with "Should" or "Can", write it as a proper question and end it with "?".'
             : 'Język roadmapy: roadmap_phases.concrete_actions mają brzmieć jak bezpośrednie, praktyczne instrukcje, nie bezosobowe bezokoliczniki. Zaczynaj od trybu rozkazującego: "Zaprojektuj", "Zbuduj", "Przetestuj", "Zmierz", "Porównaj", "Sprawdź", "Wybierz" zamiast "Zaprojektować", "Zbudować", "Przetestować", "Zmierzyć", "Porównać", "Sprawdzić", "Wybrać". Jeśli validation_or_test albo decision_unlocked zaczyna się od "Czy", zapisz to jako poprawne pytanie i zakończ znakiem "?".'
-        return `${baseInstructions}\n\n${roadmapLanguageInstructions}`
+        const selectedScopeInstructions =
+          reportLang === 'en'
+            ? 'Selected scope rule: selected_triz_approaches are the primary roadmap scope. selected_decisions are constraints only. Do not generate broad product phases from selected decisions when they are unrelated to selected_triz_approaches. If exactly one selected_triz_approaches item is present, keep the roadmap focused on that one approach.'
+            : 'Reguła zakresu: selected_triz_approaches są głównym zakresem roadmapy. selected_decisions są tylko ograniczeniami. Nie generuj szerokich faz produktowych z samych decyzji, jeśli nie wynikają z wybranych podejść TRIZ. Jeśli jest dokładnie jedno selected_triz_approaches, utrzymaj roadmapę wokół tego jednego podejścia.'
+        return `${baseInstructions}\n\n${roadmapLanguageInstructions}\n\n${selectedScopeInstructions}`
       }
 
       const actionPlanRawResponses = new Map()
@@ -5641,11 +5731,16 @@ export const handleReportUpdate = async (req, res) => {
         const contentHashChanged = Boolean(previousHash && contentHash && previousHash !== contentHash)
         const wantsPlanFromDecisions =
           executionMode === 'plan_from_decisions' || executionMode === 'plan_from_decisions_only'
-        const hasDecisions =
-          Array.isArray(executionReportCandidate?.decisions) && executionReportCandidate.decisions.length > 0
+        const decisionsForFinalizeGate =
+          selectedDecisionsOverride && selectedDecisionsOverride.length
+            ? selectedDecisionsOverride
+            : Array.isArray(executionReportCandidate?.decisions)
+              ? executionReportCandidate.decisions
+              : []
+        const hasDecisions = decisionsForFinalizeGate.length > 0
         const allDecisionsSelected =
           hasDecisions &&
-          executionReportCandidate.decisions.every(
+          decisionsForFinalizeGate.every(
             (d) => d?.selected_option === 'a' || d?.selected_option === 'b'
           )
         const contradictionsCount = Array.isArray(trizCandidate?.contradictions)
@@ -5698,21 +5793,18 @@ export const handleReportUpdate = async (req, res) => {
 	        }
 
         if (wantsPlanFromDecisions) {
-          const selectedDecisionsCount = Array.isArray(executionReportCandidate?.decisions)
-            ? executionReportCandidate.decisions.filter(
-                (d) => d?.selected_option === 'a' || d?.selected_option === 'b'
-              ).length
-            : 0
-          const selectedTrizApproachesCount = Array.isArray(trizCandidate?.contradictions)
-            ? trizCandidate.contradictions.reduce((sum, c) => {
-                const indices = Array.isArray(c?.selected_approach_indices)
-                  ? c.selected_approach_indices
-                  : c?.selected_approach_index != null
-                    ? [c.selected_approach_index]
-                    : []
-                return sum + new Set(indices).size
-              }, 0)
-            : 0
+          const selectedDecisionsCount =
+            selectedDecisionsOverride && selectedDecisionsOverride.length
+              ? selectedDecisionsOverride.length
+              : Array.isArray(executionReportCandidate?.decisions)
+                ? executionReportCandidate.decisions.filter(
+                    (d) => d?.selected_option === 'a' || d?.selected_option === 'b'
+                  ).length
+                : 0
+          const selectedTrizApproachesCount =
+            selectedTrizApproachesOverride && selectedTrizApproachesOverride.length
+              ? selectedTrizApproachesOverride.length
+              : countSelectedTrizApproaches(trizCandidate)
           const hasAnySelections = selectedDecisionsCount > 0 || selectedTrizApproachesCount > 0
 
           // "Finalize action plan" uses `execution_mode=plan_from_decisions_only`.
@@ -5762,9 +5854,10 @@ export const handleReportUpdate = async (req, res) => {
           }
           if (executionPlanOnly && allDecisionsSelected) {
             try {
-              const existingDecisions = Array.isArray(executionReportCandidate?.decisions)
-                ? executionReportCandidate.decisions
-                : []
+              const existingDecisions =
+                Array.isArray(executionReportCandidate?.decisions) && executionReportCandidate.decisions.length
+                  ? executionReportCandidate.decisions
+                  : selectedDecisionsOverride || []
               const selectedDecisionsForFinal = existingDecisions
                 .map((d) => ({
                   tradeoff: normalizeExecutionText(d?.tradeoff),
@@ -5818,7 +5911,8 @@ export const handleReportUpdate = async (req, res) => {
                 decisionsCount: existingDecisions.length,
                 promptCharLen: typeof promptForLen === 'string' ? promptForLen.length : null,
               })
-              const execResult = await runExecutionReport(undefined, { strictJson: true })
+              let actionPlanUsageAlreadyRecorded = false
+              let execResult = await runExecutionReport(undefined, { strictJson: true })
               console.log('[REPORT FINALIZE DEBUG][backend][report-action-plan-called]', {
                 requestId,
                 sessionId,
@@ -5860,6 +5954,93 @@ export const handleReportUpdate = async (req, res) => {
                     : {}),
                 })
               }
+              if (execResult?.ok && execResult.data && typeof execResult.data === 'object') {
+                const firstGeneratedForCoverage = normalizeExecutionReport(execResult.data, reportLang)
+                const firstCoverage = evaluateSelectedTrizCoverage(
+                  firstGeneratedForCoverage,
+                  selectedTrizApproachesForPrompt
+                )
+                console.log('[REPORT FINALIZE DEBUG][backend][selected-triz-coverage][initial]', {
+                  requestId,
+                  sessionId,
+                  selectedCount: firstCoverage.selectedCount,
+                  representedSelectedApproaches: firstCoverage.represented.map((item) => item.title),
+                  missingSelectedApproaches: firstCoverage.missing.map((item) => item.title),
+                  rawRoadmapPhaseTitles: Array.isArray(execResult.data?.roadmap_phases)
+                    ? execResult.data.roadmap_phases
+                        .map((phase) => normalizeExecutionText(phase?.phase_title || phase?.title))
+                        .filter(Boolean)
+                    : [],
+                  normalizedRoadmapPhaseTitles: firstCoverage.phaseTitles,
+                  retryNeeded: shouldRetryForTrizCoverage(firstCoverage),
+                })
+                if (shouldRetryForTrizCoverage(firstCoverage)) {
+                  if (execResult?.meta) {
+                    responseMeta.execution_report_action_plan_initial = execResult.meta
+                    await recordAiUsageBestEffort({
+                      sessionId: reportRes.data.session_id ?? sessionId,
+                      reportId: reportRes.data.id ?? null,
+                      userId,
+                      actionKey: reportActionKey,
+                      sourceTask: 'report-action-plan-initial',
+                      referenceId: reportRes.data.id ?? null,
+                      requestId,
+                      feature: 'report-action-plan',
+                      meta: execResult.meta,
+                    })
+                    actionPlanUsageAlreadyRecorded = true
+                  }
+                  const missingTitles = firstCoverage.missing.map((item) => item.title).filter(Boolean)
+                  console.log('[REPORT FINALIZE DEBUG][backend][selected-triz-coverage][retry]', {
+                    requestId,
+                    sessionId,
+                    reason: 'SELECTED_TRIZ_APPROACHES_MISSING',
+                    missingSelectedApproaches: missingTitles,
+                    selectedApproachTitles: selectedTrizApproachesForPrompt
+                      .map((item) => item?.approach_title)
+                      .filter(Boolean),
+                  })
+                  const retryResult = await runExecutionReport(undefined, {
+                    strictJson: true,
+                    retryReasons: [
+                      'selected_triz_approaches_missing_from_roadmap',
+                      `missing: ${missingTitles.join(', ')}`,
+                    ],
+                  })
+                  console.log('[REPORT FINALIZE DEBUG][backend][report-action-plan-retry-called]', {
+                    requestId,
+                    sessionId,
+                    task: 'report-action-plan',
+                    called: true,
+                    ok: Boolean(retryResult?.ok),
+                    hasData: Boolean(retryResult?.data),
+                    model: retryResult?.meta?.modelUsed ?? null,
+                    tokens: retryResult?.meta?.tokens ?? null,
+                  })
+                  if (retryResult?.ok && retryResult.data && typeof retryResult.data === 'object') {
+                    const retryGeneratedForCoverage = normalizeExecutionReport(retryResult.data, reportLang)
+                    const retryCoverage = evaluateSelectedTrizCoverage(
+                      retryGeneratedForCoverage,
+                      selectedTrizApproachesForPrompt
+                    )
+                    console.log('[REPORT FINALIZE DEBUG][backend][selected-triz-coverage][retry-result]', {
+                      requestId,
+                      sessionId,
+                      selectedCount: retryCoverage.selectedCount,
+                      representedSelectedApproaches: retryCoverage.represented.map((item) => item.title),
+                      missingSelectedApproaches: retryCoverage.missing.map((item) => item.title),
+                      rawRoadmapPhaseTitles: Array.isArray(retryResult.data?.roadmap_phases)
+                        ? retryResult.data.roadmap_phases
+                            .map((phase) => normalizeExecutionText(phase?.phase_title || phase?.title))
+                            .filter(Boolean)
+                        : [],
+                      normalizedRoadmapPhaseTitles: retryCoverage.phaseTitles,
+                    })
+                    execResult = retryResult
+                    actionPlanUsageAlreadyRecorded = false
+                  }
+                }
+              }
               const reportActionPlanParse = actionPlanParseResults.get('report-action-plan') || null
               previousFinalPlanAttempt = {
                 llmOk: Boolean(execResult?.ok),
@@ -5867,7 +6048,7 @@ export const handleReportUpdate = async (req, res) => {
                 validationErrors: null,
                 parseError: reportActionPlanParse?.recoveryError || reportActionPlanParse?.parseError || null,
               }
-              if (execResult?.meta) {
+              if (execResult?.meta && !actionPlanUsageAlreadyRecorded) {
                 responseMeta.execution_report_action_plan = execResult.meta
                 await recordAiUsageBestEffort({
                   sessionId: reportRes.data.session_id ?? sessionId,
@@ -5901,6 +6082,19 @@ export const handleReportUpdate = async (req, res) => {
                 logActionPlanDiagnosticShape('after-normalize-report-action-plan', generated, {
                   requestId,
                   sessionId,
+                })
+                const normalizedCoverage = evaluateSelectedTrizCoverage(
+                  generated,
+                  selectedTrizApproachesForPrompt
+                )
+                console.log('[REPORT FINALIZE DEBUG][backend][selected-triz-coverage][accepted-normalized]', {
+                  requestId,
+                  sessionId,
+                  selectedCount: normalizedCoverage.selectedCount,
+                  representedSelectedApproaches: normalizedCoverage.represented.map((item) => item.title),
+                  missingSelectedApproaches: normalizedCoverage.missing.map((item) => item.title),
+                  normalizedRoadmapPhaseTitles: normalizedCoverage.phaseTitles,
+                  fallbackOrRewriteTriggered: false,
                 })
                 const allowCompleted = Boolean(
                   Array.isArray(existingNormalized?.execution_report?.action_plan) &&
