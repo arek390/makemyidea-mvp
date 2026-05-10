@@ -1456,10 +1456,13 @@ export const ReportPage = ({
           ? normalizeExecutionReport(sanitizeReportPayload(payload.execution_report)).decisions
               .filter((d) => d.selected_option === 'a' || d.selected_option === 'b')
               .map((d) => ({
+                contradiction_index: d.contradiction_index,
                 tradeoff: d.tradeoff,
                 selected_option: d.selected_option,
                 option_a: d.option_a,
                 option_b: d.option_b,
+                consequence_a: d.consequence_a,
+                consequence_b: d.consequence_b,
               }))
           : []
       }
@@ -3156,8 +3159,22 @@ export const ReportPage = ({
 		                (() => {
 		                  const phases = (normalizedExecutionReport as any).roadmap_phases as any[]
 		                  const safe = (value: unknown) => sanitizeReportText(String(value || '').trim())
+		                  const stripRoadmapAdvisoryCues = (value: string) => {
+		                    let text = value
+		                    const leadingCuePattern =
+		                      /^(?:Największa niewiadoma|Szukasz sygnału|Jeśli to się potwierdzi|Main uncertainty|Look for this signal|If that holds)\s*:\s*/iu
+		                    text = text.replace(leadingCuePattern, '').replace(/\s+/gu, ' ').trim()
+		                    const nextCuePattern =
+		                      /\s+(?:Największa niewiadoma|Szukasz sygnału|Jeśli to się potwierdzi|Main uncertainty|Look for this signal|If that holds)\s*:/iu
+		                    const nextCueMatch = text.match(nextCuePattern)
+		                    if (nextCueMatch?.index != null && nextCueMatch.index > 0) {
+		                      text = text.slice(0, nextCueMatch.index).trim()
+		                    }
+		                    text = text.replace(leadingCuePattern, '').replace(/\s+/gu, ' ').trim()
+		                    return text
+		                  }
 		                  const formatRoadmapAdvisoryLine = (value: unknown) => {
-		                    const text = safe(value)
+		                    const text = stripRoadmapAdvisoryCues(safe(value))
 		                    if (/^Czy\s/u.test(text) && !/\?\s*$/.test(text)) {
 		                      return `${text.replace(/[.!:;]\s*$/u, '')}?`
 		                    }
