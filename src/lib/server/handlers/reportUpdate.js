@@ -3426,6 +3426,44 @@ export const handleReportUpdate = async (req, res) => {
               (d) => d?.selected_option === 'a' || d?.selected_option === 'b'
             ).length
           : 0
+      const buildSelectedTrizApproaches = (triz) =>
+        Array.isArray(triz?.contradictions)
+          ? triz.contradictions.flatMap((c, contradiction_index) => {
+              const rendered =
+                Array.isArray(c?.approaches) && c.approaches.length
+                  ? c.approaches
+                  : Array.isArray(c?.solutions)
+                    ? c.solutions
+                    : []
+              const indicesRaw = Array.isArray(c?.selected_approach_indices)
+                ? c.selected_approach_indices
+                : c?.selected_approach_index != null
+                  ? [c.selected_approach_index]
+                  : []
+              const indices = Array.from(
+                new Set(
+                  indicesRaw
+                    .map((idx) => (typeof idx === 'number' ? idx : Number(idx)))
+                    .filter((idx) => Number.isFinite(idx))
+                    .map((idx) => Math.max(0, Math.floor(idx)))
+                    .filter((idx) => idx >= 0 && idx < rendered.length)
+                )
+              )
+              return indices
+                .map((approach_index) => {
+                  const selected = rendered[approach_index]
+                  if (!selected) return null
+                  return {
+                    contradiction_index,
+                    contradiction_title: normalizeExecutionText(c?.title),
+                    approach_index,
+                    approach_title: normalizeExecutionText(selected?.title),
+                    approach_description: normalizeExecutionText(selected?.description),
+                  }
+                })
+                .filter(Boolean)
+            })
+          : []
 
 	      if (isPlanFromDecisionsMode) {
 	        const incomingExecutionReport =
@@ -3442,6 +3480,10 @@ export const handleReportUpdate = async (req, res) => {
         const incomingContradictions = Array.isArray(incomingTriz?.contradictions)
           ? incomingTriz.contradictions
           : []
+        const incomingSelectedTrizApproaches = buildSelectedTrizApproaches(incomingTriz)
+        const explicitSelectedTrizApproaches = Array.isArray(body.selected_triz_approaches)
+          ? body.selected_triz_approaches
+          : []
         console.log('[REPORT FINALIZE DEBUG][backend][entry]', {
           requestId,
           method: req?.method ?? null,
@@ -3457,6 +3499,13 @@ export const handleReportUpdate = async (req, res) => {
           hasIncomingTriz: Boolean(incomingTriz),
           incomingTrizContradictionsCount: incomingContradictions.length,
           incomingSelectedTrizApproachesCount: countSelectedTrizApproaches(incomingTriz),
+          incomingSelectedTrizApproachTitles: incomingSelectedTrizApproaches
+            .map((item) => item?.approach_title)
+            .filter(Boolean),
+          explicitSelectedTrizApproachesCount: explicitSelectedTrizApproaches.length,
+          explicitSelectedTrizApproachTitles: explicitSelectedTrizApproaches
+            .map((item) => normalizeExecutionText(item?.approach_title))
+            .filter(Boolean),
           incomingTrizSelectedApproachIndices: incomingContradictions.map((c, idx) => ({
             contradictionIndex: idx,
             selected_approach_indices: Array.isArray(c?.selected_approach_indices)
@@ -3700,11 +3749,44 @@ export const handleReportUpdate = async (req, res) => {
 	      body.execution_report && typeof body.execution_report === 'object'
 	        ? normalizeExecutionReport(body.execution_report, reportLang)
 	        : null
+    const selectedDecisionsOverride =
+      isPlanFromDecisionsMode && Array.isArray(body.selected_decisions)
+        ? body.selected_decisions
+            .filter((item) => item && typeof item === 'object')
+            .map((item) => ({
+              tradeoff: normalizeExecutionText(item.tradeoff),
+              option_a: normalizeExecutionText(item.option_a),
+              option_b: normalizeExecutionText(item.option_b),
+              selected_option: normalizeExecutionSelectedOption(item.selected_option),
+            }))
+            .filter((item) => item.tradeoff && (item.selected_option === 'a' || item.selected_option === 'b'))
+        : null
     const trizOverride =
       isPlanFromDecisionsMode && body.triz && typeof body.triz === 'object'
         ? normalizeTriz(body.triz)
         : null
+    const selectedTrizApproachesOverride =
+      isPlanFromDecisionsMode && Array.isArray(body.selected_triz_approaches)
+        ? body.selected_triz_approaches
+            .filter((item) => item && typeof item === 'object')
+            .map((item) => ({
+              contradiction_index: Number.isFinite(Number(item.contradiction_index))
+                ? Math.max(0, Math.floor(Number(item.contradiction_index)))
+                : null,
+              contradiction_title: normalizeExecutionText(item.contradiction_title),
+              approach_index: Number.isFinite(Number(item.approach_index))
+                ? Math.max(0, Math.floor(Number(item.approach_index)))
+                : null,
+              approach_title: normalizeExecutionText(item.approach_title),
+              approach_description: normalizeExecutionText(item.approach_description),
+            }))
+            .filter((item) => item.approach_title || item.approach_description)
+        : null
     const trizSourceForPlan = trizOverride ? 'request_payload' : 'db_fallback'
+    const selectedTrizApproachesSourceForPlan =
+      selectedTrizApproachesOverride && selectedTrizApproachesOverride.length
+        ? 'explicit_request_payload'
+        : trizSourceForPlan
 
     const itemsFromDb = items.map((item) => ({
       id: item.id,
@@ -3745,13 +3827,26 @@ export const handleReportUpdate = async (req, res) => {
       })
     }
     if (isPlanFromDecisionsMode) {
+      const requestSelectedTrizApproaches = buildSelectedTrizApproaches(trizOverride)
       console.log('[REPORT FINALIZE DEBUG][backend][request-selection-source]', {
         requestId,
         sessionId,
         execution_mode: executionMode,
         selectedDecisionsReceived: countSelectedDecisions(executionReportOverride),
+        explicitSelectedDecisionsReceived: selectedDecisionsOverride?.length ?? 0,
         selectedTrizApproachesReceived: countSelectedTrizApproaches(trizOverride),
+        explicitSelectedTrizApproachesReceived: selectedTrizApproachesOverride?.length ?? 0,
+        selectedTrizContradictionsReceived: new Set(
+          (selectedTrizApproachesOverride?.length ? selectedTrizApproachesOverride : requestSelectedTrizApproaches)
+            .map((item) => item?.contradiction_index)
+        ).size,
+        selectedTrizApproachTitlesReceived: (selectedTrizApproachesOverride?.length
+          ? selectedTrizApproachesOverride
+          : requestSelectedTrizApproaches)
+          .map((item) => item?.approach_title)
+          .filter(Boolean),
         trizSource: trizSourceForPlan,
+        selectedTrizApproachesSource: selectedTrizApproachesSourceForPlan,
         dbFallbackSelectedTrizApproaches: countSelectedTrizApproaches(existingNormalized.triz),
       })
     }
@@ -4371,46 +4466,14 @@ export const handleReportUpdate = async (req, res) => {
           summary: summaryCandidate,
           recommendations: recommendationsCandidate,
           triz: trizCandidate,
-          selected_triz_approaches: Array.isArray(trizCandidate?.contradictions)
-            ? trizCandidate.contradictions
-                .flatMap((c, contradiction_index) => {
-                  const rendered =
-                    Array.isArray(c?.approaches) && c.approaches.length
-                      ? c.approaches
-                      : Array.isArray(c?.solutions)
-                        ? c.solutions
-                        : []
-                  const indicesRaw = Array.isArray(c?.selected_approach_indices)
-                    ? c.selected_approach_indices
-                    : c?.selected_approach_index != null
-                      ? [c.selected_approach_index]
-                      : []
-                  const indices = Array.from(
-                    new Set(
-                      indicesRaw
-                        .map((idx) => (typeof idx === 'number' ? idx : Number(idx)))
-                        .filter((idx) => Number.isFinite(idx))
-                        .map((idx) => Math.max(0, Math.floor(idx)))
-                        .filter((idx) => idx >= 0 && idx < rendered.length)
-                    )
-                  )
-                  return indices
-                    .map((approach_index) => {
-                      const selected = rendered[approach_index]
-                      if (!selected) return null
-                      return {
-                        contradiction_index,
-                        contradiction_title: normalizeExecutionText(c?.title),
-                        approach_index,
-                        approach_title: normalizeExecutionText(selected?.title),
-                        approach_description: normalizeExecutionText(selected?.description),
-                      }
-                    })
-                    .filter(Boolean)
-                })
-            : [],
+          selected_triz_approaches:
+            selectedTrizApproachesOverride && selectedTrizApproachesOverride.length
+              ? selectedTrizApproachesOverride
+              : buildSelectedTrizApproaches(trizCandidate),
           selected_decisions: Array.isArray(executionReportCandidate?.decisions)
-            ? executionReportCandidate.decisions
+            ? (selectedDecisionsOverride && selectedDecisionsOverride.length
+                ? selectedDecisionsOverride
+                : executionReportCandidate.decisions)
                 .map((d) => ({
                   tradeoff: normalizeExecutionText(d?.tradeoff),
                   option_a: normalizeExecutionText(d?.option_a),
@@ -4488,7 +4551,11 @@ export const handleReportUpdate = async (req, res) => {
               'Avoid generic consulting language and repeated observations.',
               'Use the summary, recommendations, TRIZ, and perspective map only as synthesis inputs grounded in the board material.',
               'If selected_decisions is non-empty, treat those choices as committed. Do not contradict or reopen selected options.',
-              'If selected_triz_approaches is non-empty, treat those selected approaches as committed user choices. The roadmap_phases must reflect them as chosen directions where supported, not merely list generic TRIZ possibilities.',
+              'If selected_triz_approaches is non-empty, treat those selected approaches as required design inputs, not optional background context.',
+              'Every selected_triz_approaches item must either appear directly in one roadmap phase or be explicitly merged with a related selected approach in that phase. Do not ignore selected approaches.',
+              'If many selected_triz_approaches are present, group related approaches into fewer phases, but make the grouping traceable by naming the concrete approach themes in phase_title, why_this_phase_matters, concrete_actions, validation_or_test, or decision_unlocked.',
+              'A roadmap generated with 9 selected approaches must visibly differ from a roadmap generated with only 3 selected approaches. The extra selected approaches should change what gets prototyped, tested, checked, integrated, or deliberately postponed.',
+              'Priority rule: selected_decisions constrain the overall direction; selected_triz_approaches determine what is prototyped, tested, validated, or integrated inside that direction. Do not let selected decisions erase selected TRIZ approaches.',
               'For goal: write one short, human-readable session goal sentence. Describe what the user is trying to achieve through this session and the intended practical outcome. Make it sound like a product/decision goal, not an instruction to the model. Use plain natural language. Do NOT mention analysis, material, board, synthesis, mapping, or generating a sequence.',
               'For map_context.coverage_summary: write a short, human, insight-driven paragraph (max 2-3 sentences). Address the user directly where natural. Describe what is actually happening in the user’s situation, not what appears on any board/data. Name the most visible tension/problem/pattern and what it means for the next decisions. Use plain language.',
               'Do NOT mention: board, signals, perspectives, dimensions, areas, counts, coverage, mapping. Do NOT describe the dataset; interpret it.',
@@ -4589,8 +4656,8 @@ export const handleReportUpdate = async (req, res) => {
       const buildExecutionReportTaskInstructions = (strictJson = false) => {
         const baseInstructions =
           reportLang === 'en'
-          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report.\n\nWrite like a senior product engineer, technical founder, or R&D lead advising a real team. Do not facilitate a workshop. Do not ask the user to clarify. Do not generate a checklist, Jira backlog, requirements document, or executive summary.\n\nGoal: produce a structured but natural product-development roadmap where phase reasoning is the main artifact.\nStyle (very important):\n- Write like an advisor: short paragraphs, concrete language, mild uncertainty where appropriate.\n- No visible mechanics: do NOT write labels/headings like \"RISK:\", \"VALIDATION:\", \"DECISION:\", \"Biggest risk\", \"What we do\", \"Signal it works\", no ALL CAPS, no schema-like phrasing.\n- Prefer observable signals and constraints over abstract nouns (avoid: assessment, analysis, implementation, ensuring, preparation, optimization).\n- Avoid waterfall vibes: allow iteration, pivots, and conditional plans; explicitly say what is not worth optimizing yet when relevant.\n- Include practical engineering judgment: premature complexity, overengineering risk, cost/weight/footprint/setup friction/manufacturing repeatability when supported.\n\n- Prefer execution_report.roadmap_phases (4–6 phases) over execution_report.action_plan.\n- Each roadmap phase must use exactly these fields: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title must name a concrete uncertainty, milestone, or engineering objective. Never return only \"Phase\", \"Stage\", \"Etap\", or \"Faza\".\n- why_this_phase_matters should explain why this matters now, what uncertainty is being reduced, and what should intentionally wait.\n- key_risk_or_tradeoff should sound like a realistic caution, not a label: what could invalidate this direction, what complexity may not be justified, or what constraint can break the plan.\n- concrete_actions should contain 2–3 specific build/test/check moves max. Actions are supporting evidence, not the center of the roadmap.\n- validation_or_test should name the signal that justifies continuing, pivoting, or stopping.\n- decision_unlocked should read like an unlocked next strategic move (a concrete founder/R&D decision), not a report label. Prefer direct, practical, decision-oriented sentences (often starting with an imperative verb), and you may omit it when it would be redundant or forced.\n- Avoid filler like \"develop the product\", \"optimize the experience\", \"perform evaluation\", or \"prepare for market\" unless immediately tied to a concrete artifact/test/metric/decision.\n- Avoid mechanical fields: omit or keep empty anything you cannot support (e.g. technology_options, done_when).\n\nIf you include action_plan, keep it short and natural. Do not force imperative verbs or rigid 3–8 word titles.\n\nUse contradictions/decisions as anchors when supported, but do not force mechanical coverage.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, no aliases.' : ''}`
-          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report.\n\nPisz jak senior product engineer, technical founder albo lider R&D doradzający prawdziwemu zespołowi. Nie moderuj warsztatu. Nie proś o doprecyzowanie. Nie generuj checklisty, backlogu Jira, dokumentu wymagań ani executive summary.\n\nCel: ustrukturyzowana, naturalna mapa drogowa rozwoju produktu, w której logika etapu jest głównym artefaktem.\nStyl (bardzo ważne):\n- Pisz jak doradca-inżynier: krótkie akapity, konkret, lekka niepewność tam, gdzie to uczciwe.\n- Bez widocznej mechaniki: nie pisz etykiet/nagłówków typu \"RYZYKO:\", \"WALIDACJA:\", \"DECYZJA:\", \"Największe ryzyko\", \"Co robimy\", \"Sygnał, że to działa\", bez CAPS LOCKA i bez brzmienia jak szablon.\n- Preferuj sygnały do zaobserwowania i ograniczenia zamiast abstraktów (unikaj: ocena, analiza, implementacja, zapewnienie, przygotowanie, optymalizacja).\n- Unikaj waterfallu: dopuszczaj iteracje, pivoty i warunkowe plany; jeśli ma sens, powiedz wprost, czego nie warto jeszcze optymalizować.\n- Dodawaj praktyczny osąd inżynierski: przedwczesna złożoność, ryzyko overengineeringu, koszt/masa/footprint/tarcie konfiguracji/powtarzalność produkcji, jeśli wynika to z materiału.\n\n- Preferuj execution_report.roadmap_phases (4–6 etapów) zamiast execution_report.action_plan.\n- Każdy etap roadmapy musi używać dokładnie pól: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title ma nazwać konkretną niewiadomą, kamień milowy albo cel inżynieryjny. Nigdy nie zwracaj samego \"Etap\", \"Faza\", \"Phase\" ani \"Stage\".\n- why_this_phase_matters ma wyjaśniać, dlaczego to ważne teraz, jaką niewiadomą redukuje i co celowo powinno poczekać.\n- key_risk_or_tradeoff ma brzmieć jak realistyczna przestroga, nie etykieta: co może unieważnić kierunek, jaka złożoność może nie mieć uzasadnienia albo jakie ograniczenie może złamać plan.\n- concrete_actions ma zawierać maksymalnie 2–3 konkretne ruchy typu zbuduj/przetestuj/sprawdź. Działania wspierają rozumowanie, nie są centrum roadmapy.\n- validation_or_test ma nazwać sygnał, który uzasadnia kontynuację, pivot albo zatrzymanie.\n- decision_unlocked ma brzmieć jak “odblokowany kolejny ruch” (konkretna decyzja founder/R&D), a nie jak etykieta z raportu. Preferuj tryb decyzyjny i praktyczny, często od czasownika w trybie rozkazującym: \"Zdecyduj…\", \"Podejmij decyzję…\", \"Wybierz…\", \"Ogranicz…\", \"Przejdź dalej dopiero gdy…\", \"Zostaw… jeśli…\". Unikaj brzmienia typu \"Decyzja o…\", \"Wybór…\", \"Potwierdzenie…\", \"Ocena zasadności…\". Możesz pominąć decision_unlocked, jeśli byłoby naciągane lub powtarzałoby inne zdanie.\n- Unikaj wypełniaczy typu \"rozwinąć produkt\", \"zoptymalizować doświadczenie\", \"przeprowadzić ewaluację\", \"przygotować do rynku\", jeśli od razu nie wskazujesz konkretnego artefaktu/testu/metryki/decyzji.\n- Unikaj mechanicznych pól: pomijaj (albo zostaw puste) to, czego nie da się sensownie uzasadnić (np. technology_options, done_when).\n\nJeśli dodajesz action_plan, niech będzie krótki i naturalny. Nie wymuszaj trybu rozkazującego ani sztucznie krótkich tytułów.\n\nTraktuj sprzeczności/decyzje jako kotwice, ale nie wymuszaj mechanicznego pokrycia.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, bez aliasów.' : ''}`
+          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: execution_report.\n\nWrite like a senior product engineer, technical founder, or R&D lead advising a real team. Do not facilitate a workshop. Do not ask the user to clarify. Do not generate a checklist, Jira backlog, requirements document, or executive summary.\n\nGoal: produce a structured but natural product-development roadmap where phase reasoning is the main artifact.\nStyle (very important):\n- Write like an advisor: short paragraphs, concrete language, mild uncertainty where appropriate.\n- No visible mechanics: do NOT write labels/headings like \"RISK:\", \"VALIDATION:\", \"DECISION:\", \"Biggest risk\", \"What we do\", \"Signal it works\", no ALL CAPS, no schema-like phrasing.\n- Prefer observable signals and constraints over abstract nouns (avoid: assessment, analysis, implementation, ensuring, preparation, optimization).\n- Avoid waterfall vibes: allow iteration, pivots, and conditional plans; explicitly say what is not worth optimizing yet when relevant.\n- Include practical engineering judgment: premature complexity, overengineering risk, cost/weight/footprint/setup friction/manufacturing repeatability when supported.\n\n- Prefer execution_report.roadmap_phases (4–6 phases) over execution_report.action_plan.\n- Each roadmap phase must use exactly these fields: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title must name a concrete uncertainty, milestone, or engineering objective. Never return only \"Phase\", \"Stage\", \"Etap\", or \"Faza\".\n- why_this_phase_matters should explain why this matters now, what uncertainty is being reduced, and what should intentionally wait.\n- key_risk_or_tradeoff should sound like a realistic caution, not a label: what could invalidate this direction, what complexity may not be justified, or what constraint can break the plan.\n- concrete_actions should contain 2–3 specific build/test/check moves max. Actions are supporting evidence, not the center of the roadmap.\n- validation_or_test should name the signal that justifies continuing, pivoting, or stopping.\n- decision_unlocked should read like an unlocked next strategic move (a concrete founder/R&D decision), not a report label. Prefer direct, practical, decision-oriented sentences (often starting with an imperative verb), and you may omit it when it would be redundant or forced.\n- Avoid filler like \"develop the product\", \"optimize the experience\", \"perform evaluation\", or \"prepare for market\" unless immediately tied to a concrete artifact/test/metric/decision.\n- Avoid mechanical fields: omit or keep empty anything you cannot support (e.g. technology_options, done_when).\n\nIf you include action_plan, keep it short and natural. Do not force imperative verbs or rigid 3–8 word titles.\n\nSelected choices priority:\n- selected_decisions are hard direction constraints.\n- selected_triz_approaches are required design inputs inside that direction.\n- Every selected TRIZ approach must be directly represented in a roadmap phase or explicitly merged with a related selected approach.\n- If 9 approaches are selected, the roadmap must visibly cover broader prototype/test/integration work than when only 3 are selected.\n\nUse contradictions/decisions as anchors when supported, but do not force mechanical coverage.${strictJson ? ' STRICT JSON MODE: JSON only, exact keys only, no aliases.' : ''}`
+          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucz: execution_report.\n\nPisz jak senior product engineer, technical founder albo lider R&D doradzający prawdziwemu zespołowi. Nie moderuj warsztatu. Nie proś o doprecyzowanie. Nie generuj checklisty, backlogu Jira, dokumentu wymagań ani executive summary.\n\nCel: ustrukturyzowana, naturalna mapa drogowa rozwoju produktu, w której logika etapu jest głównym artefaktem.\nStyl (bardzo ważne):\n- Pisz jak doradca-inżynier: krótkie akapity, konkret, lekka niepewność tam, gdzie to uczciwe.\n- Bez widocznej mechaniki: nie pisz etykiet/nagłówków typu \"RYZYKO:\", \"WALIDACJA:\", \"DECYZJA:\", \"Największe ryzyko\", \"Co robimy\", \"Sygnał, że to działa\", bez CAPS LOCKA i bez brzmienia jak szablon.\n- Preferuj sygnały do zaobserwowania i ograniczenia zamiast abstraktów (unikaj: ocena, analiza, implementacja, zapewnienie, przygotowanie, optymalizacja).\n- Unikaj waterfallu: dopuszczaj iteracje, pivoty i warunkowe plany; jeśli ma sens, powiedz wprost, czego nie warto jeszcze optymalizować.\n- Dodawaj praktyczny osąd inżynierski: przedwczesna złożoność, ryzyko overengineeringu, koszt/masa/footprint/tarcie konfiguracji/powtarzalność produkcji, jeśli wynika to z materiału.\n\n- Preferuj execution_report.roadmap_phases (4–6 etapów) zamiast execution_report.action_plan.\n- Każdy etap roadmapy musi używać dokładnie pól: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.\n- phase_title ma nazwać konkretną niewiadomą, kamień milowy albo cel inżynieryjny. Nigdy nie zwracaj samego \"Etap\", \"Faza\", \"Phase\" ani \"Stage\".\n- why_this_phase_matters ma wyjaśniać, dlaczego to ważne teraz, jaką niewiadomą redukuje i co celowo powinno poczekać.\n- key_risk_or_tradeoff ma brzmieć jak realistyczna przestroga, nie etykieta: co może unieważnić kierunek, jaka złożoność może nie mieć uzasadnienia albo jakie ograniczenie może złamać plan.\n- concrete_actions ma zawierać maksymalnie 2–3 konkretne ruchy typu zbuduj/przetestuj/sprawdź. Działania wspierają rozumowanie, nie są centrum roadmapy.\n- validation_or_test ma nazwać sygnał, który uzasadnia kontynuację, pivot albo zatrzymanie.\n- decision_unlocked ma brzmieć jak “odblokowany kolejny ruch” (konkretna decyzja founder/R&D), a nie jak etykieta z raportu. Preferuj tryb decyzyjny i praktyczny, często od czasownika w trybie rozkazującym: \"Zdecyduj…\", \"Podejmij decyzję…\", \"Wybierz…\", \"Ogranicz…\", \"Przejdź dalej dopiero gdy…\", \"Zostaw… jeśli…\". Unikaj brzmienia typu \"Decyzja o…\", \"Wybór…\", \"Potwierdzenie…\", \"Ocena zasadności…\". Możesz pominąć decision_unlocked, jeśli byłoby naciągane lub powtarzałoby inne zdanie.\n- Unikaj wypełniaczy typu \"rozwinąć produkt\", \"zoptymalizować doświadczenie\", \"przeprowadzić ewaluację\", \"przygotować do rynku\", jeśli od razu nie wskazujesz konkretnego artefaktu/testu/metryki/decyzji.\n- Unikaj mechanicznych pól: pomijaj (albo zostaw puste) to, czego nie da się sensownie uzasadnić (np. technology_options, done_when).\n\nJeśli dodajesz action_plan, niech będzie krótki i naturalny. Nie wymuszaj trybu rozkazującego ani sztucznie krótkich tytułów.\n\nPriorytet wybranych kierunków:\n- selected_decisions są twardymi ograniczeniami kierunku.\n- selected_triz_approaches są wymaganymi wejściami projektowymi wewnątrz tego kierunku.\n- Każde wybrane podejście TRIZ musi być bezpośrednio reprezentowane w etapie roadmapy albo jawnie scalone z pokrewnym wybranym podejściem.\n- Jeśli wybrano 9 podejść, roadmapa musi widocznie obejmować szerszą pracę prototypową/testową/integracyjną niż przy 3 podejściach.\n\nTraktuj sprzeczności/decyzje jako kotwice, ale nie wymuszaj mechanicznego pokrycia.${strictJson ? ' TRYB ŚCISŁEGO JSON: tylko JSON, tylko dokładnie zdefiniowane klucze, bez aliasów.' : ''}`
 
         const roadmapLanguageInstructions =
           reportLang === 'en'
@@ -4777,48 +4844,16 @@ export const handleReportUpdate = async (req, res) => {
         JSON.stringify({
           analysis_json: analysisJson,
           triz: trizCandidate,
-          selected_triz_approaches: Array.isArray(trizCandidate?.contradictions)
-            ? trizCandidate.contradictions
-                .flatMap((c, contradiction_index) => {
-                  const rendered =
-                    Array.isArray(c?.approaches) && c.approaches.length
-                      ? c.approaches
-                      : Array.isArray(c?.solutions)
-                        ? c.solutions
-                        : []
-                  const indicesRaw = Array.isArray(c?.selected_approach_indices)
-                    ? c.selected_approach_indices
-                    : c?.selected_approach_index != null
-                      ? [c.selected_approach_index]
-                      : []
-                  const indices = Array.from(
-                    new Set(
-                      indicesRaw
-                        .map((idx) => (typeof idx === 'number' ? idx : Number(idx)))
-                        .filter((idx) => Number.isFinite(idx))
-                        .map((idx) => Math.max(0, Math.floor(idx)))
-                        .filter((idx) => idx >= 0 && idx < rendered.length)
-                    )
-                  )
-                  return indices
-                    .map((approach_index) => {
-                      const selected = rendered[approach_index]
-                      if (!selected) return null
-                      return {
-                        contradiction_index,
-                        contradiction_title: normalizeExecutionText(c?.title),
-                        approach_index,
-                        approach_title: normalizeExecutionText(selected?.title),
-                        approach_description: normalizeExecutionText(selected?.description),
-                      }
-                    })
-                    .filter(Boolean)
-                })
-            : [],
+          selected_triz_approaches:
+            selectedTrizApproachesOverride && selectedTrizApproachesOverride.length
+              ? selectedTrizApproachesOverride
+              : buildSelectedTrizApproaches(trizCandidate),
           perspective_map: perspectiveCounts,
           supporting_items: executionSupportingItems,
           decisions: Array.isArray(executionReportCandidate?.decisions)
-            ? executionReportCandidate.decisions.map((d) => ({
+            ? (selectedDecisionsOverride && selectedDecisionsOverride.length
+                ? selectedDecisionsOverride
+                : executionReportCandidate.decisions).map((d) => ({
                 tradeoff: normalizeExecutionText(d?.tradeoff),
                 option_a: normalizeExecutionText(d?.option_a),
                 option_b: normalizeExecutionText(d?.option_b),
@@ -4827,21 +4862,16 @@ export const handleReportUpdate = async (req, res) => {
             : [],
           action_generation: {
             choice_actions_required_count:
-              (Array.isArray(executionReportCandidate?.decisions)
-                ? executionReportCandidate.decisions.filter(
+              (selectedDecisionsOverride && selectedDecisionsOverride.length
+                ? selectedDecisionsOverride.length
+                : Array.isArray(executionReportCandidate?.decisions)
+                  ? executionReportCandidate.decisions.filter(
                     (d) => d?.selected_option === 'a' || d?.selected_option === 'b'
                   ).length
-                : 0) +
-              (Array.isArray(trizCandidate?.contradictions)
-                ? trizCandidate.contradictions.reduce((sum, c) => {
-                    const indices = Array.isArray(c?.selected_approach_indices)
-                      ? c.selected_approach_indices
-                      : c?.selected_approach_index != null
-                        ? [c.selected_approach_index]
-                        : []
-                    return sum + new Set(indices).size
-                  }, 0)
-                : 0),
+                  : 0) +
+              (selectedTrizApproachesOverride && selectedTrizApproachesOverride.length
+                ? selectedTrizApproachesOverride.length
+                : countSelectedTrizApproaches(trizCandidate)),
             analysis_actions_min_count: 3,
           },
           requirements: {
@@ -5735,6 +5765,24 @@ export const handleReportUpdate = async (req, res) => {
               const existingDecisions = Array.isArray(executionReportCandidate?.decisions)
                 ? executionReportCandidate.decisions
                 : []
+              const selectedDecisionsForFinal = existingDecisions
+                .map((d) => ({
+                  tradeoff: normalizeExecutionText(d?.tradeoff),
+                  selected_option: normalizeExecutionSelectedOption(d?.selected_option),
+                }))
+                .filter((d) => d.tradeoff && (d.selected_option === 'a' || d.selected_option === 'b'))
+              const selectedDecisionsForPrompt =
+                selectedDecisionsOverride && selectedDecisionsOverride.length
+                  ? selectedDecisionsOverride.map((d) => ({
+                      tradeoff: d.tradeoff,
+                      selected_option: d.selected_option,
+                    }))
+                  : selectedDecisionsForFinal
+              const selectedTrizApproachesForFinal = buildSelectedTrizApproaches(trizCandidate)
+              const selectedTrizApproachesForPrompt =
+                selectedTrizApproachesOverride && selectedTrizApproachesOverride.length
+                  ? selectedTrizApproachesOverride
+                  : selectedTrizApproachesForFinal
               const promptForLen = buildExecutionReportPrompt(true, [])
               logFinalizeTrace('before_report_action_plan_llm_call', executionReportCandidate, {
                 requestId,
@@ -5749,20 +5797,23 @@ export const handleReportUpdate = async (req, res) => {
                 analysisJsonExists: Boolean(analysisJson),
                 trizCandidateExists: Boolean(trizCandidate),
                 trizSource: trizSourceForPlan,
+                selectedTrizApproachesSource: selectedTrizApproachesSourceForPlan,
                 reportActionPlanCalled: true,
-                selectedDecisionsCount: existingDecisions.filter(
-                  (d) => d?.selected_option === 'a' || d?.selected_option === 'b'
-                ).length,
-                selectedApproachesCount: Array.isArray(trizCandidate?.contradictions)
-                  ? trizCandidate.contradictions.reduce((sum, c) => {
-                      const indices = Array.isArray(c?.selected_approach_indices)
-                        ? c.selected_approach_indices
-                        : c?.selected_approach_index != null
-                          ? [c.selected_approach_index]
-                          : []
-                      return sum + new Set(indices).size
-                    }, 0)
-                  : 0,
+                selectedDecisionsCount: selectedDecisionsForPrompt.length,
+                selectedDecisionOptions: selectedDecisionsForPrompt,
+                selectedApproachesCount: selectedTrizApproachesForPrompt.length,
+                selectedApproachTitles: selectedTrizApproachesForPrompt
+                  .map((item) => item?.approach_title)
+                  .filter(Boolean),
+                promptPayloadSummary: {
+                  selected_decisions: selectedDecisionsForPrompt,
+                  selected_triz_approaches: selectedTrizApproachesForPrompt.map((item) => ({
+                    contradiction_index: item.contradiction_index,
+                    approach_index: item.approach_index,
+                    approach_title: item.approach_title,
+                    contradiction_title: item.contradiction_title,
+                  })),
+                },
                 supportingItemsCount: Array.isArray(executionSupportingItems) ? executionSupportingItems.length : null,
                 decisionsCount: existingDecisions.length,
                 promptCharLen: typeof promptForLen === 'string' ? promptForLen.length : null,

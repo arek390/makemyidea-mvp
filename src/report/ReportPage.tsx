@@ -1415,6 +1415,53 @@ export const ReportPage = ({
             : {}
         payload.execution_report = latestReportMeta.execution_report || executionReport
         payload.triz = latestReportMeta.triz || reportTriz
+        const trizForPayload = payload.triz ? normalizeTriz(sanitizeReportPayload(payload.triz)) : null
+        payload.selected_triz_approaches = Array.isArray(trizForPayload?.contradictions)
+          ? trizForPayload.contradictions.flatMap((c: any, contradictionIndex: number) => {
+              const rendered = Array.isArray(c?.approaches) && c.approaches.length
+                ? c.approaches
+                : Array.isArray(c?.solutions)
+                  ? c.solutions
+                  : []
+              const indicesRaw = Array.isArray(c?.selected_approach_indices)
+                ? c.selected_approach_indices
+                : c?.selected_approach_index != null
+                  ? [c.selected_approach_index]
+                  : []
+              const indices = Array.from(
+                new Set(
+                  indicesRaw
+                    .map((idx: unknown) => (typeof idx === 'number' ? idx : Number(idx)))
+                    .filter((idx: number) => Number.isFinite(idx))
+                    .map((idx: number) => Math.max(0, Math.floor(idx)))
+                    .filter((idx: number) => idx >= 0 && idx < rendered.length)
+                )
+              )
+              return indices
+                .map((approachIndex: number) => {
+                  const selected = rendered[approachIndex]
+                  if (!selected) return null
+                  return {
+                    contradiction_index: contradictionIndex,
+                    contradiction_title: sanitizeReportText(String(c?.title || '')),
+                    approach_index: approachIndex,
+                    approach_title: sanitizeReportText(String(selected?.title || '')),
+                    approach_description: sanitizeReportText(String(selected?.description || '')),
+                  }
+                })
+                .filter(Boolean)
+            })
+          : []
+        payload.selected_decisions = payload.execution_report
+          ? normalizeExecutionReport(sanitizeReportPayload(payload.execution_report)).decisions
+              .filter((d) => d.selected_option === 'a' || d.selected_option === 'b')
+              .map((d) => ({
+                tradeoff: d.tradeoff,
+                selected_option: d.selected_option,
+                option_a: d.option_a,
+                option_b: d.option_b,
+              }))
+          : []
       }
 
       if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
@@ -1426,7 +1473,10 @@ export const ReportPage = ({
         const decisionsAllSelected = Boolean(decisions.length && selectedOptions.every((x) => x === 'a' || x === 'b'))
         const triz = payload.triz ? normalizeTriz(sanitizeReportPayload(payload.triz)) : null
         const contradictions = Array.isArray(triz?.contradictions) ? triz.contradictions : []
-        const selectedTrizApproachesCount = contradictions.reduce((sum, c: any) => {
+        const selectedTrizApproaches = Array.isArray(payload.selected_triz_approaches)
+          ? payload.selected_triz_approaches
+          : []
+        const selectedTrizApproachesCount = selectedTrizApproaches.length || contradictions.reduce((sum, c: any) => {
           const indices = Array.isArray(c?.selected_approach_indices)
             ? c.selected_approach_indices
             : c?.selected_approach_index != null
@@ -1434,6 +1484,9 @@ export const ReportPage = ({
               : []
           return sum + new Set(indices).size
         }, 0)
+        const selectedTrizContradictionCount = new Set(
+          selectedTrizApproaches.map((item: any) => item?.contradiction_index)
+        ).size
         console.log('[REPORT FINALIZE DEBUG][frontend][before-post]', {
           reportVariant,
           execution_mode: mode,
@@ -1446,7 +1499,9 @@ export const ReportPage = ({
           decisionsAllSelected,
           hasTriz: Boolean(triz),
           trizContradictionsCount: contradictions.length,
+          selectedTrizContradictionCount,
           selectedTrizApproachesCount,
+          selectedTrizApproachTitles: selectedTrizApproaches.map((item: any) => item?.approach_title).filter(Boolean),
           trizSelectedApproachIndices: contradictions.map((c, idx) => ({
             contradictionIndex: idx,
             selected_approach_indices: Array.isArray((c as any)?.selected_approach_indices)
