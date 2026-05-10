@@ -3490,16 +3490,132 @@ export const handleReportUpdate = async (req, res) => {
           .replace(/[^a-z0-9\s]/g, ' ')
           .replace(/\s+/g, ' ')
           .trim()
+      const coverageStopwords = new Set([
+        'oraz',
+        'przez',
+        'with',
+        'from',
+        'that',
+        'this',
+        'into',
+        'product',
+        'produkt',
+        'projekt',
+        'project',
+        'lampa',
+        'lampy',
+        'lamp',
+        'selected',
+        'approach',
+        'podejsc',
+        'wybrane',
+        'wybran',
+        'solution',
+        'rozwiaz',
+        'system',
+        'users',
+        'uzytk',
+        'test',
+        'phase',
+        'faza',
+        'etap',
+      ])
       const coverageStems = (value) =>
         Array.from(
           new Set(
             normalizeCoverageText(value)
               .split(/\s+/)
               .map((word) => word.trim())
-              .filter((word) => word.length >= 4 && !['oraz', 'przez', 'with', 'from', 'that', 'this', 'into'].includes(word))
+              .filter((word) => word.length >= 4 && !coverageStopwords.has(word))
               .map((word) => (word.length > 7 ? word.slice(0, 7) : word))
+              .filter((stem) => !coverageStopwords.has(stem))
           )
         )
+      const inferSelectedApproachTheme = (approach, reportLangForTheme = 'en') => {
+        const text = normalizeCoverageText(
+          `${approach?.approach_title || ''} ${approach?.approach_description || ''} ${approach?.contradiction_title || ''}`
+        )
+        const theme = (key, titlePl, titleEn) => ({
+          key,
+          title: reportLangForTheme === 'en' ? titleEn : titlePl,
+        })
+        if (/\b(kompozyt|composite|material|materia|alumin|carbon|weglo|włokn|wlokn)\b/.test(text)) {
+          return theme('materials_composites', 'Materiały i kompozyty', 'Materials and composites')
+        }
+        if (/\b(podstaw|base|stabil|wywaz|wyważ|balanced|weight|masa)\b/.test(text)) {
+          return theme('base_stability', 'Stabilność i wyważenie podstawy', 'Base stability and balance')
+        }
+        if (/\b(modul|module|modular)\b/.test(text)) {
+          return theme('modularity', 'Modułowość i integracja modułów', 'Modularity and module integration')
+        }
+        if (/\b(komunik|communicat|standard|protocol|protokol|connect|łączn|laczn)\b/.test(text)) {
+          return theme('communication_standards', 'Standardy komunikacji', 'Communication standards')
+        }
+        if (/\b(elektronik|electronic|pcb|sensor|czujnik|control board)\b/.test(text)) {
+          return theme('electronics', 'Elektronika i architektura sterowania', 'Electronics and control architecture')
+        }
+        if (/\b(aplikac|app|interface|interfejs|ui|ux)\b/.test(text)) {
+          return theme('app_interface', 'Interfejs aplikacji i sterowanie', 'App interface and controls')
+        }
+        if (/\b(software|oprogram|optymal|optim|algorytm|logic|logika)\b/.test(text)) {
+          return theme('software_optimization', 'Optymalizacja oprogramowania', 'Software optimization')
+        }
+        if (/\b(led|dimming|ściemn|sciemn|energo|energy|light|świat|swiat)\b/.test(text)) {
+          return theme('led_energy', 'LED, energia i regulacja światła', 'LED, energy, and light regulation')
+        }
+        if (/\b(regul|mechanizm|durable|trwal|trwał|adjust|hinge|joint)\b/.test(text)) {
+          return theme('regulation_durability', 'Trwałość mechanizmów regulacji', 'Regulation mechanism durability')
+        }
+        if (/\b(power|zasil|battery|bater|akumulator|ac|dc)\b/.test(text)) {
+          return theme('power_constraints', 'Ograniczenia zasilania', 'Power constraints')
+        }
+        const fallbackTitle = normalizeExecutionText(approach?.approach_title) || (reportLangForTheme === 'en' ? 'Selected approach' : 'Wybrane podejście')
+        return { key: `selected:${normalizeCoverageText(fallbackTitle).slice(0, 40)}`, title: fallbackTitle }
+      }
+      const buildSelectedRoadmapThemes = (selectedApproaches, reportLangForTheme = 'en') => {
+        const selected = Array.isArray(selectedApproaches) ? selectedApproaches : []
+        if (!selected.length) return []
+        if (selected.length === 1) {
+          const only = selected[0]
+          const inferred = inferSelectedApproachTheme(only, reportLangForTheme)
+          return [
+            {
+              theme_key: inferred.key,
+              theme_title: inferred.title,
+              scope_mode: 'single_selected_approach',
+              approach_titles: [normalizeExecutionText(only?.approach_title)].filter(Boolean),
+              approach_descriptions: [normalizeExecutionText(only?.approach_description)].filter(Boolean),
+              instruction:
+                reportLangForTheme === 'en'
+                  ? 'Generate a narrow roadmap around this one approach only. Use selected decisions only as constraints.'
+                  : 'Wygeneruj wąską roadmapę wokół tego jednego podejścia. Decyzje A/B traktuj tylko jako ograniczenia.',
+            },
+          ]
+        }
+        const groups = new Map()
+        selected.forEach((approach) => {
+          const inferred = inferSelectedApproachTheme(approach, reportLangForTheme)
+          const current = groups.get(inferred.key) || {
+            theme_key: inferred.key,
+            theme_title: inferred.title,
+            scope_mode: 'grouped_selected_approaches',
+            approach_titles: [],
+            approach_descriptions: [],
+          }
+          const title = normalizeExecutionText(approach?.approach_title)
+          const description = normalizeExecutionText(approach?.approach_description)
+          if (title && !current.approach_titles.includes(title)) current.approach_titles.push(title)
+          if (description && !current.approach_descriptions.includes(description)) current.approach_descriptions.push(description)
+          groups.set(inferred.key, current)
+        })
+        return Array.from(groups.values()).map((group) => ({
+          ...group,
+          instruction:
+            reportLangForTheme === 'en'
+              ? 'Create roadmap work only from this selected theme and its listed selected approaches.'
+              : 'Twórz pracę roadmapy tylko z tego wybranego tematu i wymienionych wybranych podejść.',
+        }))
+      }
       const evaluateSelectedTrizCoverage = (report, selectedApproaches) => {
         const selected = Array.isArray(selectedApproaches) ? selectedApproaches : []
         const roadmapText = normalizeCoverageText(extractRoadmapCoverageText(report))
@@ -3539,6 +3655,110 @@ export const handleReportUpdate = async (req, res) => {
         if (!coverage?.selectedCount) return false
         if (coverage.selectedCount <= 3) return coverage.missingCount > 0
         return coverage.missingCount > coverage.representedCount
+      }
+      const evaluateRoadmapScopeAlignment = (report, selectedApproaches, selectedThemes) => {
+        const selected = Array.isArray(selectedApproaches) ? selectedApproaches : []
+        const themes = Array.isArray(selectedThemes) ? selectedThemes : []
+        const phases = Array.isArray(report?.roadmap_phases) ? report.roadmap_phases : []
+        const selectedScopeText = normalizeCoverageText(
+          [
+            ...selected.flatMap((item) => [
+              item?.approach_title,
+              item?.approach_description,
+              item?.contradiction_title,
+            ]),
+            ...themes.flatMap((theme) => [
+              theme?.theme_title,
+              ...(Array.isArray(theme?.approach_titles) ? theme.approach_titles : []),
+              ...(Array.isArray(theme?.approach_descriptions) ? theme.approach_descriptions : []),
+            ]),
+          ]
+            .map((value) => normalizeExecutionText(value))
+            .filter(Boolean)
+            .join(' ')
+        )
+        const selectedScopeStems = coverageStems(selectedScopeText)
+        const themeCoverage = themes.map((theme) => {
+          const title = normalizeExecutionText(theme?.theme_title)
+          const stems = coverageStems(
+            [
+              title,
+              ...(Array.isArray(theme?.approach_titles) ? theme.approach_titles : []),
+              ...(Array.isArray(theme?.approach_descriptions) ? theme.approach_descriptions : []),
+            ].join(' ')
+          )
+          return { title, stems }
+        })
+        const phaseSummaries = phases.map((phase) => {
+          const title = normalizeExecutionText(phase?.phase_title || phase?.title)
+          const text = normalizeCoverageText(
+            [
+              title,
+              phase?.why_this_phase_matters,
+              phase?.key_risk_or_tradeoff,
+              Array.isArray(phase?.concrete_actions) ? phase.concrete_actions.join(' ') : '',
+              phase?.validation_or_test,
+              phase?.decision_unlocked,
+            ]
+              .map((value) => normalizeExecutionText(value))
+              .filter(Boolean)
+              .join(' ')
+          )
+          const matchesSelectedScope =
+            selectedScopeStems.length > 0 && selectedScopeStems.some((stem) => text.includes(stem))
+          const titleText = normalizeCoverageText(title)
+          const titleMatchesSelectedScope =
+            selectedScopeStems.length > 0 && selectedScopeStems.some((stem) => titleText.includes(stem))
+          const genericProductCategory =
+            /\b(material|kompozyt|composite|smart|app|aplikac|interfejs|interface|power|zasil|battery|bater|ac|dc|regul|mechanizm|production|produkc|manufactur|wdrozen|modul|module|electronic|elektronik|software|oprogram|led|base|podstaw|stabil)\b/.test(
+              text
+            )
+          const genericTitleCategory =
+            /\b(material|kompozyt|composite|smart|app|aplikac|interfejs|interface|power|zasil|battery|bater|ac|dc|regul|mechanizm|production|produkc|manufactur|wdrozen|modul|module|electronic|elektronik|software|oprogram|led|base|podstaw|stabil)\b/.test(
+              titleText
+            )
+          return {
+            title,
+            text,
+            matchesSelectedScope,
+            titleMatchesSelectedScope,
+            genericProductCategory,
+            genericTitleCategory,
+            outsideSelectedScope:
+              selected.length > 0 &&
+              ((!matchesSelectedScope && (genericProductCategory || selected.length === 1)) ||
+                (genericTitleCategory && !titleMatchesSelectedScope)),
+          }
+        })
+        const representedThemes = themeCoverage
+          .filter(
+            (theme) =>
+              theme.stems.length > 0 &&
+              phaseSummaries.some((phase) => theme.stems.some((stem) => phase.text.includes(stem)))
+          )
+          .map((theme) => theme.title)
+        const missingThemes = themeCoverage
+          .filter((theme) => theme.title && !representedThemes.includes(theme.title))
+          .map((theme) => theme.title)
+        const outsideSelectedScopePhaseTitles = phaseSummaries
+          .filter((phase) => phase.outsideSelectedScope)
+          .map((phase) => phase.title)
+          .filter(Boolean)
+        return {
+          selectedApproachCount: selected.length,
+          selectedThemeCount: themes.length,
+          phaseCount: phases.length,
+          selectedThemeTitles: themes.map((theme) => normalizeExecutionText(theme?.theme_title)).filter(Boolean),
+          representedThemes,
+          missingThemes,
+          outsideSelectedScopePhaseTitles,
+          outsideSelectedScopeCount: outsideSelectedScopePhaseTitles.length,
+        }
+      }
+      const shouldRetryForRoadmapScope = (scope) => {
+        if (!scope?.selectedApproachCount) return false
+        if (scope.selectedApproachCount === 1) return scope.outsideSelectedScopeCount > 0
+        return scope.outsideSelectedScopeCount > Math.max(1, scope.phaseCount - scope.selectedThemeCount)
       }
 
 	      if (isPlanFromDecisionsMode) {
@@ -4535,6 +4755,26 @@ export const handleReportUpdate = async (req, res) => {
         }
       })()
 
+      const getSelectedTrizApproachesForPrompt = () =>
+        selectedTrizApproachesOverride && selectedTrizApproachesOverride.length
+          ? selectedTrizApproachesOverride
+          : buildSelectedTrizApproaches(trizCandidate)
+      const getSelectedDecisionsForPrompt = () =>
+        Array.isArray(executionReportCandidate?.decisions)
+          ? (selectedDecisionsOverride && selectedDecisionsOverride.length
+              ? selectedDecisionsOverride
+              : executionReportCandidate.decisions)
+              .map((d) => ({
+                tradeoff: normalizeExecutionText(d?.tradeoff),
+                option_a: normalizeExecutionText(d?.option_a),
+                option_b: normalizeExecutionText(d?.option_b),
+                selected_option: normalizeExecutionSelectedOption(d?.selected_option),
+              }))
+              .filter((d) => d.tradeoff && (d.selected_option === 'a' || d.selected_option === 'b'))
+          : []
+      const getSelectedRoadmapThemesForPrompt = () =>
+        buildSelectedRoadmapThemes(getSelectedTrizApproachesForPrompt(), reportLang)
+
       const buildExecutionReportPrompt = (strictJson = false, retryReasons = []) =>
         JSON.stringify({
           existing_execution_report: phaseASanitized.execution_report ?? null,
@@ -4542,22 +4782,19 @@ export const handleReportUpdate = async (req, res) => {
           summary: summaryCandidate,
           recommendations: recommendationsCandidate,
           triz: trizCandidate,
-          selected_triz_approaches:
-            selectedTrizApproachesOverride && selectedTrizApproachesOverride.length
-              ? selectedTrizApproachesOverride
-              : buildSelectedTrizApproaches(trizCandidate),
-          selected_decisions: Array.isArray(executionReportCandidate?.decisions)
-            ? (selectedDecisionsOverride && selectedDecisionsOverride.length
-                ? selectedDecisionsOverride
-                : executionReportCandidate.decisions)
-                .map((d) => ({
-                  tradeoff: normalizeExecutionText(d?.tradeoff),
-                  option_a: normalizeExecutionText(d?.option_a),
-                  option_b: normalizeExecutionText(d?.option_b),
-                  selected_option: normalizeExecutionSelectedOption(d?.selected_option),
-                }))
-                .filter((d) => d.tradeoff && (d.selected_option === 'a' || d.selected_option === 'b'))
-            : [],
+          selected_triz_approaches: getSelectedTrizApproachesForPrompt(),
+          selected_roadmap_themes: getSelectedRoadmapThemesForPrompt(),
+          selected_decisions: getSelectedDecisionsForPrompt(),
+          roadmap_scope_contract: {
+            primary_scope_source: 'selected_roadmap_themes',
+            selected_approach_count: getSelectedTrizApproachesForPrompt().length,
+            selected_theme_count: getSelectedRoadmapThemesForPrompt().length,
+            decision_role: 'constraints_only',
+            synthesis_rule:
+              getSelectedTrizApproachesForPrompt().length === 1
+                ? 'Generate a narrow roadmap around the single selected approach and its immediate validation chain.'
+                : 'Cluster selected approaches into coherent themes and generate phases only from those themes.',
+          },
           perspective_map: perspectiveCounts,
           source_snapshot: phaseASanitized.source_snapshot ?? null,
           supporting_items: executionSupportingItems,
@@ -4627,14 +4864,17 @@ export const handleReportUpdate = async (req, res) => {
               'Avoid generic consulting language and repeated observations.',
               'Use the summary, recommendations, TRIZ, and perspective map only as synthesis inputs grounded in the board material.',
               'If selected_decisions is non-empty, treat those choices as committed. Do not contradict or reopen selected options.',
-              'If selected_triz_approaches is non-empty, treat those selected approaches as required design inputs, not optional background context.',
+              'Roadmap architecture when selected_roadmap_themes is non-empty: build roadmap phases from selected_roadmap_themes first. Do not start from a generic full-product roadmap template.',
+              'When present, selected_roadmap_themes are synthesized from selected_triz_approaches and define WHAT gets explored. selected_decisions only define WHICH direction is allowed.',
+              'If selected_triz_approaches is non-empty, treat those selected approaches as required design inputs and the primary roadmap scope, not optional background context.',
+              'Do not automatically generate dedicated phases for materials, smart systems, power, regulation, modularity, or production. Such phases are allowed only when they map to selected_roadmap_themes or are strictly required by selected_decisions as a constraint.',
               'Every selected_triz_approaches item must either appear directly in one roadmap phase or be explicitly merged with a related selected approach in that phase. Do not ignore selected approaches.',
               'If many selected_triz_approaches are present, group related approaches into fewer phases, but make the grouping traceable by naming the concrete approach themes in phase_title, why_this_phase_matters, concrete_actions, validation_or_test, or decision_unlocked.',
               'A roadmap generated with 9 selected approaches must visibly differ from a roadmap generated with only 3 selected approaches. The extra selected approaches should change what gets prototyped, tested, checked, integrated, or deliberately postponed.',
-              'Priority rule: selected_decisions constrain the overall direction; selected_triz_approaches determine what is prototyped, tested, validated, or integrated inside that direction. Do not let selected decisions erase selected TRIZ approaches.',
-              'Do not create roadmap phases for unselected TRIZ approaches unless strictly required by a selected_decision. If you include such work, explain why it is required as a constraint, not as a separate roadmap scope.',
-              'If selected_triz_approaches has exactly 1 item, generate a focused roadmap around that one approach. Do not produce a broad full-product roadmap.',
-              'If selected_triz_approaches has multiple items, group only selected approaches into coherent phases and keep each selected approach traceable.',
+              'Priority rule: selected_decisions constrain the overall direction; selected_roadmap_themes and selected_triz_approaches determine what is prototyped, tested, validated, or integrated inside that direction. Do not let selected decisions create unrelated roadmap phases.',
+              'Do not create roadmap phases for unselected TRIZ approaches unless strictly required by a selected_decision. If such work is unavoidable, keep it as a constraint inside a selected-theme phase, not as a separate roadmap scope.',
+              'If selected_triz_approaches has exactly 1 item, generate a focused roadmap around that one approach and its immediate validation chain. Do not produce a broad full-product roadmap.',
+              'If selected_triz_approaches has multiple items, cluster only selected approaches into coherent phases and keep each selected approach traceable.',
               'For goal: write one short, human-readable session goal sentence. Describe what the user is trying to achieve through this session and the intended practical outcome. Make it sound like a product/decision goal, not an instruction to the model. Use plain natural language. Do NOT mention analysis, material, board, synthesis, mapping, or generating a sequence.',
               'For map_context.coverage_summary: write a short, human, insight-driven paragraph (max 2-3 sentences). Address the user directly where natural. Describe what is actually happening in the user’s situation, not what appears on any board/data. Name the most visible tension/problem/pattern and what it means for the next decisions. Use plain language.',
               'Do NOT mention: board, signals, perspectives, dimensions, areas, counts, coverage, mapping. Do NOT describe the dataset; interpret it.',
@@ -4651,7 +4891,7 @@ export const handleReportUpdate = async (req, res) => {
               'Do not use string shortcuts instead of objects inside priorities, roadmap_phases, action_plan, decisions, or validation_loop.',
               'Lean shape only. Prioritize durable fields that will be persisted and displayed: priorities.title, roadmap_phases, decisions, validation_loop.check, next_session_focus, map_context.coverage_summary, goal, headline.',
               'Write like a senior product engineer, technical founder, or R&D lead advising a real team. The roadmap should read like practical product-development reasoning, not an executive summary, Jira backlog, requirements document, or consulting template.',
-              'Prefer roadmap_phases over action_plan: group work into 4–6 meaningful phases (few, high-signal).',
+              'Prefer roadmap_phases over action_plan: group work into a few meaningful phases. When selected_roadmap_themes is non-empty, derive those phases from selected_roadmap_themes. Use 3–4 phases for a single selected approach and 4–6 only when multiple selected themes justify it.',
               'Each roadmap phase must contain exactly these primary fields: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.',
               'The most important output is sequencing logic, engineering judgment, uncertainty reduction, tradeoff thinking, and practical constraint reasoning. Actions support that reasoning; reasoning must not merely introduce a task list.',
               'phase_title must be semantic and specific. Never return only "Etap", "Faza", "Phase", or "Stage"; name the uncertainty, product proof point, engineering risk, or milestone being reduced.',
@@ -4708,7 +4948,7 @@ export const handleReportUpdate = async (req, res) => {
               'Do not return template or meta-instruction text such as "Define a small test...", "This priority affects...", "If ignored...", or "The current direction gains support...".',
               'It is better to return fewer items than to return incomplete items.',
               `priorities: target exactly ${TARGET_EXEC_PRIORITIES} items when material supports it; otherwise return at least 2 and at most 5.`,
-              'roadmap_phases: target 4 to 6 phases when material supports it; otherwise return 3 broader phases with concrete actions.',
+              'roadmap_phases: target 3 to 6 phases. If exactly one selected_triz_approaches item is present, use 3–4 focused phases and keep every phase inside that selected approach scope.',
               'roadmap_phases.concrete_actions: target 2 to 4 concrete actions per phase. Fewer is acceptable only when the material is sparse.',
               `action_plan: optional legacy fallback; if used, return at most ${TARGET_EXEC_ACTION_PLAN} natural items in logical order.`,
               `decisions: target exactly ${TARGET_EXEC_DECISIONS} items when material supports it; otherwise return 2 to 5 items.`,
@@ -4719,8 +4959,9 @@ export const handleReportUpdate = async (req, res) => {
               'If you cannot support a section, return fewer items but keep at least 2 sections with real content.',
               ...(retryReasons.length
                 ? [
-                    'RETRY SCOPE CORRECTION: the previous roadmap missed selected_triz_approaches. Rewrite the roadmap so selected_triz_approaches are the primary roadmap scope.',
+                    'RETRY SCOPE CORRECTION: the previous roadmap missed selected_triz_approaches or drifted into generic product phases. Rewrite the roadmap from selected_roadmap_themes as the primary scope.',
                     'In this retry, do not use selected_decisions to create broad product phases. Use them only to filter and constrain the selected TRIZ approach work.',
+                    'Remove generic material/smart/power/regulation/production phases unless they map to selected_roadmap_themes.',
                     'Name or clearly reference the missing selected approach themes inside phase text.',
                   ]
                 : []),
@@ -4751,8 +4992,8 @@ export const handleReportUpdate = async (req, res) => {
             : 'Język roadmapy: roadmap_phases.concrete_actions mają brzmieć jak bezpośrednie, praktyczne instrukcje, nie bezosobowe bezokoliczniki. Zaczynaj od trybu rozkazującego: "Zaprojektuj", "Zbuduj", "Przetestuj", "Zmierz", "Porównaj", "Sprawdź", "Wybierz" zamiast "Zaprojektować", "Zbudować", "Przetestować", "Zmierzyć", "Porównać", "Sprawdzić", "Wybrać". Jeśli validation_or_test albo decision_unlocked zaczyna się od "Czy", zapisz to jako poprawne pytanie i zakończ znakiem "?".'
         const selectedScopeInstructions =
           reportLang === 'en'
-            ? 'Selected scope rule: selected_triz_approaches are the primary roadmap scope. selected_decisions are constraints only. Do not generate broad product phases from selected decisions when they are unrelated to selected_triz_approaches. If exactly one selected_triz_approaches item is present, keep the roadmap focused on that one approach.'
-            : 'Reguła zakresu: selected_triz_approaches są głównym zakresem roadmapy. selected_decisions są tylko ograniczeniami. Nie generuj szerokich faz produktowych z samych decyzji, jeśli nie wynikają z wybranych podejść TRIZ. Jeśli jest dokładnie jedno selected_triz_approaches, utrzymaj roadmapę wokół tego jednego podejścia.'
+            ? 'Selected scope rule: when selected_roadmap_themes is non-empty, selected_roadmap_themes define the roadmap. selected_decisions are constraints only. Do not generate broad product phases from selected decisions when they are unrelated to selected_roadmap_themes. If exactly one selected_triz_approaches item is present, every roadmap phase must stay inside that one approach scope.'
+            : 'Reguła zakresu: gdy selected_roadmap_themes nie jest puste, selected_roadmap_themes definiują roadmapę. selected_decisions są tylko ograniczeniami. Nie generuj szerokich faz produktowych z samych decyzji, jeśli nie wynikają z selected_roadmap_themes. Jeśli jest dokładnie jedno selected_triz_approaches, każdy etap roadmapy musi pozostać w zakresie tego jednego podejścia.'
         return `${baseInstructions}\n\n${roadmapLanguageInstructions}\n\n${selectedScopeInstructions}`
       }
 
@@ -5876,6 +6117,10 @@ export const handleReportUpdate = async (req, res) => {
                 selectedTrizApproachesOverride && selectedTrizApproachesOverride.length
                   ? selectedTrizApproachesOverride
                   : selectedTrizApproachesForFinal
+              const selectedRoadmapThemesForPrompt = buildSelectedRoadmapThemes(
+                selectedTrizApproachesForPrompt,
+                reportLang
+              )
               const promptForLen = buildExecutionReportPrompt(true, [])
               logFinalizeTrace('before_report_action_plan_llm_call', executionReportCandidate, {
                 requestId,
@@ -5898,6 +6143,9 @@ export const handleReportUpdate = async (req, res) => {
                 selectedApproachTitles: selectedTrizApproachesForPrompt
                   .map((item) => item?.approach_title)
                   .filter(Boolean),
+                selectedRoadmapThemeTitles: selectedRoadmapThemesForPrompt
+                  .map((theme) => theme?.theme_title)
+                  .filter(Boolean),
                 promptPayloadSummary: {
                   selected_decisions: selectedDecisionsForPrompt,
                   selected_triz_approaches: selectedTrizApproachesForPrompt.map((item) => ({
@@ -5905,6 +6153,12 @@ export const handleReportUpdate = async (req, res) => {
                     approach_index: item.approach_index,
                     approach_title: item.approach_title,
                     contradiction_title: item.contradiction_title,
+                  })),
+                  selected_roadmap_themes: selectedRoadmapThemesForPrompt.map((theme) => ({
+                    theme_key: theme.theme_key,
+                    theme_title: theme.theme_title,
+                    approach_titles: theme.approach_titles,
+                    scope_mode: theme.scope_mode,
                   })),
                 },
                 supportingItemsCount: Array.isArray(executionSupportingItems) ? executionSupportingItems.length : null,
@@ -5960,21 +6214,31 @@ export const handleReportUpdate = async (req, res) => {
                   firstGeneratedForCoverage,
                   selectedTrizApproachesForPrompt
                 )
+                const firstScopeAlignment = evaluateRoadmapScopeAlignment(
+                  firstGeneratedForCoverage,
+                  selectedTrizApproachesForPrompt,
+                  selectedRoadmapThemesForPrompt
+                )
+                const firstCoverageRetryNeeded =
+                  shouldRetryForTrizCoverage(firstCoverage) ||
+                  shouldRetryForRoadmapScope(firstScopeAlignment)
                 console.log('[REPORT FINALIZE DEBUG][backend][selected-triz-coverage][initial]', {
                   requestId,
                   sessionId,
                   selectedCount: firstCoverage.selectedCount,
+                  selectedRoadmapThemes: firstScopeAlignment.selectedThemeTitles,
                   representedSelectedApproaches: firstCoverage.represented.map((item) => item.title),
                   missingSelectedApproaches: firstCoverage.missing.map((item) => item.title),
+                  outsideSelectedScopePhaseTitles: firstScopeAlignment.outsideSelectedScopePhaseTitles,
                   rawRoadmapPhaseTitles: Array.isArray(execResult.data?.roadmap_phases)
                     ? execResult.data.roadmap_phases
                         .map((phase) => normalizeExecutionText(phase?.phase_title || phase?.title))
                         .filter(Boolean)
                     : [],
                   normalizedRoadmapPhaseTitles: firstCoverage.phaseTitles,
-                  retryNeeded: shouldRetryForTrizCoverage(firstCoverage),
+                  retryNeeded: firstCoverageRetryNeeded,
                 })
-                if (shouldRetryForTrizCoverage(firstCoverage)) {
+                if (firstCoverageRetryNeeded) {
                   if (execResult?.meta) {
                     responseMeta.execution_report_action_plan_initial = execResult.meta
                     await recordAiUsageBestEffort({
@@ -5994,8 +6258,12 @@ export const handleReportUpdate = async (req, res) => {
                   console.log('[REPORT FINALIZE DEBUG][backend][selected-triz-coverage][retry]', {
                     requestId,
                     sessionId,
-                    reason: 'SELECTED_TRIZ_APPROACHES_MISSING',
+                    reason: shouldRetryForRoadmapScope(firstScopeAlignment)
+                      ? 'ROADMAP_SCOPE_DRIFT'
+                      : 'SELECTED_TRIZ_APPROACHES_MISSING',
                     missingSelectedApproaches: missingTitles,
+                    outsideSelectedScopePhaseTitles: firstScopeAlignment.outsideSelectedScopePhaseTitles,
+                    selectedRoadmapThemes: firstScopeAlignment.selectedThemeTitles,
                     selectedApproachTitles: selectedTrizApproachesForPrompt
                       .map((item) => item?.approach_title)
                       .filter(Boolean),
@@ -6004,6 +6272,8 @@ export const handleReportUpdate = async (req, res) => {
                     strictJson: true,
                     retryReasons: [
                       'selected_triz_approaches_missing_from_roadmap',
+                      'roadmap_must_be_synthesized_from_selected_roadmap_themes',
+                      `outside_selected_scope_phases: ${firstScopeAlignment.outsideSelectedScopePhaseTitles.join(', ')}`,
                       `missing: ${missingTitles.join(', ')}`,
                     ],
                   })
@@ -6023,12 +6293,19 @@ export const handleReportUpdate = async (req, res) => {
                       retryGeneratedForCoverage,
                       selectedTrizApproachesForPrompt
                     )
+                    const retryScopeAlignment = evaluateRoadmapScopeAlignment(
+                      retryGeneratedForCoverage,
+                      selectedTrizApproachesForPrompt,
+                      selectedRoadmapThemesForPrompt
+                    )
                     console.log('[REPORT FINALIZE DEBUG][backend][selected-triz-coverage][retry-result]', {
                       requestId,
                       sessionId,
                       selectedCount: retryCoverage.selectedCount,
+                      selectedRoadmapThemes: retryScopeAlignment.selectedThemeTitles,
                       representedSelectedApproaches: retryCoverage.represented.map((item) => item.title),
                       missingSelectedApproaches: retryCoverage.missing.map((item) => item.title),
+                      outsideSelectedScopePhaseTitles: retryScopeAlignment.outsideSelectedScopePhaseTitles,
                       rawRoadmapPhaseTitles: Array.isArray(retryResult.data?.roadmap_phases)
                         ? retryResult.data.roadmap_phases
                             .map((phase) => normalizeExecutionText(phase?.phase_title || phase?.title))
@@ -6087,12 +6364,19 @@ export const handleReportUpdate = async (req, res) => {
                   generated,
                   selectedTrizApproachesForPrompt
                 )
+                const normalizedScopeAlignment = evaluateRoadmapScopeAlignment(
+                  generated,
+                  selectedTrizApproachesForPrompt,
+                  selectedRoadmapThemesForPrompt
+                )
                 console.log('[REPORT FINALIZE DEBUG][backend][selected-triz-coverage][accepted-normalized]', {
                   requestId,
                   sessionId,
                   selectedCount: normalizedCoverage.selectedCount,
+                  selectedRoadmapThemes: normalizedScopeAlignment.selectedThemeTitles,
                   representedSelectedApproaches: normalizedCoverage.represented.map((item) => item.title),
                   missingSelectedApproaches: normalizedCoverage.missing.map((item) => item.title),
+                  outsideSelectedScopePhaseTitles: normalizedScopeAlignment.outsideSelectedScopePhaseTitles,
                   normalizedRoadmapPhaseTitles: normalizedCoverage.phaseTitles,
                   fallbackOrRewriteTriggered: false,
                 })
