@@ -4743,14 +4743,15 @@ const isAuthFlowInProgress = () => {
 
   useEffect(() => {
     if (!authResolved) return
-    if (!client) {
+    const sbClient = client
+    if (!sbClient) {
       setIsAdmin(false)
       return
     }
     let cancelled = false
     const run = async () => {
       try {
-        const { data } = await client.auth.getSession()
+        const { data } = await sbClient.auth.getSession()
         const token = data.session?.access_token || ''
         if (!token) {
           if (!cancelled) setIsAdmin(false)
