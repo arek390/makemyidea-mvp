@@ -1090,29 +1090,24 @@ export const ReportPage = ({
   const [trizImageDeleting, setTrizImageDeleting] = useState<Record<string, boolean>>({})
   const [trizImageErrors, setTrizImageErrors] = useState<Record<string, string | null>>({})
   const [trizApproachSelecting, setTrizApproachSelecting] = useState<Record<string, boolean>>({})
-	  // Billing is PLN-only.
-	  const handleDecisionSelect = async (decisionIndex: number, selectedOption: 'a' | 'b') => {
-	    if (!executionReport?.decisions?.[decisionIndex]) return
-	    if (executionReport.decisions[decisionIndex]?.selected_option === selectedOption) return
+  // Billing is PLN-only.
+  const handleDecisionSelect = async (decisionIndex: number, selectedOption: 'a' | 'b') => {
+    if (!executionReport?.decisions?.[decisionIndex]) return
+    if (executionReport.decisions[decisionIndex]?.selected_option === selectedOption) return
     const invalidatesPlan = executionReport.stage === 'plan_generated'
     const nextExecutionReport: ReportExecutionReport = {
       ...executionReport,
-	      stage: invalidatesPlan ? 'awaiting_decisions' : executionReport.stage,
-	      priorities: invalidatesPlan ? [] : executionReport.priorities,
-	      roadmap_phases: invalidatesPlan ? [] : executionReport.roadmap_phases,
-	      action_plan: invalidatesPlan ? [] : executionReport.action_plan,
-      validation_loop: invalidatesPlan ? [] : executionReport.validation_loop,
-      next_session_focus: invalidatesPlan ? '' : executionReport.next_session_focus,
+      stage: invalidatesPlan ? 'awaiting_decisions' : executionReport.stage,
       decisions: executionReport.decisions.map((item, index) =>
         index === decisionIndex ? { ...item, selected_option: selectedOption } : item
       ),
     }
     setExecutionReport(nextExecutionReport)
-	    onReportMetaChange?.({
-	      execution_report: nextExecutionReport,
-	      updatedAt: Date.now(),
-	    })
-	    if (!client || !reportSessionId) return
+    onReportMetaChange?.({
+      execution_report: nextExecutionReport,
+      updatedAt: Date.now(),
+    })
+    if (!client || !reportSessionId) return
 	    let userId: string | null = null
 	    try {
 	      const sessionRes = await client.auth.getSession()
@@ -1839,10 +1834,6 @@ export const ReportPage = ({
         ? {
             ...executionReport,
             stage: 'awaiting_decisions',
-            priorities: [],
-            action_plan: [],
-            validation_loop: [],
-            next_session_focus: '',
           }
         : executionReport
 
@@ -2164,16 +2155,15 @@ export const ReportPage = ({
     [executionReport]
   )
   const hasLeanExecutionReport = hasLeanExecutionReportContent(normalizedExecutionReport)
-  const executionReportPlanRenderable = Boolean(
-	    normalizedExecutionReport?.stage === 'plan_generated' &&
-	      (normalizedExecutionReport?.roadmap_phases?.length ||
-	        normalizedExecutionReport?.action_plan?.length ||
-	        normalizedExecutionReport?.priorities?.length ||
-	        normalizedExecutionReport?.validation_loop?.length)
-	  )
+  const hasActionPlanData =
+    normalizedExecutionReport &&
+    ((normalizedExecutionReport?.roadmap_phases?.length ?? 0) > 0 ||
+      (normalizedExecutionReport?.action_plan?.length ?? 0) > 0 ||
+      (normalizedExecutionReport?.priorities?.length ?? 0) > 0 ||
+      (normalizedExecutionReport?.validation_loop?.length ?? 0) > 0)
+  const executionReportPlanRenderable = Boolean(hasActionPlanData || hasLeanExecutionReport)
   const executionReportRenderBranch = useMemo<'roadmap_phases' | 'legacy_action_plan' | 'empty'>(() => {
     if (
-      normalizedExecutionReport?.stage === 'plan_generated' &&
       (executionReportPlanRenderable || hasLeanExecutionReport) &&
       Array.isArray(normalizedExecutionReport?.roadmap_phases) &&
       normalizedExecutionReport.roadmap_phases.length
@@ -2181,7 +2171,6 @@ export const ReportPage = ({
       return 'roadmap_phases'
     }
     if (
-      normalizedExecutionReport?.stage === 'plan_generated' &&
       (executionReportPlanRenderable || hasLeanExecutionReport) &&
       Array.isArray(normalizedExecutionReport?.action_plan) &&
       normalizedExecutionReport.action_plan.length
@@ -2269,11 +2258,28 @@ export const ReportPage = ({
     reportVariant === 'action' &&
     normalizedExecutionReport?.stage !== 'plan_generated' &&
     decisionsAllSelected
+  const hasRenderableActionPlanContent = Boolean(hasActionPlanData || hasLeanExecutionReport)
+  const isActionPlanOutdated =
+    Boolean(hasActionPlanData && normalizedExecutionReport?.stage !== 'plan_generated')
+  const hasExistingActionPlanContent =
+    !!(
+      normalizedExecutionReport &&
+      ((normalizedExecutionReport?.roadmap_phases?.length ?? 0) +
+        (normalizedExecutionReport?.action_plan?.length ?? 0) +
+        (normalizedExecutionReport?.priorities?.length ?? 0) +
+        (normalizedExecutionReport?.validation_loop?.length ?? 0) >
+        0)
+    )
+  const renderActionPlanButtonLabel = (language === 'pl'
+    ? hasExistingActionPlanContent
+      ? 'Zaktualizuj plan działania'
+      : 'Sfinalizuj plan działania'
+    : hasExistingActionPlanContent
+      ? 'Update action plan'
+      : 'Finalize action plan')
   const updateCtaLabel =
     canBuildPlanFromDecisions
-      ? language === 'pl'
-        ? 'Sfinalizuj plan działania'
-        : 'Finalize action plan'
+      ? renderActionPlanButtonLabel
       : t.reportUpdate
   const updateCtaMode = canBuildPlanFromDecisions ? 'plan_from_decisions_only' : undefined
   const updateDisabled =
@@ -3018,7 +3024,7 @@ export const ReportPage = ({
                           disabled={isReportUpdating}
                         >
                           {isReportUpdating && <span className="button-spinner" aria-hidden="true" />}
-                          {language === 'pl' ? 'Sfinalizuj plan działania' : 'Finalize action plan'}
+                          {renderActionPlanButtonLabel}
                         </button>
                         </span>
                       </div>
@@ -3029,14 +3035,17 @@ export const ReportPage = ({
               )}
             </section>
 
-            <section id="action-plan" className="report-section">
+            <section
+              id="action-plan"
+              className={`report-section${isActionPlanOutdated ? ' report-section--action-plan-stale' : ''}`}
+            >
               <h2>{t.actionPlanSectionTitle}</h2>
-	              {normalizedExecutionReport?.stage !== 'plan_generated' ? (
-	                <p className="report-section-placeholder">
-	                  {language === 'pl'
-	                    ? 'Najpierw podejmij kluczowe decyzje, aby wygenerować tę sekcję.'
-	                    : 'Make your key decisions first to generate this section.'}
-	                </p>
+              {!hasRenderableActionPlanContent ? (
+                <p className="report-section-placeholder">
+                  {language === 'pl'
+                    ? 'Najpierw podejmij kluczowe decyzje, aby wygenerować tę sekcję.'
+                    : 'Make your key decisions first to generate this section.'}
+                </p>
 		              ) : (executionReportPlanRenderable || hasLeanExecutionReport) &&
 		                  Array.isArray((normalizedExecutionReport as any)?.roadmap_phases) &&
 		                  (normalizedExecutionReport as any).roadmap_phases.length ? (

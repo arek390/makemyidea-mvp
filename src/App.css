@@ -2891,6 +2891,11 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
 }
 
+.report-section--action-plan-stale {
+  filter: grayscale(1);
+  opacity: 0.72;
+}
+
 .report-section h2 {
   margin-top: 0;
 }
