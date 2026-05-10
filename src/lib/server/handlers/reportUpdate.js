@@ -3786,6 +3786,122 @@ export const handleReportUpdate = async (req, res) => {
         if (domain.regulation && /\b(regul|mechanizm|adjust|trwal|durab)\b/.test(decisionText)) return true
         return false
       }
+      const deriveDecisionLocalApproachDirective = (approach, decisionContexts, reportLangForTheme = 'en') => {
+        const contexts = Array.isArray(decisionContexts) ? decisionContexts : []
+        if (!contexts.length) return null
+        const approachText = normalizeCoverageText(
+          `${approach?.approach_title || ''} ${approach?.approach_description || ''} ${approach?.contradiction_title || ''}`
+        )
+        const isModularElectronics =
+          /\b(modu|modul|module|modular)\b/.test(approachText) &&
+          /\b(elektronik|electronic|pcb|sterow|control|smart|module|modu|modul)\b/.test(approachText)
+        if (!isModularElectronics) return null
+
+        const smartContext = contexts.find((context) => {
+          const text = normalizeCoverageText(
+            [
+              context?.decision_title,
+              context?.selected_option_text,
+              context?.selected_option_consequence,
+              context?.rejected_option_text,
+              context?.rejected_option_consequence,
+            ]
+              .map((value) => normalizeExecutionText(value))
+              .filter(Boolean)
+              .join(' ')
+          )
+          return /\b(smart|aplikac|app|interfejs|funkc|sterow|komunik|integrac|koszt|cost)\b/.test(text)
+        })
+        if (!smartContext) return null
+
+        const selectedText = normalizeCoverageText(
+          [smartContext.selected_option_text, smartContext.selected_option_consequence].filter(Boolean).join(' ')
+        )
+        const rejectedText = normalizeCoverageText(
+          [smartContext.rejected_option_text, smartContext.rejected_option_consequence].filter(Boolean).join(' ')
+        )
+        const selectedLimitsSmart =
+          /\b(ogranic|podstaw|prost|nizsz|tani|tanio|simple|basic|limit|minimal|lower|cheaper)\b/.test(selectedText) &&
+          /\b(peln|zaawans|rozszerz|wyzsz|integrac|advanced|full|richer|extended|higher)\b/.test(
+            `${selectedText} ${rejectedText}`
+          )
+        const selectedExpandsSmart =
+          /\b(peln|zaawans|rozszerz|wyzsz|integrac|advanced|full|richer|extended|higher)\b/.test(selectedText) &&
+          /\b(ogranic|podstaw|prost|nizsz|simple|basic|limit|minimal|lower)\b/.test(`${selectedText} ${rejectedText}`)
+
+        if (selectedLimitsSmart) {
+          return reportLangForTheme === 'en'
+            ? {
+                interpreted_direction: 'decision-local:minimal-smart-module',
+                recommended_treatment: 'validate-before-scaling',
+                postpone_or_keep: 'keep-minimal-defer-extensions',
+                simplify_or_expand: 'simplify-from-selected-option-text',
+                interpretation:
+                  'For modular electronics under this selected smart direction, do not make a full variant architecture or higher-version extensions current implementation work. Check whether one simple electronics module is enough for the MVP; treat extensions, variants, and scalability as post-MVP or as a decision after validation.',
+                recommended_scope:
+                  'validate one simple MVP electronics module first; defer extensions and higher smart variants until cost, reliability, and implementation effort justify them',
+                key_tradeoff:
+                  'A single reliable low-cost module versus premature modular architecture and extension work.',
+                risk:
+                  'Building variants too early would contradict the selected limited-smart direction and can add cost, reliability risk, and implementation effort before MVP evidence exists.',
+                dependency:
+                  'Depends on evidence that one simple module cannot cover the MVP before expanding the electronics architecture.',
+              }
+            : {
+                interpreted_direction: 'decision-local:minimal-smart-module',
+                recommended_treatment: 'validate-before-scaling',
+                postpone_or_keep: 'keep-minimal-defer-extensions',
+                simplify_or_expand: 'simplify-from-selected-option-text',
+                interpretation:
+                  'Dla modułowej elektroniki pod tym wybranym kierunkiem smart nie traktuj pełnej architektury wariantów ani rozszerzeń dla wyższych wersji jako bieżącej pracy. Sprawdź, czy jeden prosty moduł elektroniki wystarczy dla MVP; rozszerzenia, warianty i skalowanie potraktuj jako post-MVP albo decyzję po walidacji.',
+                recommended_scope:
+                  'najpierw zweryfikuj jeden prosty moduł elektroniki dla MVP; odłóż rozszerzenia i wyższe warianty smart, dopóki koszt, niezawodność i wysiłek wdrożeniowy ich nie uzasadnią',
+                key_tradeoff:
+                  'Jeden niezawodny i tani moduł kontra przedwczesna architektura modułowa i praca nad rozszerzeniami.',
+                risk:
+                  'Budowanie wariantów zbyt wcześnie zaprzeczy wybranemu kierunkowi ograniczonych funkcji smart i może dodać koszt, ryzyko niezawodności oraz wysiłek wdrożeniowy przed dowodem z MVP.',
+                dependency:
+                  'Zależy od dowodu, że jeden prosty moduł nie wystarczy dla MVP, zanim rozszerzysz architekturę elektroniki.',
+              }
+        }
+
+        if (selectedExpandsSmart) {
+          return reportLangForTheme === 'en'
+            ? {
+                interpreted_direction: 'decision-local:advanced-smart-modular-architecture',
+                recommended_treatment: 'implement-and-integrate',
+                postpone_or_keep: 'keep-and-stage-variants',
+                simplify_or_expand: 'expand-from-selected-option-text',
+                interpretation:
+                  'For modular electronics under this selected smart direction, scalable architecture, variants, extension points, and integration roadmap can be active implementation work. Manage cost, reliability, setup friction, and compatibility risk without collapsing back to a basic-only MVP direction.',
+                recommended_scope:
+                  'design a scalable electronics path with staged variants, integration tests, and explicit cost/reliability controls',
+                key_tradeoff:
+                  'Broader smart integration and extensibility versus cost, reliability, setup friction, and compatibility risk.',
+                risk:
+                  'The chosen advanced smart direction can fail if modularity increases cost or setup friction faster than users perceive value.',
+                dependency:
+                  'Depends on stable integration between app, electronics modules, and communication standards.',
+              }
+            : {
+                interpreted_direction: 'decision-local:advanced-smart-modular-architecture',
+                recommended_treatment: 'implement-and-integrate',
+                postpone_or_keep: 'keep-and-stage-variants',
+                simplify_or_expand: 'expand-from-selected-option-text',
+                interpretation:
+                  'Dla modułowej elektroniki pod tym wybranym kierunkiem smart skalowalna architektura, warianty, punkty rozszerzeń i roadmapa integracji mogą być bieżącą pracą. Zarządzaj kosztem, niezawodnością, tarciem konfiguracji i kompatybilnością, ale nie cofaj planu do kierunku wyłącznie podstawowego MVP.',
+                recommended_scope:
+                  'zaprojektuj skalowalną ścieżkę elektroniki z etapowanymi wariantami, testami integracji oraz jawną kontrolą kosztu i niezawodności',
+                key_tradeoff:
+                  'Szersza integracja smart i rozszerzalność kontra koszt, niezawodność, tarcie konfiguracji i ryzyko kompatybilności.',
+                risk:
+                  'Wybrany kierunek zaawansowanego smart może się nie obronić, jeśli modułowość zwiększy koszt albo tarcie konfiguracji szybciej niż użytkownicy zobaczą wartość.',
+                dependency:
+                  'Zależy od stabilnej integracji aplikacji, modułów elektroniki i standardów komunikacji.',
+              }
+        }
+        return null
+      }
       const buildApproachInterpretations = (selectedApproaches, selectedDecisions, selectedThemes, reportLangForTheme = 'en') => {
         const approaches = Array.isArray(selectedApproaches) ? selectedApproaches : []
         const decisions = Array.isArray(selectedDecisions) ? selectedDecisions : []
@@ -3805,6 +3921,7 @@ export const handleReportUpdate = async (req, res) => {
             .map((item) => item.forbidden_opposite_direction)
             .filter(Boolean)
             .join(' | ')
+          const decisionLocalDirective = deriveDecisionLocalApproachDirective(approach, decisionContexts, reportLangForTheme)
           const affectedDecisions = relatedDecisions
             .map((decision) => ({
               contradiction_index: decision?.contradiction_index ?? null,
@@ -3831,6 +3948,9 @@ export const handleReportUpdate = async (req, res) => {
                 : reportLangForTheme === 'en'
                   ? 'Keep only the part that directly supports the selected product direction.'
                   : 'Zostaw tylko ten zakres, który bezpośrednio wspiera wybrany kierunek produktu.'
+          const interpretationWithDirective = [interpretation, decisionLocalDirective?.interpretation]
+            .filter(Boolean)
+            .join(' ')
           const recommendedScope =
             hasDecisionContext
               ? reportLangForTheme === 'en'
@@ -3843,8 +3963,12 @@ export const handleReportUpdate = async (req, res) => {
                 : reportLangForTheme === 'en'
                   ? 'keep if it changes the next build decision'
                   : 'zostaw, jeśli zmienia najbliższą decyzję budowy'
+          const recommendedScopeWithDirective = [recommendedScope, decisionLocalDirective?.recommended_scope]
+            .filter(Boolean)
+            .join(' | ')
           const keepPostponeOrReject =
-            hasDecisionContext ? 'derive-from-selected-decision' : shouldValidateFirst ? 'validate-first' : 'keep'
+            decisionLocalDirective?.recommended_treatment ||
+            (hasDecisionContext ? 'derive-from-selected-decision' : shouldValidateFirst ? 'validate-first' : 'keep')
           const keyTradeoff =
             hasDecisionContext
               ? reportLangForTheme === 'en'
@@ -3857,6 +3981,9 @@ export const handleReportUpdate = async (req, res) => {
                 : reportLangForTheme === 'en'
                   ? 'Evidence gained now versus complexity added too early.'
                   : 'Dowód uzyskany teraz kontra złożoność dodana zbyt wcześnie.'
+          const keyTradeoffWithDirective = [keyTradeoff, decisionLocalDirective?.key_tradeoff]
+            .filter(Boolean)
+            .join(' ')
           const mvpRelevance =
             hasDecisionContext
               ? reportLangForTheme === 'en'
@@ -3870,13 +3997,14 @@ export const handleReportUpdate = async (req, res) => {
               ? reportLangForTheme === 'en'
                 ? `The roadmap can accidentally optimize for the rejected option instead of the selected direction: ${selectedDirectionText}.`
                 : `Roadmapa może przypadkowo optymalizować pod odrzuconą opcję zamiast wybranego kierunku: ${selectedDirectionText}.`
-              : domain.materials
-                ? reportLangForTheme === 'en'
-                  ? 'A lighter material can hurt stiffness, stability, cost, or manufacturing repeatability.'
-                  : 'Lżejszy materiał może pogorszyć sztywność, stabilność, koszt albo powtarzalność produkcji.'
+                : domain.materials
+                  ? reportLangForTheme === 'en'
+                    ? 'A lighter material can hurt stiffness, stability, cost, or manufacturing repeatability.'
+                    : 'Lżejszy materiał może pogorszyć sztywność, stabilność, koszt albo powtarzalność produkcji.'
                 : reportLangForTheme === 'en'
                   ? 'The approach can add work before the team has enough evidence to justify it.'
                   : 'Podejście może dodać pracę zanim zespół ma wystarczający dowód, że warto.'
+          const riskWithDirective = [risk, decisionLocalDirective?.risk].filter(Boolean).join(' ')
           const dependency =
             hasDecisionContext
               ? reportLangForTheme === 'en'
@@ -3889,6 +4017,7 @@ export const handleReportUpdate = async (req, res) => {
                   : reportLangForTheme === 'en'
                     ? 'Depends on the next prototype result and selected decision constraints.'
                     : 'Zależy od wyniku najbliższego prototypu i ograniczeń z wybranych decyzji.'
+          const dependencyWithDirective = [dependency, decisionLocalDirective?.dependency].filter(Boolean).join(' ')
           return {
             selected_approach: {
               contradiction_index: approach?.contradiction_index ?? null,
@@ -3903,23 +4032,23 @@ export const handleReportUpdate = async (req, res) => {
                 )?.theme_title || inferredTheme.title,
             },
             affected_by_decisions: affectedDecisions,
-            interpretation,
-            rationale: interpretation,
+            interpretation: interpretationWithDirective,
+            rationale: interpretationWithDirective,
             mvp_relevance: mvpRelevance,
-            risk,
-            dependency,
-            interpreted_direction: hasDecisionContext
+            risk: riskWithDirective,
+            dependency: dependencyWithDirective,
+            interpreted_direction: decisionLocalDirective?.interpreted_direction || (hasDecisionContext
               ? 'derive-from-selected-decision'
               : shouldValidateFirst
                 ? 'validate-first'
-                : 'keep',
-            recommended_scope: recommendedScope,
+                : 'keep'),
+            recommended_scope: recommendedScopeWithDirective,
             recommended_treatment: keepPostponeOrReject,
             decision_direction_contexts: decisionContexts,
-            simplify_or_expand: hasDecisionContext ? 'derive_from_selected_option_text' : 'keep_narrow',
+            simplify_or_expand: decisionLocalDirective?.simplify_or_expand || (hasDecisionContext ? 'derive_from_selected_option_text' : 'keep_narrow'),
             prototype_priority: hasDecisionContext || shouldValidateFirst ? 'high' : 'medium',
-            postpone_or_keep: keepPostponeOrReject,
-            key_tradeoff: keyTradeoff,
+            postpone_or_keep: decisionLocalDirective?.postpone_or_keep || keepPostponeOrReject,
+            key_tradeoff: keyTradeoffWithDirective,
           }
         })
       }
@@ -5305,8 +5434,40 @@ export const handleReportUpdate = async (req, res) => {
         getSelectedDecisionsForPrompt()
           .map((decision) => buildDecisionDirectionContext(decision))
           .filter(Boolean)
+      const trimPromptText = (value, maxLen = 700) => {
+        const text = normalizeExecutionText(value)
+        if (!text || text.length <= maxLen) return text
+        return `${text.slice(0, maxLen).trim()}...`
+      }
+      const getSelectedDecisionsSummaryForPrompt = () =>
+        getSelectedDecisionsForPrompt().map((decision) => ({
+          contradiction_index: decision?.contradiction_index ?? null,
+          tradeoff: trimPromptText(decision?.tradeoff, 180),
+          selected_option: normalizeExecutionSelectedOption(decision?.selected_option),
+          selected_option_text: trimPromptText(selectedDecisionOptionText(decision), 220),
+          selected_option_consequence: trimPromptText(selectedDecisionConsequenceText(decision), 220),
+          rejected_option_text: trimPromptText(rejectedDecisionOptionText(decision), 220),
+          rejected_option_consequence: trimPromptText(rejectedDecisionConsequenceText(decision), 220),
+        }))
       const getSelectedRoadmapThemesForPrompt = () =>
         buildSelectedRoadmapThemes(getSelectedTrizApproachesForPrompt(), reportLang)
+      const getSelectedTrizApproachesSummaryForPrompt = () =>
+        getSelectedTrizApproachesForPrompt().map((item) => ({
+          contradiction_index: item?.contradiction_index ?? null,
+          contradiction_title: trimPromptText(item?.contradiction_title, 180),
+          approach_index: item?.approach_index ?? null,
+          approach_title: trimPromptText(item?.approach_title, 180),
+          approach_description: trimPromptText(item?.approach_description, 260),
+        }))
+      const getSelectedRoadmapThemesSummaryForPrompt = () =>
+        getSelectedRoadmapThemesForPrompt().map((theme) => ({
+          theme_key: trimPromptText(theme?.theme_key, 120),
+          theme_title: trimPromptText(theme?.theme_title, 160),
+          scope_mode: trimPromptText(theme?.scope_mode, 80),
+          approach_titles: Array.isArray(theme?.approach_titles)
+            ? theme.approach_titles.map((title) => trimPromptText(title, 160))
+            : [],
+        }))
       const getApproachInterpretationsForPrompt = () =>
         buildApproachInterpretations(
           getSelectedTrizApproachesForPrompt(),
@@ -5314,6 +5475,37 @@ export const handleReportUpdate = async (req, res) => {
           getSelectedRoadmapThemesForPrompt(),
           reportLang
         )
+      const getCompactApproachInterpretationsForPrompt = () =>
+        getApproachInterpretationsForPrompt().map((item) => ({
+          selected_approach: {
+            contradiction_index: item?.selected_approach?.contradiction_index ?? null,
+            contradiction_title: trimPromptText(item?.selected_approach?.contradiction_title, 180),
+            approach_index: item?.selected_approach?.approach_index ?? null,
+            approach_title: trimPromptText(item?.selected_approach?.approach_title, 180),
+            approach_description: trimPromptText(item?.selected_approach?.approach_description, 260),
+            theme_title: trimPromptText(item?.selected_approach?.theme_title, 140),
+          },
+          affected_decisions: Array.isArray(item?.affected_by_decisions)
+            ? item.affected_by_decisions.map((decision) => ({
+                contradiction_index: decision?.contradiction_index ?? null,
+                tradeoff: trimPromptText(decision?.tradeoff, 160),
+                selected_option: normalizeExecutionSelectedOption(decision?.selected_option),
+                selected_option_text: trimPromptText(decision?.selected_option_text, 200),
+                selected_consequence_text: trimPromptText(decision?.selected_consequence_text, 200),
+                rejected_option_text: trimPromptText(decision?.rejected_option_text, 200),
+                rejected_consequence_text: trimPromptText(decision?.rejected_consequence_text, 200),
+              }))
+            : [],
+          interpretation: trimPromptText(item?.interpretation, 900),
+          recommended_scope: trimPromptText(item?.recommended_scope, 700),
+          interpreted_direction: trimPromptText(item?.interpreted_direction, 120),
+          recommended_treatment: trimPromptText(item?.recommended_treatment, 120),
+          postpone_or_keep: trimPromptText(item?.postpone_or_keep, 120),
+          simplify_or_expand: trimPromptText(item?.simplify_or_expand, 120),
+          key_tradeoff: trimPromptText(item?.key_tradeoff, 650),
+          risk: trimPromptText(item?.risk, 650),
+          dependency: trimPromptText(item?.dependency, 500),
+        }))
       const hasApproachInterpretationsForPrompt = () => getApproachInterpretationsForPrompt().length > 0
       const buildScopedExistingExecutionReportForPrompt = () => {
         if (!hasApproachInterpretationsForPrompt()) return phaseASanitized.execution_report ?? null
@@ -5322,7 +5514,7 @@ export const handleReportUpdate = async (req, res) => {
           : {}
         return {
           stage: existing.stage ?? null,
-          decisions: getSelectedDecisionsForPrompt(),
+          note: 'Previous roadmap intentionally omitted from prompt. Use selected_decisions and approach_interpretations below as current source of truth.',
         }
       }
       const buildScopedProductContextForPrompt = () => {
@@ -5339,13 +5531,7 @@ export const handleReportUpdate = async (req, res) => {
         if (!hasApproachInterpretationsForPrompt()) return trizCandidate
         return {
           selected_only: true,
-          selected_contradictions: getSelectedTrizApproachesForPrompt().map((item) => ({
-            contradiction_index: item?.contradiction_index ?? null,
-            contradiction_title: normalizeExecutionText(item?.contradiction_title),
-            approach_index: item?.approach_index ?? null,
-            approach_title: normalizeExecutionText(item?.approach_title),
-            approach_description: normalizeExecutionText(item?.approach_description),
-          })),
+          source: 'Use selected_triz_approaches and approach_interpretations below. Full TRIZ object omitted to keep the action-plan prompt focused.',
         }
       }
       const buildScopedSupportingItemsForPrompt = () => {
@@ -5374,7 +5560,11 @@ export const handleReportUpdate = async (req, res) => {
             )
             return stems.some((stem) => text.includes(stem))
           })
-          .slice(0, 5)
+          .slice(0, 3)
+          .map((item) => ({
+            id: item?.id ?? null,
+            text: trimPromptText(item?.text || item?.label || item?.questionTextPl || item?.questionTextEn, 260),
+          }))
       }
 
       const buildExecutionReportPrompt = (strictJson = false, retryReasons = []) =>
@@ -5384,10 +5574,18 @@ export const handleReportUpdate = async (req, res) => {
           summary: buildScopedProductContextForPrompt(),
           recommendations: hasApproachInterpretationsForPrompt() ? null : recommendationsCandidate,
           triz: buildScopedTrizForPrompt(),
-          selected_triz_approaches: getSelectedTrizApproachesForPrompt(),
-          selected_roadmap_themes: getSelectedRoadmapThemesForPrompt(),
-          approach_interpretations: getApproachInterpretationsForPrompt(),
-          selected_decisions: getSelectedDecisionsForPrompt(),
+          selected_triz_approaches: hasApproachInterpretationsForPrompt()
+            ? getSelectedTrizApproachesSummaryForPrompt()
+            : getSelectedTrizApproachesForPrompt(),
+          selected_roadmap_themes: hasApproachInterpretationsForPrompt()
+            ? getSelectedRoadmapThemesSummaryForPrompt()
+            : getSelectedRoadmapThemesForPrompt(),
+          approach_interpretations: hasApproachInterpretationsForPrompt()
+            ? getCompactApproachInterpretationsForPrompt()
+            : getApproachInterpretationsForPrompt(),
+          selected_decisions: hasApproachInterpretationsForPrompt()
+            ? getSelectedDecisionsSummaryForPrompt()
+            : getSelectedDecisionsForPrompt(),
           decision_direction_contexts: getDecisionDirectionContextsForPrompt(),
           roadmap_scope_contract: {
             primary_scope_source: 'approach_interpretations',
@@ -5461,7 +5659,41 @@ export const handleReportUpdate = async (req, res) => {
                 next_session_focus: 'string',
               },
             },
-            notes: [
+            notes: hasApproachInterpretationsForPrompt()
+              ? [
+                  'Return exactly one valid JSON object and nothing else. The JSON must contain only: execution_report.',
+                  'Prefer execution_report.roadmap_phases. Keep action_plan empty unless absolutely necessary.',
+                  'Use exactly these roadmap phase fields: phase_title, why_this_phase_matters, key_risk_or_tradeoff, concrete_actions, validation_or_test, decision_unlocked.',
+                  'approach_interpretations are the ONLY source of roadmap scope. selected_triz_approaches define WHAT gets explored.',
+                  'selected_decisions and decision_direction_contexts define HOW each selected approach is constrained by the chosen option. Never infer meaning from A/B letters.',
+                  'Treat selected_option_text and selected_option_consequence as binding. Treat rejected_option_text and rejected_option_consequence as forbidden opposite direction.',
+                  'Do not generate a generic product lifecycle roadmap or a fixed materials/smart/power/regulation/production sequence.',
+                  'Do not create phases for unselected approaches unless strictly required as a constraint inside a selected approach phase.',
+                  'Group selected approaches into coherent phases. Keep every selected approach traceable in a phase title, paragraph, action, signal, or decision.',
+                  'Roadmap size must scale with selected scope: 1 approach => 2-3 focused phases; 2-4 approaches => 3-4 phases; 5+ approaches => 4-6 grouped phases only when integration justifies it.',
+                  'If an approach_interpretations item says modular electronics should validate one simple MVP module first, do not make scalable variants, higher-version extensions, or full modular architecture active implementation work.',
+                  'If an approach_interpretations item says modular electronics should implement advanced smart modular architecture, variants and extension paths may be active implementation work, with cost/reliability/setup-risk controls.',
+                  'Risk language must manage the chosen direction, not steer back to the rejected option.',
+                  'Write like a senior product engineer or R&D lead: concrete, advisory, practical, and not a template.',
+                  'concrete_actions must contain 2-3 direct practical instructions. In Polish use imperative verbs such as Zaprojektuj, Zbuduj, Przetestuj, Zmierz, Porównaj, Sprawdź, Wybierz.',
+                  'validation_or_test should name the signal that justifies continuing, pivoting, or stopping.',
+                  'decision_unlocked should be a concrete next founder/R&D move, not a report label. Avoid "Decyzja o...", "Wybór...", "Potwierdzenie...", "Ocena zasadności...".',
+                  'If validation_or_test or decision_unlocked starts with "Czy", "Should", or "Can", write it as a proper question ending with "?".',
+                  'Do not include technology_options or done_when. Do not return legacy checklist content.',
+                  ...(retryReasons.length
+                    ? [
+                        'RETRY SCOPE CORRECTION: rewrite from approach_interpretations only; remove generic phases and cover missing selected approaches.',
+                        `Retry focus: fix these issues exactly -> ${retryReasons.join(', ')}`,
+                      ]
+                    : []),
+                  ...(strictJson
+                    ? [
+                        'STRICT JSON MODE: follow the schema exactly or return fewer items. Every list entry must be a JSON object, never a string.',
+                      ]
+                    : []),
+                  reportLang === 'en' ? 'Output must be in English.' : 'Całość po polsku.',
+                ]
+              : [
               'Return exactly one valid JSON object and nothing else.',
               'The JSON must contain only: execution_report.',
               'Base the result only on the provided material. Do not invent missing evidence.',
@@ -5480,6 +5712,8 @@ export const handleReportUpdate = async (req, res) => {
               'Selected decision option direction is binding because of selected_option_text and selected_option_consequence, not because of the option key. Treat rejected_option_text and rejected_option_consequence as the forbidden opposite direction.',
               'Before writing roadmap phases, derive each decision direction from decision_direction_contexts in plain product/architecture language, e.g. AC-only architecture, hybrid AC+battery architecture, mechanical regulation, electronic regulation, light composite structure, heavier stable base, minimal smart scope, or advanced smart integration.',
               'Use the derived decision direction only when it follows from the selected option text/consequence and contradiction context. Do not apply global simplify/expand, reduce/increase, min/max heuristics to option A or B.',
+              'If an approach_interpretations item says modular electronics should validate one simple MVP module first, do not make scalable variants, higher-version extensions, or full modular architecture active implementation work. Mention extensions only as deferred/post-MVP or as a decision after validation.',
+              'If an approach_interpretations item says modular electronics should implement advanced smart modular architecture, variants and extension paths may be active implementation work, with cost/reliability/setup-risk controls.',
               'Risk language must not override the selected option. Manage the risks of the chosen architecture/product direction instead of steering back to the rejected option.',
               'Generate roadmap phases from the interaction between approach_interpretations and selected_decisions. The phase should answer what to keep, simplify, postpone, reject, prototype first, or validate first.',
               'Do not automatically generate dedicated phases for materials, smart systems, power, regulation, modularity, or production. Such phases are allowed only when they map to approach_interpretations or are strictly required as a constraint inside an interpreted selected approach.',
