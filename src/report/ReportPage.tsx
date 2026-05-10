@@ -1102,6 +1102,9 @@ export const ReportPage = ({
         index === decisionIndex ? { ...item, selected_option: selectedOption } : item
       ),
     }
+    const currentReportMeta =
+      reportMetaRef.current && typeof reportMetaRef.current === 'object' ? reportMetaRef.current : {}
+    reportMetaRef.current = { ...currentReportMeta, execution_report: nextExecutionReport }
     setExecutionReport(nextExecutionReport)
     onReportMetaChange?.({
       execution_report: nextExecutionReport,
@@ -1399,23 +1402,38 @@ export const ReportPage = ({
     try {
       if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
         await pendingDecisionPersistRef.current
+        await pendingTrizPersistRef.current
       }
       const sessionRes = client ? await client.auth.getSession() : null
       const token = sessionRes?.data?.session?.access_token || ''
       const payload: any = { sessionId: reportSessionId || sessionId, lang: language }
       if (mode) payload.execution_mode = mode
       if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
-        payload.execution_report = executionReport
-        payload.triz = reportTriz
+        const latestReportMeta =
+          reportMetaRef.current && typeof reportMetaRef.current === 'object'
+            ? (reportMetaRef.current as any)
+            : {}
+        payload.execution_report = latestReportMeta.execution_report || executionReport
+        payload.triz = latestReportMeta.triz || reportTriz
       }
 
       if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
-        const exec = executionReport ? normalizeExecutionReport(sanitizeReportPayload(executionReport)) : null
+        const exec = payload.execution_report
+          ? normalizeExecutionReport(sanitizeReportPayload(payload.execution_report))
+          : null
         const decisions = Array.isArray(exec?.decisions) ? exec.decisions : []
         const selectedOptions = decisions.map((d) => (d?.selected_option === 'a' || d?.selected_option === 'b' ? d.selected_option : null))
         const decisionsAllSelected = Boolean(decisions.length && selectedOptions.every((x) => x === 'a' || x === 'b'))
-        const triz = reportTriz ? normalizeTriz(sanitizeReportPayload(reportTriz)) : null
+        const triz = payload.triz ? normalizeTriz(sanitizeReportPayload(payload.triz)) : null
         const contradictions = Array.isArray(triz?.contradictions) ? triz.contradictions : []
+        const selectedTrizApproachesCount = contradictions.reduce((sum, c: any) => {
+          const indices = Array.isArray(c?.selected_approach_indices)
+            ? c.selected_approach_indices
+            : c?.selected_approach_index != null
+              ? [c.selected_approach_index]
+              : []
+          return sum + new Set(indices).size
+        }, 0)
         console.log('[REPORT FINALIZE DEBUG][frontend][before-post]', {
           reportVariant,
           execution_mode: mode,
@@ -1423,10 +1441,12 @@ export const ReportPage = ({
           hasSnapshotExecutionReport: Boolean(snapshot.reportMeta?.execution_report),
           execution_report_stage: exec?.stage ?? null,
           decisionsCount: decisions.length,
+          selectedDecisionsCount: selectedOptions.filter((x) => x === 'a' || x === 'b').length,
           selectedOptions,
           decisionsAllSelected,
           hasTriz: Boolean(triz),
           trizContradictionsCount: contradictions.length,
+          selectedTrizApproachesCount,
           trizSelectedApproachIndices: contradictions.map((c, idx) => ({
             contradictionIndex: idx,
             selected_approach_indices: Array.isArray((c as any)?.selected_approach_indices)
@@ -1841,9 +1861,14 @@ export const ReportPage = ({
       if (invalidatesPlan && nextExecutionReport) {
         setExecutionReport(nextExecutionReport)
       }
-      onReportMetaChange?.({
+      const nextReportMeta = {
+        ...base,
         triz: nextTriz,
         ...(invalidatesPlan && nextExecutionReport ? { execution_report: nextExecutionReport } : {}),
+      }
+      reportMetaRef.current = nextReportMeta
+      onReportMetaChange?.({
+        ...nextReportMeta,
         updatedAt: Date.now(),
       })
       if (!client || !reportSessionId) return
@@ -1880,7 +1905,7 @@ export const ReportPage = ({
               : 'TRIZ_SELECT_FAILED'
           )
         }
-        reportMetaRef.current = { ...base, triz: nextTriz }
+        reportMetaRef.current = nextReportMeta
         const refreshed = await fetchReportBySessionId(reportSessionId)
         if (refreshed) applyReportRecord(refreshed)
       })()
@@ -2270,12 +2295,36 @@ export const ReportPage = ({
         (normalizedExecutionReport?.validation_loop?.length ?? 0) >
         0)
     )
+  const trizApproachSelectionStats = useMemo(() => {
+    if (!normalizedTriz) {
+      return { selected: 0, total: 0 }
+    }
+    return normalizedTriz.contradictions.reduce(
+      (acc, item) => {
+        const options = item.approaches?.length ? item.approaches : item.solutions
+        const optionsCount = Array.isArray(options) ? options.length : 0
+        const selectedCount = Array.isArray(item.selected_approach_indices)
+          ? item.selected_approach_indices.length
+          : 0
+        return {
+          selected: acc.selected + selectedCount,
+          total: acc.total + optionsCount,
+        }
+      },
+      { selected: 0, total: 0 }
+    )
+  }, [normalizedTriz])
+  const approachSelectionSuffix = ` (${
+    language === 'pl'
+      ? `wybrałeś ${trizApproachSelectionStats.selected} z ${trizApproachSelectionStats.total} możliwych podejść z sekcji kluczowych sprzeczności`
+      : `selected ${trizApproachSelectionStats.selected} of ${trizApproachSelectionStats.total} available approaches in the key contradictions section`
+  })`
   const renderActionPlanButtonLabel = (language === 'pl'
     ? hasExistingActionPlanContent
-      ? 'Zaktualizuj plan działania'
+      ? `Zaktualizuj plan działania${approachSelectionSuffix}`
       : 'Sfinalizuj plan działania'
     : hasExistingActionPlanContent
-      ? 'Update action plan'
+      ? `Update action plan${approachSelectionSuffix}`
       : 'Finalize action plan')
   const updateCtaLabel =
     canBuildPlanFromDecisions

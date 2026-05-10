@@ -3405,10 +3405,29 @@ export const handleReportUpdate = async (req, res) => {
 	    }
 	    const requestedLang = normalizeReportLang(body.lang || body.language || body.reportLanguage)
       const executionMode = String(body.execution_mode || body.executionMode || '').trim()
+      const isPlanFromDecisionsMode =
+        executionMode === 'plan_from_decisions_only' || executionMode === 'plan_from_decisions'
       const responseMeta = {}
       const responseExecution = { planGenerated: false, planSkippedReason: null }
+      const countSelectedTrizApproaches = (triz) =>
+        Array.isArray(triz?.contradictions)
+          ? triz.contradictions.reduce((sum, c) => {
+              const indices = Array.isArray(c?.selected_approach_indices)
+                ? c.selected_approach_indices
+                : c?.selected_approach_index != null
+                  ? [c.selected_approach_index]
+                  : []
+              return sum + new Set(indices).size
+            }, 0)
+          : 0
+      const countSelectedDecisions = (executionReport) =>
+        Array.isArray(executionReport?.decisions)
+          ? executionReport.decisions.filter(
+              (d) => d?.selected_option === 'a' || d?.selected_option === 'b'
+            ).length
+          : 0
 
-	      if (executionMode === 'plan_from_decisions_only' || executionMode === 'plan_from_decisions') {
+	      if (isPlanFromDecisionsMode) {
 	        const incomingExecutionReport =
 	          body.execution_report && typeof body.execution_report === 'object'
 	            ? normalizeExecutionReport(body.execution_report, requestedLang || 'en')
@@ -3433,9 +3452,11 @@ export const handleReportUpdate = async (req, res) => {
           hasIncomingExecutionReport: Boolean(incomingExecutionReport),
           incomingExecutionReportStage: incomingExecutionReport?.stage ?? null,
           incomingDecisionsCount: incomingDecisions.length,
+          incomingSelectedDecisionsCount: countSelectedDecisions(incomingExecutionReport),
           incomingSelectedOptions,
           hasIncomingTriz: Boolean(incomingTriz),
           incomingTrizContradictionsCount: incomingContradictions.length,
+          incomingSelectedTrizApproachesCount: countSelectedTrizApproaches(incomingTriz),
           incomingTrizSelectedApproachIndices: incomingContradictions.map((c, idx) => ({
             contradictionIndex: idx,
             selected_approach_indices: Array.isArray(c?.selected_approach_indices)
@@ -3619,6 +3640,15 @@ export const handleReportUpdate = async (req, res) => {
       !skipBilling &&
       executionMode !== 'plan_from_decisions_only' &&
       executionMode !== 'triz_select_approach'
+    if (isPlanFromDecisionsMode) {
+      console.log('[REPORT FINALIZE DEBUG][backend][billing]', {
+        requestId,
+        sessionId,
+        execution_mode: executionMode,
+        charged: shouldChargeForUpdate,
+        reason: shouldChargeForUpdate ? null : 'plan_from_decisions_only_skips_report_update_charge',
+      })
+    }
     if (shouldChargeForUpdate) {
       try {
         const billingResult = await chargeUserBalance(userId, 'report_update', requestId, supabaseAdmin)
@@ -3670,6 +3700,11 @@ export const handleReportUpdate = async (req, res) => {
 	      body.execution_report && typeof body.execution_report === 'object'
 	        ? normalizeExecutionReport(body.execution_report, reportLang)
 	        : null
+    const trizOverride =
+      isPlanFromDecisionsMode && body.triz && typeof body.triz === 'object'
+        ? normalizeTriz(body.triz)
+        : null
+    const trizSourceForPlan = trizOverride ? 'request_payload' : 'db_fallback'
 
     const itemsFromDb = items.map((item) => ({
       id: item.id,
@@ -3686,6 +3721,7 @@ export const handleReportUpdate = async (req, res) => {
       lang: reportLang,
       items: itemsFromDb,
       recommendations: normalizeRecommendations(existingNormalized.recommendations),
+      triz: trizOverride || existingNormalized.triz,
       execution_report: executionReportOverride || existingNormalized.execution_report,
       source_snapshot: {
         ...(existingNormalized.source_snapshot || {}),
@@ -3706,6 +3742,17 @@ export const handleReportUpdate = async (req, res) => {
       console.log('[report:update] items_count_mismatch', {
         db: items.length,
         report: reportItemsCount,
+      })
+    }
+    if (isPlanFromDecisionsMode) {
+      console.log('[REPORT FINALIZE DEBUG][backend][request-selection-source]', {
+        requestId,
+        sessionId,
+        execution_mode: executionMode,
+        selectedDecisionsReceived: countSelectedDecisions(executionReportOverride),
+        selectedTrizApproachesReceived: countSelectedTrizApproaches(trizOverride),
+        trizSource: trizSourceForPlan,
+        dbFallbackSelectedTrizApproaches: countSelectedTrizApproaches(existingNormalized.triz),
       })
     }
     const phaseAUpdateRes = await supabaseAdmin
@@ -4324,6 +4371,54 @@ export const handleReportUpdate = async (req, res) => {
           summary: summaryCandidate,
           recommendations: recommendationsCandidate,
           triz: trizCandidate,
+          selected_triz_approaches: Array.isArray(trizCandidate?.contradictions)
+            ? trizCandidate.contradictions
+                .flatMap((c, contradiction_index) => {
+                  const rendered =
+                    Array.isArray(c?.approaches) && c.approaches.length
+                      ? c.approaches
+                      : Array.isArray(c?.solutions)
+                        ? c.solutions
+                        : []
+                  const indicesRaw = Array.isArray(c?.selected_approach_indices)
+                    ? c.selected_approach_indices
+                    : c?.selected_approach_index != null
+                      ? [c.selected_approach_index]
+                      : []
+                  const indices = Array.from(
+                    new Set(
+                      indicesRaw
+                        .map((idx) => (typeof idx === 'number' ? idx : Number(idx)))
+                        .filter((idx) => Number.isFinite(idx))
+                        .map((idx) => Math.max(0, Math.floor(idx)))
+                        .filter((idx) => idx >= 0 && idx < rendered.length)
+                    )
+                  )
+                  return indices
+                    .map((approach_index) => {
+                      const selected = rendered[approach_index]
+                      if (!selected) return null
+                      return {
+                        contradiction_index,
+                        contradiction_title: normalizeExecutionText(c?.title),
+                        approach_index,
+                        approach_title: normalizeExecutionText(selected?.title),
+                        approach_description: normalizeExecutionText(selected?.description),
+                      }
+                    })
+                    .filter(Boolean)
+                })
+            : [],
+          selected_decisions: Array.isArray(executionReportCandidate?.decisions)
+            ? executionReportCandidate.decisions
+                .map((d) => ({
+                  tradeoff: normalizeExecutionText(d?.tradeoff),
+                  option_a: normalizeExecutionText(d?.option_a),
+                  option_b: normalizeExecutionText(d?.option_b),
+                  selected_option: normalizeExecutionSelectedOption(d?.selected_option),
+                }))
+                .filter((d) => d.tradeoff && (d.selected_option === 'a' || d.selected_option === 'b'))
+            : [],
           perspective_map: perspectiveCounts,
           source_snapshot: phaseASanitized.source_snapshot ?? null,
           supporting_items: executionSupportingItems,
@@ -4392,6 +4487,8 @@ export const handleReportUpdate = async (req, res) => {
               'Make the report execution-oriented, concrete, ordered, and decision-useful.',
               'Avoid generic consulting language and repeated observations.',
               'Use the summary, recommendations, TRIZ, and perspective map only as synthesis inputs grounded in the board material.',
+              'If selected_decisions is non-empty, treat those choices as committed. Do not contradict or reopen selected options.',
+              'If selected_triz_approaches is non-empty, treat those selected approaches as committed user choices. The roadmap_phases must reflect them as chosen directions where supported, not merely list generic TRIZ possibilities.',
               'For goal: write one short, human-readable session goal sentence. Describe what the user is trying to achieve through this session and the intended practical outcome. Make it sound like a product/decision goal, not an instruction to the model. Use plain natural language. Do NOT mention analysis, material, board, synthesis, mapping, or generating a sequence.',
               'For map_context.coverage_summary: write a short, human, insight-driven paragraph (max 2-3 sentences). Address the user directly where natural. Describe what is actually happening in the user’s situation, not what appears on any board/data. Name the most visible tension/problem/pattern and what it means for the next decisions. Use plain language.',
               'Do NOT mention: board, signals, perspectives, dimensions, areas, counts, coverage, mapping. Do NOT describe the dataset; interpret it.',
@@ -5603,6 +5700,7 @@ export const handleReportUpdate = async (req, res) => {
             allDecisionsSelected,
             selectedDecisionsCount,
             selectedTrizApproachesCount,
+            trizSource: trizSourceForPlan,
             hasAnySelections,
           })
           if (executionPlanOnly) {
@@ -5621,9 +5719,14 @@ export const handleReportUpdate = async (req, res) => {
                 ? executionReportCandidate.decisions.length
                 : 0,
               selectedOptions,
+              selectedDecisionsReceived: countSelectedDecisions(executionReportOverride),
+              selectedTrizApproachesReceived: countSelectedTrizApproaches(trizOverride),
+              selectedTrizApproachesUsed: selectedTrizApproachesCount,
+              trizSource: trizSourceForPlan,
               contentHashChanged,
               existingStage: executionReportCandidate?.stage ?? null,
               willRunFinalizeGeneration: Boolean(executionPlanOnly && allDecisionsSelected),
+              reportActionPlanWillBeCalled: Boolean(executionPlanOnly && allDecisionsSelected),
               planSkippedReason: allDecisionsSelected ? null : 'DECISIONS_INCOMPLETE',
             })
           }
@@ -5645,6 +5748,11 @@ export const handleReportUpdate = async (req, res) => {
                 language: llmLanguage,
                 analysisJsonExists: Boolean(analysisJson),
                 trizCandidateExists: Boolean(trizCandidate),
+                trizSource: trizSourceForPlan,
+                reportActionPlanCalled: true,
+                selectedDecisionsCount: existingDecisions.filter(
+                  (d) => d?.selected_option === 'a' || d?.selected_option === 'b'
+                ).length,
                 selectedApproachesCount: Array.isArray(trizCandidate?.contradictions)
                   ? trizCandidate.contradictions.reduce((sum, c) => {
                       const indices = Array.isArray(c?.selected_approach_indices)
@@ -5660,6 +5768,16 @@ export const handleReportUpdate = async (req, res) => {
                 promptCharLen: typeof promptForLen === 'string' ? promptForLen.length : null,
               })
               const execResult = await runExecutionReport(undefined, { strictJson: true })
+              console.log('[REPORT FINALIZE DEBUG][backend][report-action-plan-called]', {
+                requestId,
+                sessionId,
+                task: 'report-action-plan',
+                called: true,
+                ok: Boolean(execResult?.ok),
+                hasData: Boolean(execResult?.data),
+                model: execResult?.meta?.modelUsed ?? null,
+                tokens: execResult?.meta?.tokens ?? null,
+              })
               logActionPlanLlmCallResult('report-action-plan', promptForLen.length, execResult)
               logFinalizeTrace('raw_report_action_plan_llm_result', execResult?.data, {
                 requestId,
