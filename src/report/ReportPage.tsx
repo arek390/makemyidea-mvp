@@ -1649,15 +1649,41 @@ export const ReportPage = ({
         maybeEmitUsage(meta)
         Object.values(meta).forEach((value) => maybeEmitUsage(value))
       }
-      if (!response.ok || !responsePayload?.ok) {
-        if (responsePayload?.error === 'INSUFFICIENT_BALANCE') {
-          onBillingInsufficient?.()
-          return
-        }
-        setUpdateNotice(t.labelSaveError)
-        return
-      }
-      if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
+	      if (!response.ok || !responsePayload?.ok) {
+	        if (responsePayload?.error === 'INSUFFICIENT_BALANCE') {
+	          onBillingInsufficient?.()
+	          return
+	        }
+	        if (
+	          mode === 'plan_from_decisions_only' &&
+	          (responsePayload?.error === 'report_action_plan_failed' ||
+	            responsePayload?.planSkippedReason === 'REPORT_ACTION_PLAN_FAILED' ||
+	            responsePayload?.execution?.planSkippedReason === 'REPORT_ACTION_PLAN_FAILED')
+	        ) {
+	          setUpdateNotice(
+	            typeof responsePayload?.message === 'string' && responsePayload.message.trim()
+	              ? responsePayload.message
+	              : language === 'pl'
+	                ? 'Aktualizacja planu działania nie powiodła się. Spróbuj ponownie.'
+	                : 'Plan update failed. Try again.'
+	          )
+	          return
+	        }
+	        setUpdateNotice(t.labelSaveError)
+	        return
+	      }
+	      if (
+	        mode === 'plan_from_decisions_only' &&
+	        (responsePayload?.planGenerated === false || responsePayload?.execution?.planGenerated === false)
+	      ) {
+	        setUpdateNotice(
+	          language === 'pl'
+	            ? 'Aktualizacja planu działania nie powiodła się. Spróbuj ponownie.'
+	            : 'Plan update failed. Try again.'
+	        )
+	        return
+	      }
+	      if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
         const extracted = extractExecutionReportFromUpdateResponse(responsePayload)
         const executionReportReturned = extracted.executionReport
         if (executionReportReturned) {

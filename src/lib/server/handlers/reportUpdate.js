@@ -3388,11 +3388,10 @@ export const handleReportUpdate = async (req, res) => {
     return
   }
   try {
-    const diagnosticsEnabled = req?.headers?.['x-diagnostics'] === '1'
-    const actionPlanDiagnosticsEnabled = isEnvEnabled(process.env.ACTION_PLAN_DIAGNOSTICS)
-    const disableActionPlanRewrite = isEnvEnabled(process.env.DISABLE_ACTION_PLAN_REWRITE)
-    const disableExecPlanFallback = isEnvEnabled(process.env.DISABLE_EXEC_PLAN_FALLBACK)
-    const requestId =
+	    const diagnosticsEnabled = req?.headers?.['x-diagnostics'] === '1'
+	    const actionPlanDiagnosticsEnabled = isEnvEnabled(process.env.ACTION_PLAN_DIAGNOSTICS)
+	    const disableActionPlanRewrite = isEnvEnabled(process.env.DISABLE_ACTION_PLAN_REWRITE)
+	    const requestId =
       req?.headers?.['x-request-id'] ||
       (typeof req?.headers?.get === 'function' ? req.headers.get('x-request-id') : '') ||
       randomUUID()
@@ -4185,6 +4184,36 @@ export const handleReportUpdate = async (req, res) => {
       }
       const roadmapDiagnosticSignature = (report) =>
         diagnosticHash(JSON.stringify(summarizeRoadmapPhaseDiagnostics(report)))
+      const compactErrorMessage = (error) => {
+        if (!error) return null
+        if (typeof error === 'string') return previewDiagnosticText(error, 1200)
+        if (error instanceof Error) return previewDiagnosticText(error.message || String(error), 1200)
+        if (typeof error === 'object') {
+          let serialized = ''
+          try {
+            serialized = JSON.stringify(error)
+          } catch {
+            serialized = String(error)
+          }
+          return previewDiagnosticText(
+            error.message || error.error || error.code || serialized,
+            1200
+          )
+        }
+        return previewDiagnosticText(String(error), 1200)
+      }
+      const classifyLlmFailureReason = ({ result, parseError, validationErrors, hasData }) => {
+        const errorText = compactErrorMessage(result?.error)
+        const normalized = normalizeCoverageText(errorText || '')
+        if (parseError) return 'parse_error'
+        if (Array.isArray(validationErrors) && validationErrors.length) return 'validation_error'
+        if (normalized.includes('rate limit') || normalized.includes('429')) return 'rate_limit'
+        if (normalized.includes('timeout') || normalized.includes('timed out') || normalized.includes('abort')) return 'timeout'
+        if (normalized.includes('api key') || normalized.includes('openai_api_key')) return 'missing_api_key'
+        if (normalized.includes('provider') || normalized.includes('openai') || normalized.includes('sdk')) return 'provider_error'
+        if (hasData === false) return 'missing_data'
+        return errorText ? 'llm_error' : 'unknown'
+      }
       const shouldRetryForDecisionOptionCoverage = (coverage) =>
         Array.isArray(coverage) &&
         coverage.some(
@@ -6588,10 +6617,11 @@ export const handleReportUpdate = async (req, res) => {
               : countSelectedTrizApproaches(trizCandidate)
           const hasAnySelections = selectedDecisionsCount > 0 || selectedTrizApproachesCount > 0
 
-          // "Finalize action plan" uses `execution_mode=plan_from_decisions_only`.
-          // In that mode, once all decisions are selected, we still want a proper `execution_report.action_plan`
-          // generated via the main `report-action-plan` prompt architecture (two-layer plan).
-          let previousFinalPlanAttempt = null
+	          // "Finalize action plan" uses `execution_mode=plan_from_decisions_only`.
+	          // In that mode, once all decisions are selected, we still want a proper `execution_report.action_plan`
+	          // generated via the main `report-action-plan` prompt architecture (two-layer plan).
+	          let previousFinalPlanAttempt = null
+	          let finalPlanFailureDiagnostics = null
           logFinalizeTrace('incoming_existing_execution_report', executionReportCandidate, {
             requestId,
             sessionId,
@@ -6659,9 +6689,10 @@ export const handleReportUpdate = async (req, res) => {
                       option_b: d.option_b,
                       consequence_a: d.consequence_a,
                       consequence_b: d.consequence_b,
-                      selected_option: d.selected_option,
-                    }))
-                  : selectedDecisionsForFinal
+	                      selected_option: d.selected_option,
+	                    }))
+	                  : selectedDecisionsForFinal
+              const selectedDecisionPayloadHash = diagnosticHash(JSON.stringify(selectedDecisionsForPrompt))
               const committedDecisionsForFinalPlan =
                 selectedDecisionsForPrompt && selectedDecisionsForPrompt.length
                   ? selectedDecisionsForPrompt
@@ -6696,14 +6727,14 @@ export const handleReportUpdate = async (req, res) => {
                 analysisJsonExists: Boolean(analysisJson),
                 trizCandidateExists: Boolean(trizCandidate),
                 trizSource: trizSourceForPlan,
-                selectedTrizApproachesSource: selectedTrizApproachesSourceForPlan,
-                reportActionPlanCalled: true,
-                selectedDecisionsCount: selectedDecisionsForPrompt.length,
-                selectedDecisionOptions: selectedDecisionsForPrompt,
-                selectedDecisionPayloadHash: diagnosticHash(JSON.stringify(selectedDecisionsForPrompt)),
-                selectedDecisionsSource: selectedDecisionsOverride && selectedDecisionsOverride.length
-                  ? 'explicit_request_payload'
-                  : 'execution_report_candidate',
+	                selectedTrizApproachesSource: selectedTrizApproachesSourceForPlan,
+	                reportActionPlanCalled: true,
+	                selectedDecisionsCount: selectedDecisionsForPrompt.length,
+	                selectedDecisionOptions: selectedDecisionsForPrompt,
+	                selectedDecisionPayloadHash,
+	                selectedDecisionsSource: selectedDecisionsOverride && selectedDecisionsOverride.length
+	                  ? 'explicit_request_payload'
+	                  : 'execution_report_candidate',
                 executionReportCandidateSource,
                 executionReportCandidateStage: executionReportCandidate?.stage ?? null,
                 existingRoadmapSignature,
@@ -6781,18 +6812,33 @@ export const handleReportUpdate = async (req, res) => {
                 promptPreview: previewDiagnosticText(promptForLen, 3000),
                 llmRouterSkipPreprocess: true,
               })
-              let actionPlanUsageAlreadyRecorded = false
-              let execResult = await runExecutionReport(undefined, { strictJson: true })
-              console.log('[REPORT FINALIZE DEBUG][backend][report-action-plan-called]', {
+	              let actionPlanUsageAlreadyRecorded = false
+	              let execResult = await runExecutionReport(undefined, { strictJson: true })
+	              const actionPlanCallFailed = !(execResult?.ok && execResult?.data)
+	              const actionPlanErrorCategory = actionPlanCallFailed
+	                ? classifyLlmFailureReason({
+	                    result: execResult,
+	                    parseError: null,
+	                    validationErrors: null,
+	                    hasData: Boolean(execResult?.data),
+	                  })
+	                : null
+	              console.log('[REPORT FINALIZE DEBUG][backend][report-action-plan-called]', {
                 requestId,
                 sessionId,
                 task: 'report-action-plan',
-                called: true,
-                ok: Boolean(execResult?.ok),
-                hasData: Boolean(execResult?.data),
-                model: execResult?.meta?.modelUsed ?? null,
-                tokens: execResult?.meta?.tokens ?? null,
-              })
+	                called: true,
+	                ok: Boolean(execResult?.ok),
+	                hasData: Boolean(execResult?.data),
+	                model: execResult?.meta?.modelUsed ?? null,
+	                tokens: execResult?.meta?.tokens ?? null,
+	                error: compactErrorMessage(execResult?.error),
+		                errorCategory: actionPlanErrorCategory,
+	                oldRoadmapSignature: existingRoadmapSignature,
+	                rawRoadmapSignature: execResult?.data ? roadmapDiagnosticSignature(execResult.data) : null,
+	                staleRoadmapReturned: false,
+	                abortedDueToLlmFailure: false,
+	              })
               logActionPlanLlmCallResult('report-action-plan', promptForLen.length, execResult)
               logFinalizeTrace('raw_report_action_plan_llm_result', execResult?.data, {
                 requestId,
@@ -6800,10 +6846,19 @@ export const handleReportUpdate = async (req, res) => {
                 sourceLabel: 'report-action-plan',
               })
               {
-                const raw = actionPlanRawResponses.get('report-action-plan')
-                const parse = actionPlanParseResults.get('report-action-plan')
-                const rawSummary = raw ? summarizeRawOutput(raw.content) : {}
-                console.log('[REPORT FINALIZE TRACE][llm][report-action-plan]', {
+	                const raw = actionPlanRawResponses.get('report-action-plan')
+	                const parse = actionPlanParseResults.get('report-action-plan')
+	                const rawSummary = raw ? summarizeRawOutput(raw.content) : {}
+	                const traceFailureCategory =
+	                  !(execResult?.ok && execResult?.data)
+	                    ? classifyLlmFailureReason({
+	                        result: execResult,
+	                        parseError: parse?.recoveryError || parse?.parseError || null,
+	                        validationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
+	                        hasData: Boolean(execResult?.data),
+	                      })
+	                    : null
+	                console.log('[REPORT FINALIZE TRACE][llm][report-action-plan]', {
                   requestId,
                   sessionId,
                   checkpoint: 'raw_report_action_plan_llm_result',
@@ -6816,12 +6871,18 @@ export const handleReportUpdate = async (req, res) => {
                   containsRoadmapPhases: rawSummary.containsRoadmapPhases ?? null,
                   containsActionPlan: rawSummary.containsActionPlan ?? null,
                   containsTechnologyOptions: rawSummary.containsTechnologyOptions ?? null,
-                  containsDoneWhen: rawSummary.containsDoneWhen ?? null,
-                  parseError: parse?.recoveryError || parse?.parseError || null,
-                  validationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
-                  ...((actionPlanDiagnosticsEnabled || diagnosticsEnabled) && rawSummary.rawOutputPreview
-                    ? { rawOutputPreview: rawSummary.rawOutputPreview }
-                    : {}),
+	                  containsDoneWhen: rawSummary.containsDoneWhen ?? null,
+	                  parseError: parse?.recoveryError || parse?.parseError || null,
+	                  validationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
+	                  error: compactErrorMessage(execResult?.error),
+		                  errorCategory: traceFailureCategory,
+	                  oldRoadmapSignature: existingRoadmapSignature,
+	                  rawRoadmapSignature: execResult?.data ? roadmapDiagnosticSignature(execResult.data) : null,
+	                  staleRoadmapReturned: false,
+	                  abortedDueToLlmFailure: false,
+	                  ...((actionPlanDiagnosticsEnabled || diagnosticsEnabled) && rawSummary.rawOutputPreview
+	                    ? { rawOutputPreview: rawSummary.rawOutputPreview }
+	                    : {}),
                 })
               }
               if (execResult?.ok && execResult.data && typeof execResult.data === 'object') {
@@ -6995,12 +7056,34 @@ export const handleReportUpdate = async (req, res) => {
                 }
               }
               const reportActionPlanParse = actionPlanParseResults.get('report-action-plan') || null
-              previousFinalPlanAttempt = {
-                llmOk: Boolean(execResult?.ok),
-                hasData: Boolean(execResult?.data),
-                validationErrors: null,
-                parseError: reportActionPlanParse?.recoveryError || reportActionPlanParse?.parseError || null,
-              }
+	              previousFinalPlanAttempt = {
+		                llmOk: Boolean(execResult?.ok),
+		                hasData: Boolean(execResult?.data),
+		                error: compactErrorMessage(execResult?.error),
+		                validationErrors: null,
+		                parseError: reportActionPlanParse?.recoveryError || reportActionPlanParse?.parseError || null,
+		              }
+	              finalPlanFailureDiagnostics = {
+	                selectedDecisionPayloadHash,
+	                llmOk: previousFinalPlanAttempt.llmOk,
+	                hasData: previousFinalPlanAttempt.hasData,
+	                error: previousFinalPlanAttempt.error,
+	                errorCategory: classifyLlmFailureReason({
+	                  result: execResult,
+	                  parseError: previousFinalPlanAttempt.parseError,
+	                  validationErrors: previousFinalPlanAttempt.validationErrors,
+	                  hasData: previousFinalPlanAttempt.hasData,
+	                }),
+	                parseError: previousFinalPlanAttempt.parseError,
+	                validationErrors: previousFinalPlanAttempt.validationErrors,
+	                tokens: execResult?.meta?.tokens ?? null,
+	                model: execResult?.meta?.modelUsed ?? null,
+	                oldRoadmapSignature: existingRoadmapSignature,
+	                rawRoadmapSignature: execResult?.data ? roadmapDiagnosticSignature(execResult.data) : null,
+	                finalRoadmapSignature: null,
+	                staleRoadmapReturned: false,
+	                abortedDueToLlmFailure: false,
+	              }
               if (execResult?.meta && !actionPlanUsageAlreadyRecorded) {
                 responseMeta.execution_report_action_plan = execResult.meta
                 await recordAiUsageBestEffort({
@@ -7124,12 +7207,34 @@ export const handleReportUpdate = async (req, res) => {
                   requestId,
                   sessionId,
                 })
-                executionReportValidation = validateExecutionPlanOnly(executionReportCandidate)
-                previousFinalPlanAttempt.validationErrors = executionReportValidation?.errors ?? null
-                responseExecution.planGenerated =
-                  (Array.isArray(executionReportCandidate?.roadmap_phases) && executionReportCandidate.roadmap_phases.length > 0) ||
-                  (Array.isArray(executionReportCandidate?.action_plan) && executionReportCandidate.action_plan.length > 0)
-                console.log('[REPORT FINALIZE DEBUG][backend][after-final-plan-llm]', {
+	                executionReportValidation = validateExecutionPlanOnly(executionReportCandidate)
+	                previousFinalPlanAttempt.validationErrors = executionReportValidation?.errors ?? null
+	                responseExecution.planGenerated =
+	                  (Array.isArray(executionReportCandidate?.roadmap_phases) && executionReportCandidate.roadmap_phases.length > 0) ||
+	                  (Array.isArray(executionReportCandidate?.action_plan) && executionReportCandidate.action_plan.length > 0)
+	                if (!responseExecution.planGenerated) {
+	                  finalPlanFailureDiagnostics = {
+	                    ...(finalPlanFailureDiagnostics || {}),
+	                    selectedDecisionPayloadHash,
+	                    llmOk: Boolean(execResult?.ok),
+	                    hasData: Boolean(execResult?.data),
+	                    error: compactErrorMessage(execResult?.error),
+	                    errorCategory: classifyLlmFailureReason({
+	                      result: execResult,
+	                      parseError: previousFinalPlanAttempt?.parseError ?? null,
+	                      validationErrors: executionReportValidation?.errors ?? null,
+	                      hasData: Boolean(execResult?.data),
+	                    }),
+	                    validationErrors: executionReportValidation?.errors ?? null,
+	                    oldRoadmapSignature: existingRoadmapSignature,
+	                    rawRoadmapSignature: execResult?.data ? roadmapDiagnosticSignature(execResult.data) : null,
+	                    finalRoadmapSignature: roadmapDiagnosticSignature(executionReportCandidate),
+	                    staleRoadmapReturned:
+	                      roadmapDiagnosticSignature(executionReportCandidate) === existingRoadmapSignature,
+	                    abortedDueToLlmFailure: true,
+	                  }
+	                }
+	                console.log('[REPORT FINALIZE DEBUG][backend][after-final-plan-llm]', {
                   requestId,
                   sessionId,
                   llmOk: Boolean(execResult?.ok),
@@ -7154,14 +7259,18 @@ export const handleReportUpdate = async (req, res) => {
                   finalSelectedDecisions: Array.isArray(executionReportCandidate?.decisions)
                     ? executionReportCandidate.decisions.map((decision) => buildDecisionDirectionContext(decision)).filter(Boolean)
                     : [],
-                  finalRoadmapSignature: roadmapDiagnosticSignature(executionReportCandidate),
-                  finalSameAsExistingRoadmap:
-                    roadmapDiagnosticSignature(executionReportCandidate) === existingRoadmapSignature,
+	                  finalRoadmapSignature: roadmapDiagnosticSignature(executionReportCandidate),
+	                  finalSameAsExistingRoadmap:
+	                    roadmapDiagnosticSignature(executionReportCandidate) === existingRoadmapSignature,
+	                  oldRoadmapSignature: existingRoadmapSignature,
+	                  rawRoadmapSignature: execResult?.data ? roadmapDiagnosticSignature(execResult.data) : null,
+	                  staleRoadmapReturned: false,
+	                  abortedDueToLlmFailure: false,
 	                  validationErrors: executionReportValidation?.errors ?? null,
 	                  planGenerated: responseExecution.planGenerated,
 	                })
-              } else {
-                logFinalizeTrace('parsed_report_action_plan_before_normalization', null, {
+	              } else {
+	                logFinalizeTrace('parsed_report_action_plan_before_normalization', null, {
                   requestId,
                   sessionId,
                   sourceLabel: 'report-action-plan',
@@ -7175,16 +7284,49 @@ export const handleReportUpdate = async (req, res) => {
                   prioritiesLen: null,
                   roadmapPhasesLen: null,
                   actionPlanLen: null,
-                  validationLoopLen: null,
-                  nextSessionFocus: null,
-                  validationErrors: null,
-                  planGenerated: false,
-                })
-              }
-            } catch (error) {
-              console.error('[report:update] execution_report after decisions exception:', error)
-            }
-          }
+	                  validationLoopLen: null,
+	                  nextSessionFocus: null,
+	                  error: compactErrorMessage(execResult?.error),
+	                  errorCategory: finalPlanFailureDiagnostics?.errorCategory ?? classifyLlmFailureReason({
+	                    result: execResult,
+	                    parseError: previousFinalPlanAttempt?.parseError ?? null,
+	                    validationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
+	                    hasData: Boolean(execResult?.data),
+	                  }),
+	                  oldRoadmapSignature: finalPlanFailureDiagnostics?.oldRoadmapSignature ?? null,
+	                  rawRoadmapSignature: finalPlanFailureDiagnostics?.rawRoadmapSignature ?? null,
+	                  finalRoadmapSignature: null,
+	                  staleRoadmapReturned: false,
+	                  abortedDueToLlmFailure: true,
+	                  validationErrors: null,
+	                  planGenerated: false,
+	                })
+	              }
+	            } catch (error) {
+	              console.error('[report:update] execution_report after decisions exception:', error)
+	              previousFinalPlanAttempt = {
+	                llmOk: false,
+	                hasData: false,
+	                error: compactErrorMessage(error),
+	                validationErrors: null,
+	                parseError: null,
+	              }
+	              finalPlanFailureDiagnostics = {
+	                ...(finalPlanFailureDiagnostics || {}),
+	                llmOk: false,
+	                hasData: false,
+	                error: compactErrorMessage(error),
+	                errorCategory: classifyLlmFailureReason({
+	                  result: { error },
+	                  parseError: null,
+	                  validationErrors: null,
+	                  hasData: false,
+	                }),
+	                staleRoadmapReturned: false,
+	                abortedDueToLlmFailure: true,
+	              }
+	            }
+	          }
 
           // If we already generated a plan above (finalize path), skip the legacy plan-from-decisions pipeline.
           if (responseExecution.planGenerated) {
@@ -7209,22 +7351,48 @@ export const handleReportUpdate = async (req, res) => {
                       ? 'REPORT_ACTION_PLAN_VALIDATION_FAILED'
                       : 'REPORT_ACTION_PLAN_DID_NOT_GENERATE_PLAN'
                 : 'SELECTIONS_AVAILABLE_WITHOUT_GENERATED_PLAN'
-            if (disableExecPlanFallback && executionPlanOnly && allDecisionsSelected) {
-              console.log('[REPORT FINALIZE DEBUG][backend][fallback]', {
-                requestId,
-                sessionId,
-                fallbackTriggered: false,
-                skipped: true,
-                reason: 'DISABLE_EXEC_PLAN_FALLBACK',
-                previousLlmOk: previousFinalPlanAttempt?.llmOk ?? null,
-                previousHasData: previousFinalPlanAttempt?.hasData ?? null,
-                previousValidationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
-                previousParseError: previousFinalPlanAttempt?.parseError ?? null,
-              })
-              if (actionPlanDiagnosticsEnabled && previousFinalPlanAttempt?.llmOk === false) {
-                const raw = actionPlanRawResponses.get('report-action-plan')
-                const parse = actionPlanParseResults.get('report-action-plan')
-                console.log('[REPORT FINALIZE DEBUG][backend][llm-failure-cause]', {
+	            if (executionPlanOnly && allDecisionsSelected) {
+	              responseExecution.planGenerated = false
+	              responseExecution.planSkippedReason = 'REPORT_ACTION_PLAN_FAILED'
+	              responseExecution.planErrorReason = fallbackReason
+	              const failureDiagnostics = {
+	                ...(finalPlanFailureDiagnostics || {}),
+	                reason: 'REPORT_ACTION_PLAN_FAILED',
+	                failureReason: fallbackReason,
+	                previousLlmOk: previousFinalPlanAttempt?.llmOk ?? null,
+	                previousHasData: previousFinalPlanAttempt?.hasData ?? null,
+	                previousError: previousFinalPlanAttempt?.error ?? null,
+	                previousValidationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
+	                previousParseError: previousFinalPlanAttempt?.parseError ?? null,
+	                oldRoadmapSignature:
+	                  finalPlanFailureDiagnostics?.oldRoadmapSignature ??
+	                  roadmapDiagnosticSignature(executionReportCandidate),
+	                rawRoadmapSignature: finalPlanFailureDiagnostics?.rawRoadmapSignature ?? null,
+	                finalRoadmapSignature: null,
+	                staleRoadmapReturned: false,
+	                abortedDueToLlmFailure: true,
+	              }
+	              console.log('[REPORT FINALIZE DEBUG][backend][fallback]', {
+	                requestId,
+	                sessionId,
+	                fallbackTriggered: false,
+	                skipped: true,
+	                reason: 'REPORT_ACTION_PLAN_FAILED_ABORTED',
+	                previousLlmOk: previousFinalPlanAttempt?.llmOk ?? null,
+	                previousHasData: previousFinalPlanAttempt?.hasData ?? null,
+	                previousError: previousFinalPlanAttempt?.error ?? null,
+	                previousValidationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
+	                previousParseError: previousFinalPlanAttempt?.parseError ?? null,
+	                oldRoadmapSignature: failureDiagnostics.oldRoadmapSignature,
+	                rawRoadmapSignature: failureDiagnostics.rawRoadmapSignature,
+	                finalRoadmapSignature: null,
+	                staleRoadmapReturned: false,
+	                abortedDueToLlmFailure: true,
+	              })
+	              if (previousFinalPlanAttempt?.llmOk === false || diagnosticsEnabled || actionPlanDiagnosticsEnabled) {
+	                const raw = actionPlanRawResponses.get('report-action-plan')
+	                const parse = actionPlanParseResults.get('report-action-plan')
+	                console.log('[REPORT FINALIZE DEBUG][backend][llm-failure-cause]', {
                   requestId,
                   sessionId,
                   task: 'report-action-plan',
@@ -7236,47 +7404,58 @@ export const handleReportUpdate = async (req, res) => {
                         : Array.isArray(previousFinalPlanAttempt?.validationErrors) &&
                             previousFinalPlanAttempt.validationErrors.length
                           ? 'validation_error'
-                          : 'unknown',
-                  parseError: parse?.recoveryError || parse?.parseError || null,
-                  validationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
-                  missingData: previousFinalPlanAttempt?.hasData === false,
-                  modelOutputTruncated: raw ? summarizeRawOutput(raw.content).looksTruncated : null,
-                  rawOutputPreview: raw ? summarizeRawOutput(raw.content).rawOutputPreview : null,
-                })
-              }
-              const unchangedReportPayload = {
-                id: reportRes.data?.id ?? null,
-                session_id: reportRes.data?.session_id ?? sessionId,
-                summary_json: reportRes.data?.summary_json ?? null,
-                updated_at: reportRes.data?.updated_at ?? null,
-                source_updated_at: reportRes.data?.source_updated_at ?? null,
-              }
-              res.status(200).json({
-                ok: false,
-                error: 'report_action_plan_failed',
-                diagnostics: {
-                  reason: 'DISABLE_EXEC_PLAN_FALLBACK',
-                  failureReason: fallbackReason,
-                  previousLlmOk: previousFinalPlanAttempt?.llmOk ?? null,
-                  previousHasData: previousFinalPlanAttempt?.hasData ?? null,
-                  validationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
-                  parseError: previousFinalPlanAttempt?.parseError ?? null,
-                },
-                execution_report:
-                  reportRes.data?.summary_json?.execution_report &&
-                  typeof reportRes.data.summary_json.execution_report === 'object'
-                    ? reportRes.data.summary_json.execution_report
-                    : null,
-                report: unchangedReportPayload,
-                planGenerated: false,
-                planSkippedReason: 'REPORT_ACTION_PLAN_FAILED_FALLBACK_DISABLED',
-                execution: {
-                  ...responseExecution,
-                  planGenerated: false,
-                  planSkippedReason: 'REPORT_ACTION_PLAN_FAILED_FALLBACK_DISABLED',
-                },
-              })
-              return
+	                          : 'unknown',
+	                  parseError: parse?.recoveryError || parse?.parseError || null,
+	                  error: previousFinalPlanAttempt?.error ?? null,
+	                  errorCategory: failureDiagnostics.errorCategory ?? null,
+	                  validationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
+	                  missingData: previousFinalPlanAttempt?.hasData === false,
+	                  modelOutputTruncated: raw ? summarizeRawOutput(raw.content).looksTruncated : null,
+	                  rawOutputPreview: raw ? summarizeRawOutput(raw.content).rawOutputPreview : null,
+	                  oldRoadmapSignature: failureDiagnostics.oldRoadmapSignature,
+	                  rawRoadmapSignature: failureDiagnostics.rawRoadmapSignature,
+	                  finalRoadmapSignature: null,
+	                  staleRoadmapReturned: false,
+	                  abortedDueToLlmFailure: true,
+	                })
+	              }
+	              const unchangedReportPayload = {
+	                id: reportRes.data?.id ?? null,
+	                session_id: reportRes.data?.session_id ?? sessionId,
+	                updated_at: reportRes.data?.updated_at ?? null,
+	                source_updated_at: reportRes.data?.source_updated_at ?? null,
+	              }
+	              res.status(200).json({
+	                ok: false,
+	                error: 'report_action_plan_failed',
+	                message:
+	                  reportLang === 'en'
+	                    ? 'Plan update failed. Try again.'
+	                    : 'Aktualizacja planu działania nie powiodła się. Spróbuj ponownie.',
+	                planErrorReason: fallbackReason,
+	                diagnostics: {
+	                  ...failureDiagnostics,
+	                },
+	                execution_report: null,
+	                report: unchangedReportPayload,
+	                planGenerated: false,
+	                planSkippedReason: 'REPORT_ACTION_PLAN_FAILED',
+	                execution: {
+	                  ...responseExecution,
+	                  planGenerated: false,
+	                  planSkippedReason: 'REPORT_ACTION_PLAN_FAILED',
+	                  planErrorReason: fallbackReason,
+	                  llmOk: previousFinalPlanAttempt?.llmOk ?? null,
+	                  hasData: previousFinalPlanAttempt?.hasData ?? null,
+	                  error: previousFinalPlanAttempt?.error ?? null,
+	                  oldRoadmapSignature: failureDiagnostics.oldRoadmapSignature,
+	                  rawRoadmapSignature: failureDiagnostics.rawRoadmapSignature,
+	                  finalRoadmapSignature: null,
+	                  staleRoadmapReturned: false,
+	                  abortedDueToLlmFailure: true,
+	                },
+	              })
+	              return
             } else {
               logFinalizeTrace('before_fallback_to_report_execution_plan_from_decisions', executionReportCandidate, {
                 requestId,
