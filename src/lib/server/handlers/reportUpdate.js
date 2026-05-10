@@ -2693,24 +2693,180 @@ const getReportUpdatedAtForMetadataSave = (reportRow) => {
   return new Date().toISOString()
 }
 
-const buildTrizSketchPrompt = ({ solution, contradiction, reportLang }) => {
+const compactSketchPromptText = (value, maxLength = 420) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (!text || text.length <= maxLength) return text
+  return `${text.slice(0, maxLength).trim()}...`
+}
+
+const compactSolutionSketchContext = (solution) => {
+  const fields = [
+    ['title', solution?.title || solution?.name || solution?.approach_title],
+    ['description', solution?.description || solution?.approach_description],
+    ['rationale', solution?.rationale || solution?.explanation || solution?.reasoning],
+    ['mechanism', solution?.mechanism || solution?.how_it_works],
+  ]
+  const used = new Set()
+  return fields
+    .map(([key, raw]) => {
+      const text = compactSketchPromptText(raw)
+      const dedupeKey = text.toLowerCase()
+      if (!text || used.has(dedupeKey)) return null
+      used.add(dedupeKey)
+      return { key, text }
+    })
+    .filter(Boolean)
+}
+
+const trizSketchSemanticProfile = (solution, contradiction) => {
+  const text = String(
+    [
+      solution?.title,
+      solution?.name,
+      solution?.approach_title,
+      solution?.description,
+      solution?.approach_description,
+      solution?.rationale,
+      solution?.explanation,
+      solution?.reasoning,
+      solution?.mechanism,
+      solution?.how_it_works,
+      contradiction?.title,
+      contradiction?.explanation,
+      contradiction?.description,
+    ]
+      .filter(Boolean)
+      .join(' ')
+  )
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+  const hasEnvironmentalSpatialSemantics =
+    /\b(room|bed|furniture|environment|space|spatial|around|surrounding|wall|barrier|panel|screen|partition|freestanding|floor|desk|bedroom)\b/.test(text) ||
+    /\b(pokoj|pomieszczen|lozk|łozk|mebl|otoczen|przestrz|wokol|wokoł|wokół|barier|panel|ekran|przegrod|wolnostoj|podlog|podłog|biurk|sypialn)\b/.test(text)
+  const hasModularSemantics = /\b(modular|module|modules|segment|segments|panel|panels|modul|moduł|moduly|moduły|segment|panele)\b/.test(text)
+  const hasNonContactSemantics = /\b(non contact|non-contact|contactless|without touching|no contact|bezkontakt|bez kontaktu|bez dotykania)\b/.test(text)
+  const explicitlyWearable =
+    /\b(wearable|headphone|headphones|earbud|earbuds|earplug|earplugs|mask|helmet|head mounted|head-mounted|on the head|on the ear|worn)\b/.test(text) ||
+    /\b(noszon|sluchawk|słuchawk|douszn|zatycz|maska|kask|na glowie|na głowie|zakladan|zakładan|na uchu)\b/.test(text)
+  return {
+    hasEnvironmentalSpatialSemantics,
+    hasModularSemantics,
+    hasNonContactSemantics,
+    explicitlyWearable,
+    shouldPreserveNonWearableForm:
+      !explicitlyWearable && (hasEnvironmentalSpatialSemantics || hasNonContactSemantics),
+  }
+}
+
+const trizSketchSemanticInstructions = (semanticProfile, reportLang) => {
+  if (reportLang === 'en') {
+    return [
+      'Preserve the physical form implied by the solution description.',
+      'Show the actual proposed mechanism, components, spatial arrangement, and user interaction.',
+      semanticProfile.hasModularSemantics ? 'If the solution describes modular elements, show multiple separate modules.' : '',
+      'If the solution describes objects placed around furniture, a bed, or a room, show the spatial setup, not a wearable product.',
+      'If the solution describes a non-contact solution, do not show physical contact with the user.',
+      semanticProfile.shouldPreserveNonWearableForm
+        ? 'Keep the solution at the described environmental, spatial, furniture-scale, or room-scale form; do not convert it into a different body-worn product category.'
+        : 'If the solution explicitly describes a wearable or head-mounted device, render that wearable form faithfully.',
+      'Do not show logos or text labels.',
+    ].filter(Boolean)
+  }
+  return [
+    'Zachowaj fizyczną formę wynikającą z opisu rozwiązania.',
+    'Pokaż rzeczywisty mechanizm, komponenty, układ przestrzenny i sposób użycia.',
+    semanticProfile.hasModularSemantics ? 'Jeśli rozwiązanie opisuje modułowe elementy, pokaż kilka oddzielnych modułów.' : '',
+    'Jeśli rozwiązanie opisuje obiekty ustawiane wokół mebla, łóżka lub pomieszczenia, pokaż układ przestrzenny, a nie produkt noszony na ciele.',
+    'Jeśli rozwiązanie opisuje rozwiązanie bezkontaktowe, nie pokazuj fizycznego kontaktu z użytkownikiem.',
+    semanticProfile.shouldPreserveNonWearableForm
+      ? 'Zachowaj opisaną formę środowiskową, przestrzenną, meblową lub pokojową; nie zamieniaj jej na inną kategorię produktu noszonego na ciele.'
+      : 'Jeśli rozwiązanie wyraźnie opisuje urządzenie noszone na ciele lub zakładane na głowę, pokaż tę formę wiernie.',
+    'Nie pokazuj logo ani napisów.',
+  ].filter(Boolean)
+}
+
+const buildTrizImagePrompt = ({ solution, contradiction, reportLang }) => {
   const basePrompt =
     'isometric view, pencil sketch, conceptual industrial design sketch, monochrome graphite lines, subtle shading, visible construction lines, transparent background, fully transparent background alpha 0, no background fill, no background scene, not photorealistic, not CAD render, no text labels, no hands'
   const contradictionTitle = String(contradiction?.title || '').trim()
   const contradictionDescription = String(
     contradiction?.explanation || contradiction?.description || ''
   ).trim()
-  const solutionTitle = String(solution?.title || '').trim()
-  const solutionDescription = String(solution?.description || '').trim()
   const promptText =
     solution?.sketch_prompt && typeof solution.sketch_prompt === 'string'
       ? solution.sketch_prompt.trim()
       : ''
-  if (promptText) return promptText
-  if (reportLang === 'en') {
-    return `${basePrompt}. Show a product concept for: ${solutionTitle || solutionDescription}. Context: ${contradictionTitle}. ${contradictionDescription || ''}`.trim()
+  const solutionContext = compactSolutionSketchContext(solution)
+  const semanticProfile = trizSketchSemanticProfile(solution, contradiction)
+  const fieldLabel = (key) => {
+    if (reportLang === 'en') {
+      if (key === 'title') return 'Title'
+      if (key === 'description') return 'Description'
+      if (key === 'rationale') return 'Rationale'
+      if (key === 'mechanism') return 'Mechanism'
+      return key
+    }
+    if (key === 'title') return 'Tytuł'
+    if (key === 'description') return 'Opis'
+    if (key === 'rationale') return 'Uzasadnienie'
+    if (key === 'mechanism') return 'Mechanizm'
+    return key
   }
-  return `${basePrompt}. Pokaż koncepcyjny szkic rozwiązania: ${solutionTitle || solutionDescription}. Kontekst sprzeczności: ${contradictionTitle}. ${contradictionDescription || ''}`.trim()
+  const solutionBlock = solutionContext
+    .map((item) => `${fieldLabel(item.key)}: ${item.text}`)
+    .join('\n')
+  const semanticInstructions = trizSketchSemanticInstructions(semanticProfile, reportLang)
+  if (promptText) {
+    const repairedPrompt = promptText
+      .replace(/\bShow a product concept for\s*:/i, 'Show a conceptual solution sketch for:')
+      .replace(/\bShow a product concept for\b/i, 'Show a conceptual solution sketch for')
+    const promptWithStyle = /conceptual industrial design sketch|koncepcyjny szkic/iu.test(repairedPrompt)
+      ? repairedPrompt
+      : `${basePrompt}.\n${repairedPrompt}`
+    const alreadyHasSemanticPreservation =
+      /Preserve the physical form implied|Zachowaj fizyczną formę wynikającą/iu.test(promptWithStyle)
+    return [
+      promptWithStyle,
+      reportLang === 'en' ? 'Solution context:' : 'Kontekst rozwiązania:',
+      solutionBlock,
+      reportLang === 'en' ? 'Context:' : 'Kontekst:',
+      `${compactSketchPromptText(contradictionTitle, 220)}. ${compactSketchPromptText(contradictionDescription, 360)}`.trim(),
+      ...(alreadyHasSemanticPreservation ? [] : semanticInstructions),
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .trim()
+  }
+
+  if (reportLang === 'en') {
+    return [
+      `${basePrompt}.`,
+      'Show a conceptual solution sketch for:',
+      solutionBlock,
+      'Context:',
+      `${compactSketchPromptText(contradictionTitle, 220)}. ${compactSketchPromptText(contradictionDescription, 360)}`.trim(),
+      ...semanticInstructions,
+    ]
+      .filter(Boolean)
+      .join('\n')
+      .trim()
+  }
+  return [
+    `${basePrompt}.`,
+    'Pokaż koncepcyjny szkic rozwiązania:',
+    solutionBlock,
+    'Kontekst:',
+    `${compactSketchPromptText(contradictionTitle, 220)}. ${compactSketchPromptText(contradictionDescription, 360)}`.trim(),
+    ...semanticInstructions,
+  ]
+    .filter(Boolean)
+    .join('\n')
+    .trim()
+}
+
+const buildTrizSketchPrompt = ({ solution, contradiction, reportLang }) => {
+  return buildTrizImagePrompt({ solution, contradiction, reportLang })
 }
 
 const getTrizWatermarkAsset = async () => {
@@ -3000,6 +3156,9 @@ export const handleReportTrizImageGenerate = async (req, res) => {
       solution?.image?.status === 'ready' && (solution?.image?.storage_path || solution?.image?.public_url)
     )
     const actionKey = hasExistingReadyImage ? 'image_regenerate' : 'image_generate'
+    const existingSketchPromptUsed = Boolean(
+      typeof solution?.sketch_prompt === 'string' && solution.sketch_prompt.trim()
+    )
     logTrizImage('log', 'prompt_ready', {
       reportId: reportRes.data.id,
       contradictionIndex,
@@ -3008,6 +3167,23 @@ export const handleReportTrizImageGenerate = async (req, res) => {
       promptLength: String(prompt).trim().length,
       promptPreview: previewPrompt(prompt),
     })
+    if (diagnosticsEnabled) {
+      console.log('[triz-image][prompt_ready]', {
+        requestId,
+        reportId: reportRes.data.id,
+        sessionId,
+        contradictionIndex,
+        solutionIndex,
+        actionKey,
+        language: reportLang,
+        existingSketchPromptUsed,
+        solutionTitle: String(solution?.title || solution?.name || solution?.approach_title || '').trim(),
+        solutionDescription: String(solution?.description || solution?.approach_description || '').trim(),
+        contradictionTitle: String(contradiction?.title || '').trim(),
+        finalPromptLength: String(prompt).trim().length,
+        finalPrompt: prompt,
+      })
+    }
 
     const attemptId = `${Date.now()}-${randomUUID()}`
     const fileName = `${sanitizePathPart(sessionId, 'session')}-triz-${contradictionIndex + 1}-${solutionIndex + 1}-${attemptId}.png`
