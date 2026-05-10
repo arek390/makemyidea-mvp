@@ -426,6 +426,53 @@ const mergeExecutionDecisionSelections = (
   }
 }
 
+const getExecutionReportDebugShape = (value: unknown) => {
+  const isObject = Boolean(value && typeof value === 'object' && !Array.isArray(value))
+  const report = isObject ? (value as Record<string, unknown>) : null
+  const actionPlanRaw = Array.isArray(report?.action_plan)
+    ? report.action_plan
+    : Array.isArray(report?.actionPlan)
+      ? report.actionPlan
+      : null
+  const roadmapPhasesRaw = Array.isArray(report?.roadmap_phases)
+    ? report.roadmap_phases
+    : Array.isArray(report?.roadmapPhases)
+      ? report.roadmapPhases
+      : null
+  const validationLoopRaw = Array.isArray(report?.validation_loop)
+    ? report.validation_loop
+    : Array.isArray(report?.validationLoop)
+      ? report.validationLoop
+      : null
+  return {
+    type: typeof value,
+    keys: report ? Object.keys(report) : null,
+    stage: typeof report?.stage === 'string' ? report.stage : null,
+    roadmapPhasesLen: Array.isArray(roadmapPhasesRaw) ? roadmapPhasesRaw.length : null,
+    actionPlanLen: Array.isArray(actionPlanRaw) ? actionPlanRaw.length : null,
+    validationLoopLen: Array.isArray(validationLoopRaw) ? validationLoopRaw.length : null,
+    decisionsLen: Array.isArray(report?.decisions) ? report.decisions.length : null,
+    prioritiesLen: Array.isArray(report?.priorities) ? report.priorities.length : null,
+    hasTechnologyOptions: Array.isArray(actionPlanRaw)
+      ? actionPlanRaw.some(
+          (item) =>
+            item &&
+            typeof item === 'object' &&
+            Array.isArray((item as { technology_options?: unknown }).technology_options) &&
+            ((item as { technology_options?: unknown[] }).technology_options?.length ?? 0) > 0
+        )
+      : false,
+    hasDoneWhen: Array.isArray(actionPlanRaw)
+      ? actionPlanRaw.some(
+          (item) =>
+            item &&
+            typeof item === 'object' &&
+            Boolean(String((item as { done_when?: unknown }).done_when || '').trim())
+        )
+      : false,
+  }
+}
+
 const sanitizeReportText = (input: string) => {
   let value = String(input ?? '')
   const matrixCodeGroup = String.raw`(?:[ABC][123]\s*(?:,\s*[ABC][123]\s*)*)`
@@ -1407,39 +1454,7 @@ export const ReportPage = ({
       })
       const responsePayload = await response.json().catch(() => null)
 
-      const getExecutionReportShape = (value: any) => {
-        const isObject = Boolean(value && typeof value === 'object' && !Array.isArray(value))
-        const stageRaw = isObject ? (value as any).stage ?? (value as any).execution_report_stage ?? null : null
-	        const actionPlanRaw =
-	          isObject && Array.isArray((value as any).action_plan)
-	            ? (value as any).action_plan
-	            : isObject && Array.isArray((value as any).actionPlan)
-	              ? (value as any).actionPlan
-	              : null
-	        const roadmapPhasesRaw =
-	          isObject && Array.isArray((value as any).roadmap_phases)
-	            ? (value as any).roadmap_phases
-	            : isObject && Array.isArray((value as any).roadmapPhases)
-	              ? (value as any).roadmapPhases
-	              : null
-        const validationLoopRaw =
-          isObject && Array.isArray((value as any).validation_loop)
-            ? (value as any).validation_loop
-            : isObject && Array.isArray((value as any).validationLoop)
-              ? (value as any).validationLoop
-              : null
-        return {
-          type: typeof value,
-          keys: isObject ? Object.keys(value) : null,
-	          stage: typeof stageRaw === 'string' ? stageRaw : null,
-	          roadmapPhasesLen: Array.isArray(roadmapPhasesRaw) ? roadmapPhasesRaw.length : null,
-	          actionPlanLen: Array.isArray(actionPlanRaw) ? actionPlanRaw.length : null,
-          decisionsLen: isObject && Array.isArray((value as any).decisions) ? (value as any).decisions.length : null,
-          prioritiesLen:
-            isObject && Array.isArray((value as any).priorities) ? (value as any).priorities.length : null,
-          validationLoopLen: Array.isArray(validationLoopRaw) ? validationLoopRaw.length : null,
-        }
-      }
+      const getExecutionReportShape = getExecutionReportDebugShape
 
       const coerceExecutionReportPayload = (value: any) => {
         if (!value || typeof value !== 'object') return null
@@ -1471,13 +1486,10 @@ export const ReportPage = ({
       }
 
       const extractExecutionReportFromUpdateResponse = (payload: any) => {
-        if (!payload || typeof payload !== 'object') return null
+        if (!payload || typeof payload !== 'object') return { executionReport: null, path: 'none' }
         const report = payload.report && typeof payload.report === 'object' ? payload.report : null
         const candidates: Array<{ path: string; value: any }> = [
           { path: 'execution_report', value: (payload as any).execution_report },
-          { path: 'execution', value: (payload as any).execution },
-          { path: 'execution_report.execution_report', value: (payload as any).execution_report?.execution_report },
-          { path: 'execution.execution_report', value: (payload as any).execution?.execution_report },
           { path: 'report.summary_json.execution_report', value: (report as any)?.summary_json?.execution_report },
         ]
 
@@ -1487,35 +1499,33 @@ export const ReportPage = ({
           const coerced = coerceExecutionReportPayload(value)
           if (!coerced) continue
           if (!isExecutionReportAcceptable(coerced)) continue
-          return normalizeExecutionReport(sanitizeReportPayload(coerced))
+          return {
+            executionReport: normalizeExecutionReport(sanitizeReportPayload(coerced)),
+            path: candidate.path,
+          }
         }
 
-        return null
+        return { executionReport: null, path: 'none' }
       }
 
       if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
         const execution = responsePayload?.execution && typeof responsePayload.execution === 'object' ? responsePayload.execution : null
         const report = responsePayload?.report && typeof responsePayload.report === 'object' ? responsePayload.report : null
-        const executionReportReturned = extractExecutionReportFromUpdateResponse(responsePayload)
-        const detectedExecutionPath =
-          responsePayload?.execution_report
-            ? 'execution_report'
-            : responsePayload?.execution
-              ? 'execution'
-              : report?.summary_json?.execution_report
-                ? 'report.summary_json.execution_report'
-                : 'none'
+        const extracted = extractExecutionReportFromUpdateResponse(responsePayload)
+        const executionReportReturned = extracted.executionReport
+        const detectedExecutionPath = extracted.path
         console.log('[REPORT FINALIZE DEBUG][frontend][after-post][shape]', {
           execution_report: getExecutionReportShape(responsePayload?.execution_report),
           execution: getExecutionReportShape(responsePayload?.execution),
+          report_summary_execution_report: getExecutionReportShape(report?.summary_json?.execution_report),
         })
         console.log('[REPORT FINALIZE DEBUG][frontend][after-post]', {
           httpStatus: response.status,
           responseOk: response.ok,
           payloadOk: Boolean(responsePayload?.ok),
           responseKeys: responsePayload && typeof responsePayload === 'object' ? Object.keys(responsePayload) : null,
-          planGenerated: execution?.planGenerated ?? null,
-          planSkippedReason: execution?.planSkippedReason ?? null,
+          planGenerated: responsePayload?.planGenerated ?? execution?.planGenerated ?? null,
+          planSkippedReason: responsePayload?.planSkippedReason ?? execution?.planSkippedReason ?? null,
           detectedExecutionPath,
           returnedExecutionReportStage: executionReportReturned?.stage ?? null,
 	          returnedActionPlanLen: Array.isArray(executionReportReturned?.action_plan)
@@ -1552,12 +1562,20 @@ export const ReportPage = ({
         return
       }
       if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
-        const executionReportReturned = extractExecutionReportFromUpdateResponse(responsePayload)
+        const extracted = extractExecutionReportFromUpdateResponse(responsePayload)
+        const executionReportReturned = extracted.executionReport
         if (executionReportReturned) {
           console.log('[REPORT FINALIZE DEBUG][frontend][post-success] apply_execution_report', {
+            path: extracted.path,
             stage: executionReportReturned.stage ?? null,
+            roadmapPhasesLen: Array.isArray(executionReportReturned.roadmap_phases)
+              ? executionReportReturned.roadmap_phases.length
+              : null,
             actionPlanLen: Array.isArray(executionReportReturned.action_plan)
               ? executionReportReturned.action_plan.length
+              : null,
+            validationLoopLen: Array.isArray(executionReportReturned.validation_loop)
+              ? executionReportReturned.validation_loop.length
               : null,
             decisionsLen: Array.isArray(executionReportReturned.decisions)
               ? executionReportReturned.decisions.length
@@ -1571,7 +1589,7 @@ export const ReportPage = ({
           const base =
             reportMetaRef.current && typeof reportMetaRef.current === 'object' ? reportMetaRef.current : {}
           reportMetaRef.current = { ...base, execution_report: executionReportReturned }
-        } else if (responsePayload?.execution?.planGenerated) {
+        } else if (responsePayload?.planGenerated || responsePayload?.execution?.planGenerated) {
           console.log('[REPORT FINALIZE DEBUG][frontend][post-success] missing_execution_report_refetch', {
             sessionId: reportSessionId || sessionId,
           })
@@ -1582,12 +1600,18 @@ export const ReportPage = ({
               : null
             console.log('[REPORT FINALIZE DEBUG][frontend][post-success] refetch_result', {
               fetched: Boolean(record),
+              reportId: record?.id ?? null,
               stage: exec?.stage ?? null,
+              roadmapPhasesLen: Array.isArray(exec?.roadmap_phases) ? exec.roadmap_phases.length : null,
               actionPlanLen: Array.isArray(exec?.action_plan) ? exec.action_plan.length : null,
+              validationLoopLen: Array.isArray(exec?.validation_loop) ? exec.validation_loop.length : null,
               decisionsLen: Array.isArray(exec?.decisions) ? exec.decisions.length : null,
+              prioritiesLen: Array.isArray(exec?.priorities) ? exec.priorities.length : null,
+              hasTechnologyOptions: getExecutionReportDebugShape(exec).hasTechnologyOptions,
+              hasDoneWhen: getExecutionReportDebugShape(exec).hasDoneWhen,
             })
             if (record) {
-              applyReportRecord(record)
+              applyReportRecord(record, { authoritativeExecutionReport: true })
               setSummaryStatus('done')
             }
             if (exec) {
@@ -1655,13 +1679,19 @@ export const ReportPage = ({
             updatedAt: record?.updatedAt ?? null,
             sourceUpdatedAt: record?.sourceUpdatedAt ?? null,
             execution_report_stage: exec?.stage ?? null,
+            roadmapPhasesLen: Array.isArray(exec?.roadmap_phases) ? exec.roadmap_phases.length : null,
             actionPlanLen: Array.isArray(exec?.action_plan) ? exec.action_plan.length : null,
             decisionsLen: Array.isArray(exec?.decisions) ? exec.decisions.length : null,
             validationLoopLen: Array.isArray(exec?.validation_loop) ? exec.validation_loop.length : null,
+            prioritiesLen: Array.isArray(exec?.priorities) ? exec.priorities.length : null,
+            hasTechnologyOptions: getExecutionReportDebugShape(exec).hasTechnologyOptions,
+            hasDoneWhen: getExecutionReportDebugShape(exec).hasDoneWhen,
           })
         }
         if (record) {
-          applyReportRecord(record)
+          applyReportRecord(record, {
+            authoritativeExecutionReport: mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only',
+          })
           setSummaryStatus('done')
         }
       } catch {
@@ -1688,7 +1718,10 @@ export const ReportPage = ({
     return formatBalanceMinor(minor || 0)
   }
 
-  const applyReportRecord = (record: Awaited<ReturnType<typeof fetchReportBySessionId>>) => {
+  const applyReportRecord = (
+    record: Awaited<ReturnType<typeof fetchReportBySessionId>>,
+    options: { authoritativeExecutionReport?: boolean } = {}
+  ) => {
     if (!record) return
     const normalized = validateAndNormalizeReport({
       summary: record.summary,
@@ -1698,16 +1731,44 @@ export const ReportPage = ({
       execution_report: record.executionReport,
     })
     const sanitized = sanitizeReportPayload(normalized)
-    reportMetaRef.current = sanitized
-    const mergedExecutionReport = mergeExecutionDecisionSelections(
-      record.executionReport
-        ? normalizeExecutionReport(sanitizeReportPayload(record.executionReport))
-        : null,
-      executionReport ??
-        (snapshot.reportMeta?.execution_report
-          ? normalizeExecutionReport(sanitizeReportPayload(snapshot.reportMeta.execution_report))
-          : null)
-    )
+    const canonicalExecutionReport = record.executionReport
+      ? normalizeExecutionReport(sanitizeReportPayload(record.executionReport))
+      : null
+    const mergedExecutionReport = options.authoritativeExecutionReport
+      ? canonicalExecutionReport
+      : mergeExecutionDecisionSelections(
+          canonicalExecutionReport,
+          executionReport ??
+            (snapshot.reportMeta?.execution_report
+              ? normalizeExecutionReport(sanitizeReportPayload(snapshot.reportMeta.execution_report))
+              : null)
+        )
+    if (options.authoritativeExecutionReport && !canonicalExecutionReport && executionReport) {
+      console.log('[REPORT FINALIZE DEBUG][frontend][stale-state-cleared]', {
+        reason: 'canonical_refetch_missing_execution_report',
+        previous: getExecutionReportDebugShape(executionReport),
+      })
+    }
+    if (
+      options.authoritativeExecutionReport &&
+      canonicalExecutionReport?.stage === 'plan_generated' &&
+      (canonicalExecutionReport.roadmap_phases?.length ?? 0) === 0 &&
+      (canonicalExecutionReport.action_plan?.length ?? 0) === 0 &&
+      executionReport &&
+      ((executionReport.roadmap_phases?.length ?? 0) > 0 || (executionReport.action_plan?.length ?? 0) > 0)
+    ) {
+      console.log('[REPORT FINALIZE DEBUG][frontend][stale-state-cleared]', {
+        reason: 'canonical_refetch_empty_generated_plan',
+        previous: getExecutionReportDebugShape(executionReport),
+        canonical: getExecutionReportDebugShape(canonicalExecutionReport),
+      })
+    }
+    reportMetaRef.current = {
+      ...sanitized,
+      execution_report: options.authoritativeExecutionReport
+        ? canonicalExecutionReport
+        : sanitized.execution_report,
+    }
     setReportRecommendations(sanitized.recommendations)
     setReportTriz(record.triz ? normalizeTriz(sanitizeReportPayload(record.triz)) : null)
     setExecutionReport(mergedExecutionReport)
@@ -1719,7 +1780,9 @@ export const ReportPage = ({
       ideas: sanitized.ideas,
       recommendations: sanitized.recommendations,
       triz: sanitized.triz,
-      execution_report: sanitized.execution_report,
+      execution_report: options.authoritativeExecutionReport
+        ? canonicalExecutionReport
+        : sanitized.execution_report,
       lastSummaryTextHash: record.lastSummaryTextHash ?? null,
       createdAt: record.createdAt ?? null,
       updatedAt: record.updatedAt ?? null,
@@ -2178,6 +2241,22 @@ export const ReportPage = ({
       renderBranch: executionReportRenderBranch,
     })
   }, [reportVariant, executionReportRenderBranch])
+  useEffect(() => {
+    if (reportVariant !== 'action') return
+    const shape = getExecutionReportDebugShape(normalizedExecutionReport)
+    if (
+      shape.stage === 'plan_generated' &&
+      shape.roadmapPhasesLen === 0 &&
+      (shape.actionPlanLen ?? 0) > 0 &&
+      (shape.hasTechnologyOptions || shape.hasDoneWhen)
+    ) {
+      console.warn('[REPORT RENDER WARNING] rendering legacy generated checklist', {
+        sessionId: reportSessionId,
+        reportId: null,
+        ...shape,
+      })
+    }
+  }, [reportVariant, normalizedExecutionReport, reportSessionId])
   const decisionsAllSelected = Boolean(
     normalizedExecutionReport?.decisions?.length &&
       normalizedExecutionReport.decisions.every(

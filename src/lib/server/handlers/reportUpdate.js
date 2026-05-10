@@ -2287,6 +2287,11 @@ const logActionPlanDiagnosticShape = (label, report, extra = {}) => {
   })
 }
 
+const getActionPlanPersistenceShape = (report, summaryJson = null) => ({
+  ...getActionPlanDiagnosticShape(report),
+  summaryJsonKeys: summaryJson && typeof summaryJson === 'object' ? Object.keys(summaryJson) : null,
+})
+
 const logExecutionReportSamples = (label, report) => {
   if (!report || typeof report !== 'object') {
     console.log(`[report:update][step3] ${label} action-plan samples: missing`)
@@ -5694,26 +5699,79 @@ export const handleReportUpdate = async (req, res) => {
                 previousValidationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
                 previousParseError: previousFinalPlanAttempt?.parseError ?? null,
               })
-              responseExecution.planGenerated = false
-              responseExecution.planSkippedReason = 'REPORT_ACTION_PLAN_FAILED_FALLBACK_DISABLED'
+              if (actionPlanDiagnosticsEnabled && previousFinalPlanAttempt?.llmOk === false) {
+                const raw = actionPlanRawResponses.get('report-action-plan')
+                const parse = actionPlanParseResults.get('report-action-plan')
+                console.log('[REPORT FINALIZE DEBUG][backend][llm-failure-cause]', {
+                  requestId,
+                  sessionId,
+                  task: 'report-action-plan',
+                  cause:
+                    parse?.recoveryError || parse?.parseError
+                      ? 'parse_error'
+                      : previousFinalPlanAttempt?.hasData === false
+                        ? 'missing_data'
+                        : Array.isArray(previousFinalPlanAttempt?.validationErrors) &&
+                            previousFinalPlanAttempt.validationErrors.length
+                          ? 'validation_error'
+                          : 'unknown',
+                  parseError: parse?.recoveryError || parse?.parseError || null,
+                  validationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
+                  missingData: previousFinalPlanAttempt?.hasData === false,
+                  modelOutputTruncated: raw ? summarizeRawOutput(raw.content).looksTruncated : null,
+                  rawOutputPreview: raw ? summarizeRawOutput(raw.content).rawOutputPreview : null,
+                })
+              }
+              const unchangedReportPayload = {
+                id: reportRes.data?.id ?? null,
+                session_id: reportRes.data?.session_id ?? sessionId,
+                summary_json: reportRes.data?.summary_json ?? null,
+                updated_at: reportRes.data?.updated_at ?? null,
+                source_updated_at: reportRes.data?.source_updated_at ?? null,
+              }
+              res.status(200).json({
+                ok: false,
+                error: 'REPORT_ACTION_PLAN_FAILED_FALLBACK_DISABLED',
+                diagnostic: {
+                  reason: 'DISABLE_EXEC_PLAN_FALLBACK',
+                  previousLlmOk: previousFinalPlanAttempt?.llmOk ?? null,
+                  previousHasData: previousFinalPlanAttempt?.hasData ?? null,
+                  previousValidationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
+                  previousParseError: previousFinalPlanAttempt?.parseError ?? null,
+                },
+                execution_report:
+                  reportRes.data?.summary_json?.execution_report &&
+                  typeof reportRes.data.summary_json.execution_report === 'object'
+                    ? reportRes.data.summary_json.execution_report
+                    : null,
+                report: unchangedReportPayload,
+                planGenerated: false,
+                planSkippedReason: 'REPORT_ACTION_PLAN_FAILED_FALLBACK_DISABLED',
+                execution: {
+                  ...responseExecution,
+                  planGenerated: false,
+                  planSkippedReason: 'REPORT_ACTION_PLAN_FAILED_FALLBACK_DISABLED',
+                },
+              })
+              return
             } else {
-            console.log('[REPORT FINALIZE DEBUG][backend][fallback]', {
-              requestId,
-              sessionId,
-              fallbackTriggered: true,
-              reason: fallbackReason,
-              previousLlmOk: previousFinalPlanAttempt?.llmOk ?? null,
-              previousHasData: previousFinalPlanAttempt?.hasData ?? null,
-              previousValidationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
-              previousParseError: previousFinalPlanAttempt?.parseError ?? null,
-            })
-            const planPromptForLen = buildExecutionPlanPrompt(true, [])
-            const planResult = await runExecutionPlanFromDecisions(undefined, { strictJson: true })
-            logActionPlanLlmCallResult(
-              'report-execution-plan-from-decisions',
-              planPromptForLen.length,
-              planResult
-            )
+              console.log('[REPORT FINALIZE DEBUG][backend][fallback]', {
+                requestId,
+                sessionId,
+                fallbackTriggered: true,
+                reason: fallbackReason,
+                previousLlmOk: previousFinalPlanAttempt?.llmOk ?? null,
+                previousHasData: previousFinalPlanAttempt?.hasData ?? null,
+                previousValidationErrors: previousFinalPlanAttempt?.validationErrors ?? null,
+                previousParseError: previousFinalPlanAttempt?.parseError ?? null,
+              })
+              const planPromptForLen = buildExecutionPlanPrompt(true, [])
+              const planResult = await runExecutionPlanFromDecisions(undefined, { strictJson: true })
+              logActionPlanLlmCallResult(
+                'report-execution-plan-from-decisions',
+                planPromptForLen.length,
+                planResult
+              )
             if (planResult?.meta) {
               responseMeta.execution_plan_from_decisions = planResult.meta
               await recordAiUsageBestEffort({
@@ -6945,6 +7003,8 @@ export const handleReportUpdate = async (req, res) => {
           updated_at: new Date().toISOString(),
         })
         .eq('session_id', sessionId)
+        .select(REPORT_SELECT_FIELDS)
+        .maybeSingle()
       if (updateRes.error) {
         console.log('[REPORT FINALIZE DEBUG][backend][after-save]', {
           requestId,
@@ -6961,12 +7021,40 @@ export const handleReportUpdate = async (req, res) => {
         sessionId,
         reportId: reportRes.data?.id ?? null,
         ok: true,
+        returnedReport: Boolean(updateRes.data),
       })
-	      const savedExecFromUpdate =
-	        updateRes?.data?.summary_json?.execution_report &&
-	        typeof updateRes.data.summary_json.execution_report === 'object'
-	          ? normalizeExecutionReport(updateRes.data.summary_json.execution_report, reportLang)
-	          : null
+      const savedExecRawFromUpdate =
+        updateRes?.data?.summary_json?.execution_report &&
+        typeof updateRes.data.summary_json.execution_report === 'object'
+          ? updateRes.data.summary_json.execution_report
+          : null
+      const savedExecFromUpdate = savedExecRawFromUpdate
+        ? normalizeExecutionReport(savedExecRawFromUpdate, reportLang)
+        : null
+      console.log('[REPORT FINALIZE DEBUG][backend][saved-shape]', {
+        requestId,
+        sessionId,
+        reportId: updateRes.data?.id ?? reportRes.data?.id ?? null,
+        ...getActionPlanPersistenceShape(savedExecFromUpdate, updateRes.data?.summary_json ?? null),
+      })
+      console.log('[REPORT FINALIZE DEBUG][backend][db-readback]', {
+        requestId,
+        sessionId,
+        reportId: updateRes.data?.id ?? reportRes.data?.id ?? null,
+        dbReadbackExists: Boolean(updateRes.data),
+        executionReportExists: Boolean(savedExecFromUpdate),
+        stage: savedExecFromUpdate?.stage ?? null,
+        roadmapPhasesLen: Array.isArray(savedExecFromUpdate?.roadmap_phases)
+          ? savedExecFromUpdate.roadmap_phases.length
+          : null,
+        actionPlanLen: Array.isArray(savedExecFromUpdate?.action_plan)
+          ? savedExecFromUpdate.action_plan.length
+          : null,
+        validationLoopLen: Array.isArray(savedExecFromUpdate?.validation_loop)
+          ? savedExecFromUpdate.validation_loop.length
+          : null,
+        decisionsLen: Array.isArray(savedExecFromUpdate?.decisions) ? savedExecFromUpdate.decisions.length : null,
+      })
       console.log('[REPORT FINALIZE DEBUG][backend][response-shape]', {
         requestId,
         sessionId,
@@ -7003,11 +7091,24 @@ export const handleReportUpdate = async (req, res) => {
           res.status(500).json({ ok: false, error: finalReportRes.error })
           return
         }
-	        const savedExec =
-	          finalReportRes.data?.summary_json?.execution_report &&
-	          typeof finalReportRes.data.summary_json.execution_report === 'object'
-	            ? normalizeExecutionReport(finalReportRes.data.summary_json.execution_report, reportLang)
-	            : null
+        const savedExecRaw =
+          finalReportRes.data?.summary_json?.execution_report &&
+          typeof finalReportRes.data.summary_json.execution_report === 'object'
+            ? finalReportRes.data.summary_json.execution_report
+            : null
+        const savedExec = savedExecRaw ? normalizeExecutionReport(savedExecRaw, reportLang) : null
+        console.log('[REPORT FINALIZE DEBUG][backend][db-readback]', {
+          requestId,
+          sessionId,
+          reportId: finalReportRes.data?.id ?? null,
+          dbReadbackExists: Boolean(finalReportRes.data),
+          executionReportExists: Boolean(savedExec),
+          stage: savedExec?.stage ?? null,
+          roadmapPhasesLen: Array.isArray(savedExec?.roadmap_phases) ? savedExec.roadmap_phases.length : null,
+          actionPlanLen: Array.isArray(savedExec?.action_plan) ? savedExec.action_plan.length : null,
+          validationLoopLen: Array.isArray(savedExec?.validation_loop) ? savedExec.validation_loop.length : null,
+          decisionsLen: Array.isArray(savedExec?.decisions) ? savedExec.decisions.length : null,
+        })
         console.log('[REPORT FINALIZE DEBUG][backend][after-save]', {
           requestId,
           sessionId,
@@ -7033,15 +7134,35 @@ export const handleReportUpdate = async (req, res) => {
         res.status(200).json({
           ok: true,
           report: finalReportRes.data ?? null,
-          execution_report: savedExec,
+          execution_report: savedExecRaw,
+          planGenerated: responseExecution.planGenerated,
+          planSkippedReason: responseExecution.planSkippedReason,
           ...(Object.keys(responseMeta).length ? { meta: responseMeta } : {}),
           execution: responseExecution,
         })
         return
       }
+      const responseReport = updateRes.data
+        ? {
+            id: updateRes.data.id,
+            session_id: updateRes.data.session_id,
+            summary_json: updateRes.data.summary_json,
+            updated_at: updateRes.data.updated_at,
+            source_updated_at: updateRes.data.source_updated_at,
+          }
+        : {
+            id: reportRes.data?.id ?? null,
+            session_id: reportRes.data?.session_id ?? sessionId,
+            summary_json: sanitized,
+            updated_at: new Date().toISOString(),
+            source_updated_at: latestBoardItemAt || Date.now(),
+          }
       res.status(200).json({
         ok: true,
-        execution_report: savedExecFromUpdate,
+        execution_report: savedExecRawFromUpdate,
+        report: responseReport,
+        planGenerated: responseExecution.planGenerated,
+        planSkippedReason: responseExecution.planSkippedReason,
         ...(Object.keys(responseMeta).length ? { meta: responseMeta } : {}),
         execution: responseExecution,
       })
