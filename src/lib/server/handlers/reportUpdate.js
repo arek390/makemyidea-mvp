@@ -167,21 +167,70 @@ const sanitizeReportPayload = (payload) => {
 
 const safeParseJson = (value) => {
   const raw = typeof value === 'string' ? value : String(value ?? '')
+  const tryParse = (candidate, recovered, error = null) => {
+    try {
+      return { parsed: JSON.parse(candidate), recovered, error }
+    } catch (parseError) {
+      return { parsed: null, recovered: false, error, recoveryError: parseError }
+    }
+  }
+  const balanceJsonClosers = (candidate) => {
+    const stack = []
+    let inString = false
+    let escaped = false
+    for (const char of candidate) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (char === '\\') {
+        escaped = inString
+        continue
+      }
+      if (char === '"') {
+        inString = !inString
+        continue
+      }
+      if (inString) continue
+      if (char === '{') stack.push('}')
+      else if (char === '[') stack.push(']')
+      else if ((char === '}' || char === ']') && stack[stack.length - 1] === char) stack.pop()
+    }
+    return `${candidate}${stack.reverse().join('')}`
+  }
+  const buildRepairCandidates = (candidate) => {
+    const normalized = candidate
+      .replace(/^```(?:json)?\s*/i, '')
+      .replace(/\s*```$/i, '')
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+      .replace(/,\s*([}\]])/g, '$1')
+      .trim()
+    const separatorRepaired = normalized
+      .replace(/}\s*{/g, '},{')
+      .replace(/]\s*{/g, '],{')
+      .replace(/}\s*\[/g, '},[')
+    return Array.from(
+      new Set([
+        normalized,
+        balanceJsonClosers(normalized),
+        separatorRepaired,
+        balanceJsonClosers(separatorRepaired),
+      ])
+    ).filter(Boolean)
+  }
   try {
     return { parsed: JSON.parse(raw), recovered: false, error: null }
   } catch (error) {
     const start = raw.indexOf('{')
     const end = raw.lastIndexOf('}')
     const sliced = start >= 0 && end > start ? raw.slice(start, end + 1) : raw
-    const cleaned = sliced
-      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
-      .replace(/,\s*([}\]])/g, '$1')
-      .trim()
-    try {
-      return { parsed: JSON.parse(cleaned), recovered: true, error }
-    } catch (recoveryError) {
-      return { parsed: null, recovered: false, error, recoveryError }
+    let lastRecoveryError = null
+    for (const candidate of buildRepairCandidates(sliced)) {
+      const attempt = tryParse(candidate, true, error)
+      if (attempt.parsed) return attempt
+      lastRecoveryError = attempt.recoveryError
     }
+    return { parsed: null, recovered: false, error, recoveryError: lastRecoveryError }
   }
 }
 
