@@ -7057,7 +7057,16 @@ export const handleReportUpdate = async (req, res) => {
       const buildFallbackRoadmapFromActionPlan = (actionPlan, lang) => {
         const items = (Array.isArray(actionPlan) ? actionPlan : [])
           .map((item) => ({
-            text: normalizeExecutionText(item?.details || item?.step || item?.title),
+            text: normalizeExecutionText(
+              item?.details ||
+                item?.step ||
+                item?.title ||
+                // As an ultra-narrow fallback, let the first tech option carry the action text
+                // if the legacy checklist had empty "step/details" but populated tech options.
+                (Array.isArray(item?.technology_options) && item.technology_options.length
+                  ? item.technology_options[0]
+                  : '')
+            ),
             validation_gate: normalizeExecutionText(item?.done_when),
           }))
           .filter((item) => item.text || item.validation_gate)
@@ -7199,6 +7208,37 @@ export const handleReportUpdate = async (req, res) => {
             sessionId,
           })
         }
+      }
+
+      // Hard guard: never let a plan_generated report persist as a legacy checklist-only plan
+      // when we have enough legacy action_plan material to synthesize roadmap phases.
+      if (
+        finalExecutionReport &&
+        !(Array.isArray(finalExecutionReport.roadmap_phases) && finalExecutionReport.roadmap_phases.length > 0) &&
+        Array.isArray(finalExecutionReport.action_plan) &&
+        finalExecutionReport.action_plan.length > 0
+      ) {
+        const previousFinalExecutionReport = finalExecutionReport
+        finalExecutionReport = normalizeExecutionReport(
+          {
+            ...finalExecutionReport,
+            roadmap_phases: buildFallbackRoadmapFromActionPlan(finalExecutionReport.action_plan, reportLang),
+          },
+          reportLang
+        )
+        finalExecutionReportSource = 'fallback'
+        logFinalizeAssignment({
+          requestId,
+          sessionId,
+          assignedFrom: 'fallback',
+          reason: 'hard-guard deterministic roadmap from legacy action_plan',
+          previousReport: previousFinalExecutionReport,
+          nextReport: finalExecutionReport,
+        })
+        logActionPlanDiagnosticShape('after-roadmap-hard-guard-deterministic', finalExecutionReport, {
+          requestId,
+          sessionId,
+        })
       }
 
       if (Array.isArray(finalExecutionReport?.roadmap_phases) && finalExecutionReport.roadmap_phases.length > 0) {
