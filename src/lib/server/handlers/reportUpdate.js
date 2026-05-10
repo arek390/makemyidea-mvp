@@ -3644,15 +3644,19 @@ export const handleReportUpdate = async (req, res) => {
         if (selected === 'b') return normalizeExecutionText(decision?.option_b)
         return ''
       }
+      const selectedDecisionConsequenceText = (decision) => {
+        const selected = normalizeExecutionSelectedOption(decision?.selected_option)
+        if (selected === 'a') return normalizeExecutionText(decision?.consequence_a)
+        if (selected === 'b') return normalizeExecutionText(decision?.consequence_b)
+        return ''
+      }
       const decisionLensFlags = (decisions) => {
-        const text = normalizeCoverageText(
+        const selectedText = normalizeCoverageText(
           (Array.isArray(decisions) ? decisions : [])
             .map((decision) =>
               [
-                decision?.tradeoff,
                 selectedDecisionOptionText(decision),
-                decision?.option_a,
-                decision?.option_b,
+                selectedDecisionConsequenceText(decision),
               ]
                 .map((value) => normalizeExecutionText(value))
                 .filter(Boolean)
@@ -3663,20 +3667,31 @@ export const handleReportUpdate = async (req, res) => {
         return {
           simplify:
             /\b(simple|simpl|basic|minimal|limit|limited|reduce|reduc|prosty|prosta|proste|podstaw|ogranicz|minimaln|mvp)\b/.test(
-              text
+              selectedText
+            ),
+          implement:
+            /\b(implement|build|wdroz|wdroż|zbuduj|realiz|uruchom)\b/.test(selectedText),
+          integrate:
+            /\b(integrat|integration|ecosystem|ekosystem|voice|glos|głos|device|urzadzen|urządzen|standard|modular|modul|module|connect|komunik|laczn|łączn)\b/.test(
+              selectedText
+            ),
+          expand:
+            /\b(full|richer|advanced|more|complete|complex|rozbud|pelny|pełny|pelna|pełna|zaawans|bogatsz|szersz)\b/.test(
+              selectedText
             ),
           cost:
-            /\b(cost|cheap|cheaper|price|budget|koszt|tani|tansz|cena|budzet|budzet)\b/.test(text),
+            /\b(cost|cheap|cheaper|price|budget|koszt|tani|tansz|cena|budzet|budzet)\b/.test(selectedText),
           reliability:
-            /\b(reliab|durab|robust|stable|trwal|trwał|niezawod|stabil)\b/.test(text),
+            /\b(reliab|durab|robust|stable|trwal|trwał|niezawod|stabil)\b/.test(selectedText),
           complexity:
-            /\b(complex|complexity|skomplik|zlozon|złożon|overengineer|overengineering)\b/.test(text),
+            /\b(complex|complexity|skomplik|zlozon|złożon|overengineer|overengineering)\b/.test(selectedText),
           mvp:
-            /\b(mvp|minimum|minimal|basic|podstaw|najprost|pierwsz)\b/.test(text),
+            /\b(mvp|minimum|minimal|basic|podstaw|najprost|pierwsz)\b/.test(selectedText),
           power:
-            /\b(power|battery|bater|akumulator|zasil|ac|dc|mains|sieci)\b/.test(text),
+            /\b(power|battery|bater|akumulator|zasil|ac|dc|mains|sieci)\b/.test(selectedText),
           lightweight:
-            /\b(lightweight|light|weight|mass|lekki|lekka|lekkie|masa|wage|waga)\b/.test(text),
+            /\b(lightweight|light|weight|mass|lekki|lekka|lekkie|masa|wage|waga)\b/.test(selectedText),
+          selected_text: selectedText,
         }
       }
       const approachDomainFlags = (approach) => {
@@ -3734,16 +3749,28 @@ export const handleReportUpdate = async (req, res) => {
           const affectedDecisions = decisions
             .filter((decision) => decisionAffectsApproach(decision, approach))
             .map((decision) => ({
+              contradiction_index: decision?.contradiction_index ?? null,
               tradeoff: normalizeExecutionText(decision?.tradeoff),
               selected_option: normalizeExecutionSelectedOption(decision?.selected_option),
               selected_option_text: selectedDecisionOptionText(decision),
+              selected_consequence_text: selectedDecisionConsequenceText(decision),
             }))
             .filter((decision) => decision.tradeoff || decision.selected_option_text)
-          const shouldSimplify = lens.simplify && (domain.smart || domain.modular || domain.electronics || domain.app || domain.communication)
+          const shouldImplementIntegrated =
+            (lens.implement || lens.integrate || lens.expand) &&
+            (domain.smart || domain.modular || domain.electronics || domain.app || domain.communication)
+          const shouldSimplify =
+            !shouldImplementIntegrated &&
+            lens.simplify &&
+            (domain.smart || domain.modular || domain.electronics || domain.app || domain.communication)
           const shouldValidateFirst = domain.materials || domain.power || domain.regulation || lens.reliability
-          const shouldPostpone = shouldSimplify && (domain.modular || domain.electronics)
+          const shouldPostpone = !shouldImplementIntegrated && shouldSimplify && (domain.modular || domain.electronics)
           const interpretation =
-            shouldPostpone
+            shouldImplementIntegrated
+              ? reportLangForTheme === 'en'
+                ? 'Implement the chosen richer smart direction and manage complexity, cost, reliability, setup, and UX risks instead of reducing the scope back to basic controls.'
+                : 'Realizuj wybrany bogatszy kierunek smart i zarządzaj złożonością, kosztem, niezawodnością, konfiguracją oraz ryzykiem UX zamiast cofać zakres do podstawowego sterowania.'
+              : shouldPostpone
               ? reportLangForTheme === 'en'
                 ? 'Treat as optional MVP complexity unless it clearly reduces risk or cost.'
                 : 'Traktuj jako opcjonalną złożoność MVP, chyba że wyraźnie zmniejsza ryzyko albo koszt.'
@@ -3759,7 +3786,11 @@ export const handleReportUpdate = async (req, res) => {
                     ? 'Keep only the part that directly supports the selected product direction.'
                     : 'Zostaw tylko ten zakres, który bezpośrednio wspiera wybrany kierunek produktu.'
           const recommendedScope =
-            shouldPostpone
+            shouldImplementIntegrated
+              ? reportLangForTheme === 'en'
+                ? 'implement and integrate selected smart scope'
+                : 'wdrażaj i integruj wybrany zakres smart'
+              : shouldPostpone
               ? reportLangForTheme === 'en'
                 ? 'prototype-first; postpone full implementation'
                 : 'najpierw prototyp; pełną implementację odłóż'
@@ -3775,7 +3806,9 @@ export const handleReportUpdate = async (req, res) => {
                     ? 'keep if it changes the next build decision'
                     : 'zostaw, jeśli zmienia najbliższą decyzję budowy'
           const keepPostponeOrReject =
-            shouldPostpone
+            shouldImplementIntegrated
+              ? 'implement-integrate'
+              : shouldPostpone
               ? 'postpone'
               : shouldSimplify
                 ? 'simplify'
@@ -3783,7 +3816,11 @@ export const handleReportUpdate = async (req, res) => {
                   ? 'validate-first'
                   : 'keep'
           const keyTradeoff =
-            shouldSimplify
+            shouldImplementIntegrated
+              ? reportLangForTheme === 'en'
+                ? 'Chosen smart capability versus integration complexity, setup friction, reliability, UX clarity, team capacity, and end-user cost.'
+                : 'Wybrana funkcjonalność smart kontra złożoność integracji, tarcie konfiguracji, niezawodność, klarowność UX, kompetencje zespołu i koszt dla użytkownika.'
+              : shouldSimplify
               ? reportLangForTheme === 'en'
                 ? 'MVP usefulness versus development time, end-user cost, reliability, and team competence.'
                 : 'Użyteczność MVP kontra czas developmentu, koszt dla użytkownika, niezawodność i kompetencje zespołu.'
@@ -3795,7 +3832,11 @@ export const handleReportUpdate = async (req, res) => {
                   ? 'Evidence gained now versus complexity added too early.'
                   : 'Dowód uzyskany teraz kontra złożoność dodana zbyt wcześnie.'
           const mvpRelevance =
-            shouldPostpone
+            shouldImplementIntegrated
+              ? reportLangForTheme === 'en'
+                ? 'high; define what stays in MVP and what moves to a later smart version'
+                : 'wysoka; określ, co zostaje w MVP, a co przechodzi do późniejszej wersji smart'
+              : shouldPostpone
               ? reportLangForTheme === 'en'
                 ? 'conditional; include only if it reduces MVP risk or cost'
                 : 'warunkowa; uwzględnij tylko jeśli zmniejsza ryzyko albo koszt MVP'
@@ -3807,7 +3848,11 @@ export const handleReportUpdate = async (req, res) => {
                   ? 'high if it changes the next prototype decision'
                   : 'wysoka, jeśli zmienia najbliższą decyzję prototypową'
           const risk =
-            shouldSimplify || shouldPostpone
+            shouldImplementIntegrated
+              ? reportLangForTheme === 'en'
+                ? 'The selected richer direction can work, but integration, pairing/setup, latency, compatibility, reliability, and cost need active management.'
+                : 'Wybrany bogatszy kierunek może działać, ale integracja, parowanie/konfiguracja, opóźnienia, kompatybilność, niezawodność i koszt wymagają aktywnego zarządzania.'
+              : shouldSimplify || shouldPostpone
               ? reportLangForTheme === 'en'
                 ? 'Extra features can increase development time, user cost, reliability risk, and implementation complexity.'
                 : 'Dodatkowe funkcje mogą zwiększyć czas developmentu, koszt dla użytkownika, ryzyko niezawodności i złożoność wdrożenia.'
@@ -3819,7 +3864,15 @@ export const handleReportUpdate = async (req, res) => {
                   ? 'The approach can add work before the team has enough evidence to justify it.'
                   : 'Podejście może dodać pracę zanim zespół ma wystarczający dowód, że warto.'
           const dependency =
-            domain.communication
+            shouldImplementIntegrated && domain.communication
+              ? reportLangForTheme === 'en'
+                ? 'Depends on choosing a communication standard against range, cost, latency, compatibility, and setup effort.'
+                : 'Zależy od wyboru standardu komunikacji względem zasięgu, kosztu, opóźnień, kompatybilności i wysiłku konfiguracji.'
+              : shouldImplementIntegrated && (domain.modular || domain.electronics)
+                ? reportLangForTheme === 'en'
+                  ? 'Depends on the modular electronics architecture and the target smart feature set.'
+                  : 'Zależy od architektury modułowej elektroniki i docelowego zestawu funkcji smart.'
+                : domain.communication
               ? reportLangForTheme === 'en'
                 ? 'Depends on the minimal interface and electronics scope chosen for MVP.'
                 : 'Zależy od minimalnego zakresu interfejsu i elektroniki wybranego dla MVP.'
@@ -3853,10 +3906,23 @@ export const handleReportUpdate = async (req, res) => {
             mvp_relevance: mvpRelevance,
             risk,
             dependency,
+            interpreted_direction: shouldImplementIntegrated
+              ? 'implement-integrate'
+              : shouldPostpone
+                ? 'postpone'
+                : shouldSimplify
+                  ? 'simplify'
+                  : shouldValidateFirst
+                    ? 'validate-first'
+                    : 'keep',
             recommended_scope: recommendedScope,
             recommended_treatment: keepPostponeOrReject,
-            simplify_or_expand: shouldSimplify || shouldPostpone ? 'simplify' : 'keep_narrow',
-            prototype_priority: shouldValidateFirst || shouldSimplify ? 'high' : 'medium',
+            simplify_or_expand: shouldImplementIntegrated
+              ? 'expand_manage'
+              : shouldSimplify || shouldPostpone
+                ? 'simplify'
+                : 'keep_narrow',
+            prototype_priority: shouldImplementIntegrated || shouldValidateFirst || shouldSimplify ? 'high' : 'medium',
             postpone_or_keep: keepPostponeOrReject,
             key_tradeoff: keyTradeoff,
           }
@@ -4072,6 +4138,74 @@ export const handleReportUpdate = async (req, res) => {
         if (scope.selectedApproachCount === 1) return scope.outsideSelectedScopeCount > 0
         return scope.outsideSelectedScopeCount > Math.max(1, scope.phaseCount - scope.selectedThemeCount)
       }
+      const evaluateDecisionOptionCoverage = (report, selectedDecisions) => {
+        const decisions = Array.isArray(selectedDecisions) ? selectedDecisions : []
+        const roadmapText = normalizeCoverageText(extractRoadmapCoverageText(report))
+        const decisionOptionStems = (value) =>
+          coverageStems(value).filter(
+            (stem) =>
+              ![
+                'smart',
+                'functio',
+                'funkcj',
+                'control',
+                'sterow',
+                'option',
+                'opcja',
+                'kierun',
+                'wybor',
+                'wybór',
+              ].includes(stem)
+          )
+        return decisions.map((decision) => {
+          const selected = normalizeExecutionSelectedOption(decision?.selected_option)
+          const selectedText = selectedDecisionOptionText(decision)
+          const oppositeText =
+            selected === 'a'
+              ? normalizeExecutionText(decision?.option_b)
+              : selected === 'b'
+                ? normalizeExecutionText(decision?.option_a)
+                : ''
+          const selectedStems = decisionOptionStems(
+            [selectedText, selectedDecisionConsequenceText(decision)].join(' ')
+          )
+          const oppositeStems = decisionOptionStems(oppositeText)
+          const direction = decisionLensFlags([decision])
+          const interpretedDirection =
+            direction.integrate || direction.expand || direction.implement
+              ? 'implement-integrate'
+              : direction.simplify
+                ? 'simplify'
+                : 'neutral'
+          const directionConflict =
+            interpretedDirection === 'implement-integrate'
+              ? /\b(limit|limited|basic|minimal|reduce|avoid|prosty|podstaw|ogranicz|najprost)\b/.test(roadmapText)
+              : interpretedDirection === 'simplify'
+                ? /\b(full|advanced|richer|complete|rozbud|pelny|pełny|zaawans)\b/.test(roadmapText)
+                : false
+          return {
+            contradiction_index: decision?.contradiction_index ?? null,
+            tradeoff: normalizeExecutionText(decision?.tradeoff),
+            selected_option: selected,
+            selected_option_text: selectedText,
+            interpreted_direction: interpretedDirection,
+            selected_option_covered: selectedStems.length
+              ? selectedStems.some((stem) => roadmapText.includes(stem))
+              : false,
+            opposite_option_leak: oppositeStems.length
+              ? oppositeStems.some((stem) => roadmapText.includes(stem))
+              : false,
+            direction_conflict: directionConflict,
+          }
+        })
+      }
+      const shouldRetryForDecisionOptionCoverage = (coverage) =>
+        Array.isArray(coverage) &&
+        coverage.some(
+          (item) =>
+            item?.direction_conflict === true ||
+            (item?.interpreted_direction !== 'neutral' && item?.opposite_option_leak === true)
+        )
 
 	      if (isPlanFromDecisionsMode) {
 	        const incomingExecutionReport =
@@ -4362,9 +4496,14 @@ export const handleReportUpdate = async (req, res) => {
         ? body.selected_decisions
             .filter((item) => item && typeof item === 'object')
             .map((item) => ({
+              contradiction_index: Number.isFinite(Number(item.contradiction_index))
+                ? Math.max(0, Math.floor(Number(item.contradiction_index)))
+                : null,
               tradeoff: normalizeExecutionText(item.tradeoff),
               option_a: normalizeExecutionText(item.option_a),
               option_b: normalizeExecutionText(item.option_b),
+              consequence_a: normalizeExecutionText(item.consequence_a),
+              consequence_b: normalizeExecutionText(item.consequence_b),
               selected_option: normalizeExecutionSelectedOption(item.selected_option),
             }))
             .filter((item) => item.tradeoff && (item.selected_option === 'a' || item.selected_option === 'b'))
@@ -5077,9 +5216,12 @@ export const handleReportUpdate = async (req, res) => {
               ? selectedDecisionsOverride
               : executionReportCandidate.decisions)
               .map((d) => ({
+                contradiction_index: d?.contradiction_index ?? null,
                 tradeoff: normalizeExecutionText(d?.tradeoff),
                 option_a: normalizeExecutionText(d?.option_a),
                 option_b: normalizeExecutionText(d?.option_b),
+                consequence_a: normalizeExecutionText(d?.consequence_a),
+                consequence_b: normalizeExecutionText(d?.consequence_b),
                 selected_option: normalizeExecutionSelectedOption(d?.selected_option),
               }))
               .filter((d) => d.tradeoff && (d.selected_option === 'a' || d.selected_option === 'b'))
@@ -5255,7 +5397,10 @@ export const handleReportUpdate = async (req, res) => {
               'When present, selected_roadmap_themes are only clustering helpers. Do not generate phases directly from broad product categories when approach_interpretations gives a narrower interpretation.',
               'If selected_triz_approaches is non-empty, treat those selected approaches as required design inputs and the primary roadmap scope, not optional background context.',
               'A/B decisions are not roadmap topics. They are interpretation lenses for selected approaches. A decision like simple smart functionality should reduce/simplify selected smart approaches, not create a generic smart-functions phase.',
+              'Selected decision option direction is binding. If option A means limit/simplify, roadmap language should reduce scope and validate minimal value. If option B means fuller implementation/integration, roadmap language should support implementation and integration while managing risks.',
+              'Risk language must not override the selected decision. For an integration/advanced option, mention complexity, cost, reliability, setup, and UX risks as things to manage, not as reasons to revert to the simpler option.',
               'Example: if selected approaches are app interface, modular electronics, and communication standards, and the selected decision says to keep smart functionality simple, the roadmap should decide the simplest viable interface, test whether modular electronics are worth MVP complexity, choose minimal/cheap communication standards, and possibly postpone or reject excess complexity.',
+              'Example: if selected approaches are app interface, modular electronics, and communication standards, and the selected decision says to implement fuller smart integration, the roadmap should define the target smart feature set, design modular electronics, choose communication standards, build an integrated smart-control prototype, and test UX/reliability/setup/cost impact.',
               'Generate roadmap phases from the interaction between approach_interpretations and selected_decisions. The phase should answer what to keep, simplify, postpone, reject, prototype first, or validate first.',
               'Do not automatically generate dedicated phases for materials, smart systems, power, regulation, modularity, or production. Such phases are allowed only when they map to approach_interpretations or are strictly required as a constraint inside an interpreted selected approach.',
               'Every selected_triz_approaches item must either appear directly in one roadmap phase or be explicitly merged with a related selected approach in that phase. Do not ignore selected approaches.',
@@ -5353,6 +5498,7 @@ export const handleReportUpdate = async (req, res) => {
                     'In this retry, do not use selected_decisions to create broad product phases. Use them only as interpretation lenses for selected TRIZ approach work.',
                     'Remove generic material/smart/power/regulation/production phases unless they map to approach_interpretations.',
                     'Reduce phase count when selected scope is narrow. One interpreted approach must not produce a full system roadmap.',
+                    'If retry focus mentions decision_option_coverage or DECISION_OPTION_DIRECTION_CONFLICT, rewrite roadmap language to follow the selected option direction. For implement/integrate decisions, do not use simplify/minimal/basic language as the main direction.',
                     'Name or clearly reference the missing selected approach themes inside phase text.',
                   ]
                 : []),
@@ -5383,8 +5529,8 @@ export const handleReportUpdate = async (req, res) => {
             : 'Język roadmapy: roadmap_phases.concrete_actions mają brzmieć jak bezpośrednie, praktyczne instrukcje, nie bezosobowe bezokoliczniki. Zaczynaj od trybu rozkazującego: "Zaprojektuj", "Zbuduj", "Przetestuj", "Zmierz", "Porównaj", "Sprawdź", "Wybierz" zamiast "Zaprojektować", "Zbudować", "Przetestować", "Zmierzyć", "Porównać", "Sprawdzić", "Wybrać". Jeśli validation_or_test albo decision_unlocked zaczyna się od "Czy", zapisz to jako poprawne pytanie i zakończ znakiem "?".'
         const selectedScopeInstructions =
           reportLang === 'en'
-            ? 'Selected scope rule: when approach_interpretations is non-empty, generate the roadmap ONLY from approach_interpretations. selected_decisions are interpretation lenses only. Do not generate broad product phases from selected decisions or full product context. If exactly one selected_triz_approaches item is present, return only 2-3 focused phases inside that one interpreted approach scope. Never append a generic production/readiness phase unless the interpreted approach requires it.'
-            : 'Reguła zakresu: gdy approach_interpretations nie jest puste, generuj roadmapę WYŁĄCZNIE z approach_interpretations. selected_decisions są tylko soczewką interpretacji. Nie generuj szerokich faz produktowych z samych decyzji ani z pełnego kontekstu produktu. Jeśli jest dokładnie jedno selected_triz_approaches, zwróć tylko 2-3 skupione etapy w zakresie tego jednego interpretowanego podejścia. Nigdy nie doklejaj generycznej fazy produkcji/gotowości, chyba że interpretowane podejście tego wymaga.'
+            ? 'Selected scope rule: when approach_interpretations is non-empty, generate the roadmap ONLY from approach_interpretations. selected_decisions are interpretation lenses only, and the selected option direction is binding. If the selected option is fuller implementation/integration, support that direction and manage risk instead of reverting to simplification. Do not generate broad product phases from selected decisions or full product context. If exactly one selected_triz_approaches item is present, return only 2-3 focused phases inside that one interpreted approach scope. Never append a generic production/readiness phase unless the interpreted approach requires it.'
+            : 'Reguła zakresu: gdy approach_interpretations nie jest puste, generuj roadmapę WYŁĄCZNIE z approach_interpretations. selected_decisions są tylko soczewką interpretacji, a kierunek wybranej opcji jest wiążący. Jeśli wybrana opcja oznacza pełniejsze wdrożenie/integrację, wspieraj ten kierunek i zarządzaj ryzykiem zamiast wracać do uproszczenia. Nie generuj szerokich faz produktowych z samych decyzji ani z pełnego kontekstu produktu. Jeśli jest dokładnie jedno selected_triz_approaches, zwróć tylko 2-3 skupione etapy w zakresie tego jednego interpretowanego podejścia. Nigdy nie doklejaj generycznej fazy produkcji/gotowości, chyba że interpretowane podejście tego wymaga.'
         return `${baseInstructions}\n\n${roadmapLanguageInstructions}\n\n${selectedScopeInstructions}`
       }
 
@@ -6492,18 +6638,24 @@ export const handleReportUpdate = async (req, res) => {
                   : selectedDecisionsOverride || []
               const selectedDecisionsForFinal = existingDecisions
                 .map((d) => ({
+                  contradiction_index: d?.contradiction_index ?? null,
                   tradeoff: normalizeExecutionText(d?.tradeoff),
                   option_a: normalizeExecutionText(d?.option_a),
                   option_b: normalizeExecutionText(d?.option_b),
+                  consequence_a: normalizeExecutionText(d?.consequence_a),
+                  consequence_b: normalizeExecutionText(d?.consequence_b),
                   selected_option: normalizeExecutionSelectedOption(d?.selected_option),
                 }))
                 .filter((d) => d.tradeoff && (d.selected_option === 'a' || d.selected_option === 'b'))
               const selectedDecisionsForPrompt =
                 selectedDecisionsOverride && selectedDecisionsOverride.length
                   ? selectedDecisionsOverride.map((d) => ({
+                      contradiction_index: d.contradiction_index ?? null,
                       tradeoff: d.tradeoff,
                       option_a: d.option_a,
                       option_b: d.option_b,
+                      consequence_a: d.consequence_a,
+                      consequence_b: d.consequence_b,
                       selected_option: d.selected_option,
                     }))
                   : selectedDecisionsForFinal
@@ -6540,6 +6692,13 @@ export const handleReportUpdate = async (req, res) => {
                 reportActionPlanCalled: true,
                 selectedDecisionsCount: selectedDecisionsForPrompt.length,
                 selectedDecisionOptions: selectedDecisionsForPrompt,
+                selectedDecisionDirectionDiagnostics: selectedDecisionsForPrompt.map((decision) => ({
+                  contradiction_index: decision?.contradiction_index ?? null,
+                  tradeoff: normalizeExecutionText(decision?.tradeoff),
+                  selected_option: normalizeExecutionSelectedOption(decision?.selected_option),
+                  selected_option_text: selectedDecisionOptionText(decision),
+                  selected_consequence_text: selectedDecisionConsequenceText(decision),
+                })),
                 selectedApproachesCount: selectedTrizApproachesForPrompt.length,
                 selectedApproachTitles: selectedTrizApproachesForPrompt
                   .map((item) => item?.approach_title)
@@ -6551,6 +6710,7 @@ export const handleReportUpdate = async (req, res) => {
                 scopedSupportingItemsCount: buildScopedSupportingItemsForPrompt().length,
                 approachInterpretationSummary: approachInterpretationsForPrompt.map((item) => ({
                   approach_title: item?.selected_approach?.approach_title,
+                  interpreted_direction: item?.interpreted_direction,
                   recommended_scope: item?.recommended_scope,
                   recommended_treatment: item?.recommended_treatment,
                   postpone_or_keep: item?.postpone_or_keep,
@@ -6575,6 +6735,7 @@ export const handleReportUpdate = async (req, res) => {
                   approach_interpretations: approachInterpretationsForPrompt.map((item) => ({
                     approach_title: item?.selected_approach?.approach_title,
                     affected_by_decisions: item?.affected_by_decisions,
+                    interpreted_direction: item?.interpreted_direction,
                     recommended_scope: item?.recommended_scope,
                     recommended_treatment: item?.recommended_treatment,
                     mvp_relevance: item?.mvp_relevance,
@@ -6643,9 +6804,14 @@ export const handleReportUpdate = async (req, res) => {
                   selectedRoadmapThemesForPrompt,
                   approachInterpretationsForPrompt
                 )
+                const firstDecisionOptionCoverage = evaluateDecisionOptionCoverage(
+                  firstGeneratedForCoverage,
+                  selectedDecisionsForPrompt
+                )
                 const firstCoverageRetryNeeded =
                   shouldRetryForTrizCoverage(firstCoverage) ||
-                  shouldRetryForRoadmapScope(firstScopeAlignment)
+                  shouldRetryForRoadmapScope(firstScopeAlignment) ||
+                  shouldRetryForDecisionOptionCoverage(firstDecisionOptionCoverage)
                 console.log('[REPORT FINALIZE DEBUG][backend][selected-triz-coverage][initial]', {
                   requestId,
                   sessionId,
@@ -6658,6 +6824,7 @@ export const handleReportUpdate = async (req, res) => {
                   roadmapBreadthScore: firstScopeAlignment.roadmapBreadthScore,
                   selectedApproachCoveragePercent: firstScopeAlignment.selectedApproachCoveragePercent,
                   unrelatedRoadmapTopicPercent: firstScopeAlignment.unrelatedRoadmapTopicPercent,
+                  decisionOptionCoverage: firstDecisionOptionCoverage,
                   outsideSelectedScopePhaseTitles: firstScopeAlignment.outsideSelectedScopePhaseTitles,
                   rawRoadmapPhaseTitles: Array.isArray(execResult.data?.roadmap_phases)
                     ? execResult.data.roadmap_phases
@@ -6689,6 +6856,8 @@ export const handleReportUpdate = async (req, res) => {
                     sessionId,
                     reason: shouldRetryForRoadmapScope(firstScopeAlignment)
                       ? 'ROADMAP_SCOPE_DRIFT'
+                      : shouldRetryForDecisionOptionCoverage(firstDecisionOptionCoverage)
+                        ? 'DECISION_OPTION_DIRECTION_CONFLICT'
                       : 'SELECTED_TRIZ_APPROACHES_MISSING',
                     missingSelectedApproaches: missingTitles,
                     outsideSelectedScopePhaseTitles: firstScopeAlignment.outsideSelectedScopePhaseTitles,
@@ -6696,6 +6865,7 @@ export const handleReportUpdate = async (req, res) => {
                     roadmapBreadthScore: firstScopeAlignment.roadmapBreadthScore,
                     selectedApproachCoveragePercent: firstScopeAlignment.selectedApproachCoveragePercent,
                     unrelatedRoadmapTopicPercent: firstScopeAlignment.unrelatedRoadmapTopicPercent,
+                    decisionOptionCoverage: firstDecisionOptionCoverage,
                     interpretedRoadmapTopics: firstScopeAlignment.interpretedRoadmapTopics,
                     selectedRoadmapThemes: firstScopeAlignment.selectedThemeTitles,
                     selectedApproachTitles: selectedTrizApproachesForPrompt
@@ -6709,6 +6879,7 @@ export const handleReportUpdate = async (req, res) => {
                       'roadmap_must_be_synthesized_only_from_approach_interpretations',
                       `unrelated_roadmap_topic_percent: ${firstScopeAlignment.unrelatedRoadmapTopicPercent}`,
                       `generic_topics_detected: ${firstScopeAlignment.genericRoadmapTopicsDetected.join(', ')}`,
+                      `decision_option_coverage: ${JSON.stringify(firstDecisionOptionCoverage).slice(0, 1200)}`,
                       `outside_selected_scope_phases: ${firstScopeAlignment.outsideSelectedScopePhaseTitles.join(', ')}`,
                       `missing: ${missingTitles.join(', ')}`,
                     ],
@@ -6735,6 +6906,10 @@ export const handleReportUpdate = async (req, res) => {
                       selectedRoadmapThemesForPrompt,
                       approachInterpretationsForPrompt
                     )
+                    const retryDecisionOptionCoverage = evaluateDecisionOptionCoverage(
+                      retryGeneratedForCoverage,
+                      selectedDecisionsForPrompt
+                    )
                     console.log('[REPORT FINALIZE DEBUG][backend][selected-triz-coverage][retry-result]', {
                       requestId,
                       sessionId,
@@ -6747,6 +6922,7 @@ export const handleReportUpdate = async (req, res) => {
                       roadmapBreadthScore: retryScopeAlignment.roadmapBreadthScore,
                       selectedApproachCoveragePercent: retryScopeAlignment.selectedApproachCoveragePercent,
                       unrelatedRoadmapTopicPercent: retryScopeAlignment.unrelatedRoadmapTopicPercent,
+                      decisionOptionCoverage: retryDecisionOptionCoverage,
                       outsideSelectedScopePhaseTitles: retryScopeAlignment.outsideSelectedScopePhaseTitles,
                       rawRoadmapPhaseTitles: Array.isArray(retryResult.data?.roadmap_phases)
                         ? retryResult.data.roadmap_phases
@@ -6812,6 +6988,10 @@ export const handleReportUpdate = async (req, res) => {
                   selectedRoadmapThemesForPrompt,
                   approachInterpretationsForPrompt
                 )
+                const normalizedDecisionOptionCoverage = evaluateDecisionOptionCoverage(
+                  generated,
+                  selectedDecisionsForPrompt
+                )
                 console.log('[REPORT FINALIZE DEBUG][backend][selected-triz-coverage][accepted-normalized]', {
                   requestId,
                   sessionId,
@@ -6824,6 +7004,7 @@ export const handleReportUpdate = async (req, res) => {
                   roadmapBreadthScore: normalizedScopeAlignment.roadmapBreadthScore,
                   selectedApproachCoveragePercent: normalizedScopeAlignment.selectedApproachCoveragePercent,
                   unrelatedRoadmapTopicPercent: normalizedScopeAlignment.unrelatedRoadmapTopicPercent,
+                  decisionOptionCoverage: normalizedDecisionOptionCoverage,
                   outsideSelectedScopePhaseTitles: normalizedScopeAlignment.outsideSelectedScopePhaseTitles,
                   normalizedRoadmapPhaseTitles: normalizedCoverage.phaseTitles,
                   fallbackOrRewriteTriggered: false,
