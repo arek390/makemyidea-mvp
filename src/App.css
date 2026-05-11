@@ -3156,6 +3156,12 @@
 
 .triz-solution-title {
   font-weight: 700;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.triz-solution-item.is-selected .triz-solution-title {
+  padding-right: 6rem;
 }
 
 .triz-solution-description {
@@ -3524,6 +3530,18 @@
   }
   .report-decision-card {
     min-height: 0;
+  }
+}
+
+@media (max-width: 560px) {
+  .triz-solution-item__ok {
+    position: static;
+    justify-self: start;
+    width: fit-content;
+  }
+
+  .triz-solution-item.is-selected .triz-solution-title {
+    padding-right: 0;
   }
 }
 
