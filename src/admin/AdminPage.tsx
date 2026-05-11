@@ -213,6 +213,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
   const [billingBusy, setBillingBusy] = useState<Record<string, boolean>>({})
   const [billingResetBusy, setBillingResetBusy] = useState<Record<string, boolean>>({})
   const [billingDeleteBusy, setBillingDeleteBusy] = useState<Record<string, boolean>>({})
+  const [billingEmailSortDir, setBillingEmailSortDir] = useState<'asc' | 'desc' | null>(null)
   const [debugPayload, setDebugPayload] = useState<string | null>(null)
   const [sessionDebugPayload, setSessionDebugPayload] = useState<string | null>(null)
   const [pricingInfo, setPricingInfo] = useState<PricingInfo | null>(null)
@@ -544,6 +545,19 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     if (!query) return billingRows
     return billingRows.filter((row) => String(row.email || '').toLowerCase().includes(query))
   }, [billingRows, billingSearch])
+
+  const sortedBillingRows = useMemo(() => {
+    if (!billingEmailSortDir) return filteredBillingRows
+    const dir = billingEmailSortDir === 'asc' ? 1 : -1
+    return [...filteredBillingRows].sort((a, b) => {
+      const aEmail = String(a.email || '').trim()
+      const bEmail = String(b.email || '').trim()
+      if (!aEmail && !bEmail) return 0
+      if (!aEmail) return 1
+      if (!bEmail) return -1
+      return aEmail.localeCompare(bEmail, 'pl', { sensitivity: 'base' }) * dir
+    })
+  }, [filteredBillingRows, billingEmailSortDir])
 
   const handleTopup = async (row: BillingRow) => {
     const raw = billingInputs[row.userId] || ''
@@ -907,7 +921,29 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
               <table className="admin-table admin-table--billing">
                 <thead>
                   <tr>
-                    <th>{t.billingTableEmail}</th>
+                    <th>
+                      <button
+                        type="button"
+                        className="admin-table-sort-button"
+                        onClick={() =>
+                          setBillingEmailSortDir((prev) =>
+                            prev === 'asc' ? 'desc' : 'asc'
+                          )
+                        }
+                        aria-label={`${t.billingTableEmail} ${
+                          billingEmailSortDir === 'asc' ? 'A-Z' : 'Z-A'
+                        }`}
+                      >
+                        <span>{t.billingTableEmail}</span>
+                        <span className="admin-table-sort-indicator">
+                          {billingEmailSortDir === 'asc'
+                            ? 'A-Z'
+                            : billingEmailSortDir === 'desc'
+                              ? 'Z-A'
+                              : 'A-Z'}
+                        </span>
+                      </button>
+                    </th>
                     <th>{t.billingTableBalance}</th>
                     <th>{t.billingTableAction}</th>
                     <th>{t.billingTableReset}</th>
@@ -915,14 +951,14 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredBillingRows.length === 0 && (
+                  {sortedBillingRows.length === 0 && (
                     <tr>
                       <td colSpan={5} className="admin-empty">
                         {t.tableEmpty}
                       </td>
                     </tr>
                   )}
-                  {filteredBillingRows.map((row) => (
+                  {sortedBillingRows.map((row) => (
                     <tr key={row.userId}>
                       <td>{row.email || '—'}</td>
                       <td>{formatMoneyMinor(row.balanceMinor, row.currency)}</td>
@@ -963,14 +999,18 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                         </button>
                       </td>
                       <td>
-                        <button
-                          type="button"
-                          className="danger-solid"
-                          disabled={billingDeleteBusy[row.userId] === true}
-                          onClick={() => handleDeleteUser(row)}
-                        >
-                          {billingDeleteBusy[row.userId] ? '...' : t.billingDeleteLabel}
-                        </button>
+                        {row.userId === authUserId ? (
+                          <span className="muted">—</span>
+                        ) : (
+                          <button
+                            type="button"
+                            className="danger-solid"
+                            disabled={billingDeleteBusy[row.userId] === true}
+                            onClick={() => handleDeleteUser(row)}
+                          >
+                            {billingDeleteBusy[row.userId] ? '...' : t.billingDeleteLabel}
+                          </button>
+                        )}
                       </td>
                     </tr>
                   ))}

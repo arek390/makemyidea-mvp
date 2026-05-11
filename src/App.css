@@ -6103,6 +6103,30 @@ button.danger-solid:hover:not(:disabled) {
   color: #2f363a;
 }
 
+.admin-table-sort-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  padding: 0;
+  cursor: pointer;
+}
+
+.admin-table-sort-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
+.admin-table-sort-indicator {
+  font-size: 0.74rem;
+  color: #687076;
+  font-weight: 700;
+}
+
 .admin-table td {
   padding: 12px 14px;
   border-bottom: 1px solid rgba(31, 35, 38, 0.08);

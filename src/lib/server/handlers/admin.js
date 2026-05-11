@@ -16,16 +16,16 @@ const parseNumber = (value, fallback) => {
 
 const cleanupDeletedUserData = async (supabaseAdmin, targetUserId) => {
   const cleanupTargets = [
-    ['billing_accounts', 'user_id'],
-    ['profiles', 'id'],
-    ['billing_transactions', 'user_id'],
-    ['billing_balance_adjustments', 'target_user_id'],
-    ['session_ai_cost_events', 'user_id'],
-    ['payments', 'user_id'],
-    ['sessions', 'user_id'],
+    { table: 'billing_accounts', column: 'user_id', critical: true },
+    { table: 'profiles', column: 'id', critical: true },
+    { table: 'billing_transactions', column: 'user_id', critical: false },
+    { table: 'billing_balance_adjustments', column: 'target_user_id', critical: false },
+    { table: 'session_ai_cost_events', column: 'user_id', critical: false },
+    { table: 'payments', column: 'user_id', critical: false },
+    { table: 'sessions', column: 'user_id', critical: false },
   ]
   const results = []
-  for (const [table, column] of cleanupTargets) {
+  for (const { table, column, critical } of cleanupTargets) {
     const { count, error } = await supabaseAdmin
       .schema('public')
       .from(table)
@@ -34,6 +34,7 @@ const cleanupDeletedUserData = async (supabaseAdmin, targetUserId) => {
     results.push({
       table,
       column,
+      critical,
       deleted: count ?? null,
       error: error
         ? {
@@ -837,19 +838,27 @@ export const handleAdminBillingDeleteUser = async (req, res) => {
     }
 
     const cleanupResults = await cleanupDeletedUserData(supabaseAdmin, targetUserId)
-    const cleanupErrors = cleanupResults.filter((result) => result.error)
-    if (cleanupErrors.length > 0) {
+    const criticalCleanupErrors = cleanupResults.filter((result) => result.critical && result.error)
+    const cleanupWarnings = cleanupResults.filter((result) => !result.critical && result.error)
+    if (criticalCleanupErrors.length > 0) {
       console.error('[admin][billing_delete_user] cleanup failed', {
         adminUserPrefix: String(adminUser.id || '').slice(0, 8),
         targetUserPrefix: targetUserId.slice(0, 8),
-        cleanupErrors,
+        cleanupErrors: criticalCleanupErrors,
       })
       res.status(500).json({
         ok: false,
         error: 'DELETE_USER_CLEANUP_FAILED',
-        cleanupErrors,
+        cleanupErrors: criticalCleanupErrors,
       })
       return
+    }
+    if (cleanupWarnings.length > 0) {
+      console.warn('[admin][billing_delete_user] cleanup warnings', {
+        adminUserPrefix: String(adminUser.id || '').slice(0, 8),
+        targetUserPrefix: targetUserId.slice(0, 8),
+        cleanupWarnings,
+      })
     }
 
     console.log('[admin][billing_delete_user] deleted', {
@@ -857,7 +866,7 @@ export const handleAdminBillingDeleteUser = async (req, res) => {
       targetUserPrefix: targetUserId.slice(0, 8),
       cleanupResults,
     })
-    res.status(200).json({ ok: true, userId: targetUserId, cleanupResults })
+    res.status(200).json({ ok: true, userId: targetUserId, cleanupResults, cleanupWarnings })
   } catch (error) {
     res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
   }

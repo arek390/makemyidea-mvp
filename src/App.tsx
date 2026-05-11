@@ -3084,6 +3084,7 @@ function App() {
     message: string
     variant: 'success' | 'error'
   } | null>(null)
+  const [logoutInProgress, setLogoutInProgress] = useState(false)
   const [engineDeleteLoadingId, setEngineDeleteLoadingId] = useState<string | null>(null)
   const [engineSessionDetail, setEngineSessionDetail] = useState<EngineSessionDetail | null>(null)
   const [engineEditItemId, setEngineEditItemId] = useState<string | null>(null)
@@ -9714,24 +9715,25 @@ const isMissingLabel = (item: EngineBoardItem) => {
     silentSuccess = false,
     reason: 'save' | 'logout' = 'save'
   ) => {
+    const shouldShowSaveNotice = reason !== 'logout'
     if (!enginePreviewSessionId) {
-      showEngineNotice(copy.engine.saveMissingSession, 'error')
+      if (shouldShowSaveNotice) showEngineNotice(copy.engine.saveMissingSession, 'error')
       return false
     }
     const detail = await buildSessionDetailForSave()
     if (!detail?.session) {
-      showEngineNotice(copy.engine.saveMissingSession, 'error')
+      if (shouldShowSaveNotice) showEngineNotice(copy.engine.saveMissingSession, 'error')
       return false
     }
     try {
       if (!client) {
-        showEngineNotice(copy.engine.saveRequiresAuth, 'error')
+        if (shouldShowSaveNotice) showEngineNotice(copy.engine.saveRequiresAuth, 'error')
         return false
       }
       const { data } = await client.auth.getSession()
       const session = data.session
       if (!session?.user?.id) {
-        showEngineNotice(notices.saveToCloudRequiresAuth, 'error')
+        if (shouldShowSaveNotice) showEngineNotice(notices.saveToCloudRequiresAuth, 'error')
         return false
       }
       try {
@@ -9746,7 +9748,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
         } catch (error) {
           const status = (error as { status?: number }).status
           console.error('[board_items] sync failed', { status, error })
-          showEngineNotice(notices.saveToCloudFailed(String(status ?? 'err')), 'error')
+          if (shouldShowSaveNotice) {
+            showEngineNotice(notices.saveToCloudFailed(String(status ?? 'err')), 'error')
+          }
           return false
         }
         await saveSessionToCloud(session.user.id, detail, uiLanguage)
@@ -9759,11 +9763,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
           console.log('[cloud save]', { status, message: (error as Error).message })
         }
         console.error('[cloud save] failed', { status, error })
-        showEngineNotice(notices.saveToCloudFailed(String(status ?? 'err')), 'error')
+        if (shouldShowSaveNotice) {
+          showEngineNotice(notices.saveToCloudFailed(String(status ?? 'err')), 'error')
+        }
         return false
       }
-      if (!silentSuccess) {
-      showEngineNotice(notices.saveToCloudSuccess, 'success')
+      if (!silentSuccess && shouldShowSaveNotice) {
+        showEngineNotice(notices.saveToCloudSuccess, 'success')
       }
       if (engineSessionsOpen) {
         void fetchEngineSessions()
@@ -9772,7 +9778,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       logSessionStore('engine_session_cloud_save_failed', { message })
-      showEngineNotice(copy.engine.saveFailed, 'error')
+      if (shouldShowSaveNotice) showEngineNotice(copy.engine.saveFailed, 'error')
       return false
     }
   }
@@ -9795,6 +9801,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
       showEngineNotice(copy.auth.logoutFailed, 'error')
       return
     }
+    setLogoutInProgress(true)
+    setEngineNotice(null)
+    if (engineNoticeTimer.current) {
+      window.clearTimeout(engineNoticeTimer.current)
+      engineNoticeTimer.current = null
+    }
     const persistPromise = persistSessionChanges(true, 'logout')
     const timeoutMs = 2500
     const timeout = new Promise((resolve) =>
@@ -9806,6 +9818,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
     const { error } = await client.auth.signOut()
     if (error) {
+      setLogoutInProgress(false)
       showEngineNotice(copy.auth.logoutFailed, 'error')
       return
     }
@@ -11850,7 +11863,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
               <img src={landingLogoUrl} alt="MakeMyIdea.Work" />
             </div>
           </div>
-          {isAuthed && (
+          {isAuthed && !logoutInProgress && (
             <div className="engine-header-balance" aria-live="polite">
               <div className="engine-balance-row">
                 <div
@@ -11897,7 +11910,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     {copy.insufficientBalanceNotice}
                   </span>
                 )}
-                {engineNotice && (
+                {engineNotice && !logoutInProgress && (
                   <span className={`engine-notice engine-notice--${engineNotice.variant} engine-notice--inline`}>
                     {engineNotice.message}
                   </span>
