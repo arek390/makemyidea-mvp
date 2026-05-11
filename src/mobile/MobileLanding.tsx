@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
 import './MobileLanding.css'
 
 export type MobileLandingLanguage = 'English' | 'Polish'
@@ -7,7 +7,28 @@ type MobileLandingProps = {
   language: MobileLandingLanguage
   logoUrl: string
   onLanguageChange: (language: MobileLandingLanguage) => void
+  feedbackLabel: string
+  onFeedbackOpen: () => void
+  feedbackPanel: ReactNode
 }
+
+const englishDemoScreenshots = [
+  new URL('../../prtscreen/mobile_landingpage/screen_mobile_1.png', import.meta.url).href,
+  new URL('../../prtscreen/mobile_landingpage/screen_mobile_2.png', import.meta.url).href,
+  new URL('../../prtscreen/mobile_landingpage/screen_mobile_3.png', import.meta.url).href,
+  new URL('../../prtscreen/mobile_landingpage/screen_mobile_4.png', import.meta.url).href,
+  new URL('../../prtscreen/mobile_landingpage/screen_mobile_5.png', import.meta.url).href,
+]
+
+const polishDemoScreenshots = [
+  new URL('../../prtscreen/mobile_landingpage/PL/Zrzut ekranu 1.png', import.meta.url).href,
+  new URL('../../prtscreen/mobile_landingpage/PL/Zrzut ekranu 2.png', import.meta.url).href,
+  new URL('../../prtscreen/mobile_landingpage/PL/Zrzut ekranu 3.png', import.meta.url).href,
+  new URL('../../prtscreen/mobile_landingpage/PL/Zrzut ekranu 4.png', import.meta.url).href,
+  new URL('../../prtscreen/mobile_landingpage/PL/Zrzut ekranu 5.png', import.meta.url).href,
+]
+
+const aremaiLogoUrl = new URL('../../logo/aremai_logo.png.webp', import.meta.url).href
 
 const mobileCopy = {
   English: {
@@ -37,14 +58,17 @@ const mobileCopy = {
     demoTitle: 'A focused workspace for idea work',
     demoBody:
       'On desktop and tablet, the workspace gives you the board, key contradictions, decisions, and the action plan in one flow.',
-    finalTitle: 'Ready to work on the full canvas?',
-    finalBody: 'Open MakeMyIdea.work on a desktop or tablet to use the complete workspace.',
+    finalTitle: 'The full workspace is available on desktop and tablet.',
+    finalBody:
+      'There you can go through the complete process: idea, contradictions, decisions, and action plan.',
     modalTitle: 'Desktop or tablet recommended',
-    modalBody: 'Pełny workspace jest obecnie zoptymalizowany dla desktopów i tabletów.',
+    modalBody: 'The full workspace is currently optimized for desktop and tablet devices.',
     openDesktop: 'Open on desktop',
     copyLink: 'Copy link',
     copied: 'Link copied',
     close: 'Close',
+    screenshotAlt: 'Mobile landing page screenshot',
+    screenshotOpenLabel: 'Open screenshot',
   },
   Polish: {
     languageLabel: 'Język',
@@ -73,14 +97,17 @@ const mobileCopy = {
     demoTitle: 'Skupiony workspace do pracy nad pomysłem',
     demoBody:
       'Na desktopie i tablecie workspace prowadzi przez tablicę, kluczowe sprzeczności, decyzje i plan działania w jednym flow.',
-    finalTitle: 'Chcesz pracować na pełnym canvasie?',
-    finalBody: 'Otwórz MakeMyIdea.work na desktopie albo tablecie, żeby użyć pełnego workspace.',
+    finalTitle: 'Pełny workspace jest dostępny na desktopie i tablecie.',
+    finalBody:
+      'Tam przejdziesz przez cały proces: pomysł, sprzeczności, decyzje i plan działania.',
     modalTitle: 'Zalecany desktop albo tablet',
-    modalBody: 'The full workspace is currently optimized for desktop and tablet devices.',
+    modalBody: 'Pełny workspace jest obecnie zoptymalizowany dla desktopów i tabletów.',
     openDesktop: 'Otwórz na desktopie',
     copyLink: 'Kopiuj link',
     copied: 'Link skopiowany',
     close: 'Zamknij',
+    screenshotAlt: 'Zrzut ekranu mobilnej strony',
+    screenshotOpenLabel: 'Otwórz zrzut ekranu',
   },
 } satisfies Record<MobileLandingLanguage, {
   languageLabel: string
@@ -102,12 +129,23 @@ const mobileCopy = {
   copyLink: string
   copied: string
   close: string
+  screenshotAlt: string
+  screenshotOpenLabel: string
 }>
 
-export function MobileLanding({ language, logoUrl, onLanguageChange }: MobileLandingProps) {
+export function MobileLanding({
+  language,
+  logoUrl,
+  onLanguageChange,
+  feedbackLabel,
+  onFeedbackOpen,
+  feedbackPanel,
+}: MobileLandingProps) {
   const copy = mobileCopy[language]
+  const demoScreenshots = language === 'Polish' ? polishDemoScreenshots : englishDemoScreenshots
   const [modalOpen, setModalOpen] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [activeScreenshot, setActiveScreenshot] = useState<string | null>(null)
 
   const showWorkspaceNotice = () => {
     setCopied(false)
@@ -182,19 +220,18 @@ export function MobileLanding({ language, logoUrl, onLanguageChange }: MobileLan
         </section>
 
         <section className="mobile-landing__demo" aria-label={copy.demoTitle}>
-          <div className="mobile-landing__phone-frame">
-            <div className="mobile-landing__demo-bar" />
-            <div className="mobile-landing__demo-grid">
-              <span />
-              <span />
-              <span />
-              <span />
-            </div>
-            <div className="mobile-landing__demo-panel">
-              <span />
-              <span />
-              <span />
-            </div>
+          <div className="mobile-landing__screenshot-grid">
+            {demoScreenshots.map((src, index) => (
+              <button
+                type="button"
+                className="mobile-landing__screenshot-thumb"
+                key={src}
+                onClick={() => setActiveScreenshot(src)}
+                aria-label={`${copy.screenshotOpenLabel} ${index + 1}`}
+              >
+                <img src={src} alt={`${copy.screenshotAlt} ${index + 1}`} loading="lazy" />
+              </button>
+            ))}
           </div>
           <div>
             <h2>{copy.demoTitle}</h2>
@@ -210,6 +247,12 @@ export function MobileLanding({ language, logoUrl, onLanguageChange }: MobileLan
           </button>
         </section>
       </main>
+
+      <footer className="mobile-landing__footer">
+        <a href="https://aremai.tech" target="_blank" rel="noreferrer">
+          <img src={aremaiLogoUrl} alt="AREMAI" />
+        </a>
+      </footer>
 
       {modalOpen && (
         <div className="mobile-landing__modal-backdrop" role="presentation">
@@ -229,6 +272,31 @@ export function MobileLanding({ language, logoUrl, onLanguageChange }: MobileLan
             </button>
           </div>
         </div>
+      )}
+
+      {activeScreenshot && (
+        <div className="mobile-landing__lightbox" role="presentation" onClick={() => setActiveScreenshot(null)}>
+          <button
+            type="button"
+            className="mobile-landing__lightbox-close"
+            onClick={() => setActiveScreenshot(null)}
+            aria-label={copy.close}
+          >
+            {copy.close}
+          </button>
+          <img
+            src={activeScreenshot}
+            alt={copy.screenshotAlt}
+            onClick={(event) => event.stopPropagation()}
+          />
+        </div>
+      )}
+
+      {feedbackPanel}
+      {!modalOpen && !activeScreenshot && (
+        <button type="button" className="feedback-fab" onClick={onFeedbackOpen}>
+          {feedbackLabel}
+        </button>
       )}
     </div>
   )

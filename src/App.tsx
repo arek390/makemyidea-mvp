@@ -11067,6 +11067,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
         language={uiLanguage as MobileLandingLanguage}
         logoUrl={landingLogoUrl}
         onLanguageChange={(nextLanguage) => setUiLanguage(nextLanguage)}
+        feedbackLabel={copy.feedbackButtonLabel}
+        onFeedbackOpen={() => setFeedbackOpen(true)}
+        feedbackPanel={feedbackPanel}
       />
     )
   }
@@ -11559,7 +11562,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
               'Aplikacja MakeMyIdea.work zbiera podstawowe dane użytkownika, takie jak adres email oraz identyfikator konta Google, wyłącznie w celu umożliwienia logowania i korzystania z aplikacji.',
               'Dane mogą być przetwarzane przez zewnętrznych dostawców usług, takich jak Supabase (baza danych) oraz OpenAI (przetwarzanie AI).',
               'Dane nie są sprzedawane ani udostępniane osobom trzecim w celach marketingowych.',
-              'Kontakt: areklupierz@gmail.com',
+              'Kontakt: makemyideawork@aremai.tech',
             ],
             back: 'Wróć',
           }
@@ -11569,7 +11572,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
               'The MakeMyIdea.work application collects basic user data, such as email address and Google account identifier, solely to enable login and use of the application.',
               'Data may be processed by external service providers such as Supabase (database) and OpenAI (AI processing).',
               'Data is not sold or shared with third parties for marketing purposes.',
-              'Contact: areklupierz@gmail.com',
+              'Contact: makemyideawork@aremai.tech',
             ],
             back: 'Back',
           }

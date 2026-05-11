@@ -269,10 +269,64 @@
   box-shadow: none;
 }
 
+.mobile-landing__screenshot-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.mobile-landing__screenshot-thumb {
+  appearance: none;
+  display: block;
+  min-width: 0;
+  padding: 0;
+  border: 1px solid rgba(12, 31, 63, 0.16);
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 12px 26px rgba(17, 24, 39, 0.1);
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.mobile-landing__screenshot-thumb:first-child {
+  grid-column: 1 / -1;
+}
+
+.mobile-landing__screenshot-thumb img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 9 / 16;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.mobile-landing__screenshot-thumb:first-child img {
+  aspect-ratio: 16 / 9;
+}
+
 .mobile-landing__final {
   display: grid;
   gap: 0.85rem;
   padding: 1.2rem;
+}
+
+.mobile-landing__footer {
+  display: flex;
+  justify-content: center;
+  padding: 0.25rem 1rem 5.2rem;
+}
+
+.mobile-landing__footer a {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mobile-landing__footer img {
+  display: block;
+  width: 96px;
+  height: auto;
+  opacity: 0.82;
 }
 
 .mobile-landing__modal-backdrop {
@@ -309,6 +363,40 @@
 .mobile-landing__close {
   border-color: transparent;
   color: #5b6576;
+}
+
+.mobile-landing__lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: 3.8rem 0.75rem 1rem;
+  background: rgba(6, 12, 24, 0.88);
+}
+
+.mobile-landing__lightbox img {
+  display: block;
+  width: auto;
+  max-width: 100%;
+  max-height: 100%;
+  border-radius: 16px;
+  box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+  object-fit: contain;
+}
+
+.mobile-landing__lightbox-close {
+  position: fixed;
+  top: 0.85rem;
+  right: 0.85rem;
+  appearance: none;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+  padding: 0.7rem 1rem;
+  font-weight: 900;
+  cursor: pointer;
 }
 
 @media (min-width: 768px) {
