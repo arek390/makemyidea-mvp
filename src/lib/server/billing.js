@@ -190,6 +190,81 @@ export const grantWelcomeBalance = async (
       details: grantRes.error?.details ?? null,
       hint: grantRes.error?.hint ?? null,
     })
+    if (welcomeRuleActive && expectedAmountMinor > 0) {
+      console.warn(`${logPrefix} direct_fallback_attempt`, {
+        userIdPrefix,
+        reasonCode: grantRes.error?.code ?? null,
+        amountMinor: expectedAmountMinor,
+      })
+      try {
+        await ensureBillingAccount(safeUserId, client)
+        const fallbackAccountRes = await client
+          .schema('public')
+          .from('billing_accounts')
+          .select('balance_pln_grosze,welcome_granted')
+          .eq('user_id', safeUserId)
+          .maybeSingle()
+        if (fallbackAccountRes.error) {
+          console.error(`${logPrefix} direct_fallback_account_failed`, {
+            userIdPrefix,
+            message: fallbackAccountRes.error.message ?? null,
+            code: fallbackAccountRes.error.code ?? null,
+          })
+        } else if (fallbackAccountRes.data?.welcome_granted === true) {
+          const currentMinor = toInt(fallbackAccountRes.data?.balance_pln_grosze)
+          granted = false
+          amountMinor = 0
+          balanceAfterMinor = Number.isFinite(currentMinor) ? currentMinor : 0
+          rpcShape = 'direct_fallback_already_granted'
+          console.log(`${logPrefix} direct_fallback_already_granted`, {
+            userIdPrefix,
+            balanceAfterMinor,
+          })
+        } else {
+          const currentMinor = toInt(fallbackAccountRes.data?.balance_pln_grosze)
+          const nextMinor = (Number.isFinite(currentMinor) ? currentMinor : 0) + expectedAmountMinor
+          const fallbackUpdateRes = await client
+            .schema('public')
+            .from('billing_accounts')
+            .update({
+              balance_pln_grosze: nextMinor,
+              welcome_granted: true,
+              updated_at: new Date().toISOString(),
+            })
+            .eq('user_id', safeUserId)
+            .eq('welcome_granted', false)
+            .select('balance_pln_grosze,welcome_granted')
+            .maybeSingle()
+          if (fallbackUpdateRes.error) {
+            console.error(`${logPrefix} direct_fallback_update_failed`, {
+              userIdPrefix,
+              message: fallbackUpdateRes.error.message ?? null,
+              code: fallbackUpdateRes.error.code ?? null,
+            })
+          } else if (fallbackUpdateRes.data) {
+            granted = true
+            amountMinor = expectedAmountMinor
+            balanceAfterMinor = toInt(fallbackUpdateRes.data.balance_pln_grosze)
+            if (!Number.isFinite(balanceAfterMinor)) balanceAfterMinor = nextMinor
+            rpcShape = 'direct_fallback'
+            console.warn(`${logPrefix} direct_fallback_granted`, {
+              userIdPrefix,
+              amountMinor,
+              balanceAfterMinor,
+            })
+          } else {
+            rpcShape = 'direct_fallback_race_lost'
+            console.log(`${logPrefix} direct_fallback_race_lost`, { userIdPrefix })
+          }
+        }
+      } catch (fallbackError) {
+        console.error(`${logPrefix} direct_fallback_failed`, {
+          userIdPrefix,
+          message: fallbackError?.message ?? null,
+          code: fallbackError?.code ?? null,
+        })
+      }
+    }
   } else {
     const row = Array.isArray(grantRes.data) ? grantRes.data[0] : grantRes.data
     const hasMinorReturn = row && Object.prototype.hasOwnProperty.call(row, 'amount_pln_grosze')
