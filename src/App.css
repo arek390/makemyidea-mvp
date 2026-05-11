@@ -4464,6 +4464,17 @@ button.ghost.danger:hover {
   background: rgba(192, 53, 43, 0.08);
 }
 
+button.danger-solid {
+  border-color: #b42318;
+  background: #b42318;
+  color: #fff;
+}
+
+button.danger-solid:hover:not(:disabled) {
+  border-color: #8f1d14;
+  background: #8f1d14;
+}
+
 .engine-empty {
   color: var(--muted);
   font-size: 0.95rem;

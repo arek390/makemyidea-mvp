@@ -156,6 +156,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     billingTableBalance: isPl ? 'Saldo' : 'Balance',
     billingTableAction: isPl ? 'Zasil' : 'Top up',
     billingTableReset: isPl ? 'Reset' : 'Reset',
+    billingTableAccount: isPl ? 'Konto' : 'Account',
     billingEmailSearchPlaceholder: isPl ? 'Szukaj po emailu' : 'Search by email',
     billingAmountPlaceholder: isPl ? 'Kwota' : 'Amount',
     billingResetLabel: isPl ? 'Reset do 0' : 'Reset to 0',
@@ -167,6 +168,13 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     billingResetFailed: isPl
       ? 'Nie udało się zresetować salda.'
       : 'Unable to reset the balance.',
+    billingDeleteLabel: isPl ? 'Usuń konto' : 'Delete account',
+    billingDeleteConfirm: (email: string | null, userId: string) =>
+      isPl
+        ? `Na pewno usunąć konto użytkownika ${email || userId}? Po ponownej rejestracji aplikacja potraktuje go jako nowego użytkownika.`
+        : `Delete account for ${email || userId}? If they sign up again, the app will treat them as a new user.`,
+    billingDeleteNotice: isPl ? 'Konto użytkownika zostało usunięte.' : 'User account deleted.',
+    billingDeleteFailed: isPl ? 'Nie udało się usunąć konta.' : 'Unable to delete account.',
     pricingStatus: isPl ? 'Cennik modeli OpenAI' : 'OpenAI model pricing',
     pricingSyncNow: isPl ? 'Synchronizuj ceny teraz' : 'Sync prices now',
     pricingSyncRunning: isPl ? 'Synchronizacja cen...' : 'Syncing prices...',
@@ -191,6 +199,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
   const [billingInputs, setBillingInputs] = useState<Record<string, string>>({})
   const [billingBusy, setBillingBusy] = useState<Record<string, boolean>>({})
   const [billingResetBusy, setBillingResetBusy] = useState<Record<string, boolean>>({})
+  const [billingDeleteBusy, setBillingDeleteBusy] = useState<Record<string, boolean>>({})
   const [debugPayload, setDebugPayload] = useState<string | null>(null)
   const [sessionDebugPayload, setSessionDebugPayload] = useState<string | null>(null)
   const [pricingInfo, setPricingInfo] = useState<PricingInfo | null>(null)
@@ -618,6 +627,45 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     }
   }
 
+  const handleDeleteUser = async (row: BillingRow) => {
+    setBillingNotice(null)
+    setBillingError(null)
+    if (!supabase) {
+      setBillingError(t.authRequired)
+      return
+    }
+    const confirmed = window.confirm(t.billingDeleteConfirm(row.email, row.userId))
+    if (!confirmed) return
+    setBillingDeleteBusy((prev) => ({ ...prev, [row.userId]: true }))
+    try {
+      const { data } = await supabase.auth.getSession()
+      const token = data.session?.access_token || ''
+      if (!token) throw new Error('AUTH_REQUIRED')
+      const response = await fetch('/api/admin?action=admin.billing.delete_user', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ userId: row.userId }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.ok) {
+        if (response.status === 403 || payload?.error === 'FORBIDDEN') {
+          throw new Error(t.noAccess)
+        }
+        throw new Error(payload?.error || t.billingDeleteFailed)
+      }
+      setBillingNotice(t.billingDeleteNotice)
+      await fetchBillingRows({ silent: true })
+    } catch (err) {
+      const message = err instanceof Error ? err.message : t.billingDeleteFailed
+      setBillingError(message === 'AUTH_REQUIRED' ? t.authRequired : message)
+    } finally {
+      setBillingDeleteBusy((prev) => ({ ...prev, [row.userId]: false }))
+    }
+  }
+
   const handleDebugAccess = async () => {
     setDebugPayload(null)
     try {
@@ -850,12 +898,13 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                     <th>{t.billingTableBalance}</th>
                     <th>{t.billingTableAction}</th>
                     <th>{t.billingTableReset}</th>
+                    <th>{t.billingTableAccount}</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredBillingRows.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="admin-empty">
+                      <td colSpan={5} className="admin-empty">
                         {t.tableEmpty}
                       </td>
                     </tr>
@@ -898,6 +947,16 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                           onClick={() => handleResetBalance(row)}
                         >
                           {billingResetBusy[row.userId] ? '...' : t.billingResetLabel}
+                        </button>
+                      </td>
+                      <td>
+                        <button
+                          type="button"
+                          className="danger-solid"
+                          disabled={billingDeleteBusy[row.userId] === true}
+                          onClick={() => handleDeleteUser(row)}
+                        >
+                          {billingDeleteBusy[row.userId] ? '...' : t.billingDeleteLabel}
                         </button>
                       </td>
                     </tr>

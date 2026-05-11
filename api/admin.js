@@ -2,6 +2,7 @@ import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../src/lib/s
 import { resolveAction } from '../src/lib/server/router.js'
 import {
   handleAdminBillingList,
+  handleAdminBillingDeleteUser,
   handleAdminBillingReset,
   handleAdminBillingTopup,
   handleAdminReportList,
@@ -43,6 +44,14 @@ export default async function handler(req, res) {
       return
     }
     await handleAdminBillingReset(req, res)
+    return
+  }
+  if (action === 'admin.billing.delete_user') {
+    if (req.method !== 'POST') {
+      methodNotAllowed(res, ['POST'])
+      return
+    }
+    await handleAdminBillingDeleteUser(req, res)
     return
   }
   if (action === 'admin.report.list') {

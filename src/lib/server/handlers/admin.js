@@ -768,6 +768,52 @@ export const handleAdminBillingReset = async (req, res) => {
   }
 }
 
+export const handleAdminBillingDeleteUser = async (req, res) => {
+  if (req.method === 'OPTIONS') {
+    res.status(204).end()
+    return
+  }
+  if (req.method !== 'POST') {
+    res.status(405).json({ ok: false, error: 'METHOD_NOT_ALLOWED', allowed: ['POST'] })
+    return
+  }
+  try {
+    const adminUser = await requireAdmin(req, res)
+    if (!adminUser) return
+
+    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body || {}
+    const targetUserId = String(body?.userId || body?.targetUserId || '').trim()
+    if (!targetUserId) {
+      res.status(400).json({ ok: false, error: 'MISSING_TARGET_USER' })
+      return
+    }
+    if (targetUserId === adminUser.id) {
+      res.status(400).json({ ok: false, error: 'CANNOT_DELETE_SELF' })
+      return
+    }
+
+    const supabaseAdmin = getSupabaseAdmin()
+    const deleteRes = await supabaseAdmin.auth.admin.deleteUser(targetUserId)
+    if (deleteRes.error) {
+      console.error('[admin][billing_delete_user] delete failed', {
+        adminUserPrefix: String(adminUser.id || '').slice(0, 8),
+        targetUserPrefix: targetUserId.slice(0, 8),
+        message: deleteRes.error.message || null,
+      })
+      res.status(500).json({ ok: false, error: deleteRes.error.message || 'DELETE_USER_FAILED' })
+      return
+    }
+
+    console.log('[admin][billing_delete_user] deleted', {
+      adminUserPrefix: String(adminUser.id || '').slice(0, 8),
+      targetUserPrefix: targetUserId.slice(0, 8),
+    })
+    res.status(200).json({ ok: true, userId: targetUserId })
+  } catch (error) {
+    res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
+  }
+}
+
 export const handleAdminReportList = async (req, res) => {
   if (req.method === 'OPTIONS') {
     res.status(204).end()
@@ -799,7 +845,8 @@ export const handleAdminReportList = async (req, res) => {
     })
     const pricingStatus =
       pricingRefresh?.status || (await getOpenAIModelPricingStatus(supabaseAdmin))
-    const reportRes = await supabaseAdmin
+    let reportSource = 'session_ai_cost_summary'
+    let reportRes = await supabaseAdmin
       .schema('public')
       .from('session_ai_cost_summary')
       .select('*')
@@ -807,13 +854,51 @@ export const handleAdminReportList = async (req, res) => {
       .range(offset, to)
 
     if (reportRes.error) {
-      res.status(500).json({ ok: false, error: 'QUERY_FAILED' })
-      return
+      console.error('[admin.report.list] session_ai_cost_summary failed; falling back', {
+        message: reportRes.error.message || null,
+        code: reportRes.error.code || null,
+        details: reportRes.error.details || null,
+      })
+      reportSource = 'admin_session_report'
+      reportRes = await supabaseAdmin
+        .schema('public')
+        .from('admin_session_report')
+        .select('*')
+        .order('session_created_at', { ascending: false })
+        .range(offset, to)
+      if (reportRes.error) {
+        console.error('[admin.report.list] fallback admin_session_report failed', {
+          message: reportRes.error.message || null,
+          code: reportRes.error.code || null,
+          details: reportRes.error.details || null,
+        })
+        res.status(500).json({
+          ok: false,
+          error: reportRes.error.message || 'QUERY_FAILED',
+          code: reportRes.error.code || null,
+        })
+        return
+      }
     }
 
-    const rows = reportRes.data || []
+    const rows = (reportRes.data || []).map((row) => ({
+      ...row,
+      tokens_input_total: row.tokens_input_total ?? 0,
+      tokens_output_total: row.tokens_output_total ?? 0,
+      tokens_total: row.tokens_total ?? 0,
+      usage_cost_usd: row.usage_cost_usd ?? 0,
+      usage_cost_pln: row.usage_cost_pln ?? 0,
+      total_cost_session_minor: row.total_cost_session_minor ?? 0,
+      last_image_cost_minor: row.last_image_cost_minor ?? null,
+      last_image_cost_currency: row.last_image_cost_currency ?? null,
+      last_report_update_cost_minor: row.last_report_update_cost_minor ?? null,
+      last_report_update_cost_currency: row.last_report_update_cost_currency ?? null,
+      last_report_generate_cost_minor: row.last_report_generate_cost_minor ?? null,
+      last_report_generate_cost_currency: row.last_report_generate_cost_currency ?? null,
+    }))
     const sample = rows[0] || null
     console.log('[admin.report.list][db] raw rows sample', {
+      source: reportSource,
       count: rows.length,
       sample: sample
         ? {

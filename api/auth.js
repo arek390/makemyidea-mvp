@@ -15,22 +15,44 @@ const handleMe = async (req, res) => {
       res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
       return
     }
-    res.status(200).json({
-      ok: true,
-      user: {
-        id: data.user.id,
-        email: data.user.email || null,
-      },
-    })
+    const userId = data.user.id
+    const userIdPrefix = String(userId).slice(0, 8)
     try {
+      console.log('[auth][welcome_balance] attempt', { userIdPrefix })
       const supabaseAdmin = getSupabaseAdmin()
-      await supabaseAdmin.rpc('grant_welcome_balance', { p_user_id: data.user.id })
+      const grantRes = await supabaseAdmin.rpc('grant_welcome_balance', { p_user_id: userId })
+      if (grantRes.error) {
+        console.error('[auth][welcome_balance] failed', {
+          userIdPrefix,
+          message: grantRes.error?.message ?? null,
+          code: grantRes.error?.code ?? null,
+        })
+      } else {
+        const row = Array.isArray(grantRes.data) ? grantRes.data[0] : grantRes.data
+        const granted = Boolean(row?.granted)
+        const amountMinor = Number(row?.amount_pln_grosze ?? 0)
+        const balanceAfterMinor = Number(row?.balance_after_pln_grosze ?? 0)
+        console.log(granted ? '[auth][welcome_balance] granted' : '[auth][welcome_balance] already_or_skipped', {
+          userIdPrefix,
+          granted,
+          amountMinor: Number.isFinite(amountMinor) ? amountMinor : 0,
+          balanceAfterMinor: Number.isFinite(balanceAfterMinor) ? balanceAfterMinor : 0,
+        })
+      }
     } catch (error) {
       console.error('[auth][welcome_balance] failed', {
+        userIdPrefix,
         message: error?.message ?? null,
         code: error?.code ?? null,
       })
     }
+    res.status(200).json({
+      ok: true,
+      user: {
+        id: userId,
+        email: data.user.email || null,
+      },
+    })
   } catch (error) {
     res.status(500).json({ ok: false, error: 'SERVER_ERROR' })
   }
