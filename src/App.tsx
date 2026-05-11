@@ -10016,7 +10016,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
             execution_report: dbReport.executionReport ?? null,
           }
         : null
-      return mergeReportMeta(mergeReportMeta(localMeta, cloudMeta), dbMeta)
+      const mergedMeta = mergeReportMeta(mergeReportMeta(localMeta, cloudMeta), dbMeta)
+      if (!dbMeta) return mergedMeta
+      // Keep the local/cloud report body, but trust Supabase for report freshness metadata.
+      // A stale stored session can otherwise make the top report update CTA active after re-login.
+      return {
+        ...mergedMeta,
+        id: dbMeta.id ?? mergedMeta?.id ?? null,
+        created_at: dbMeta.created_at ?? mergedMeta?.created_at ?? null,
+        updated_at: dbMeta.updated_at ?? mergedMeta?.updated_at ?? null,
+        lastSummaryTextHash: dbMeta.lastSummaryTextHash ?? mergedMeta?.lastSummaryTextHash ?? null,
+      }
     }
     return mergeReportMeta(localMeta, cloudMeta)
   }
