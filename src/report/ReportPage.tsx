@@ -2387,10 +2387,6 @@ export const ReportPage = ({
   )
   const needsActionPlanBootstrap =
     reportVariant === 'action' && !normalizedExecutionReport?.decisions?.length
-  const canBuildPlanFromDecisions =
-    reportVariant === 'action' &&
-    normalizedExecutionReport?.stage !== 'plan_generated' &&
-    decisionsAllSelected
   const hasRenderableActionPlanContent = Boolean(hasActionPlanData || hasLeanExecutionReport)
   const isActionPlanOutdated =
     Boolean(hasActionPlanData && normalizedExecutionReport?.stage !== 'plan_generated')
@@ -2434,14 +2430,14 @@ export const ReportPage = ({
     : hasExistingActionPlanContent
       ? `Update action plan${approachSelectionSuffix}`
       : 'Finalize action plan')
-  const updateCtaLabel =
-    canBuildPlanFromDecisions
-      ? renderActionPlanButtonLabel
-      : t.reportUpdate
-  const updateCtaMode = canBuildPlanFromDecisions ? 'plan_from_decisions_only' : undefined
+  const updateCtaLabel = reportIsOutdated
+    ? language === 'pl'
+      ? 'Aktualizuj Plan działania - Pracownia Pomysłu została zmodyfikowana'
+      : 'Update action plan - Idea Studio has been modified'
+    : t.reportUpdate
   const updateDisabled =
     isReportUpdating ||
-    (!canBuildPlanFromDecisions && !reportIsOutdated && !needsActionPlanBootstrap)
+    (!reportIsOutdated && !needsActionPlanBootstrap)
 
   useEffect(() => {
     if (reportVariant !== 'action') return
@@ -2980,7 +2976,7 @@ export const ReportPage = ({
           {showUpdate && (
             <span
               className={`report-update-cta-wrap update-action-plan-button ${
-                isReportUpdating || !reportIsOutdated
+                updateDisabled
                   ? reportIsOutdated
                     ? 'update-action-plan-button--disabled'
                     : 'update-action-plan-button--up-to-date'
@@ -2996,13 +2992,13 @@ export const ReportPage = ({
                   loading={isReportUpdating}
                 disabled={updateDisabled}
                 disabledTooltip={
-                  !canBuildPlanFromDecisions && !reportIsOutdated && !needsActionPlanBootstrap && !isReportUpdating
+                  !reportIsOutdated && !needsActionPlanBootstrap && !isReportUpdating
                     ? t.reportUpdateDisabledTooltip
                     : undefined
                 }
                   className="report-update-btn--wide-left"
                   metaLayout="below"
-                onClick={() => void handleUpdateReport(updateCtaMode)}
+                onClick={() => void handleUpdateReport()}
               />
               {reportIsOutdated && !isReportUpdating && (
                 <span className="report-update-cta-tooltip" role="tooltip">

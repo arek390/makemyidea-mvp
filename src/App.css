@@ -2792,7 +2792,8 @@
 
 /* Keep the "Update action plan" cost line fully below the button (avoid overlap artifacts). */
 .report-update-btn-stack--report-update-btn--wide-left .report-ai-inline--below {
-  top: calc(100% + 0.2rem);
+  top: calc(100% + 0.2rem - 6px);
+  transform: translateX(-30px);
 }
 
 /* Show the AI cost line under Update only when the action is available. */
