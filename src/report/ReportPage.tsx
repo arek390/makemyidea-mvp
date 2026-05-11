@@ -3003,7 +3003,7 @@ export const ReportPage = ({
                 }
                   className="report-update-btn--wide-left"
                   metaLayout="below"
-                onClick={() => void handleUpdateReport('plan_from_decisions')}
+                onClick={() => void handleUpdateReport()}
               />
               {reportIsOutdated && !isReportUpdating && (
                 <span className="report-update-cta-tooltip" role="tooltip">
