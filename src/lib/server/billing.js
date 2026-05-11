@@ -141,9 +141,8 @@ export const grantWelcomeBalance = async (
   const welcomeRuleRes = await client
     .schema('public')
     .from('pricing_rules')
-    .select('welcome_balance_pln,is_active,price_grosze')
-    .eq('action_key', 'welcome')
-    .maybeSingle()
+    .select('action_key,welcome_balance_pln,is_active,price_grosze')
+    .in('action_key', ['welcome_bonus', 'welcome'])
   if (welcomeRuleRes.error) {
     console.error(`${logPrefix} config_failed`, {
       userIdPrefix,
@@ -151,14 +150,28 @@ export const grantWelcomeBalance = async (
       code: welcomeRuleRes.error.code ?? null,
     })
   } else {
-    hasWelcomeRule = Boolean(welcomeRuleRes.data)
-    welcomeRuleActive = welcomeRuleRes.data?.is_active === true
-    const amountFromRule = plnToMinor(welcomeRuleRes.data?.welcome_balance_pln)
-    expectedAmountMinor = Number.isFinite(amountFromRule) ? amountFromRule : 0
+    const rules = Array.isArray(welcomeRuleRes.data) ? welcomeRuleRes.data : []
+    const selectedRule =
+      rules.find((rule) => rule.action_key === 'welcome_bonus') ||
+      rules.find((rule) => rule.action_key === 'welcome') ||
+      null
+    hasWelcomeRule = Boolean(selectedRule)
+    welcomeRuleActive = selectedRule?.is_active === true
+    const amountFromPrice = toInt(selectedRule?.price_grosze)
+    const amountFromRule = plnToMinor(selectedRule?.welcome_balance_pln)
+    expectedAmountMinor =
+      selectedRule?.action_key === 'welcome_bonus' && Number.isFinite(amountFromPrice)
+        ? amountFromPrice
+        : Number.isFinite(amountFromRule)
+          ? amountFromRule
+          : Number.isFinite(amountFromPrice)
+            ? amountFromPrice
+            : 0
     console.log(`${logPrefix} config`, {
       userIdPrefix,
       hasWelcomeRule,
       welcomeRuleActive,
+      actionKey: selectedRule?.action_key ?? null,
       expectedAmountMinor,
     })
   }
