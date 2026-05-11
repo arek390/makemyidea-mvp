@@ -1,0 +1,179 @@
+-- Re-apply the welcome balance RPC with fully-qualified column references.
+-- Production logs showed SQLSTATE 42702: column reference "user_id" is ambiguous,
+-- which means an older RPC definition can still be active in some environments.
+-- Runtime billing is PLN-only and consumes billing_accounts.balance_pln_grosze.
+
+alter table public.pricing_rules
+  add column if not exists welcome_balance_pln numeric(12,2);
+
+alter table public.pricing_rules
+  add column if not exists description text;
+
+update public.pricing_rules as rule
+set description = case
+    when rule.action_key = 'welcome_bonus' then 'Welcome balance granted once to a new user'
+    else initcap(replace(rule.action_key, '_', ' '))
+  end
+where rule.description is null;
+
+alter table public.billing_accounts
+  add column if not exists balance_pln_grosze bigint;
+
+alter table public.billing_accounts
+  add column if not exists balance_usd_cents bigint;
+
+alter table public.billing_accounts
+  add column if not exists welcome_granted boolean not null default false;
+
+alter table public.billing_accounts
+  alter column balance_pln_grosze set default 0;
+
+alter table public.billing_accounts
+  alter column balance_usd_cents set default 0;
+
+update public.billing_accounts as account
+set balance_pln_grosze = 0
+where account.balance_pln_grosze is null;
+
+update public.billing_accounts as account
+set balance_usd_cents = 0
+where account.balance_usd_cents is null;
+
+-- Current configurable source is pricing_rules.price_grosze for welcome_bonus.
+-- welcome_balance_pln remains backfilled for older admin/data views only.
+insert into public.pricing_rules (
+  action_key,
+  description,
+  price_grosze,
+  is_active,
+  welcome_balance_pln
+)
+values ('welcome_bonus', 'Welcome balance granted once to a new user', 800, true, 8.00)
+on conflict (action_key) do update
+set price_grosze = coalesce(public.pricing_rules.price_grosze, excluded.price_grosze),
+    description = coalesce(public.pricing_rules.description, excluded.description),
+    is_active = true,
+    welcome_balance_pln = coalesce(
+      public.pricing_rules.welcome_balance_pln,
+      round(excluded.price_grosze::numeric / 100, 2)
+    ),
+    updated_at = now();
+
+-- Repair users who were marked as granted by the legacy RPC but received money
+-- only in balance_pln, while the application reads balance_pln_grosze.
+with welcome_rule as (
+  select
+    case
+      when rule.action_key = 'welcome_bonus' then rule.price_grosze::bigint
+      else coalesce(round(rule.welcome_balance_pln * 100)::bigint, rule.price_grosze::bigint)
+    end as amount_minor,
+    case
+      when rule.action_key = 'welcome_bonus' then rule.price_grosze::numeric / 100
+      else coalesce(rule.welcome_balance_pln, rule.price_grosze::numeric / 100)
+    end as amount_pln
+  from public.pricing_rules as rule
+  where rule.action_key in ('welcome_bonus', 'welcome')
+    and rule.is_active = true
+  order by case when rule.action_key = 'welcome_bonus' then 0 else 1 end
+  limit 1
+)
+update public.billing_accounts as account
+set balance_pln_grosze = welcome_rule.amount_minor,
+    updated_at = now()
+from welcome_rule
+where account.welcome_granted = true
+  and coalesce(account.balance_pln_grosze, 0) = 0
+  and coalesce(account.balance_pln, 0) >= welcome_rule.amount_pln
+  and coalesce(welcome_rule.amount_minor, 0) > 0;
+
+drop function if exists public.grant_welcome_balance(uuid);
+
+create or replace function public.grant_welcome_balance(
+  p_user_id uuid
+)
+returns table(
+  granted boolean,
+  amount_pln_grosze bigint,
+  balance_after_pln_grosze bigint
+)
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $$
+declare
+  v_amount_minor bigint := 0;
+  v_current_minor bigint := 0;
+  v_next_minor bigint := 0;
+  v_already_granted boolean := false;
+begin
+  if p_user_id is null then
+    raise exception 'AUTH_REQUIRED' using errcode = 'P0001';
+  end if;
+
+  insert into public.billing_accounts as account (
+    user_id,
+    balance_pln_grosze,
+    balance_usd_cents,
+    total_paid_pln,
+    created_at,
+    updated_at,
+    welcome_granted
+  )
+  values (p_user_id, 0, 0, 0, now(), now(), false)
+  on conflict on constraint billing_accounts_pkey do nothing;
+
+  select
+    coalesce(account.balance_pln_grosze, 0),
+    coalesce(account.welcome_granted, false)
+  into v_current_minor, v_already_granted
+  from public.billing_accounts as account
+  where account.user_id = p_user_id
+  for update;
+
+  if v_already_granted then
+    return query select false, 0::bigint, coalesce(v_current_minor, 0);
+    return;
+  end if;
+
+  select
+    case
+      when rule.action_key = 'welcome_bonus' then rule.price_grosze::bigint
+      else coalesce(round(rule.welcome_balance_pln * 100)::bigint, rule.price_grosze::bigint)
+    end
+  into v_amount_minor
+  from public.pricing_rules as rule
+  where rule.action_key in ('welcome_bonus', 'welcome')
+    and rule.is_active = true
+  order by case when rule.action_key = 'welcome_bonus' then 0 else 1 end
+  limit 1;
+
+  if v_amount_minor is null or v_amount_minor <= 0 then
+    return query select false, 0::bigint, coalesce(v_current_minor, 0);
+    return;
+  end if;
+
+  v_next_minor := coalesce(v_current_minor, 0) + v_amount_minor;
+
+  update public.billing_accounts as account
+  set balance_pln_grosze = v_next_minor,
+      welcome_granted = true,
+      updated_at = now()
+  where account.user_id = p_user_id
+    and account.welcome_granted = false;
+
+  if not found then
+    select coalesce(account.balance_pln_grosze, 0)
+    into v_current_minor
+    from public.billing_accounts as account
+    where account.user_id = p_user_id;
+
+    return query select false, 0::bigint, coalesce(v_current_minor, 0);
+    return;
+  end if;
+
+  return query select true, v_amount_minor, v_next_minor;
+end;
+$$;
+
+revoke all on function public.grant_welcome_balance(uuid) from public;
+grant execute on function public.grant_welcome_balance(uuid) to service_role;

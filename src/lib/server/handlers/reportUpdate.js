@@ -7557,6 +7557,69 @@ export const handleReportUpdate = async (req, res) => {
 	                    : {}),
                 })
               }
+              if (!(execResult?.ok && execResult?.data)) {
+                const raw = actionPlanRawResponses.get('report-action-plan')
+                const parse = actionPlanParseResults.get('report-action-plan')
+                const rawSummary = raw ? summarizeRawOutput(raw.content) : {}
+                const shouldRetryInvalidJson = Boolean(
+                  parse?.recoveryError ||
+                    parse?.parseError ||
+                    rawSummary.containsRoadmapPhases ||
+                    rawSummary.containsActionPlan
+                )
+                if (shouldRetryInvalidJson) {
+                  if (execResult?.meta) {
+                    responseMeta.execution_report_action_plan_initial = execResult.meta
+                    await recordAiUsageBestEffort({
+                      sessionId: reportRes.data.session_id ?? sessionId,
+                      reportId: reportRes.data.id ?? null,
+                      userId,
+                      actionKey: reportActionKey,
+                      sourceTask: 'report-action-plan-initial',
+                      referenceId: reportRes.data.id ?? null,
+                      requestId,
+                      feature: 'report-action-plan',
+                      meta: execResult.meta,
+                    })
+                    actionPlanUsageAlreadyRecorded = true
+                  }
+                  console.log('[REPORT FINALIZE DEBUG][backend][report-action-plan-json-retry]', {
+                    requestId,
+                    sessionId,
+                    reason: 'INVALID_JSON_OR_MISSING_DATA',
+                    parseError: parse?.recoveryError || parse?.parseError || null,
+                    rawOutputLen: rawSummary.rawOutputLen ?? null,
+                    containsRoadmapPhases: rawSummary.containsRoadmapPhases ?? null,
+                    containsActionPlan: rawSummary.containsActionPlan ?? null,
+                    looksTruncated: rawSummary.looksTruncated ?? null,
+                  })
+                  const retryResult = await runExecutionReport(undefined, {
+                    strictJson: true,
+                    retryReasons: [
+                      'previous_response_was_invalid_json',
+                      'return_one_complete_valid_json_object_only',
+                      'close_every_array_and_object',
+                      'keep_roadmap_phases_shorter_if_needed',
+                      'do_not_add_markdown_or_trailing_text',
+                    ],
+                  })
+                  console.log('[REPORT FINALIZE DEBUG][backend][report-action-plan-json-retry-called]', {
+                    requestId,
+                    sessionId,
+                    task: 'report-action-plan',
+                    called: true,
+                    ok: Boolean(retryResult?.ok),
+                    hasData: Boolean(retryResult?.data),
+                    model: retryResult?.meta?.modelUsed ?? null,
+                    tokens: retryResult?.meta?.tokens ?? null,
+                    error: compactErrorMessage(retryResult?.error),
+                  })
+                  if (retryResult?.ok && retryResult.data && typeof retryResult.data === 'object') {
+                    execResult = retryResult
+                    actionPlanUsageAlreadyRecorded = false
+                  }
+                }
+              }
               if (execResult?.ok && execResult.data && typeof execResult.data === 'object') {
                 const firstNormalizedForCoverage = normalizeExecutionReport(execResult.data, reportLang)
                 const firstTitleGuard = applyRoadmapPhaseTitleQualityGuard(firstNormalizedForCoverage, reportLang)

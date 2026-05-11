@@ -4586,6 +4586,8 @@ button.danger-solid:hover:not(:disabled) {
 }
 
 .landing-login-link {
+  width: 86px;
+  text-align: center;
   border-color: var(--navy);
   background: var(--navy);
   color: #fff;
