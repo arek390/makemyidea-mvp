@@ -439,6 +439,7 @@ type Translations = {
   landingIntroSubtextLines: [string, string, string, string]
   landingIntroSubtextEmphasis: string
   landingCta: string
+  landingLoginCta: string
   landingCtaNote: string
   landingThreeStepsCta: string
   landingThreeStepsTitle: string
@@ -869,6 +870,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     ],
     landingIntroSubtextEmphasis: 'you',
     landingCta: '▶ Start for free',
+    landingLoginCta: 'Log in',
     landingCtaNote: 'Sign up in 30 seconds • No credit card required',
     landingThreeStepsCta: 'Start in 3 steps',
     landingThreeStepsTitle: '3 steps',
@@ -1433,6 +1435,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     ],
     landingIntroSubtextEmphasis: 'Ciebie',
     landingCta: '▶ Zacznij za darmo',
+    landingLoginCta: 'Zaloguj',
     landingCtaNote: 'rejestracja w 30 s • bez karty',
     landingThreeStepsCta: 'Zacznij w 3 krokach',
     landingThreeStepsTitle: '3 kroki',
@@ -5696,6 +5699,8 @@ const safeLower = (value: unknown) => String(value ?? '').toLowerCase()
 const toTimestamp = (value: unknown, fallback: number) => {
   if (typeof value === 'number' && Number.isFinite(value)) return value
   if (typeof value === 'string') {
+    const asNumber = Number(value)
+    if (Number.isFinite(asNumber)) return asNumber
     const parsed = Date.parse(value)
     if (!Number.isNaN(parsed)) return parsed
   }
@@ -10432,6 +10437,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
           tokens_in_total?: number | null
           tokens_out_total?: number | null
         }
+        type SessionReportRow = {
+          id?: string | null
+          session_id?: string | null
+          created_at?: string | number | null
+          updated_at?: string | number | null
+          source_updated_at?: string | number | null
+          last_summary_text_hash?: string | null
+        }
         const sRes = (await client
           .from('sessions')
           .select('*')
@@ -10501,9 +10514,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
         }
         const rRes = await client
           .from('reports')
-          .select('id,session_id,created_at,updated_at')
+          .select('id,session_id,created_at,updated_at,source_updated_at,last_summary_text_hash')
           .eq('session_id', sessionId)
-          .maybeSingle()
+          .maybeSingle() as { data: SessionReportRow | null; error: unknown }
         console.log('[openSession] reports', {
           found: Boolean(rRes.data),
           err: rRes.error
@@ -10563,7 +10576,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 id: rRes.data.id ?? null,
                 created_at: toTimestamp(rRes.data.created_at, now),
                 updated_at: toTimestamp(rRes.data.updated_at, now),
-                lastSummaryTextHash: null,
+                sourceUpdatedAt: toTimestamp(rRes.data.source_updated_at, 0),
+                lastSummaryTextHash: rRes.data.last_summary_text_hash ?? null,
                 summary: reportSummary,
               }
             : null,
@@ -13629,6 +13643,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
             ))}
           </div>
         )}
+        <div className="topbar-links">
+          {showLanding && (
+            <a className="primary topbar-link landing-login-link" href="/login" onClick={handleLandingCtaClick}>
+              {copy.landingLoginCta}
+            </a>
+          )}
+        </div>
         {(showLanding || activeStep === 1) && (
           <label className="topbar-language">
             <span>{copy.languageLabel}</span>
@@ -13687,7 +13708,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
             {copy.llmSettings}
           </button>
         )}
-        <div className="topbar-links" />
         {!showLanding && activeStep !== 1 && (
           <button className="report-button" type="button" onClick={() => setReportSnapshotOpen(true)}>
             <IconReport />

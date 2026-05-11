@@ -19,7 +19,7 @@
 }
 
 .top-bar.landing-top {
-  grid-template-columns: 1fr auto;
+  grid-template-columns: 1fr auto auto;
   justify-items: end;
   padding: 5px 20px;
 }
@@ -35,7 +35,7 @@
   display: block;
   height: 64px;
   width: auto;
-  transform: translateY(12px);
+  transform: none;
 }
 
 .engine-logo {
@@ -234,12 +234,13 @@
 .topbar-language {
   display: grid;
   gap: 0.3rem;
+  justify-items: center;
   font-size: 0.75rem;
   color: var(--muted);
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  align-self: flex-start;
-  margin-top: 20px;
+  align-self: center;
+  margin-top: 0;
 }
 
 .topbar-language select {
@@ -4582,6 +4583,17 @@ button.danger-solid:hover:not(:disabled) {
 
 .topbar-link:hover {
   border-color: var(--navy);
+}
+
+.landing-login-link {
+  border-color: var(--navy);
+  background: var(--navy);
+  color: #fff;
+}
+
+.landing-login-link:hover {
+  background: #0d356b;
+  color: #fff;
 }
 
 .topbar-link--wip {
