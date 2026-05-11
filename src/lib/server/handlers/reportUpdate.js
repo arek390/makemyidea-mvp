@@ -3793,6 +3793,25 @@ export const handleReportUpdate = async (req, res) => {
               (d) => d?.selected_option === 'a' || d?.selected_option === 'b'
             ).length
           : 0
+      const getDecisionGate = (executionReport) => {
+        const decisions = Array.isArray(executionReport?.decisions) ? executionReport.decisions : []
+        const selectedCount = decisions.filter(
+          (d) => normalizeExecutionSelectedOption(d?.selected_option) === 'a' ||
+            normalizeExecutionSelectedOption(d?.selected_option) === 'b'
+        ).length
+        return {
+          decisions,
+          decisionsCount: decisions.length,
+          selectedCount,
+          hasDecisions: decisions.length > 0,
+          allDecisionsSelected:
+            decisions.length > 0 &&
+            decisions.every((d) => {
+              const selected = normalizeExecutionSelectedOption(d?.selected_option)
+              return selected === 'a' || selected === 'b'
+            }),
+        }
+      }
       const buildSelectedTrizApproaches = (triz) =>
         Array.isArray(triz?.contradictions)
           ? triz.contradictions.flatMap((c, contradiction_index) => {
@@ -4929,6 +4948,54 @@ export const handleReportUpdate = async (req, res) => {
       }
       sendJson(res, 200, { ok: true, report: updateRes.data ?? null })
       return
+    }
+    if (isPlanFromDecisionsMode) {
+      const gateSource =
+        body.execution_report && typeof body.execution_report === 'object'
+          ? body.execution_report
+          : reportRes.data?.summary_json?.execution_report ?? null
+      const decisionGate = getDecisionGate(gateSource)
+      if (!decisionGate.allDecisionsSelected) {
+        const planSkippedReason = decisionGate.hasDecisions ? 'DECISIONS_INCOMPLETE' : 'NO_SELECTIONS'
+        const preflightLang = resolveReportLang(reportRes.data?.summary_json?.lang, requestedLang, 'pl')
+        responseExecution.planGenerated = false
+        responseExecution.planSkippedReason = planSkippedReason
+        console.log('[REPORT FINALIZE DEBUG][backend][prebilling-gate]', {
+          requestId,
+          sessionId,
+          execution_mode: executionMode,
+          charged: false,
+          planSkippedReason,
+          decisionsCount: decisionGate.decisionsCount,
+          selectedDecisionsCount: decisionGate.selectedCount,
+        })
+        sendJson(res, 200, {
+          ok: false,
+          error: 'report_action_plan_failed',
+          message:
+            preflightLang === 'en'
+              ? decisionGate.hasDecisions
+                ? 'Select A/B for all key decisions to update the action plan.'
+                : 'Select at least one decision or TRIZ approach to update the action plan.'
+              : decisionGate.hasDecisions
+                ? 'Wybierz opcje A/B we wszystkich kluczowych decyzjach, aby zaktualizować plan działania.'
+                : 'Zaznacz przynajmniej jedną decyzję lub podejście TRIZ, aby zaktualizować plan działania.',
+          planGenerated: false,
+          planSkippedReason,
+          execution: {
+            ...responseExecution,
+            planGenerated: false,
+            planSkippedReason,
+          },
+          report: {
+            id: reportRes.data?.id ?? null,
+            session_id: reportRes.data?.session_id ?? sessionId,
+            updated_at: reportRes.data?.updated_at ?? null,
+            source_updated_at: reportRes.data?.source_updated_at ?? null,
+          },
+        })
+        return
+      }
     }
     const shouldChargeForUpdate =
       !skipBilling &&
@@ -6960,8 +7027,9 @@ export const handleReportUpdate = async (req, res) => {
         })
 
       const forceTrizOnGenerate = reportActionKey === 'report_generate'
+      const shouldRegenerateTrizForReport = !isPlanFromDecisionsMode
 
-      if (!executionPlanOnly) try {
+      if (shouldRegenerateTrizForReport) try {
         const trizOnlyResult = await runTrizOnly()
         if (diagnosticsEnabled) {
           console.log('[report:update][triz] first_attempt', {
@@ -7133,8 +7201,8 @@ export const handleReportUpdate = async (req, res) => {
         const wantsPlanFromDecisions =
           executionMode === 'plan_from_decisions' || executionMode === 'plan_from_decisions_only'
         const decisionsForFinalizeGate =
-          selectedDecisionsOverride && selectedDecisionsOverride.length
-            ? selectedDecisionsOverride
+          executionReportOverride && Array.isArray(executionReportOverride.decisions) && executionReportOverride.decisions.length
+            ? executionReportOverride.decisions
             : Array.isArray(executionReportCandidate?.decisions)
               ? executionReportCandidate.decisions
               : []
@@ -8075,6 +8143,53 @@ export const handleReportUpdate = async (req, res) => {
 	              })
 	              return
             } else {
+              const allowLegacyActionPlanFallback = process.env.ENABLE_LEGACY_ACTION_PLAN_FALLBACK === '1'
+              if (!allowLegacyActionPlanFallback) {
+                responseExecution.planGenerated = false
+                responseExecution.planSkippedReason = allDecisionsSelected ? 'NO_SELECTIONS' : 'DECISIONS_INCOMPLETE'
+                console.log('[REPORT FINALIZE DEBUG][backend][fallback]', {
+                  requestId,
+                  sessionId,
+                  fallbackTriggered: false,
+                  skipped: true,
+                  reason: allDecisionsSelected
+                    ? 'NO_SELECTIONS_ABORTED'
+                    : 'DECISIONS_INCOMPLETE_ABORTED',
+                  execution_mode: executionMode,
+                  selectedDecisionsCount,
+                  selectedTrizApproachesCount,
+                  allDecisionsSelected,
+                  legacyFallbackAllowed: allowLegacyActionPlanFallback,
+                })
+                const unchangedReportPayload = {
+                  id: reportRes.data?.id ?? null,
+                  session_id: reportRes.data?.session_id ?? sessionId,
+                  updated_at: reportRes.data?.updated_at ?? null,
+                  source_updated_at: reportRes.data?.source_updated_at ?? null,
+                }
+                res.status(200).json({
+                  ok: false,
+                  error: 'report_action_plan_failed',
+                  message:
+                    reportLang === 'en'
+                      ? allDecisionsSelected
+                        ? 'Select at least one decision or TRIZ approach to update the action plan.'
+                        : 'Select A/B for all key decisions to update the action plan.'
+                      : allDecisionsSelected
+                        ? 'Zaznacz przynajmniej jedną decyzję lub podejście TRIZ, aby zaktualizować plan działania.'
+                        : 'Wybierz opcje A/B we wszystkich kluczowych decyzjach, aby zaktualizować plan działania.',
+                  execution_report: null,
+                  report: unchangedReportPayload,
+                  planGenerated: false,
+                  planSkippedReason: responseExecution.planSkippedReason,
+                  execution: {
+                    ...responseExecution,
+                    planGenerated: false,
+                    planSkippedReason: responseExecution.planSkippedReason,
+                  },
+                })
+                return
+              }
               logFinalizeTrace('before_fallback_to_report_execution_plan_from_decisions', executionReportCandidate, {
                 requestId,
                 sessionId,
@@ -8902,7 +9017,7 @@ export const handleReportUpdate = async (req, res) => {
       if (!executionPlanOnly && !recValidation.ok) {
         console.log('[report:update][step3] recommendations fallback', recValidation.errors)
       }
-      let finalTrizResolved = executionPlanOnly
+      let finalTrizResolved = isPlanFromDecisionsMode
         ? normalizeTriz(phaseASanitized.triz)
         : (() => {
             const finalTriz = trizValidation.ok ? trizCandidate : normalizeTriz(phaseASanitized.triz)

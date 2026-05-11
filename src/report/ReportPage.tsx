@@ -1657,10 +1657,14 @@ export const ReportPage = ({
 	          return
 	        }
 	        if (
-	          mode === 'plan_from_decisions_only' &&
+	          (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') &&
 	          (responsePayload?.error === 'report_action_plan_failed' ||
 	            responsePayload?.planSkippedReason === 'REPORT_ACTION_PLAN_FAILED' ||
-	            responsePayload?.execution?.planSkippedReason === 'REPORT_ACTION_PLAN_FAILED')
+	            responsePayload?.planSkippedReason === 'DECISIONS_INCOMPLETE' ||
+	            responsePayload?.planSkippedReason === 'NO_SELECTIONS' ||
+	            responsePayload?.execution?.planSkippedReason === 'REPORT_ACTION_PLAN_FAILED' ||
+	            responsePayload?.execution?.planSkippedReason === 'DECISIONS_INCOMPLETE' ||
+	            responsePayload?.execution?.planSkippedReason === 'NO_SELECTIONS')
 	        ) {
 	          setUpdateNotice(
 	            typeof responsePayload?.message === 'string' && responsePayload.message.trim()
@@ -1675,7 +1679,7 @@ export const ReportPage = ({
 	        return
 	      }
 	      if (
-	        mode === 'plan_from_decisions_only' &&
+	        (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') &&
 	        (responsePayload?.planGenerated === false || responsePayload?.execution?.planGenerated === false)
 	      ) {
 	        setUpdateNotice(
@@ -1757,7 +1761,7 @@ export const ReportPage = ({
         }
       }
       if (
-        mode === 'plan_from_decisions_only' &&
+        (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') &&
         responsePayload?.execution &&
         responsePayload.execution.planGenerated === false &&
         responsePayload.execution.planSkippedReason === 'DECISIONS_INCOMPLETE'
@@ -1769,7 +1773,7 @@ export const ReportPage = ({
         )
       }
       if (
-        mode === 'plan_from_decisions_only' &&
+        (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') &&
         responsePayload?.execution &&
         responsePayload.execution.planGenerated === false &&
         responsePayload.execution.planSkippedReason === 'NO_SELECTIONS'
