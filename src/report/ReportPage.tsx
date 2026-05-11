@@ -2388,6 +2388,7 @@ export const ReportPage = ({
   const hasRenderableActionPlanContent = Boolean(hasActionPlanData || hasLeanExecutionReport)
   const isActionPlanOutdated =
     Boolean(hasActionPlanData && normalizedExecutionReport?.stage !== 'plan_generated')
+  const shouldDimActionPlan = isActionPlanOutdated || reportIsOutdated
   const hasExistingActionPlanContent =
     !!(
       normalizedExecutionReport &&
@@ -3189,7 +3190,7 @@ export const ReportPage = ({
 
             <section
               id="action-plan"
-              className={`report-section${isActionPlanOutdated ? ' report-section--action-plan-stale' : ''}`}
+              className={`report-section${shouldDimActionPlan ? ' report-section--action-plan-stale' : ''}`}
             >
               <h2>{t.actionPlanSectionTitle}</h2>
               {!hasRenderableActionPlanContent ? (
