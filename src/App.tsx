@@ -7471,6 +7471,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         })
         const createdSession = sessionDetail.session
         if (createdSession?.id) {
+          setReportRecords((prev) => ({ ...prev, [createdSession.id]: null }))
           setEnginePreviewSessionId(createdSession.id)
           setEnginePreviewSessionName(createdSession.name ?? '')
           setEngineSessionPersisted(true)
@@ -7495,6 +7496,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       })
       const createdSession = sessionDetail.session
       if (createdSession?.id) {
+        setReportRecords((prev) => ({ ...prev, [createdSession.id]: null }))
         setEnginePreviewSessionId(createdSession.id)
         setEnginePreviewSessionName(createdSession.name ?? '')
         setEngineSessionPersisted(false)
@@ -10518,6 +10520,9 @@ const isMissingLabel = (item: EngineBoardItem) => {
             : `Session ${sessionSummary.id.slice(0, 8)}`
         console.log('[openSession] sessionName', sessionSummary.name ?? null)
         console.log('[openSession] displayName', displayName)
+        if (!rRes.error && !rRes.data) {
+          setReportRecords((prev) => ({ ...prev, [sessionSummary.id]: null }))
+        }
         setEngineSessionDetail({
           session: sessionSummary,
           boardItems: normalizedItems,
@@ -10931,7 +10936,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
       <div className="app auth-screen">
         <section className="panel auth-panel">
           <h1>{copy.loginCallbackTitle}</h1>
-          {authCallbackLoading && <p className="muted">{copy.loginCallbackTitle}</p>}
           {!authCallbackLoading && authCallbackErrorVisible && authCallbackError && (
             <p className="engine-error">{authCallbackError}</p>
           )}
@@ -12032,9 +12036,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   <div className="engine-actions-group">
                     {(() => {
                       const currentSessionId = enginePreviewSessionId
+                      const reportMeta = getReportMetaForSession(currentSessionId)
+                      const reportLookupResolved =
+                        !authSession?.user?.id ||
+                        Object.prototype.hasOwnProperty.call(reportRecords, currentSessionId) ||
+                        Boolean(reportMeta?.id)
                       const hasReport = Boolean(
-                        currentSessionId && reportRecords[currentSessionId]?.id
+                        currentSessionId && (reportRecords[currentSessionId]?.id || reportMeta?.id)
                       )
+                      if (!reportLookupResolved) return null
                       if (hasReport) {
                         return (
                           <button

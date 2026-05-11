@@ -2455,7 +2455,7 @@
 
 /* Move only the Update button (not the cost line under it). */
 .report-update-cta-wrap .report-update-btn {
-  transform: translateY(20px);
+  transform: translate(0, 15px);
 }
 
 .report-update-cta-tooltip {
