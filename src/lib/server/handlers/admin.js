@@ -881,7 +881,7 @@ export const handleAdminReportList = async (req, res) => {
       }
     }
 
-    const rows = (reportRes.data || []).map((row) => ({
+    let rows = (reportRes.data || []).map((row) => ({
       ...row,
       tokens_input_total: row.tokens_input_total ?? 0,
       tokens_output_total: row.tokens_output_total ?? 0,
@@ -896,6 +896,88 @@ export const handleAdminReportList = async (req, res) => {
       last_report_generate_cost_minor: row.last_report_generate_cost_minor ?? null,
       last_report_generate_cost_currency: row.last_report_generate_cost_currency ?? null,
     }))
+    if (reportSource === 'admin_session_report' && rows.length) {
+      const sessionIds = rows.map((row) => row.session_id).filter(Boolean)
+      const eventsRes = sessionIds.length
+        ? await supabaseAdmin
+            .schema('public')
+            .from('session_ai_cost_events')
+            .select(
+              'session_id,event_kind,action_key,tokens_input,tokens_output,usage_cost_usd,usage_cost_pln,billed_cost_grosze,billed_currency,created_at'
+            )
+            .in('session_id', sessionIds)
+        : { data: [], error: null }
+      if (eventsRes.error) {
+        console.error('[admin.report.list] fallback cost event aggregation failed', {
+          message: eventsRes.error.message || null,
+          code: eventsRes.error.code || null,
+          details: eventsRes.error.details || null,
+        })
+      } else {
+        const eventsBySession = new Map()
+        ;(eventsRes.data || []).forEach((event) => {
+          const sessionId = event.session_id
+          if (!sessionId) return
+          const current =
+            eventsBySession.get(sessionId) || {
+              tokensInput: 0,
+              tokensOutput: 0,
+              usageCostUsd: 0,
+              usageCostPln: 0,
+              totalBilledMinor: 0,
+              lastImage: null,
+              lastReportUpdate: null,
+              lastReportGenerate: null,
+            }
+          current.tokensInput += Number(event.tokens_input ?? 0) || 0
+          current.tokensOutput += Number(event.tokens_output ?? 0) || 0
+          current.usageCostUsd += Number(event.usage_cost_usd ?? 0) || 0
+          current.usageCostPln += Number(event.usage_cost_pln ?? 0) || 0
+          const billedMinor = Number(event.billed_cost_grosze ?? 0) || 0
+          const currency = event.billed_currency || null
+          if (event.event_kind === 'billing' && currency === 'PLN') {
+            current.totalBilledMinor += billedMinor
+          }
+          const createdAt = event.created_at || null
+          const isNewer = (previous) =>
+            !previous?.at || (createdAt && Date.parse(createdAt) > Date.parse(previous.at))
+          const billingEntry = { minor: billedMinor, currency, at: createdAt }
+          if (event.event_kind === 'billing' && ['image_generate', 'image_regenerate'].includes(event.action_key)) {
+            if (isNewer(current.lastImage)) current.lastImage = billingEntry
+          }
+          if (event.event_kind === 'billing' && event.action_key === 'report_update') {
+            if (isNewer(current.lastReportUpdate)) current.lastReportUpdate = billingEntry
+          }
+          if (event.event_kind === 'billing' && event.action_key === 'report_generate') {
+            if (isNewer(current.lastReportGenerate)) current.lastReportGenerate = billingEntry
+          }
+          eventsBySession.set(sessionId, current)
+        })
+        rows = rows.map((row) => {
+          const aggregate = eventsBySession.get(row.session_id)
+          if (!aggregate) return row
+          return {
+            ...row,
+            tokens_input_total: aggregate.tokensInput,
+            tokens_output_total: aggregate.tokensOutput,
+            tokens_total: aggregate.tokensInput + aggregate.tokensOutput,
+            usage_cost_usd: aggregate.usageCostUsd,
+            usage_cost_pln: aggregate.usageCostPln,
+            total_cost_session_minor: aggregate.totalBilledMinor,
+            last_image_cost_minor: aggregate.lastImage?.minor ?? row.last_image_cost_minor ?? null,
+            last_image_cost_currency: aggregate.lastImage?.currency ?? row.last_image_cost_currency ?? null,
+            last_report_update_cost_minor:
+              aggregate.lastReportUpdate?.minor ?? row.last_report_update_cost_minor ?? null,
+            last_report_update_cost_currency:
+              aggregate.lastReportUpdate?.currency ?? row.last_report_update_cost_currency ?? null,
+            last_report_generate_cost_minor:
+              aggregate.lastReportGenerate?.minor ?? row.last_report_generate_cost_minor ?? null,
+            last_report_generate_cost_currency:
+              aggregate.lastReportGenerate?.currency ?? row.last_report_generate_cost_currency ?? null,
+          }
+        })
+      }
+    }
     const sample = rows[0] || null
     console.log('[admin.report.list][db] raw rows sample', {
       source: reportSource,

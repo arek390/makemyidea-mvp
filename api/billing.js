@@ -349,10 +349,39 @@ const handleBalance = async (req, res) => {
       return
     }
     const userId = data.user.id
+    const userIdPrefix = String(userId).slice(0, 8)
     const supabaseAdmin = getSupabaseAdmin()
     // Ensure profile currency is normalized to PLN (legacy profiles might have USD).
     await resolveBillingCurrency(userId, null, supabaseAdmin)
     const billingCurrency = 'PLN'
+    try {
+      console.log('[billing][welcome_balance] attempt', { userIdPrefix })
+      const grantRes = await supabaseAdmin.rpc('grant_welcome_balance', { p_user_id: userId })
+      if (grantRes.error) {
+        console.error('[billing][welcome_balance] failed', {
+          userIdPrefix,
+          message: grantRes.error?.message ?? null,
+          code: grantRes.error?.code ?? null,
+        })
+      } else {
+        const row = Array.isArray(grantRes.data) ? grantRes.data[0] : grantRes.data
+        const granted = Boolean(row?.granted)
+        const amountMinor = Number(row?.amount_pln_grosze ?? 0)
+        const balanceAfterMinor = Number(row?.balance_after_pln_grosze ?? 0)
+        console.log(granted ? '[billing][welcome_balance] granted' : '[billing][welcome_balance] already_or_skipped', {
+          userIdPrefix,
+          granted,
+          amountMinor: Number.isFinite(amountMinor) ? amountMinor : 0,
+          balanceAfterMinor: Number.isFinite(balanceAfterMinor) ? balanceAfterMinor : 0,
+        })
+      }
+    } catch (error) {
+      console.error('[billing][welcome_balance] failed', {
+        userIdPrefix,
+        message: error?.message ?? null,
+        code: error?.code ?? null,
+      })
+    }
     await ensureBillingAccount(userId, supabaseAdmin)
     const { data: account, error: accountError } = await supabaseAdmin
       .from('billing_accounts')
@@ -365,7 +394,7 @@ const handleBalance = async (req, res) => {
       return
     }
     const balanceMinor = Number(account?.balance_pln_grosze ?? 0)
-    console.log('[billing][balance] ok', { userIdPrefix: String(userId).slice(0, 8), balanceMinor })
+    console.log('[billing][balance] ok', { userIdPrefix, balanceMinor })
     res.status(200).json({
       ok: true,
       currency: billingCurrency,

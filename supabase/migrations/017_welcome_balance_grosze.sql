@@ -2,12 +2,40 @@
 -- The configurable source remains pricing_rules.welcome_balance_pln (major PLN),
 -- but grants are stored only in billing_accounts.balance_pln_grosze.
 
+alter table public.pricing_rules
+  add column if not exists welcome_balance_pln numeric(12,2);
+
 alter table public.billing_accounts
   add column if not exists welcome_granted boolean not null default false;
 
 update public.billing_accounts
   set balance_pln_grosze = 0
 where balance_pln_grosze is null;
+
+-- Ensure the welcome amount is explicit and configurable in pricing_rules.
+-- If no historical welcome amount exists, default to the report_generate price.
+insert into public.pricing_rules (
+  action_key,
+  price_grosze,
+  is_active,
+  welcome_balance_pln
+)
+values (
+  'welcome',
+  0,
+  true,
+  coalesce(
+    (select round(price_grosze::numeric / 100, 2) from public.pricing_rules where action_key = 'report_generate'),
+    0
+  )
+)
+on conflict (action_key) do update
+  set welcome_balance_pln = coalesce(
+        public.pricing_rules.welcome_balance_pln,
+        excluded.welcome_balance_pln
+      ),
+      is_active = true,
+      updated_at = now();
 
 -- Conservative repair for accounts that received the legacy welcome grant after
 -- balance_pln_grosze became the runtime balance. Only fix accounts where the
