@@ -116,18 +116,18 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         ? `User ID: ${userId || '—'} | Email: ${email || '—'}`
         : `User ID: ${userId || '—'} | Email: ${email || '—'}`,
     adminCopyUserId: isPl ? 'Skopiuj User ID' : 'Copy User ID',
-    adminBackToEngine: isPl ? 'Wróć do engine' : 'Back to engine',
+    adminBackToEngine: isPl ? 'Wróć do pracowni' : 'Back to engine',
     adminAccessDeniedTitle: isPl ? 'Brak dostępu' : 'Access denied',
     adminAccessDeniedBody: isPl
       ? 'Nie masz dostępu do panelu admina. Skopiuj swój User ID i dodaj go do tabeli admin_users.'
       : 'You do not have access to the admin panel. Copy your User ID and add it to the admin_users table.',
-    adminDebugAccess: isPl ? 'Debug access' : 'Debug access',
-    adminDebugError: isPl ? 'Nie udało się pobrać debug.' : 'Failed to fetch debug.',
+    adminDebugAccess: isPl ? 'Diagnostyka dostępu' : 'Debug access',
+    adminDebugError: isPl ? 'Nie udało się pobrać diagnostyki.' : 'Failed to fetch debug.',
     sessionLoading: isPl ? 'Ładowanie sesji…' : 'Loading session…',
     sessionMissing: isPl ? 'Brak sesji. Zaloguj się ponownie.' : 'No session. Please sign in again.',
     sessionLoginCta: isPl ? 'Zaloguj ponownie' : 'Sign in again',
-    sessionDebug: isPl ? 'Debug session' : 'Debug session',
-    billingTitle: isPl ? 'Zasilenie kont użytkowników (admin-only)' : 'User account top-ups (admin-only)',
+    sessionDebug: isPl ? 'Diagnostyka sesji' : 'Debug session',
+    billingTitle: isPl ? 'Zasilenie kont użytkowników (tylko admin)' : 'User account top-ups (admin-only)',
     billingSearchPlaceholder: isPl
       ? 'Szukaj po session_name lub session_id'
       : 'Search by session_name or session_id',
@@ -138,7 +138,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
         : `Topped up: +${deltaLabel} → balance ${balanceLabel}`,
     loading: isPl ? 'Ładowanie...' : 'Loading...',
     loadingReport: isPl ? 'Ładowanie raportu...' : 'Loading report...',
-    loadingBilling: isPl ? 'Ładowanie billing...' : 'Loading billing...',
+    loadingBilling: isPl ? 'Ładowanie sald...' : 'Loading billing...',
     usersSessionsTitle: isPl ? 'Użytkownicy → Sesje' : 'Users → Sessions',
     adminOnlyReport: isPl ? 'Raport tylko dla admina' : 'Admin-only report',
     sortLabel: isPl ? 'Sortuj' : 'Sort',

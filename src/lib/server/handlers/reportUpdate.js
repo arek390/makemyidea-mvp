@@ -7144,6 +7144,7 @@ export const handleReportUpdate = async (req, res) => {
           decisionsForFinalizeGate.every(
             (d) => d?.selected_option === 'a' || d?.selected_option === 'b'
           )
+        const shouldGeneratePlanFromSelections = Boolean(wantsPlanFromDecisions && allDecisionsSelected)
         const contradictionsCount = Array.isArray(trizCandidate?.contradictions)
           ? trizCandidate.contradictions.filter(
               (c) =>
@@ -7161,13 +7162,22 @@ export const handleReportUpdate = async (req, res) => {
           contradictionsCount,
         })
 
-        // If the source changed, reset to decisions stage (regenerate + clear selections).
+        // If the source changed, clear generated plan content. In plan-from-decisions modes,
+        // keep explicit incoming choices so the paid upper update cannot drop user selections
+        // before final plan generation.
         if (contentHashChanged) {
-          if (executionPlanOnly && allDecisionsSelected) {
-            console.log('[report:update][exec] finalize_blocked_by_contentHashChanged', {
+          const preserveIncomingPlanSelections = Boolean(
+            wantsPlanFromDecisions &&
+              ((selectedDecisionsOverride && selectedDecisionsOverride.length) ||
+                (selectedTrizApproachesOverride && selectedTrizApproachesOverride.length))
+          )
+          if (shouldGeneratePlanFromSelections) {
+            console.log('[report:update][exec] finalize_continues_after_contentHashChanged', {
               requestId,
               sessionId,
               executionMode: executionMode || null,
+              preservedDecisions: selectedDecisionsOverride?.length ?? 0,
+              preservedTrizApproaches: selectedTrizApproachesOverride?.length ?? 0,
             })
           }
           const previousExecutionReportCandidate = executionReportCandidate
@@ -7178,7 +7188,9 @@ export const handleReportUpdate = async (req, res) => {
 	            action_plan: [],
 	            validation_loop: [],
 	            next_session_focus: '',
-	            decisions: [],
+	            decisions: preserveIncomingPlanSelections && selectedDecisionsOverride?.length
+	              ? selectedDecisionsOverride
+	              : [],
 	            supporting_items: executionSupportingItems,
 	            source_snapshot: phaseASanitized.source_snapshot ?? null,
 	          }, reportLang)
@@ -7208,9 +7220,10 @@ export const handleReportUpdate = async (req, res) => {
               : countSelectedTrizApproaches(trizCandidate)
           const hasAnySelections = selectedDecisionsCount > 0 || selectedTrizApproachesCount > 0
 
-	          // "Finalize action plan" uses `execution_mode=plan_from_decisions_only`.
-	          // In that mode, once all decisions are selected, we still want a proper `execution_report.action_plan`
-	          // generated via the main `report-action-plan` prompt architecture (two-layer plan).
+		          // Both action-plan update modes use selected decisions as the plan source:
+		          // - plan_from_decisions_only: lower button, plan-only update, no report_update charge
+		          // - plan_from_decisions: upper button, full report update, report_update charge
+		          // Once all decisions are selected, generate a proper plan via the main prompt architecture.
 	          let previousFinalPlanAttempt = null
 	          let finalPlanFailureDiagnostics = null
           logFinalizeTrace('incoming_existing_execution_report', executionReportCandidate, {
@@ -7227,7 +7240,7 @@ export const handleReportUpdate = async (req, res) => {
             trizSource: trizSourceForPlan,
             hasAnySelections,
           })
-          if (executionPlanOnly) {
+          if (wantsPlanFromDecisions) {
             const selectedOptions = Array.isArray(executionReportCandidate?.decisions)
               ? executionReportCandidate.decisions.map((d) =>
                   d?.selected_option === 'a' || d?.selected_option === 'b' ? d.selected_option : null
@@ -7249,12 +7262,12 @@ export const handleReportUpdate = async (req, res) => {
               trizSource: trizSourceForPlan,
               contentHashChanged,
               existingStage: executionReportCandidate?.stage ?? null,
-              willRunFinalizeGeneration: Boolean(executionPlanOnly && allDecisionsSelected),
-              reportActionPlanWillBeCalled: Boolean(executionPlanOnly && allDecisionsSelected),
+              willRunFinalizeGeneration: shouldGeneratePlanFromSelections,
+              reportActionPlanWillBeCalled: shouldGeneratePlanFromSelections,
               planSkippedReason: allDecisionsSelected ? null : 'DECISIONS_INCOMPLETE',
             })
           }
-          if (executionPlanOnly && allDecisionsSelected) {
+          if (shouldGeneratePlanFromSelections) {
             try {
               const existingDecisions =
                 Array.isArray(executionReportCandidate?.decisions) && executionReportCandidate.decisions.length
@@ -7946,7 +7959,7 @@ export const handleReportUpdate = async (req, res) => {
             // Keep responseExecution.planSkippedReason null: this was not "skipped", it used the main generator.
           } else if (hasAnySelections) {
             const fallbackReason =
-              executionPlanOnly && allDecisionsSelected
+              shouldGeneratePlanFromSelections
                 ? previousFinalPlanAttempt?.llmOk === false
                   ? 'REPORT_ACTION_PLAN_LLM_FAILED'
                   : previousFinalPlanAttempt?.hasData === false
@@ -7956,9 +7969,9 @@ export const handleReportUpdate = async (req, res) => {
                       ? 'REPORT_ACTION_PLAN_VALIDATION_FAILED'
                       : 'REPORT_ACTION_PLAN_DID_NOT_GENERATE_PLAN'
                 : 'SELECTIONS_AVAILABLE_WITHOUT_GENERATED_PLAN'
-	            if (executionPlanOnly && allDecisionsSelected) {
-	              responseExecution.planGenerated = false
-	              responseExecution.planSkippedReason = 'REPORT_ACTION_PLAN_FAILED'
+	            if (shouldGeneratePlanFromSelections) {
+		              responseExecution.planGenerated = false
+		              responseExecution.planSkippedReason = 'REPORT_ACTION_PLAN_FAILED'
 	              responseExecution.planErrorReason = fallbackReason
 	              const failureDiagnostics = {
 	                ...(finalPlanFailureDiagnostics || {}),

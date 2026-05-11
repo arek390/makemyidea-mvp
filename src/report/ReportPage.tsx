@@ -2431,10 +2431,10 @@ export const ReportPage = ({
   const renderActionPlanButtonLabel = (language === 'pl'
     ? hasExistingActionPlanContent
       ? `Zaktualizuj plan działania${approachSelectionSuffix}`
-      : 'Sfinalizuj plan działania'
+      : `Sfinalizuj plan działania${approachSelectionSuffix}`
     : hasExistingActionPlanContent
       ? `Update action plan${approachSelectionSuffix}`
-      : 'Finalize action plan')
+      : `Finalize action plan${approachSelectionSuffix}`)
   const updateCtaLabel = reportIsOutdated
     ? language === 'pl'
       ? 'Aktualizuj Plan działania - Pracownia Pomysłu została zmodyfikowana'
@@ -2833,7 +2833,7 @@ export const ReportPage = ({
               <button
                 type="button"
                 className="engine-balance-icon"
-                aria-label="Top up"
+                aria-label={language === 'pl' ? 'Doładuj konto' : 'Top up'}
               >
                 💰
               </button>
@@ -3003,7 +3003,7 @@ export const ReportPage = ({
                 }
                   className="report-update-btn--wide-left"
                   metaLayout="below"
-                onClick={() => void handleUpdateReport()}
+                onClick={() => void handleUpdateReport(reportIsOutdated ? 'plan_from_decisions' : undefined)}
               />
               {reportIsOutdated && !isReportUpdating && (
                 <span className="report-update-cta-tooltip" role="tooltip">

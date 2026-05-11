@@ -870,7 +870,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingIntroSubtextEmphasis: 'you',
     landingCta: '▶ Start for free',
     landingCtaNote: 'Sign up in 30 seconds • No credit card required',
-    landingThreeStepsCta: 'Zacznij w 3 krokach',
+    landingThreeStepsCta: 'Start in 3 steps',
     landingThreeStepsTitle: '3 steps',
     landingBackToFull: '← Back to full page',
     landingBeforeLead: 'Ideas are rarely bad.\nThe problem is a lack of clarity.',
@@ -944,7 +944,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     impulseSourceDeterministic: 'Deterministic fallback',
     report: 'Action plan',
     llmSettings: 'LLM settings',
-    languageLabel: 'JĘZYK/LANGUAGE',
+    languageLabel: 'LANGUAGE',
     engine: {
     saveSession: 'Save session',
     newSession: 'New session',
@@ -1279,8 +1279,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     editIdeaTitle: 'Edit idea',
     generatedIdeaTitle: 'Generated idea',
     questionsTitle: 'Supportive questions',
-    nextQuestionsLabel: 'Następne 10 pytań naprowadzających',
-    prevQuestionsLabel: 'Poprzednie 10 pytań naprowadzających',
+    nextQuestionsLabel: 'Next 10 guiding questions',
+    prevQuestionsLabel: 'Previous 10 guiding questions',
     labelEditorTitle: 'Label editor',
     labelEditorSave: 'Save',
     labelEditorAdd: 'Add label',
@@ -1434,7 +1434,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingIntroSubtextEmphasis: 'Ciebie',
     landingCta: '▶ Zacznij za darmo',
     landingCtaNote: 'rejestracja w 30 s • bez karty',
-    landingThreeStepsCta: 'Get started in 3 steps',
+    landingThreeStepsCta: 'Zacznij w 3 krokach',
     landingThreeStepsTitle: '3 kroki',
     landingBackToFull: '← Wróć do pełnej strony',
     landingBeforeLead: 'Pomysły rzadko są złe.\nProblem to brak konkretu.',
@@ -1498,18 +1498,18 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingPrivacyBody:
       'Aplikacja MakeMyIdea.work zbiera podstawowe dane użytkownika, takie jak adres email oraz identyfikator konta Google, wyłącznie w celu umożliwienia logowania i korzystania z aplikacji.',
     landingPrivacyLink: 'Przeczytaj pełną politykę prywatności',
-    workInProgressLink: 'Work in progress',
+    workInProgressLink: 'W toku',
     impulseButtonLabel: 'Daj mi impuls',
     impulseTitle: 'Sugerowane pytanie',
     impulseEmpty: 'Brak pytania na ten moment.',
     impulseClose: 'Zamknij',
-    impulseSourceFallback: 'Tryb offline (fallback)',
+    impulseSourceFallback: 'Tryb offline (wersja zapasowa)',
     impulseSourceAi: 'AI',
     impulseSourceAiGenerated: 'Wygenerowane przez AI',
-    impulseSourceDeterministic: 'Deterministyczny fallback',
+    impulseSourceDeterministic: 'Deterministyczna wersja zapasowa',
     report: 'Plan działania',
     llmSettings: 'Ustawienia LLM',
-    languageLabel: 'JĘZYK/LANGUAGE',
+    languageLabel: 'JĘZYK',
     engine: {
     saveSession: 'Zapisz sesję',
     newSession: 'Nowa sesja',
@@ -1728,8 +1728,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     editIdeaTitle: 'Edytuj pomysł',
     generatedIdeaTitle: 'Wygenerowany pomysł',
     questionsTitle: 'Pytania naprowadzające',
-    nextQuestionsLabel: 'Next 10 guiding questions',
-    prevQuestionsLabel: 'Previous 10 guiding questions',
+    nextQuestionsLabel: 'Następne 10 pytań naprowadzających',
+    prevQuestionsLabel: 'Poprzednie 10 pytań naprowadzających',
     labelEditorTitle: 'Edytor etykiet',
     labelEditorSave: 'Zapisz',
     labelEditorAdd: 'Dodaj etykietę',
@@ -1763,16 +1763,16 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineSectionAddEntryHint: 'Dodaj wpis do tej sekcji',
     engineSectionAddEntryAria: (sectionTitle) => `Dodaj wpis do sekcji ${sectionTitle}`,
     engineDraftRemoveEntry: 'Usuń wpis',
-    feedbackButtonLabel: 'Feedback',
-    feedbackTitle: 'Feedback',
-    feedbackMessageLabel: 'Twoja wiadomość / feedback',
+    feedbackButtonLabel: 'Opinia',
+    feedbackTitle: 'Opinia',
+    feedbackMessageLabel: 'Twoja wiadomość / opinia',
     feedbackMessagePlaceholder: 'Napisz, co działało, co było trudne, co poprawić…',
-    feedbackSend: 'Wyślij feedback emailem',
-    feedbackSent: 'Dzięki! Feedback został wysłany.',
+    feedbackSend: 'Wyślij opinię e-mailem',
+    feedbackSent: 'Dzięki! Opinia została wysłana.',
     feedbackPrivacyNote: 'Nie dodawaj danych wrażliwych.',
     feedbackReminderText:
-      'Jeśli masz chwilę, wyślij nam feedback z tej sesji — bardzo pomoże w dalszym rozwoju.',
-    feedbackReminderSend: 'Wyślij feedback e-mailem',
+      'Jeśli masz chwilę, wyślij nam opinię z tej sesji — bardzo pomoże w dalszym rozwoju.',
+    feedbackReminderSend: 'Wyślij opinię e-mailem',
     feedbackReminderDismiss: 'Pomiń',
     missingLabelModalTitle: 'Brakuje etykiet dla części wpisów',
     missingLabelModalBody: (count) =>
@@ -5207,18 +5207,18 @@ const isAuthFlowInProgress = () => {
     }
     setFeedbackNotice(null)
     const to = 'makemyideawork@aremai.tech'
-    const subject = 'Feedback – makemyidea.work'
+    const subject = uiLanguage === 'Polish' ? 'Opinia – makemyidea.work' : 'Feedback – makemyidea.work'
     const sessionName =
       enginePreviewSessionName || sessionId || feedbackContext.sessionId || ''
     const body = [
       uiLanguage === 'Polish'
-        ? 'Feedback z aplikacji makemyidea.work'
+        ? 'Opinia z aplikacji makemyidea.work'
         : 'Feedback from makemyidea.work',
       '',
       uiLanguage === 'Polish' ? 'Sesja:' : 'Session:',
       sessionName || '—',
       '',
-      uiLanguage === 'Polish' ? 'Treść feedbacku:' : 'Feedback message:',
+      uiLanguage === 'Polish' ? 'Treść opinii:' : 'Feedback message:',
       '--------------------------------',
       trimmed,
       '--------------------------------',
@@ -8748,7 +8748,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (coverage === 3) {
       positives.push(
         isPl
-          ? 'Materiał jest zbalansowany między As‑is / Not working / Should be.'
+          ? 'Materiał jest zbalansowany między perspektywami: Jak jest? / Co nie działa? / Jak powinno być?'
           : 'Balanced material across As‑is / Not working / Should be.'
       )
 	    }
@@ -8758,13 +8758,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	    if (!hasNotWorking || notWorkingMeaningfulCount < 3) {
 	      improvementCandidates.push(
 	        isPl
-	          ? 'Dodaj kilka wpisów „Not working” (co nie działa: ograniczenia, problemy, ryzyka).'
+	          ? 'Dodaj kilka wpisów „Co nie działa?” (ograniczenia, problemy, ryzyka).'
 	          : 'Add a few “Not working” entries (what is not working: constraints, pain points, risks).'
 	      )
 	    } else if (notWorkingMeaningfulCount < 5) {
 	      improvementCandidates.push(
 	        isPl
-	          ? 'Dodaj jeszcze 1–2 wpisy „Not working”, aby lepiej ugruntować decyzje.'
+	          ? 'Dodaj jeszcze 1–2 wpisy „Co nie działa?”, aby lepiej ugruntować decyzje.'
 	          : 'Add 1–2 more “Not working” entries to better ground decisions.'
 	      )
 	    }
@@ -8772,7 +8772,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	    if (!hasAsIs) {
 	      improvementCandidates.push(
 	        isPl
-	          ? 'Dodaj kilka wpisów „As‑is” (stan obecny, co istnieje dziś).'
+	          ? 'Dodaj kilka wpisów „Jak jest?” (stan obecny, co istnieje dziś).'
 	          : 'Add a few “As‑is” entries (current state, what exists today).'
 	      )
 	    }
@@ -8780,13 +8780,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	    if (!hasToBe) {
 	      improvementCandidates.push(
 	        isPl
-	          ? 'Dodaj kilka wpisów „Should be” (oczekiwany efekt, kryteria sukcesu).'
+	          ? 'Dodaj kilka wpisów „Jak powinno być?” (oczekiwany efekt, kryteria sukcesu).'
 	          : 'Add a few “Should be” entries (desired outcomes, success criteria).'
 	      )
 	    } else if (coverage < 2) {
 	      improvementCandidates.push(
 	        isPl
-	          ? 'Dodaj wpisy z innej perspektywy (As‑is / Not working), aby zbalansować materiał.'
+	          ? 'Dodaj wpisy z innej perspektywy (Jak jest? / Co nie działa?), aby zbalansować materiał.'
 	          : 'Add entries from another perspective (As‑is / Not working) to balance the material.'
 	      )
 	    }
@@ -8796,7 +8796,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	      improvements[0] ||
 	      (actionPlanReadinessMeaningfulCount < 3
 	        ? isPl
-	          ? 'Dodaj 2–3 wpisy z perspektywą (As‑is / Not working / Should be), żeby ugruntować plan działania.'
+	          ? 'Dodaj 2–3 wpisy z perspektywą (Jak jest? / Co nie działa? / Jak powinno być?), żeby ugruntować plan działania.'
 	          : 'Add 2–3 categorized entries so the action plan can be grounded.'
 	        : '')
     const baseScore = Math.min(
@@ -11893,7 +11893,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   <button
                     type="button"
                     className="engine-balance-icon"
-                    aria-label="Top up"
+                    aria-label={uiLanguage === 'Polish' ? 'Doładuj konto' : 'Top up'}
                   >
                     💰
                   </button>
