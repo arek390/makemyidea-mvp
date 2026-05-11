@@ -23,7 +23,6 @@ export type ReportSnapshot = {
   reportMeta?: {
     createdAt?: number | null
     updatedAt?: number | null
-    sourceUpdatedAt?: number | null
     lastSummaryTextHash?: string | null
     summary?: {
       headline?: string

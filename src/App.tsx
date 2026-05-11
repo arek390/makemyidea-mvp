@@ -5157,7 +5157,6 @@ const isAuthFlowInProgress = () => {
       ? {
           createdAt: reportMeta.created_at ?? null,
           updatedAt: reportMeta.updated_at ?? null,
-          sourceUpdatedAt: reportMeta.sourceUpdatedAt ?? null,
           lastSummaryTextHash: reportMeta.lastSummaryTextHash ?? null,
           summary: reportMeta.summary ?? null,
           ideas: reportMeta.ideas ?? null,
@@ -10008,7 +10007,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
             id: dbReport.id,
             created_at: dbReport.createdAt,
             updated_at: dbReport.updatedAt,
-            sourceUpdatedAt: dbReport.sourceUpdatedAt,
             lang: dbReport.lang ?? null,
             lastSummaryTextHash: dbReport.lastSummaryTextHash ?? null,
             summary: dbReport.summary ?? null,
@@ -11175,11 +11173,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   snapshot.reportMeta?.updatedAt ??
                   snapshot.reportMeta?.createdAt ??
                   now,
-                sourceUpdatedAt:
-                  meta.sourceUpdatedAt ??
-                  existingRecord?.sourceUpdatedAt ??
-                  snapshot.reportMeta?.sourceUpdatedAt ??
-                  0,
+                sourceUpdatedAt: existingRecord?.sourceUpdatedAt ?? 0,
                 summary:
                   meta.summary ??
                   existingRecord?.summary ??
@@ -11236,11 +11230,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
               snapshot.reportMeta?.updatedAt ??
               snapshot.reportMeta?.createdAt ??
               Date.now(),
-            sourceUpdatedAt:
-              meta.sourceUpdatedAt ??
-              existing?.sourceUpdatedAt ??
-              snapshot.reportMeta?.sourceUpdatedAt ??
-              null,
             ideas: meta.ideas ?? existing?.ideas ?? null,
             recommendations: normalizeRecommendations(meta.recommendations ?? existing?.recommendations ?? null),
             triz: meta.triz ?? existing?.triz ?? null,
