@@ -4,7 +4,11 @@ import { createSupabaseServerClient } from '../src/lib/server/supabaseServer.js'
 import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../src/lib/server/http.js'
 import { resolveAction } from '../src/lib/server/router.js'
-import { resolveBillingCurrency, ensureBillingAccount } from '../src/lib/server/billing.js'
+import {
+  resolveBillingCurrency,
+  ensureBillingAccount,
+  grantWelcomeBalance,
+} from '../src/lib/server/billing.js'
 
 const readRawBody = async (req) => {
   let body = ''
@@ -355,26 +359,7 @@ const handleBalance = async (req, res) => {
     await resolveBillingCurrency(userId, null, supabaseAdmin)
     const billingCurrency = 'PLN'
     try {
-      console.log('[billing][welcome_balance] attempt', { userIdPrefix })
-      const grantRes = await supabaseAdmin.rpc('grant_welcome_balance', { p_user_id: userId })
-      if (grantRes.error) {
-        console.error('[billing][welcome_balance] failed', {
-          userIdPrefix,
-          message: grantRes.error?.message ?? null,
-          code: grantRes.error?.code ?? null,
-        })
-      } else {
-        const row = Array.isArray(grantRes.data) ? grantRes.data[0] : grantRes.data
-        const granted = Boolean(row?.granted)
-        const amountMinor = Number(row?.amount_pln_grosze ?? 0)
-        const balanceAfterMinor = Number(row?.balance_after_pln_grosze ?? 0)
-        console.log(granted ? '[billing][welcome_balance] granted' : '[billing][welcome_balance] already_or_skipped', {
-          userIdPrefix,
-          granted,
-          amountMinor: Number.isFinite(amountMinor) ? amountMinor : 0,
-          balanceAfterMinor: Number.isFinite(balanceAfterMinor) ? balanceAfterMinor : 0,
-        })
-      }
+      await grantWelcomeBalance(userId, supabaseAdmin, 'billing')
     } catch (error) {
       console.error('[billing][welcome_balance] failed', {
         userIdPrefix,

@@ -74,6 +74,18 @@ const formatMoneyMinor = (minor: number | null | undefined, currency: 'PLN' | 'U
   return formatMoney(minor / 100, currency)
 }
 
+const formatUsageCostPln = (value: number | null | undefined) => {
+  if (value == null) return '—'
+  const numeric = Number(value)
+  if (!Number.isFinite(numeric)) return '—'
+  return new Intl.NumberFormat('pl-PL', {
+    style: 'currency',
+    currency: 'PLN',
+    minimumFractionDigits: 4,
+    maximumFractionDigits: 6,
+  }).format(numeric)
+}
+
 const formatSessionMinor = (
   minor: number | null | undefined,
   currency: 'PLN' | 'USD' | null | undefined
@@ -142,6 +154,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
     tableReportCreated: isPl ? 'Raport utworzony' : 'Report created',
     tableReportUpdated: isPl ? 'Raport zaktualizowany' : 'Report updated',
     tableTokens: isPl ? 'Tokeny' : 'Tokens',
+    tableTokenCost: isPl ? 'Koszt tokenów' : 'Token cost',
     tableCostPln: isPl ? 'Koszt sesji' : 'Session cost',
     tableCostUsd: isPl ? 'Ostatni koszt grafiki' : 'Last image cost',
     tableLastReportUpdate: isPl ? 'Ostatni koszt update raportu' : 'Last report update cost',
@@ -1046,6 +1059,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                   <th>{t.tableReportCreated}</th>
                   <th>{t.tableReportUpdated}</th>
                   <th>{t.tableTokens}</th>
+                  <th>{t.tableTokenCost}</th>
                   <th>{t.tableCostPln}</th>
                   <th>{t.tableCostUsd}</th>
                   <th>{t.tableLastReportUpdate}</th>
@@ -1057,7 +1071,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
               <tbody>
                   {sortedRows.length === 0 && (
                     <tr>
-                      <td colSpan={13} className="admin-empty">
+                      <td colSpan={14} className="admin-empty">
                       {t.tableEmpty}
                       </td>
                     </tr>
@@ -1078,6 +1092,7 @@ export const AdminPage = ({ authLoading, uiLanguage }: AdminPageProps) => {
                     <td>{row.report_created ? t.tableYes : t.tableNo}</td>
                     <td>{row.report_updated ? t.tableYes : t.tableNo}</td>
                     <td>{formatNumber(row.tokens_total)}</td>
+                    <td>{formatUsageCostPln(row.usage_cost_pln)}</td>
                     <td>{formatSessionMinor(row.total_cost_session_minor, row.billing_currency)}</td>
                     <td>{formatSessionMinor(row.last_image_cost_minor, row.last_image_cost_currency)}</td>
                     <td>

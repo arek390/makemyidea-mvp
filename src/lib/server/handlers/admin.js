@@ -14,6 +14,38 @@ const parseNumber = (value, fallback) => {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+const cleanupDeletedUserData = async (supabaseAdmin, targetUserId) => {
+  const cleanupTargets = [
+    ['billing_accounts', 'user_id'],
+    ['profiles', 'id'],
+    ['billing_transactions', 'user_id'],
+    ['billing_balance_adjustments', 'target_user_id'],
+    ['session_ai_cost_events', 'user_id'],
+    ['payments', 'user_id'],
+    ['sessions', 'user_id'],
+  ]
+  const results = []
+  for (const [table, column] of cleanupTargets) {
+    const { count, error } = await supabaseAdmin
+      .schema('public')
+      .from(table)
+      .delete({ count: 'exact' })
+      .eq(column, targetUserId)
+    results.push({
+      table,
+      column,
+      deleted: count ?? null,
+      error: error
+        ? {
+            message: error.message || null,
+            code: error.code || null,
+          }
+        : null,
+    })
+  }
+  return results
+}
+
 const resolveBackendSupabaseHost = () => {
   try {
     const url = process.env.SUPABASE_URL
@@ -804,11 +836,28 @@ export const handleAdminBillingDeleteUser = async (req, res) => {
       return
     }
 
+    const cleanupResults = await cleanupDeletedUserData(supabaseAdmin, targetUserId)
+    const cleanupErrors = cleanupResults.filter((result) => result.error)
+    if (cleanupErrors.length > 0) {
+      console.error('[admin][billing_delete_user] cleanup failed', {
+        adminUserPrefix: String(adminUser.id || '').slice(0, 8),
+        targetUserPrefix: targetUserId.slice(0, 8),
+        cleanupErrors,
+      })
+      res.status(500).json({
+        ok: false,
+        error: 'DELETE_USER_CLEANUP_FAILED',
+        cleanupErrors,
+      })
+      return
+    }
+
     console.log('[admin][billing_delete_user] deleted', {
       adminUserPrefix: String(adminUser.id || '').slice(0, 8),
       targetUserPrefix: targetUserId.slice(0, 8),
+      cleanupResults,
     })
-    res.status(200).json({ ok: true, userId: targetUserId })
+    res.status(200).json({ ok: true, userId: targetUserId, cleanupResults })
   } catch (error) {
     res.status(500).json({ ok: false, error: error?.message || 'SERVER_ERROR' })
   }
