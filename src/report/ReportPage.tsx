@@ -1109,7 +1109,6 @@ export const ReportPage = ({
     setExecutionReport(nextExecutionReport)
     onReportMetaChange?.({
       execution_report: nextExecutionReport,
-      updatedAt: Date.now(),
     })
     if (!client || !reportSessionId) return
 	    let userId: string | null = null
@@ -1977,7 +1976,6 @@ export const ReportPage = ({
       reportMetaRef.current = nextReportMeta
       onReportMetaChange?.({
         ...nextReportMeta,
-        updatedAt: Date.now(),
       })
       if (!client || !reportSessionId) return
       const previousPersist = pendingTrizPersistRef.current ?? Promise.resolve()

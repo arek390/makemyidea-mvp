@@ -11162,7 +11162,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   existingRecord?.createdAt ??
                   snapshot.reportMeta?.createdAt ??
                   now,
-                updatedAt: meta.updatedAt ?? now,
+                updatedAt:
+                  meta.updatedAt ??
+                  existingRecord?.updatedAt ??
+                  snapshot.reportMeta?.updatedAt ??
+                  snapshot.reportMeta?.createdAt ??
+                  now,
                 summary:
                   meta.summary ??
                   existingRecord?.summary ??
@@ -11214,7 +11219,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
             lastSummaryTextHash:
               meta.lastSummaryTextHash ?? existing?.lastSummaryTextHash ?? null,
             created_at: meta.createdAt ?? existing?.created_at ?? Date.now(),
-            updated_at: meta.updatedAt ?? Date.now(),
+            updated_at:
+              meta.updatedAt ??
+              existing?.updated_at ??
+              snapshot.reportMeta?.updatedAt ??
+              snapshot.reportMeta?.createdAt ??
+              Date.now(),
             ideas: meta.ideas ?? existing?.ideas ?? null,
             recommendations: normalizeRecommendations(meta.recommendations ?? existing?.recommendations ?? null),
             triz: meta.triz ?? existing?.triz ?? null,
