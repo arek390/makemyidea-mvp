@@ -2885,6 +2885,7 @@
 }
 
 .report-section {
+  scroll-margin-top: 7.5rem;
   background: #ffffff;
   border-radius: 16px;
   padding: 1.5rem;
@@ -3360,10 +3361,18 @@
 }
 
 .report-action-plan-grouped__index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: 0 0 auto;
-  color: #8a6a3c;
-  font-size: 0.82rem;
+  width: 1.55rem;
+  height: 1.55rem;
+  border-radius: 999px;
+  background: #8a6a3c;
+  color: #fffaf0;
+  font-size: 0.78rem;
   font-weight: 700;
+  line-height: 1;
 }
 
 .report-action-plan-grouped__rationale {
