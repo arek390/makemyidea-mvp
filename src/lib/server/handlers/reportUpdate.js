@@ -8,6 +8,7 @@ import { runLlmTask, createRateLimiter } from '../../../llm/llmRouter.mjs'
 import sharp from 'sharp'
 
 const REPORT_LLM_TIMEOUT_MS = 45_000
+const REPORT_ACTION_PLAN_TIMEOUT_MS = Number(process.env.REPORT_ACTION_PLAN_TIMEOUT_MS || REPORT_LLM_TIMEOUT_MS)
 const REPORT_TRIZ_TIMEOUT_MS = 60_000
 const REPORT_TRIZ_ESCALATION_TIMEOUT_MS = 75_000
 const REPORT_TRIZ_MAX_OUTPUT_TOKENS = 1400
@@ -6512,6 +6513,10 @@ export const handleReportUpdate = async (req, res) => {
             preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
             escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
           },
+          timeoutMs:
+            typeof options.timeoutMs === 'number' && Number.isFinite(options.timeoutMs)
+              ? options.timeoutMs
+              : REPORT_ACTION_PLAN_TIMEOUT_MS,
           maxOutputTokens: 2600,
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
@@ -6592,6 +6597,10 @@ export const handleReportUpdate = async (req, res) => {
             preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
             escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
           },
+          timeoutMs:
+            typeof options.timeoutMs === 'number' && Number.isFinite(options.timeoutMs)
+              ? options.timeoutMs
+              : REPORT_ACTION_PLAN_TIMEOUT_MS,
           maxOutputTokens: 1200,
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
@@ -6686,6 +6695,10 @@ export const handleReportUpdate = async (req, res) => {
             preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
             escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
           },
+          timeoutMs:
+            typeof options.timeoutMs === 'number' && Number.isFinite(options.timeoutMs)
+              ? options.timeoutMs
+              : REPORT_ACTION_PLAN_TIMEOUT_MS,
           maxOutputTokens: 1200,
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
@@ -6779,6 +6792,10 @@ export const handleReportUpdate = async (req, res) => {
             preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
             escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
           },
+          timeoutMs:
+            typeof options.timeoutMs === 'number' && Number.isFinite(options.timeoutMs)
+              ? options.timeoutMs
+              : REPORT_ACTION_PLAN_TIMEOUT_MS,
           maxOutputTokens: 2200,
           rateLimiter: limiter,
           rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
