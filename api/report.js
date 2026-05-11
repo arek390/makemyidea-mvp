@@ -252,12 +252,30 @@ const handleReportPatchMeta = async (req, res) => {
     return
   }
 
+  const existingRes = await supabaseAdmin
+    .schema('public')
+    .from('reports')
+    .select(selectReportFields)
+    .eq('session_id', sessionId)
+    .maybeSingle()
+  if (existingRes.error) {
+    sendJson(res, 500, { ok: false, error: 'QUERY_FAILED' })
+    return
+  }
+  if (!existingRes.data) {
+    sendJson(res, 404, { ok: false, error: 'REPORT_NOT_FOUND' })
+    return
+  }
+
   const updateRes = await supabaseAdmin
     .schema('public')
     .from('reports')
     .update({
       summary_json: patch.summary_json ?? null,
-      updated_at: new Date().toISOString(),
+      // Metadata-only saves (decision/TRIZ choices) must not mark the whole report
+      // as recalculated after board changes. Full report freshness is tracked by
+      // source_updated_at and only report generate/update should advance updated_at.
+      updated_at: existingRes.data.updated_at,
     })
     .eq('session_id', sessionId)
     .select(selectReportFields)

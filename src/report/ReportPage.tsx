@@ -66,6 +66,7 @@ type ReportPageProps = {
     lastSummaryTextHash?: string | null
     createdAt?: number | null
     updatedAt?: number | null
+    sourceUpdatedAt?: number | null
     ideas?: ReportSnapshot['ideas'] | null
     recommendations?: ReportRecommendations | null
     triz?: ReportTrizSection | null
@@ -1078,8 +1079,10 @@ export const ReportPage = ({
     snapshot.reportMeta?.updatedAt ?? snapshot.reportMeta?.createdAt ?? null
   )
   const lastReportUpdateAt = reportUpdatedAt
+  const lastReportSourceUpdateAt =
+    Number(snapshot.reportMeta?.sourceUpdatedAt || 0) || lastReportUpdateAt
   const reportIsOutdated =
-    Boolean(lastBoardChangeAt && lastReportUpdateAt && lastBoardChangeAt > lastReportUpdateAt)
+    Boolean(lastBoardChangeAt && lastReportSourceUpdateAt && lastBoardChangeAt > lastReportSourceUpdateAt)
   const [priceMinor, setPriceMinor] = useState<number | null>(null)
   const [priceLoading, setPriceLoading] = useState(false)
   const [trizImagePrices, setTrizImagePrices] = useState<{
@@ -1907,6 +1910,7 @@ export const ReportPage = ({
       lastSummaryTextHash: record.lastSummaryTextHash ?? null,
       createdAt: record.createdAt ?? null,
       updatedAt: record.updatedAt ?? null,
+      sourceUpdatedAt: record.sourceUpdatedAt ?? null,
     })
   }
 
