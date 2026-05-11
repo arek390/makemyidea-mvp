@@ -10564,8 +10564,26 @@ const isMissingLabel = (item: EngineBoardItem) => {
             : `Session ${sessionSummary.id.slice(0, 8)}`
         console.log('[openSession] sessionName', sessionSummary.name ?? null)
         console.log('[openSession] displayName', displayName)
-        if (!rRes.error && !rRes.data) {
-          setReportRecords((prev) => ({ ...prev, [sessionSummary.id]: null }))
+        if (!rRes.error) {
+          setReportRecords((prev) => {
+            if (!rRes.data) return { ...prev, [sessionSummary.id]: null }
+            const existing = prev[sessionSummary.id]
+            const openedReportRecord = {
+              id: String(rRes.data.id || sessionSummary.id),
+              sessionId: sessionSummary.id,
+              createdAt: toTimestamp(rRes.data.created_at, now),
+              updatedAt: toTimestamp(rRes.data.updated_at, now),
+              sourceUpdatedAt: toTimestamp(rRes.data.source_updated_at, 0),
+              lastSummaryTextHash: rRes.data.last_summary_text_hash ?? existing?.lastSummaryTextHash ?? null,
+              summary: existing?.summary ?? null,
+              ideas: existing?.ideas ?? null,
+              recommendations: existing?.recommendations ?? null,
+              triz: existing?.triz ?? null,
+              executionReport: existing?.executionReport ?? null,
+              lang: existing?.lang ?? null,
+            }
+            return { ...prev, [sessionSummary.id]: openedReportRecord }
+          })
         }
         setEngineSessionDetail({
           session: sessionSummary,
@@ -10613,7 +10631,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   id: rRes.data.id ?? null,
                   created_at: toTimestamp(rRes.data.created_at, now),
                   updated_at: toTimestamp(rRes.data.updated_at, now),
-                  lastSummaryTextHash: null,
+                  sourceUpdatedAt: toTimestamp(rRes.data.source_updated_at, 0),
+                  lastSummaryTextHash: rRes.data.last_summary_text_hash ?? null,
                   summary: reportSummary,
                 }
               : null,
