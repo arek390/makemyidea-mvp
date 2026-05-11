@@ -67,6 +67,7 @@ import { AdminPage } from './admin/AdminPage'
 import { useAuthState } from './lib/authState'
 import { AiCostButton } from './components/AiCostButton'
 import { ActionPlanReadinessGauge } from './components/ActionPlanReadinessGauge'
+import { MobileLanding, type MobileLandingLanguage } from './mobile/MobileLanding'
 
 type StepId = 1 | 2 | 3 | 4
 type SpaceSlot = 'supersystem' | 'subsystem'
@@ -113,6 +114,29 @@ type LabelItem = {
 
 
 type Language = 'English' | 'Polish'
+
+const PHONE_VIEWPORT_MAX_WIDTH = 767
+
+const isPhoneViewportWidth = () =>
+  typeof window !== 'undefined' && window.innerWidth <= PHONE_VIEWPORT_MAX_WIDTH
+
+const useIsPhoneViewport = () => {
+  const [isPhone, setIsPhone] = useState(isPhoneViewportWidth)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const update = () => setIsPhone(isPhoneViewportWidth())
+    update()
+    window.addEventListener('resize', update)
+    window.addEventListener('orientationchange', update)
+    return () => {
+      window.removeEventListener('resize', update)
+      window.removeEventListener('orientationchange', update)
+    }
+  }, [])
+
+  return isPhone
+}
 
 type LlmUsageModel = 'gpt-4.1-mini' | 'gpt-5-nano' | 'gpt-5-mini' | 'gpt-image-1'
 type LlmUsageTokens = { input?: number; output?: number; total?: number }
@@ -2995,6 +3019,7 @@ function App() {
     window.localStorage.setItem(UI_LANGUAGE_STORAGE_KEY, defaultLanguage)
     return defaultLanguage
   })
+  const isPhoneViewport = useIsPhoneViewport()
   const reportLanguage = uiLanguage
   const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
   const [enginePreviewSessionName, setEnginePreviewSessionName] = useState('')
@@ -11031,6 +11056,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
           )}
         </section>
       </div>
+    )
+  }
+
+  // Mobile gate: phones render a lightweight landing page only.
+  // Tablet and desktop (>= 768px) continue through the existing app unchanged.
+  if (isPhoneViewport) {
+    return withDevOverlay(
+      <MobileLanding
+        language={uiLanguage as MobileLandingLanguage}
+        logoUrl={landingLogoUrl}
+        onLanguageChange={(nextLanguage) => setUiLanguage(nextLanguage)}
+      />
     )
   }
 
