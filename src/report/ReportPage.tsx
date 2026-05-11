@@ -2423,6 +2423,12 @@ export const ReportPage = ({
       ? `wybrałeś ${trizApproachSelectionStats.selected} z ${trizApproachSelectionStats.total} możliwych podejść z sekcji kluczowych sprzeczności`
       : `selected ${trizApproachSelectionStats.selected} of ${trizApproachSelectionStats.total} available approaches in the key contradictions section`
   })`
+  const hasActionPlanSelectionChanges =
+    reportVariant === 'action' &&
+    normalizedExecutionReport?.stage !== 'plan_generated' &&
+    (decisionsAllSelected || trizApproachSelectionStats.selected > 0)
+  const showActionPlanSelectionCta =
+    hasActionPlanSelectionChanges && !reportIsOutdated && !needsActionPlanBootstrap
   const renderActionPlanButtonLabel = (language === 'pl'
     ? hasExistingActionPlanContent
       ? `Zaktualizuj plan działania${approachSelectionSuffix}`
@@ -2998,7 +3004,7 @@ export const ReportPage = ({
                 }
                   className="report-update-btn--wide-left"
                   metaLayout="below"
-                onClick={() => void handleUpdateReport()}
+                onClick={() => void handleUpdateReport('plan_from_decisions')}
               />
               {reportIsOutdated && !isReportUpdating && (
                 <span className="report-update-cta-tooltip" role="tooltip">
@@ -3162,12 +3168,7 @@ export const ReportPage = ({
                       </li>
                     ))}
                   </ul>
-                  {(() => {
-                    return (
-                      normalizedExecutionReport.stage !== 'plan_generated' &&
-                      decisionsAllSelected
-                    )
-                  })() && (
+                  {showActionPlanSelectionCta && (
                       <div className="report-decision-cta">
                         <span className="update-action-plan-button update-action-plan-button--needs-update">
                         <button
