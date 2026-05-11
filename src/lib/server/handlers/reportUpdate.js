@@ -609,13 +609,30 @@ const mergeTrizKeepingSupportedExisting = ({ existingTriz, generatedTriz, suppor
   const existing = normalizeTriz(existingTriz)
   const generated = normalizeTriz(generatedTriz)
   const mergedContradictions = [...generated.contradictions]
+  const hasChoiceOptions = (item) => {
+    const approaches = Array.isArray(item?.approaches) ? item.approaches : []
+    const solutions = Array.isArray(item?.solutions) ? item.solutions : []
+    return approaches.length > 0 || solutions.length > 0
+  }
+  const preserveExistingChoiceOptions = (generatedItem, existingItem) => {
+    if (hasChoiceOptions(generatedItem)) return generatedItem
+    const existingApproaches = Array.isArray(existingItem?.approaches) ? existingItem.approaches : []
+    const existingSolutions = Array.isArray(existingItem?.solutions) ? existingItem.solutions : []
+    if (!existingApproaches.length && !existingSolutions.length) return generatedItem
+    return {
+      ...generatedItem,
+      ...(existingApproaches.length ? { approaches: existingApproaches } : {}),
+      solutions: existingSolutions.length ? existingSolutions : existingApproaches,
+    }
+  }
 
   existing.contradictions.forEach((existingItem) => {
     const matchIndex = mergedContradictions.findIndex((generatedItem) =>
       areTrizContradictionsSimilar(existingItem, generatedItem)
     )
     if (matchIndex >= 0) {
-      const generatedItem = mergedContradictions[matchIndex]
+      const generatedItem = preserveExistingChoiceOptions(mergedContradictions[matchIndex], existingItem)
+      mergedContradictions[matchIndex] = generatedItem
       const existingTitles = Array.isArray(existingItem?.selected_approach_titles)
         ? existingItem.selected_approach_titles
         : []
@@ -672,7 +689,7 @@ const mergeTrizKeepingSupportedExisting = ({ existingTriz, generatedTriz, suppor
   return normalizeTriz({
     section_title: generated.section_title || existing.section_title,
     section_intro: generated.section_intro || existing.section_intro,
-    contradictions: mergedContradictions.slice(0, MAX_TRIZ_CONTRADICTIONS),
+    contradictions: mergedContradictions.filter(hasChoiceOptions).slice(0, MAX_TRIZ_CONTRADICTIONS),
   })
 }
 
@@ -2091,6 +2108,11 @@ const validateTriz = (triz) => {
     if (item.solutions != null && !Array.isArray(item.solutions)) {
       errors.push(`triz_solutions_not_array:${index}`)
     }
+    const approaches = Array.isArray(item.approaches) ? item.approaches : []
+    const solutions = Array.isArray(item.solutions) ? item.solutions : []
+    if (!approaches.length && !solutions.length) {
+      errors.push(`triz_missing_choice_options:${index}`)
+    }
   })
   return { ok: errors.length === 0, errors }
 }
@@ -2109,7 +2131,9 @@ const coerceTrizToValid = (triz) => {
           String(item.improving || '').trim() &&
           String(item.worsening || '').trim()
       )
-      return hasNewShape || hasOldShape
+      const approaches = Array.isArray(item.approaches) ? item.approaches : []
+      const solutions = Array.isArray(item.solutions) ? item.solutions : []
+      return (hasNewShape || hasOldShape) && (approaches.length > 0 || solutions.length > 0)
     })
     .slice(0, MAX_TRIZ_CONTRADICTIONS)
   return { ...normalized, contradictions: filtered }
