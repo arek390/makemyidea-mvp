@@ -3901,6 +3901,7 @@ const isAuthFlowInProgress = () => {
       clearPostAuthLang()
     }
     clearPostAuthNext()
+    setAuthFlowInProgress(false)
     console.info('[auth] session resolved', { hasSession: true, next, lang })
     console.info('[auth] redirecting', { redirectTo: next })
     authRedirectedRef.current = true
@@ -3970,6 +3971,7 @@ const isAuthFlowInProgress = () => {
     const auth = client.auth
     let cancelled = false
     const run = async () => {
+      let callbackSucceeded = false
       setAuthError(null)
       setAuthCallbackError(null)
       setAuthCallbackLoading(true)
@@ -4135,12 +4137,15 @@ const isAuthFlowInProgress = () => {
         }
         clearPostAuthNext()
         setAuthCallbackLoading(false)
+        callbackSucceeded = true
         if (typeof window !== 'undefined') {
           window.location.replace(`${window.location.origin}/engine`)
         }
       } finally {
         authCodeExchangeInProgress = false
-        setAuthFlowInProgress(false)
+        if (!callbackSucceeded) {
+          setAuthFlowInProgress(false)
+        }
       }
     }
     run()
@@ -5152,6 +5157,7 @@ const isAuthFlowInProgress = () => {
       ? {
           createdAt: reportMeta.created_at ?? null,
           updatedAt: reportMeta.updated_at ?? null,
+          sourceUpdatedAt: reportMeta.sourceUpdatedAt ?? null,
           lastSummaryTextHash: reportMeta.lastSummaryTextHash ?? null,
           summary: reportMeta.summary ?? null,
           ideas: reportMeta.ideas ?? null,
@@ -10002,6 +10008,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             id: dbReport.id,
             created_at: dbReport.createdAt,
             updated_at: dbReport.updatedAt,
+            sourceUpdatedAt: dbReport.sourceUpdatedAt,
             lang: dbReport.lang ?? null,
             lastSummaryTextHash: dbReport.lastSummaryTextHash ?? null,
             summary: dbReport.summary ?? null,
@@ -11168,6 +11175,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   snapshot.reportMeta?.updatedAt ??
                   snapshot.reportMeta?.createdAt ??
                   now,
+                sourceUpdatedAt:
+                  meta.sourceUpdatedAt ??
+                  existingRecord?.sourceUpdatedAt ??
+                  snapshot.reportMeta?.sourceUpdatedAt ??
+                  0,
                 summary:
                   meta.summary ??
                   existingRecord?.summary ??
@@ -11204,7 +11216,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   existingRecord?.lastSummaryTextHash ??
                   snapshot.reportMeta?.lastSummaryTextHash ??
                   null,
-                sourceUpdatedAt: existingRecord?.sourceUpdatedAt ?? 0,
               },
             }
           })
@@ -11225,6 +11236,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
               snapshot.reportMeta?.updatedAt ??
               snapshot.reportMeta?.createdAt ??
               Date.now(),
+            sourceUpdatedAt:
+              meta.sourceUpdatedAt ??
+              existing?.sourceUpdatedAt ??
+              snapshot.reportMeta?.sourceUpdatedAt ??
+              null,
             ideas: meta.ideas ?? existing?.ideas ?? null,
             recommendations: normalizeRecommendations(meta.recommendations ?? existing?.recommendations ?? null),
             triz: meta.triz ?? existing?.triz ?? null,
@@ -11711,7 +11727,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
       return withDevOverlay(
         <div className="app auth-screen">
           <section className="panel auth-panel">
-            <p className="muted">{notices.loading}</p>
+            {isAuthFlowInProgress() ? (
+              <h1>{copy.loginCallbackTitle}</h1>
+            ) : (
+              <p className="muted">{notices.loading}</p>
+            )}
           </section>
         </div>
       )

@@ -66,6 +66,7 @@ type ReportPageProps = {
     lastSummaryTextHash?: string | null
     createdAt?: number | null
     updatedAt?: number | null
+    sourceUpdatedAt?: number | null
     ideas?: ReportSnapshot['ideas'] | null
     recommendations?: ReportRecommendations | null
     triz?: ReportTrizSection | null
@@ -1074,10 +1075,13 @@ export const ReportPage = ({
   const trizSelectionVersionRef = useRef(0)
   const [reportVariant, setReportVariant] = useState<'classic' | 'action'>('action')
   const lastBoardChangeAt = Number(snapshot.sourceUpdatedAt || 0) || null
+  const [reportSourceUpdatedAt, setReportSourceUpdatedAt] = useState<number | null>(
+    snapshot.reportMeta?.sourceUpdatedAt ?? null
+  )
   const [reportUpdatedAt, setReportUpdatedAt] = useState<number | null>(
     snapshot.reportMeta?.updatedAt ?? snapshot.reportMeta?.createdAt ?? null
   )
-  const lastReportUpdateAt = reportUpdatedAt
+  const lastReportUpdateAt = reportSourceUpdatedAt || reportUpdatedAt
   const reportIsOutdated =
     Boolean(lastBoardChangeAt && lastReportUpdateAt && lastBoardChangeAt > lastReportUpdateAt)
   const [priceMinor, setPriceMinor] = useState<number | null>(null)
@@ -1300,7 +1304,8 @@ export const ReportPage = ({
 
   useEffect(() => {
     setReportUpdatedAt(snapshot.reportMeta?.updatedAt ?? snapshot.reportMeta?.createdAt ?? null)
-  }, [snapshot.reportMeta?.updatedAt, snapshot.reportMeta?.createdAt])
+    setReportSourceUpdatedAt(snapshot.reportMeta?.sourceUpdatedAt ?? null)
+  }, [snapshot.reportMeta?.updatedAt, snapshot.reportMeta?.createdAt, snapshot.reportMeta?.sourceUpdatedAt])
 
   useEffect(() => {
     if (!client || !reportSessionId) {
@@ -1896,6 +1901,7 @@ export const ReportPage = ({
     setAiSummary(sanitized.summary)
     setLastSummaryTextHash(record.lastSummaryTextHash ?? null)
     setReportUpdatedAt(record.updatedAt ?? record.createdAt ?? null)
+    setReportSourceUpdatedAt(record.sourceUpdatedAt ?? null)
     onReportMetaChange?.({
       summary: sanitized.summary,
       ideas: sanitized.ideas,
@@ -1907,6 +1913,7 @@ export const ReportPage = ({
       lastSummaryTextHash: record.lastSummaryTextHash ?? null,
       createdAt: record.createdAt ?? null,
       updatedAt: record.updatedAt ?? null,
+      sourceUpdatedAt: record.sourceUpdatedAt ?? null,
     })
   }
 
