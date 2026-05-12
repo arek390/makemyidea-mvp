@@ -2,13 +2,6 @@ import { randomUUID } from 'crypto'
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../src/lib/server/http.js'
 import { resolveAction } from '../src/lib/server/router.js'
 import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
-import {
-  chargeUserBalance,
-  ensureBillingAccount,
-  getPriceForAction,
-  normalizeBillingError,
-} from '../src/lib/server/billing.js'
-import { recordSessionBillingEvent } from '../src/lib/server/aiCostEvents.js'
 
 const getBearerToken = (req) => {
   const authHeader =
@@ -107,45 +100,6 @@ export default async function handler(req, res) {
       return
     }
 
-    let sessionCreatePriceMinor = null
-    try {
-      sessionCreatePriceMinor = await getPriceForAction('session_create', 'PLN', supabaseAdmin)
-      await ensureBillingAccount(currentUserId, supabaseAdmin)
-      const accountRes = await supabaseAdmin
-        .schema('public')
-        .from('billing_accounts')
-        .select('balance_pln_grosze')
-        .eq('user_id', currentUserId)
-        .maybeSingle()
-      if (accountRes.error) {
-        logCreateStage('balance_check_failed', {
-          currentUserId,
-          message: accountRes.error.message || null,
-          code: accountRes.error.code || null,
-        })
-        sendJson(res, 500, { ok: false, error: 'BILLING_ACCOUNT_LOOKUP_FAILED' })
-        return
-      }
-      const currentBalanceMinor = Number(accountRes.data?.balance_pln_grosze ?? 0)
-      if (!Number.isFinite(currentBalanceMinor) || currentBalanceMinor < sessionCreatePriceMinor) {
-        sendJson(res, 402, { ok: false, error: 'INSUFFICIENT_BALANCE' })
-        return
-      }
-    } catch (error) {
-      const normalized = normalizeBillingError(error)
-      if (normalized?.status) {
-        sendJson(res, normalized.status, { ok: false, error: normalized.code })
-        return
-      }
-      logCreateStage('billing_preflight_failed', {
-        currentUserId,
-        message: error?.message || null,
-        code: error?.code || null,
-      })
-      sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
-      return
-    }
-
     const sessionId = randomUUID()
     logCreateStage('insert_start', { sessionId, currentUserId })
     const insertSessionRes = await supabaseAdmin
@@ -187,72 +141,16 @@ export default async function handler(req, res) {
       return
     }
 
-    let billingResult = null
-    try {
-      billingResult = await chargeUserBalance(currentUserId, 'session_create', sessionId, supabaseAdmin)
-      await recordSessionBillingEvent(supabaseAdmin, {
-        sessionId,
-        reportId: null,
-        userId: currentUserId,
-        actionKey: 'session_create',
-        referenceId: sessionId,
-        amountMinor: billingResult.amountMinor,
-        currency: billingResult.currency,
-      })
-    } catch (error) {
-      const normalized = normalizeBillingError(error)
-      logCreateStage('billing_failed_rollback_start', {
-        sessionId,
-        currentUserId,
-        code: normalized?.code || error?.code || null,
-        message: error?.message || null,
-      })
-      const userSessionRollback = await supabaseAdmin
-        .schema('public')
-        .from('user_sessions')
-        .delete()
-        .eq('session_id', sessionId)
-        .eq('user_id', currentUserId)
-      const sessionRollback = await supabaseAdmin
-        .schema('public')
-        .from('sessions')
-        .delete()
-        .eq('id', sessionId)
-        .eq('user_id', currentUserId)
-      logCreateStage('billing_failed_rollback_complete', {
-        sessionId,
-        userSessionRollbackOk: !userSessionRollback.error,
-        sessionRollbackOk: !sessionRollback.error,
-      })
-      if (normalized?.code === 'INSUFFICIENT_BALANCE') {
-        sendJson(res, 402, { ok: false, error: 'INSUFFICIENT_BALANCE' })
-        return
-      }
-      if (normalized?.status) {
-        sendJson(res, normalized.status, { ok: false, error: normalized.code })
-        return
-      }
-      sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
-      return
-    }
-
     logCreateStage('create_complete', {
       sessionId,
       currentUserId,
-      amountMinor: billingResult?.amountMinor ?? null,
-      balanceAfterMinor: billingResult?.balanceAfterMinor ?? null,
-      expectedAmountMinor: sessionCreatePriceMinor,
+      charged: false,
     })
     sendJson(res, 200, {
       ok: true,
       session: insertSessionRes.data,
-      balance_after_minor: billingResult?.balanceAfterMinor ?? null,
-      billing: {
-        actionKey: 'session_create',
-        currency: billingResult?.currency ?? 'PLN',
-        amountMinor: billingResult?.amountMinor ?? null,
-        balanceAfterMinor: billingResult?.balanceAfterMinor ?? null,
-      },
+      balance_after_minor: null,
+      billing: null,
     })
     return
   }

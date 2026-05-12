@@ -5189,6 +5189,62 @@ button.danger-solid:hover:not(:disabled) {
   color: var(--muted);
 }
 
+.engine-brief-length-guide {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(35, 48, 67, 0.1);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: var(--muted);
+}
+
+.engine-brief-length-guide__header,
+.engine-brief-length-guide__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.engine-brief-length-guide__header {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.engine-brief-length-guide__footer {
+  color: var(--muted);
+}
+
+.engine-brief-length-guide__bar {
+  position: relative;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(35, 48, 67, 0.1);
+}
+
+.engine-brief-length-guide__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: #8aa0b8;
+  transition: width 160ms ease, background-color 160ms ease;
+}
+
+.engine-brief-length-guide.is-useful .engine-brief-length-guide__fill {
+  background: #3f8f86;
+}
+
+.engine-brief-length-guide.is-strong .engine-brief-length-guide__fill,
+.engine-brief-length-guide.is-enough .engine-brief-length-guide__fill {
+  background: #247a4b;
+}
+
 .engine-input-footer .primary {
   display: inline-flex;
   align-items: center;

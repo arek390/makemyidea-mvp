@@ -281,6 +281,7 @@ const normalizeSuggestResponse = (payload: {
 
 const WORD_LIMIT = 100
 const INITIAL_BRIEF_WORD_LIMIT = 1000
+const INITIAL_BRIEF_RECOMMENDED_WORD_TARGET = 200
 const SHORT_ENTRY_WORDS = 12
 const DEFAULT_IDLE_THRESHOLD_MS = 15000
 const ERASE_EMPTY_SECONDS_STRONG = 10
@@ -789,6 +790,14 @@ type Translations = {
   engineInitialBriefSubmitting: string
   engineInitialBriefWordCountRemaining: (count: number) => string
   engineInitialBriefWordLimitReached: string
+  engineInitialBriefLengthIntro: string
+  engineInitialBriefLengthTarget: string
+  engineInitialBriefLengthCount: (count: number, target: number) => string
+  engineInitialBriefLengthLow: string
+  engineInitialBriefLengthUseful: string
+  engineInitialBriefLengthStrong: string
+  engineInitialBriefLengthEnough: string
+  engineInitialBriefLengthContinue: string
   engineInitialBriefEmpty: string
   engineInitialBriefTooLong: string
   engineInitialBriefFailed: string
@@ -1287,6 +1296,14 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineInitialBriefSubmitting: 'Creating entries…',
     engineInitialBriefWordCountRemaining: (count) => `Remaining ${count} words`,
     engineInitialBriefWordLimitReached: 'Word limit reached (1000).',
+    engineInitialBriefLengthIntro: 'Context is starting to form',
+    engineInitialBriefLengthTarget: 'Good start: about 200 words',
+    engineInitialBriefLengthCount: (count, target) => `${count} / ~${target} words`,
+    engineInitialBriefLengthLow: '',
+    engineInitialBriefLengthUseful: 'The situation is becoming clearer',
+    engineInitialBriefLengthStrong: 'Important dependencies are emerging',
+    engineInitialBriefLengthEnough: 'This is a good moment for analysis',
+    engineInitialBriefLengthContinue: 'You can continue or move on',
     engineInitialBriefEmpty: 'Please enter a short description first.',
     engineInitialBriefTooLong: 'The description exceeds the 1000-word limit.',
     engineInitialBriefFailed: 'Unable to create initial entries. Please try again.',
@@ -1923,6 +1940,14 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     engineInitialBriefSubmitting: 'Tworzę wpisy…',
     engineInitialBriefWordCountRemaining: (count) => `Pozostało ${count} słów`,
     engineInitialBriefWordLimitReached: 'Osiągnięto limit słów (1000).',
+    engineInitialBriefLengthIntro: 'Początek kontekstu',
+    engineInitialBriefLengthTarget: 'Dobry start: około 200 słów',
+    engineInitialBriefLengthCount: (count, target) => `${count} / ~${target} słów`,
+    engineInitialBriefLengthLow: '',
+    engineInitialBriefLengthUseful: 'Obraz sytuacji staje się wyraźniejszy',
+    engineInitialBriefLengthStrong: 'Pojawiają się istotne zależności',
+    engineInitialBriefLengthEnough: 'To dobry moment na analizę',
+    engineInitialBriefLengthContinue: 'Możesz kontynuować albo przejść dalej',
     engineInitialBriefEmpty: 'Najpierw wpisz krótki opis.',
     engineInitialBriefTooLong: 'Opis przekracza limit 1000 słów.',
     engineInitialBriefFailed: 'Nie udało się utworzyć pierwszych wpisów. Spróbuj ponownie.',
@@ -5825,9 +5850,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
 }
 
   const countWords = (value: string) => {
-    const trimmed = value.trim()
-    if (!trimmed) return 0
-    return trimmed.split(/\s+/).length
+    const matches = value.match(/[\p{L}\p{N}]+(?:['’_-][\p{L}\p{N}]+)*/gu)
+    return matches?.length ?? 0
   }
 
   const applyEngineInitialBriefTextChange = (next: string, previous = engineInitialBriefText) => {
@@ -8044,6 +8068,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
         matrixRow: string | null
         matrixCol: string | null
       } | null = null
+      const shouldChargeSessionCreateWithFirstEntry =
+        Boolean(authSession?.user?.id && client) && enginePreviewItems.length === 0
       for (const entry of entries) {
         const entryText = String(entry?.text || '').trim()
         const mapped = entry?.cellCode ? cellCodeToMatrix(String(entry.cellCode)) : null
@@ -8071,6 +8097,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
             sortOrder: nextSortOrderBase,
             entryType: 'free_input',
             promptType: null,
+            chargeSessionCreate: shouldChargeSessionCreateWithFirstEntry && inserted.length === 0,
           }),
         })
         const upsertPayload = await upsertResponse.json().catch(() => null)
@@ -8081,7 +8108,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
             firstUpsertErrorMessage = code || `HTTP_${upsertResponse.status || 'n/a'}`
             firstUpsertErrorStatus = upsertResponse.status || null
           }
+          if (upsertResponse.status === 402 || upsertPayload?.error === 'INSUFFICIENT_BALANCE') {
+            triggerInsufficientBalance()
+            break
+          }
           continue
+        }
+        const balanceAfter = Number(upsertPayload?.balance_after_minor ?? NaN)
+        if (Number.isFinite(balanceAfter)) {
+          setBillingBalanceOverrideMinor(balanceAfter)
         }
         upsertSuccessCount += 1
         const insertedRow = upsertPayload.item as Database['public']['Tables']['board_items']['Row']
@@ -10740,7 +10775,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
         setEngineNamePromptOpen(false)
         setEngineNameDraft('')
         setFeedbackReminder(null)
-        setEngineUiState('FREE_FLOW')
+        const shouldResumeInitialBrief = Boolean(authSession?.user?.id && normalizedItems.length === 0)
+        setEngineInitialBriefOpen(shouldResumeInitialBrief)
+        if (shouldResumeInitialBrief) {
+          setEngineInitialBriefText('')
+          setEngineInitialBriefError(null)
+        }
+        setEngineUiState(shouldResumeInitialBrief ? 'INIT' : 'FREE_FLOW')
         setEngineActivePrompt(null)
         setEngineOfferReason(null)
         if (sessionSummary) {
@@ -10840,7 +10881,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
       setEngineNamePromptOpen(false)
       setEngineNameDraft('')
       setFeedbackReminder(null)
-      setEngineUiState('FREE_FLOW')
+      const shouldResumeInitialBrief = Boolean(authSession?.user?.id && normalizedItems.length === 0)
+      setEngineInitialBriefOpen(shouldResumeInitialBrief)
+      if (shouldResumeInitialBrief) {
+        setEngineInitialBriefText('')
+        setEngineInitialBriefError(null)
+      }
+      setEngineUiState(shouldResumeInitialBrief ? 'INIT' : 'FREE_FLOW')
       setEngineActivePrompt(null)
       setEngineOfferReason(null)
       if (data.session) {
@@ -11981,13 +12028,41 @@ const isMissingLabel = (item: EngineBoardItem) => {
         : engineDraftTargetSection === 'should_be'
           ? 'is-should-be'
           : ''
-  const engineInitialBriefWords = countWords(engineInitialBriefText)
+  const engineInitialBriefDisplayedText = getEngineInitialBriefDisplayedText()
+  const engineInitialBriefWords = countWords(engineInitialBriefDisplayedText)
   const engineInitialBriefRemainingWords = Math.max(
     0,
     INITIAL_BRIEF_WORD_LIMIT - engineInitialBriefWords
   )
+  const engineInitialBriefRecommendedProgress = Math.min(
+    engineInitialBriefWords / INITIAL_BRIEF_RECOMMENDED_WORD_TARGET,
+    1
+  )
+  const engineInitialBriefRecommendedPercent = Math.round(
+    engineInitialBriefRecommendedProgress * 100
+  )
+  const engineInitialBriefLengthState =
+    engineInitialBriefWords >= INITIAL_BRIEF_RECOMMENDED_WORD_TARGET
+      ? 'enough'
+      : engineInitialBriefWords >= 120
+        ? 'strong'
+        : engineInitialBriefWords >= 40
+          ? 'useful'
+          : 'low'
+  const engineInitialBriefLengthStatus =
+    engineInitialBriefLengthState === 'enough'
+      ? copy.engineInitialBriefLengthEnough
+      : engineInitialBriefLengthState === 'strong'
+        ? copy.engineInitialBriefLengthStrong
+        : engineInitialBriefLengthState === 'useful'
+          ? copy.engineInitialBriefLengthUseful
+          : copy.engineInitialBriefLengthLow
+  const engineInitialBriefLengthMessage =
+    engineInitialBriefLengthState === 'low'
+      ? copy.engineInitialBriefLengthIntro
+      : engineInitialBriefLengthStatus
   const isEngineInitialBriefLimitReached =
-    engineInitialBriefText.trim().length > 0 &&
+    engineInitialBriefDisplayedText.trim().length > 0 &&
     engineInitialBriefWords >= INITIAL_BRIEF_WORD_LIMIT
   const showEngineInputCaret = !engineInputFocused && !enginePreviewInput.trim()
   const showFacilitationOffer =
@@ -12047,10 +12122,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }).format(amount)
     return uiLanguage === 'Polish' ? `${formatted} zł` : `PLN ${formatted}`
   }
-  const engineNameSaveLabel =
+  const engineInitialBriefSubmitLabel =
     authSession?.user?.id && client
-      ? `${copy.engineNameSave} (${formatSessionCreatePrice(sessionCreatePriceMinor)})`
-      : copy.engineNameSave
+      ? `${copy.engineInitialBriefSubmit} (${formatSessionCreatePrice(sessionCreatePriceMinor)})`
+      : copy.engineInitialBriefSubmit
 
     return withDevOverlay(
       <div className="app engine-preview" data-testid="active-session">
@@ -12685,7 +12760,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     type="button"
                     className="primary"
                     data-testid="session-name-save"
-                    disabled={engineNameSaving || Boolean(authSession?.user?.id && client && sessionCreatePriceLoading)}
+                    disabled={engineNameSaving}
                     onClick={async () => {
                       markUserInitiatedInteraction('pointer')
                       setEngineLastInputActivityAt(Date.now())
@@ -12767,7 +12842,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       setEngineLastInputActivityAt(Date.now())
                     }}
                   >
-                    {engineNameSaveLabel}
+                    {copy.engineNameSave}
                   </button>
                   <button
                     type="button"
@@ -12881,6 +12956,36 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 {engineInitialBriefError && (
                   <div className="engine-error">{engineInitialBriefError}</div>
                 )}
+                <div className={`engine-brief-length-guide is-${engineInitialBriefLengthState}`}>
+                  <div className="engine-brief-length-guide__header">
+                    <span>{copy.engineInitialBriefLengthTarget}</span>
+                    <span>
+                      {copy.engineInitialBriefLengthCount(
+                        engineInitialBriefWords,
+                        INITIAL_BRIEF_RECOMMENDED_WORD_TARGET
+                      )}
+                    </span>
+                  </div>
+                  <div
+                    className="engine-brief-length-guide__bar"
+                    role="progressbar"
+                    aria-valuemin={0}
+                    aria-valuemax={INITIAL_BRIEF_RECOMMENDED_WORD_TARGET}
+                    aria-valuenow={Math.min(
+                      engineInitialBriefWords,
+                      INITIAL_BRIEF_RECOMMENDED_WORD_TARGET
+                    )}
+                    aria-label={copy.engineInitialBriefLengthTarget}
+                  >
+                    <span
+                      className="engine-brief-length-guide__fill"
+                      style={{ width: `${engineInitialBriefRecommendedPercent}%` }}
+                    />
+                  </div>
+                  <div className="engine-brief-length-guide__footer">
+                    <span>{engineInitialBriefLengthMessage}</span>
+                  </div>
+                </div>
                 <div className="engine-input-footer">
                   <span className="engine-word-count">
                     {isEngineInitialBriefLimitReached
@@ -12897,7 +13002,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     disabled={
                       !engineInitialBriefText.trim() ||
                       engineInitialBriefSubmitting ||
-                      engineInitialBriefWords > INITIAL_BRIEF_WORD_LIMIT
+                      engineInitialBriefWords > INITIAL_BRIEF_WORD_LIMIT ||
+                      Boolean(authSession?.user?.id && client && sessionCreatePriceLoading)
                     }
                   >
                     {engineInitialBriefSubmitting && (
@@ -12905,7 +13011,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     )}
                     {engineInitialBriefSubmitting
                       ? copy.engineInitialBriefSubmitting
-                      : copy.engineInitialBriefSubmit}
+                      : engineInitialBriefSubmitLabel}
                   </button>
                 </div>
               </div>

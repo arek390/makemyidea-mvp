@@ -1,7 +1,13 @@
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../src/lib/server/http.js'
 import { resolveAction } from '../src/lib/server/router.js'
 import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
-import { chargeUserBalance, normalizeBillingError } from '../src/lib/server/billing.js'
+import {
+  chargeUserBalance,
+  ensureBillingAccount,
+  getPriceForAction,
+  normalizeBillingError,
+} from '../src/lib/server/billing.js'
+import { recordSessionBillingEvent } from '../src/lib/server/aiCostEvents.js'
 
 const getBearerToken = (req) => {
   const authHeader =
@@ -85,6 +91,43 @@ export default async function handler(req, res) {
   }
 
   try {
+    const shouldChargeSessionCreate = Boolean(payload.chargeSessionCreate && isInsert)
+    let includeSessionCreateCharge = false
+    if (shouldChargeSessionCreate) {
+      const existingItemsRes = await supabaseAdmin
+        .from('board_items')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', sessionId)
+        .eq('user_id', userId)
+      if (existingItemsRes.error) {
+        sendJson(res, 500, { ok: false, error: 'BOARD_ITEMS_COUNT_FAILED' })
+        return
+      }
+      includeSessionCreateCharge = Number(existingItemsRes.count ?? 0) === 0
+      if (includeSessionCreateCharge) {
+        const [sessionCreatePriceMinor, itemPriceMinor] = await Promise.all([
+          getPriceForAction('session_create', 'PLN', supabaseAdmin),
+          getPriceForAction('session_item_add_or_edit', 'PLN', supabaseAdmin),
+        ])
+        await ensureBillingAccount(userId, supabaseAdmin)
+        const accountRes = await supabaseAdmin
+          .from('billing_accounts')
+          .select('balance_pln_grosze')
+          .eq('user_id', userId)
+          .maybeSingle()
+        if (accountRes.error) {
+          sendJson(res, 500, { ok: false, error: 'BILLING_ACCOUNT_LOOKUP_FAILED' })
+          return
+        }
+        const currentBalanceMinor = Number(accountRes.data?.balance_pln_grosze ?? 0)
+        const requiredMinor = sessionCreatePriceMinor + itemPriceMinor
+        if (!Number.isFinite(currentBalanceMinor) || currentBalanceMinor < requiredMinor) {
+          sendJson(res, 402, { ok: false, error: 'INSUFFICIENT_BALANCE' })
+          return
+        }
+      }
+    }
+
     const charge = await chargeUserBalance(
       userId,
       'session_item_add_or_edit',
@@ -117,11 +160,31 @@ export default async function handler(req, res) {
         sendJson(res, 500, { ok: false, error: error.message || 'INSERT_FAILED' })
         return
       }
+      let balanceAfterMinor = charge.balanceAfterMinor
+      if (includeSessionCreateCharge) {
+        const sessionCreateCharge = await chargeUserBalance(
+          userId,
+          'session_create',
+          sessionId,
+          supabaseAdmin
+        )
+        await recordSessionBillingEvent(supabaseAdmin, {
+          sessionId,
+          reportId: null,
+          userId,
+          actionKey: 'session_create',
+          referenceId: sessionId,
+          amountMinor: sessionCreateCharge.amountMinor,
+          currency: sessionCreateCharge.currency,
+        })
+        balanceAfterMinor = sessionCreateCharge.balanceAfterMinor
+      }
       sendJson(res, 200, {
         ok: true,
         item: data,
-        balance_after_minor: charge.balanceAfterMinor,
+        balance_after_minor: balanceAfterMinor,
         balance_currency: charge.currency,
+        session_create_charged: includeSessionCreateCharge,
       })
       return
     }
