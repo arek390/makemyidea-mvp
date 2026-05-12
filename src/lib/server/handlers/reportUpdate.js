@@ -5,6 +5,10 @@ import { chargeUserBalance, normalizeBillingError } from '../billing.js'
 import { buildMeta, sendJson } from '../http.js'
 import { recordSessionAiUsageEvent, recordSessionBillingEvent } from '../aiCostEvents.js'
 import { runLlmTask, createRateLimiter } from '../../../llm/llmRouter.mjs'
+import {
+  getEntryContextStats,
+  normalizeBoardEntryForLlm,
+} from '../llmBoardEntryContext.js'
 import sharp from 'sharp'
 
 const REPORT_LLM_TIMEOUT_MS = 45_000
@@ -415,10 +419,20 @@ const buildTrizSupportText = ({ items, analysisJson }) => {
   const itemText = Array.isArray(items)
     ? items
         .map((item) =>
-          [item?.text, item?.label, item?.question]
-            .map((part) => String(part || '').trim())
-            .filter(Boolean)
-            .join(' ')
+          item?.question
+            ? [
+                item?.area ? `Area: ${item.area}` : '',
+                `Question: ${item.question}`,
+                `Answer: ${item.answer || item.text}`,
+                item?.label ? `Label: ${item.label}` : '',
+              ]
+                .map((part) => String(part || '').trim())
+                .filter(Boolean)
+                .join(' ')
+            : [item?.answer || item?.text, item?.label]
+                .map((part) => String(part || '').trim())
+                .filter(Boolean)
+                .join(' ')
         )
         .filter(Boolean)
         .join(' \n ')
@@ -5210,18 +5224,22 @@ export const handleReportUpdate = async (req, res) => {
       const representativeItems = items
         .slice(0, MAX_TRIZ_INPUT_ITEMS)
         .map((item) => {
-          const question =
-            reportLang === 'en'
-              ? item.question_text_en || item.question_text_pl || ''
-              : item.question_text_pl || item.question_text_en || ''
+          const normalized = normalizeBoardEntryForLlm(item, reportLang, {
+            maxAnswerLen: 320,
+            maxQuestionLen: 260,
+          })
+          if (!normalized) return null
           return {
-            text: String(item.text ?? '').trim(),
+            ...normalized,
             label: item.label ?? '',
-            question: String(question).trim() || '',
           }
         })
-        .filter((item) => item.text)
+        .filter((item) => item?.text)
         .slice(0, MAX_TRIZ_INPUT_ITEMS)
+      console.log('[report:update][triz][entry_context]', {
+        requestId,
+        ...getEntryContextStats(representativeItems),
+      })
 
       const preprocessInput = JSON.stringify({
         lang: reportLang,
@@ -5237,8 +5255,8 @@ export const handleReportUpdate = async (req, res) => {
       try {
         const preprocessTaskInstructions =
           reportLang === 'en'
-            ? 'Return ONLY valid JSON. No markdown. Extract signals from the items. Schema: { "lang":"pl|en","topic":"1-2 sentences","key_themes":["3-6 short noun phrases"],"tensions_or_opportunities":["3-6 short trade-offs/tensions"],"representative_items":[{"quote":"short quote","label":"","question":""}],"user_intent":"optional 1 sentence" }. Prefer concrete, decision-relevant phrasing. Avoid meta text like "not enough data" unless truly necessary. Do NOT include matrix codes A1..C3. Output must be in English.'
-            : 'Zwróć WYŁĄCZNIE poprawny JSON. Bez markdown. Wyciągnij sygnały z wpisów. Schemat: { "lang":"pl|en","topic":"1-2 sentences","key_themes":["3-6 krótkich fraz rzeczownikowych"],"tensions_or_opportunities":["3-6 krótkich napięć / kompromisów"],"representative_items":[{"quote":"krótki cytat","label":"","question":""}],"user_intent":"opcjonalnie 1 zdanie" }. Preferuj konkret i decyzyjność. Unikaj meta-tekstu typu "brak danych", chyba że to naprawdę konieczne. Nie używaj kodów A1..C3. Całość po polsku.'
+            ? 'Return ONLY valid JSON. No markdown. Extract signals from the items. For facilitated entries, interpret question and answer together; the question defines the semantic frame of the answer. Schema: { "lang":"pl|en","topic":"1-2 sentences","key_themes":["3-6 short noun phrases"],"tensions_or_opportunities":["3-6 short trade-offs/tensions"],"representative_items":[{"quote":"short answer quote","label":"","question":""}],"user_intent":"optional 1 sentence" }. Prefer concrete, decision-relevant phrasing. Avoid meta text like "not enough data" unless truly necessary. Do NOT include matrix codes A1..C3. Output must be in English.'
+            : 'Zwróć WYŁĄCZNIE poprawny JSON. Bez markdown. Wyciągnij sygnały z wpisów. Dla wpisów facylitowanych interpretuj pytanie i odpowiedź łącznie; pytanie definiuje ramę znaczeniową odpowiedzi. Schemat: { "lang":"pl|en","topic":"1-2 sentences","key_themes":["3-6 krótkich fraz rzeczownikowych"],"tensions_or_opportunities":["3-6 krótkich napięć / kompromisów"],"representative_items":[{"quote":"krótki cytat odpowiedzi","label":"","question":""}],"user_intent":"opcjonalnie 1 zdanie" }. Preferuj konkret i decyzyjność. Unikaj meta-tekstu typu "brak danych", chyba że to naprawdę konieczne. Nie używaj kodów A1..C3. Całość po polsku.'
         const preprocessResult = await runLlmTask({
           apiKey: process.env.OPENAI_API_KEY,
           aiSupportEnabled: true,
@@ -5438,7 +5456,10 @@ export const handleReportUpdate = async (req, res) => {
             'Prefer practical contradictions that lead to concrete action directions, not merely descriptive observations.',
             'Do not restate the same trade-off in slightly different words.',
             'Translate contradictions into: a clear trade-off title, a simple explanation, solution directions, possible approaches, and reflection prompts.',
+            'Important: For facilitated entries, interpret the answer only together with the facilitation question. The question defines the semantic frame of the answer. Do not extract contradictions from the answer text alone if question context exists. A short answer may be a strong contradiction signal when the question makes the context specific.',
             'Detect contradictions not only from explicit opposites, but also from implicit trade-offs across multiple entries.',
+            'Use Q/A pairs to detect opposing requirements, tradeoffs, tensions between current state and desired state, constraints blocking desired outcomes, hidden assumptions, and conflicts between user value, technical feasibility, cost, usability, durability, speed, complexity, risk, scalability, and implementation effort.',
+            'Formulate contradiction titles as explicit tension pairs, preferably "X vs Y" or "Need for X conflicts with need for Y". Avoid vague labels like "Cost problem", "Usability issue", or "Technical risk".',
             'Prefer concrete product and engineering tensions such as lightweight vs strength or durability, small or portable vs long reach, simple construction vs robustness, material choice conflicts, ambidextrous use vs ergonomic optimization, safety vs effectiveness.',
             'Every contradiction must include: title, explanation, solution_directions, approaches, reflections.',
             'solution_directions, approaches, and reflections must be arrays, but may be empty.',
@@ -5478,6 +5499,8 @@ export const handleReportUpdate = async (req, res) => {
               'The JSON must contain only: section_title, section_intro, contradictions.',
               'No markdown. No prose outside JSON.',
               `Use the provided selected_tradeoffs as anchors. Each contradiction title should closely match a trade-off.`,
+              'For facilitated entries, use the combined meaning of question and answer; do not interpret a short answer alone when question context exists.',
+              'Keep contradiction titles as explicit tension pairs, preferably "X vs Y" or "Need for X conflicts with need for Y".',
               'For each contradiction: provide 2-4 concrete solution_directions and 2-4 approaches with practical titles and descriptions.',
               'Keep reflections short and actionable (2-4).',
               reportLang === 'en' ? 'Output must be in English.' : 'Całość po polsku.',
@@ -5488,8 +5511,8 @@ export const handleReportUpdate = async (req, res) => {
 
       const trizTaskInstructions =
         reportLang === 'en'
-          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: section_title, section_intro, contradictions. Use TRIZ reasoning internally but do not mention TRIZ in the output. Target exactly ${TARGET_TRIZ_CONTRADICTIONS} strong contradictions when material supports it; otherwise return 2. Return 4+ only for clearly distinct, decision-relevant trade-offs. Merge overlapping tensions instead of repeating them. Each contradiction must contain title and a concrete explanation. solution_directions/approaches/reflections must be arrays (may be empty) but keep them concise. Avoid generic contradictions; ground each in the material. Output must be in English.`
-          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucze: section_title, section_intro, contradictions. Użyj TRIZ wewnętrznie do analizy, ale nie wspominaj o TRIZ w wyniku. Celuj w dokładnie ${TARGET_TRIZ_CONTRADICTIONS} mocne kompromisy, jeśli materiał na to pozwala; w przeciwnym razie zwróć 2. Zwracaj 4+ tylko wtedy, gdy materiał zawiera kilka wyraźnych, nieredundantnych i decyzyjnych napięć. Scalaj podobne napięcia zamiast powielać warianty. Każda pozycja musi mieć title i konkretną explanation. solution_directions/approaches/reflections muszą być tablicami (mogą być puste), ale pisz zwięźle. Unikaj generyków; każdą sprzeczność uziem w materiale. Całość po polsku.`
+          ? `Return a single valid JSON object only. No markdown. No text before or after JSON. Keys: section_title, section_intro, contradictions. Use TRIZ reasoning internally but do not mention TRIZ in the output. For facilitated entries, interpret the answer only together with the facilitation question; do not extract contradictions from the answer text alone when question context exists. Target exactly ${TARGET_TRIZ_CONTRADICTIONS} strong contradictions when material supports it; otherwise return 2. Return 4+ only for clearly distinct, decision-relevant trade-offs. Merge overlapping tensions instead of repeating them. Each contradiction must contain title and a concrete explanation. Prefer titles in the form "X vs Y" or "Need for X conflicts with need for Y"; avoid vague labels. solution_directions/approaches/reflections must be arrays (may be empty) but keep them concise. Avoid generic contradictions; ground each in the material. Output must be in English.`
+          : `Zwróć tylko jeden poprawny obiekt JSON. Bez markdown. Bez tekstu przed lub po JSON. Klucze: section_title, section_intro, contradictions. Użyj TRIZ wewnętrznie do analizy, ale nie wspominaj o TRIZ w wyniku. Dla wpisów facylitowanych interpretuj odpowiedź tylko razem z pytaniem facylitacyjnym; nie wyciągaj sprzeczności z samej odpowiedzi, jeśli istnieje kontekst pytania. Celuj w dokładnie ${TARGET_TRIZ_CONTRADICTIONS} mocne kompromisy, jeśli materiał na to pozwala; w przeciwnym razie zwróć 2. Zwracaj 4+ tylko wtedy, gdy materiał zawiera kilka wyraźnych, nieredundantnych i decyzyjnych napięć. Scalaj podobne napięcia zamiast powielać warianty. Każda pozycja musi mieć title i konkretną explanation. Preferuj tytuły w formie "X vs Y" albo "Potrzeba X koliduje z potrzebą Y"; unikaj mglistych etykiet. solution_directions/approaches/reflections muszą być tablicami (mogą być puste), ale pisz zwięźle. Unikaj generyków; każdą sprzeczność uziem w materiale. Całość po polsku.`
 
       const runDefault = async (modelOverride, validationErrors) =>
         runLlmTask({

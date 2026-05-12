@@ -2,6 +2,10 @@ import { getSupabaseAdmin } from '../supabaseAdmin.js'
 import { sendJson } from '../http.js'
 import { runLlmTask, createRateLimiter } from '../../../../llm/llmRouter.mjs'
 import { recordSessionAiUsageEvent } from '../aiCostEvents.js'
+import {
+  getEntryContextStats,
+  normalizeBoardEntryForLlm,
+} from '../llmBoardEntryContext.js'
 
 const limiter = createRateLimiter({ windowMs: 60_000, max: 20 })
 
@@ -40,17 +44,20 @@ const normalizeLanguage = (value) => {
   return raw === 'en' ? 'en' : 'pl'
 }
 
-const normalizeItems = (value) => {
+const normalizeItems = (value, language) => {
   if (!Array.isArray(value)) return []
   return value
     .map((item) => {
       if (!item || typeof item !== 'object') return null
-      const text = toText(item.text, 280)
-      if (!text) return null
-      const matrix_row = toText(item.matrix_row, 32) || null
-      const matrix_col = toText(item.matrix_col, 32) || null
+      const normalized = normalizeBoardEntryForLlm(item, language, {
+        maxAnswerLen: 280,
+        maxQuestionLen: 260,
+      })
+      if (!normalized) return null
+      const matrix_row = toText(normalized.matrix_row ?? item.matrix_row, 32) || null
+      const matrix_col = toText(normalized.matrix_col ?? item.matrix_col, 32) || null
       return {
-        text,
+        ...normalized,
         ...(matrix_row ? { matrix_row } : {}),
         ...(matrix_col ? { matrix_col } : {}),
       }
@@ -63,17 +70,21 @@ const buildPrompt = ({ language, items }) => {
   const entriesText = items
     .map((item, index) => {
       const meta = [item.matrix_row ? `row=${item.matrix_row}` : null, item.matrix_col ? `col=${item.matrix_col}` : null]
+        .concat([item.matrix_cell ? `cell=${item.matrix_cell}` : null, item.area ? `area=${item.area}` : null, item.entry_type ? `type=${item.entry_type}` : null])
         .filter(Boolean)
         .join(', ')
+      if (item.question) {
+        return `${index + 1}. ${meta ? `(${meta}) ` : ''}Question: ${item.question}\n   Answer: ${item.answer || item.text}`
+      }
       return `${index + 1}. ${item.text}${meta ? ` (${meta})` : ''}`
     })
     .join('\n')
 
   if (language === 'en') {
-    return `User entries:\n${entriesText}\n\nTask:\nYou are evaluating whether the user's material is ready to produce a good action plan.\nGenerate THREE different short texts (each 1 sentence, max 2 short sentences):\n\n1) summary (diagnosis): What is the main current readiness state of the material?\n2) howToBoost (direction): What kind of material is missing to improve readiness?\n3) biggestBoostRightNow (one action): What ONE concrete thing should the user add next for the biggest immediate boost?\n\nReturn JSON only (no markdown):\n{\n  \"summary\": \"...\",\n  \"howToBoost\": \"...\",\n  \"biggestBoostRightNow\": \"...\",\n  \"qualityLevel\": \"low | medium | high\",\n  \"insights\": [\"optional, max 3\"],\n  \"improvements\": [\"optional, max 3\"],\n  \"nextBestAction\": \"optional\"\n}\n\nRules:\n- Keep the three fields stylistically distinct (not paraphrases)\n- Be specific; avoid vague phrases like \"improve clarity\"\n- Assess the material, not the person\n- No generic advice like \"add more details\"\n- No markdown`
+    return `User entries:\n${entriesText}\n\nTask:\nYou are evaluating whether the user's material is ready to produce a good action plan.\nAssess readiness based on the combined meaning of each facilitation question and answer. A short answer may be meaningful only in relation to the question. Do not penalize short answers if the question makes them specific. Do not overvalue long answers if they do not resolve the question.\n\nEvaluate whether:\n- current state/as-is is grounded\n- problems/tensions are specific\n- desired outcomes are testable\n- contradictions/tradeoffs are visible\n- there is enough material to produce an action plan\n\nGenerate THREE different short texts (each 1 sentence, max 2 short sentences):\n\n1) summary (diagnosis): What is the main current readiness state of the material?\n2) howToBoost (direction): What kind of material is missing to improve readiness?\n3) biggestBoostRightNow (one action): What ONE concrete thing should the user add next for the biggest immediate boost?\n\nReturn JSON only (no markdown):\n{\n  \"summary\": \"...\",\n  \"howToBoost\": \"...\",\n  \"biggestBoostRightNow\": \"...\",\n  \"qualityLevel\": \"low | medium | high\",\n  \"insights\": [\"optional, max 3\"],\n  \"improvements\": [\"optional, max 3\"],\n  \"nextBestAction\": \"optional\"\n}\n\nRules:\n- Keep the three fields stylistically distinct (not paraphrases)\n- Be specific; avoid vague phrases like \"improve clarity\"\n- Assess the material, not the person\n- No generic advice like \"add more details\"\n- No markdown`
   }
 
-  return `Wpisy użytkownika:\n${entriesText}\n\nZadanie:\nOceniasz, czy materiał jest gotowy do stworzenia dobrego planu działania.\nWygeneruj TRZY różne krótkie teksty (każdy 1 zdanie, maks. 2 krótkie zdania):\n\n1) summary (diagnoza): Jaki jest dziś główny stan gotowości materiału?\n2) howToBoost (kierunek): Jakiego rodzaju materiału brakuje, żeby podnieść gotowość?\n3) biggestBoostRightNow (jedna akcja): Jaka JEDNA konkretna rzecz da teraz największy wzrost?\n\nZwróć wyłącznie JSON (bez markdown):\n{\n  \"summary\": \"...\",\n  \"howToBoost\": \"...\",\n  \"biggestBoostRightNow\": \"...\",\n  \"qualityLevel\": \"low | medium | high\",\n  \"insights\": [\"opcjonalne, max 3\"],\n  \"improvements\": [\"opcjonalne, max 3\"],\n  \"nextBestAction\": \"opcjonalne\"\n}\n\nZasady:\n- 3 pola muszą być stylistycznie różne (nie parafrazy)\n- Konkretnie; unikaj ogólników typu \"popraw klarowność\"\n- Oceniaj materiał, nie osobę\n- Bez ogólnej porady typu \"dodaj więcej szczegółów\"\n- Bez markdown`
+  return `Wpisy użytkownika:\n${entriesText}\n\nZadanie:\nOceniasz, czy materiał jest gotowy do stworzenia dobrego planu działania.\nOceniaj gotowość na podstawie łącznego sensu pytania facylitacyjnego i odpowiedzi. Krótka odpowiedź może być znacząca dopiero w relacji do pytania. Nie obniżaj oceny krótkich odpowiedzi, jeśli pytanie nadaje im konkretny kontekst. Nie przeceniaj długich odpowiedzi, jeśli nie domykają pytania.\n\nOceń, czy:\n- obecny stan / jak jest jest ugruntowany\n- problemy i napięcia są konkretne\n- pożądane rezultaty są testowalne\n- sprzeczności i kompromisy są widoczne\n- materiał wystarcza do stworzenia planu działania\n\nWygeneruj TRZY różne krótkie teksty (każdy 1 zdanie, maks. 2 krótkie zdania):\n\n1) summary (diagnoza): Jaki jest dziś główny stan gotowości materiału?\n2) howToBoost (kierunek): Jakiego rodzaju materiału brakuje, żeby podnieść gotowość?\n3) biggestBoostRightNow (jedna akcja): Jaka JEDNA konkretna rzecz da teraz największy wzrost?\n\nZwróć wyłącznie JSON (bez markdown):\n{\n  \"summary\": \"...\",\n  \"howToBoost\": \"...\",\n  \"biggestBoostRightNow\": \"...\",\n  \"qualityLevel\": \"low | medium | high\",\n  \"insights\": [\"opcjonalne, max 3\"],\n  \"improvements\": [\"opcjonalne, max 3\"],\n  \"nextBestAction\": \"opcjonalne\"\n}\n\nZasady:\n- 3 pola muszą być stylistycznie różne (nie parafrazy)\n- Konkretnie; unikaj ogólników typu \"popraw klarowność\"\n- Oceniaj materiał, nie osobę\n- Bez ogólnej porady typu \"dodaj więcej szczegółów\"\n- Bez markdown`
 }
 
 const extractJsonCandidate = (raw) => {
@@ -164,13 +175,17 @@ export const handleActionPlanReadiness = async (req, res) => {
     const body = req.body && typeof req.body === 'object' ? req.body : {}
     const sessionId = toText(body.sessionId, 128)
     const language = normalizeLanguage(body.language)
-    const items = normalizeItems(body.items)
+    const items = normalizeItems(body.items, language)
     if (!sessionId) {
       sendJson(res, 400, { ok: false, error: 'SESSION_ID_REQUIRED' })
       return
     }
 
     const meaningfulCount = items.length
+    console.log('[readiness][entry_context]', {
+      requestId,
+      ...getEntryContextStats(items),
+    })
     if (meaningfulCount < 3) {
       sendJson(res, 200, {
         ok: true,

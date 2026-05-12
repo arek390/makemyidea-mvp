@@ -3,6 +3,10 @@ import { getSupabaseAdmin } from '../supabaseAdmin.js'
 import { recordSessionAiUsageEvent } from '../aiCostEvents.js'
 import { getSessionState, getSessionStoreType, updateSessionStateRow } from '../../../engine/storage/sessionStore.mjs'
 import {
+  getEntryContextStats,
+  normalizeBoardEntriesForLlm,
+} from '../llmBoardEntryContext.js'
+import {
   buildMeta,
   readJsonBody,
   resolveAiSupportEnabled,
@@ -168,11 +172,20 @@ const groupBoardEntriesByArea = (items) => {
   }
   const source = Array.isArray(items) ? items : []
   source.forEach((item) => {
-    const text = typeof item === 'string' ? item : item?.text
-    const clipped = clipLine(text)
+    const answer = typeof item === 'string' ? item : item?.answer ?? item?.text
+    const clipped = clipLine(answer)
     if (!clipped) return
-    const area = typeof item === 'object' ? normalizeBoardArea(item.matrix_col) : null
-    const entry = typeof item === 'object' && item?.id ? `${item.id}: ${clipped}` : clipped
+    const question = typeof item === 'object' ? clipLine(item?.question, 220) : ''
+    const area = typeof item === 'object' ? normalizeBoardArea(item.area ?? item.matrix_col) : null
+    const meta = typeof item === 'object'
+      ? [item?.matrix_cell ? `cell=${item.matrix_cell}` : null, item?.entry_type ? `type=${item.entry_type}` : null]
+          .filter(Boolean)
+          .join(', ')
+      : ''
+    const prefix = typeof item === 'object' && item?.id ? `${item.id}: ` : ''
+    const entry = question
+      ? `${prefix}${meta ? `[${meta}] ` : ''}Question: ${question} | Answer: ${clipped}`
+      : `${prefix}${meta ? `[${meta}] ` : ''}${clipped}`
     if (area && grouped[area]) {
       grouped[area].push(entry)
     } else {
@@ -229,6 +242,12 @@ const buildContextualQuestionPrompt = ({
     '',
     'Recently asked questions:',
     recentQuestions.length ? recentQuestions.map((item) => `- ${item}`).join('\n') : '- [none]',
+    '',
+    'Interpretation rules for board entries:',
+    '- Interpret facilitated entries as a pair: the question defines the meaning of the answer.',
+    '- Do not infer a facilitated answer in isolation when question context exists.',
+    '- Use the Q/A pair to decide what is already covered, what is ambiguous, and what contradiction or gap should be explored next.',
+    '- Avoid asking about something already covered in previous questions, answers, or the combined meaning of a question and answer.',
     '',
     'Generate one new question for the target area.',
     'The question must:',
@@ -1421,8 +1440,12 @@ export const handleCoachSuggest = async (req, res) => {
       : Array.isArray(body.boardItems)
         ? body.boardItems
         : []
-    const boardEntries = boardEntriesRaw
-      .map((item) => (typeof item === 'string' ? item : item?.text))
+    const boardEntriesForLlm = normalizeBoardEntriesForLlm(boardEntriesRaw, lang, {
+      maxAnswerLen: 280,
+      maxQuestionLen: 260,
+    }).slice(0, 60)
+    const boardEntries = boardEntriesForLlm
+      .map((item) => item.text)
       .filter(Boolean)
       .slice(0, 60)
     const matrixContext =
@@ -2812,6 +2835,10 @@ Write entries exactly in the same language as the input entries.
       asked_texts_count: askedTexts.length,
       csv_used: false,
     })
+    console.log('[coach/suggest][entry_context]', {
+      requestId,
+      ...getEntryContextStats(boardEntriesForLlm),
+    })
 
     if (!aiSupportEnabled || killSwitch || !hasOpenAiKey) {
       logStage('fallback', {
@@ -2827,7 +2854,7 @@ Write entries exactly in the same language as the input entries.
       lang,
       targetArea,
       sessionName,
-      boardEntriesRaw,
+      boardEntriesRaw: boardEntriesForLlm,
       askedTexts,
       lastQuestionText,
     })

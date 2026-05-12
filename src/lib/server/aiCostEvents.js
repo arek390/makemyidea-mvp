@@ -240,9 +240,13 @@ export const recordSessionBillingEvent = async (
   const safeSessionId = String(sessionId || '').trim()
   const safeActionKey = String(actionKey || '').trim()
   const safeCurrency = String(currency || '').toUpperCase().trim()
-  const safeEventType = ['report_generate', 'report_update', 'image_generate', 'image_regenerate'].includes(
-    safeActionKey
-  )
+  const safeEventType = [
+    'session_create',
+    'report_generate',
+    'report_update',
+    'image_generate',
+    'image_regenerate',
+  ].includes(safeActionKey)
     ? safeActionKey
     : null
   if (!safeSessionId || !safeActionKey || !safeCurrency) return

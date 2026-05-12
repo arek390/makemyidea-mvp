@@ -396,6 +396,58 @@ const getEntryCellId = (item: EngineBoardItem) => {
   return group && mode ? `${group}${mode}` : null
 }
 
+const normalizeEngineEntryTypeForLlm = (value: EngineBoardItem['entry_type'] | string | null | undefined) => {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'facilitated_input') return 'facilitated_input'
+  if (raw === 'seed_from_brief') return 'seed_from_brief'
+  if (raw === 'manual_input' || raw === 'free_input') return 'manual_input'
+  return 'other'
+}
+
+const normalizeEngineAreaForLlm = (value: string | null | undefined) => {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'as_is' || raw === 'not_working' || raw === 'should_be') return raw
+  return null
+}
+
+const clipLlmContextText = (value: unknown, maxLen: number) => {
+  const raw = typeof value === 'string' ? value : String(value ?? '')
+  const text = raw.replace(/\s+/g, ' ').trim()
+  if (!text) return ''
+  return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text
+}
+
+const normalizeEngineBoardEntryForLlm = (
+  item: EngineBoardItem,
+  uiLanguage: Language,
+  options: { maxAnswerLen?: number; maxQuestionLen?: number } = {}
+) => {
+  const answer = clipLlmContextText(item.text, options.maxAnswerLen ?? 280)
+  if (!answer) return null
+  const primaryQuestion =
+    uiLanguage === 'English'
+      ? item.question_text_en ?? item.question_text_pl ?? null
+      : item.question_text_pl ?? item.question_text_en ?? null
+  const question = clipLlmContextText(primaryQuestion, options.maxQuestionLen ?? 260) || null
+  const matrix_row = item.matrix_row ?? null
+  const matrix_col = item.matrix_col ?? null
+  const entryType = normalizeEngineEntryTypeForLlm(item.entry_type)
+  return {
+    id: item.id,
+    area: normalizeEngineAreaForLlm(matrix_col),
+    matrix_cell: getEntryCellId(item),
+    matrix_row,
+    matrix_col,
+    entry_type: entryType === 'other' && question ? 'facilitated_input' : entryType,
+    question,
+    answer,
+    text: answer,
+    createdAt: item.created_at,
+    updatedAt: item.updated_at,
+    tags: item.label ? [item.label] : undefined,
+  }
+}
+
 const cellCodeToMatrix = (cellCode: string) => {
   const code = String(cellCode || '').trim().toUpperCase()
   if (!/^[ABC][123]$/.test(code)) return null
@@ -2605,6 +2657,8 @@ function App() {
   } | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
   const diagnosticsEnabledForUser = isAdmin && diagnosticsEnabled
+  const [sessionCreatePriceMinor, setSessionCreatePriceMinor] = useState<number | null>(null)
+  const [sessionCreatePriceLoading, setSessionCreatePriceLoading] = useState(false)
   const [reportCreatePriceMinor, setReportCreatePriceMinor] = useState<number | null>(null)
   const [reportCreatePriceLoading, setReportCreatePriceLoading] = useState(false)
   const [reportNavigationLoading, setReportNavigationLoading] = useState(false)
@@ -3183,6 +3237,7 @@ function App() {
     index: number
   } | null>(null)
   const engineEntryNodesRef = useRef<Record<string, HTMLLIElement | null>>({})
+  const wasPhoneViewportRef = useRef(false)
   const engineLabelCache = useRef<Record<string, string | null>>({})
   const openSessionDebugOnceRef = useRef(false)
   const engineInputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -3810,6 +3865,41 @@ const isAuthFlowInProgress = () => {
     if (!insufficientBalanceState.active) return
     clearInsufficientBalance()
   }, [normalizedPath, appPath])
+
+  useEffect(() => {
+    const supabaseClient = client
+    if (!supabaseClient || !isEnginePreview) return
+    let cancelled = false
+    const loadPrice = async () => {
+      setSessionCreatePriceLoading(true)
+      try {
+        const { data, error } = await supabaseClient
+          .from('pricing_rules_public')
+          .select('price_grosze')
+          .eq('action_key', 'session_create')
+          .maybeSingle()
+        if (!cancelled) {
+          if (error) {
+            setSessionCreatePriceMinor(null)
+          } else {
+            const row = data as {
+              price_grosze?: number | string | null
+            } | null
+            const value = Number(row?.price_grosze)
+            setSessionCreatePriceMinor(Number.isFinite(value) ? value : null)
+          }
+        }
+      } catch {
+        if (!cancelled) setSessionCreatePriceMinor(null)
+      } finally {
+        if (!cancelled) setSessionCreatePriceLoading(false)
+      }
+    }
+    void loadPrice()
+    return () => {
+      cancelled = true
+    }
+  }, [client, isEnginePreview])
 
   useEffect(() => {
     const supabaseClient = client
@@ -4464,14 +4554,9 @@ const isAuthFlowInProgress = () => {
       engineSessionDetail?.session?.name ||
       currentEngineSession?.name ||
       ''
-    const boardEntries = (enginePreviewItems || []).map((item) => ({
-      id: item.id,
-      text: item.text,
-      createdAt: item.created_at,
-      matrix_row: item.matrix_row ?? null,
-      matrix_col: item.matrix_col ?? null,
-      tags: item.label ? [item.label] : undefined,
-    }))
+    const boardEntries = (enginePreviewItems || [])
+      .map((item) => normalizeEngineBoardEntryForLlm(item, uiLanguage, { maxAnswerLen: 280, maxQuestionLen: 260 }))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item))
     const matrixContext =
       engineLastQuestionMeta?.group_code && engineLastQuestionMeta?.mode_code
         ? {
@@ -7437,76 +7522,48 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
     try {
       if (authSession?.user?.id && client) {
-        const { data: u } = await client.auth.getUser()
-        const userId = u?.user?.id ?? null
-        if (!userId) {
-          showEngineNotice(notices.authSessionExpired, 'error')
-          return null
-        }
-        const normalizedName = name.trim().toLowerCase()
-        const { data: existingByName, error: nameCheckError } = await client
-          .from('sessions')
-          .select('id,name')
-          .eq('user_id', userId)
-        if (nameCheckError) {
-          const message =
-            (nameCheckError as { message?: string | null })?.message ?? 'Request failed'
-          showEngineNotice(notices.sessionNameCheckFailed(message), 'error')
-          return null
-        }
-        const hasCollision = Boolean(
-          (existingByName || []).some((row) => {
-            const dbName = String((row as { name?: string | null }).name ?? '')
-              .trim()
-              .toLowerCase()
-            return dbName === normalizedName
+        const response = await apiFetch('/api/session?action=create', {
+          method: 'POST',
+          body: JSON.stringify({ name }),
+        })
+        const payload = await response.json().catch(() => null)
+        if (!response.ok || !payload?.ok) {
+          const errorCode = String(payload?.error || '')
+          console.error('[createSession] backend create failed', {
+            status: response.status,
+            error: errorCode || null,
           })
-        )
-        console.log('[createSession] nameCollision', hasCollision)
-        if (hasCollision) {
-          options?.onNameCollision?.()
-          return null
-        }
-        if (typeof crypto === 'undefined' || !('randomUUID' in crypto)) {
-          showEngineNotice(notices.sessionIdGenerateFailed, 'error')
-          return null
-        }
-        const sessionId = crypto.randomUUID()
-        console.log('[createSession]', { sessionId, userId, nameToSave: name })
-        const { error: insertSessionError } = await client
-          .schema('public')
-          .from('sessions')
-          .insert({ id: sessionId, user_id: userId, name })
-        if (insertSessionError) {
-          console.error('[createSession] insert sessions failed', insertSessionError)
-          const code = (insertSessionError as { code?: string | null })?.code ?? null
-          if (code === '23505') {
+          if (response.status === 401 || errorCode === 'AUTH_REQUIRED') {
+            showEngineNotice(notices.authSessionExpired, 'error')
+            return null
+          }
+          if (response.status === 402 || errorCode === 'INSUFFICIENT_BALANCE') {
+            triggerInsufficientBalance()
+            return null
+          }
+          if (response.status === 409 || errorCode === 'SESSION_NAME_COLLISION') {
             options?.onNameCollision?.()
-          } else {
-            const message =
-              (insertSessionError as { message?: string | null })?.message ?? 'Request failed'
-            showEngineNotice(notices.createSessionFailed(message), 'error')
+            return null
           }
           options?.onInsertError?.()
+          showEngineNotice(notices.createSessionFailed(errorCode || 'Request failed'), 'error')
           return null
         }
-        const { error: insertAclError } = await client
-          .schema('public')
-          .from('user_sessions')
-          .insert({
-            user_id: userId,
-            session_id: sessionId,
-            payload: {},
-            updated_at: new Date().toISOString(),
-          })
-        if (insertAclError) {
-          console.error('[createSession] insert user_sessions failed', insertAclError)
+        clearInsufficientBalance()
+        const balanceAfter = Number(payload?.balance_after_minor ?? payload?.billing?.balanceAfterMinor ?? NaN)
+        if (Number.isFinite(balanceAfter)) {
+          setBillingBalanceOverrideMinor(balanceAfter)
+        } else {
+          void refreshBillingBalance()
+        }
+        const sessionId = String(payload?.session?.id || '').trim()
+        if (!sessionId) {
           options?.onInsertError?.()
           return null
         }
         const sessionDetail = await createSession({
           id: sessionId,
-          name,
+          name: String(payload?.session?.name || name),
         })
         const createdSession = sessionDetail.session
         if (createdSession?.id) {
@@ -8424,10 +8481,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
   useLayoutEffect(() => {
     if (typeof window === 'undefined') return
+    if (isPhoneViewport) {
+      setEngineEntryRowSpans({})
+      return
+    }
 
     const calculateRowSpan = (id: string, node: HTMLLIElement) => {
       const list = node.closest('.engine-entry-list')
       if (!(list instanceof HTMLElement)) return
+      if (node.offsetWidth === 0 || list.offsetWidth === 0) return
       const styles = window.getComputedStyle(list)
       const rowHeight = parseFloat(styles.gridAutoRows || '') || 4
       const rowGap =
@@ -8514,12 +8576,37 @@ const isMissingLabel = (item: EngineBoardItem) => {
     enginePreviewEditId,
     enginePreviewEditText,
     isReport,
+    isPhoneViewport,
   ])
 
   useEffect(() => {
     if (isReport) return
     setEngineEntryRowSpans({})
   }, [isReport, enginePreviewSessionId])
+
+  useEffect(() => {
+    if (isPhoneViewport) {
+      wasPhoneViewportRef.current = true
+      setEngineEntryRowSpans({})
+      return
+    }
+    if (!wasPhoneViewportRef.current) return
+    wasPhoneViewportRef.current = false
+    engineEntryNodesRef.current = {}
+    setEngineEntryRowSpans({})
+    setEngineBoardLayoutVersion((prev) => prev + 1)
+    if (typeof window !== 'undefined') {
+      window.requestAnimationFrame(() => {
+        window.dispatchEvent(new Event('resize'))
+      })
+      window.setTimeout(() => {
+        window.dispatchEvent(new Event('resize'))
+      }, 120)
+      window.setTimeout(() => {
+        window.dispatchEvent(new Event('resize'))
+      }, 320)
+    }
+  }, [isPhoneViewport])
 
   useEffect(() => {
     if (isTopup) {
@@ -8858,13 +8945,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const items = Array.isArray(enginePreviewItems) ? enginePreviewItems : []
     const normalized = items
       .map((item) => {
-        const text = typeof item?.text === 'string' ? item.text.trim() : ''
-        if (!text) return null
+        const llmEntry = normalizeEngineBoardEntryForLlm(item, uiLanguage, { maxAnswerLen: 280, maxQuestionLen: 260 })
+        if (!llmEntry) return null
         const row = typeof item.matrix_row === 'string' ? item.matrix_row.trim() : ''
         const col = typeof item.matrix_col === 'string' ? item.matrix_col.trim() : ''
-        const clipped = text.length > 280 ? `${text.slice(0, 280)}…` : text
         const ts = Number(item.updated_at || item.created_at || 0) || 0
-        return { text: clipped, matrix_row: row, matrix_col: col, ts }
+        return { ...llmEntry, matrix_row: row, matrix_col: col, ts }
       })
       .filter((item): item is NonNullable<typeof item> => Boolean(item))
     if (!normalized.length) return []
@@ -8880,7 +8966,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
         return true
       })
       .slice(0, 15)
-      .map(({ text, matrix_row, matrix_col }) => ({ text, matrix_row, matrix_col }))
+      .map(({ area, matrix_cell, entry_type, question, answer, text, matrix_row, matrix_col }) => ({
+        area,
+        matrix_cell,
+        entry_type,
+        question,
+        answer,
+        text,
+        matrix_row,
+        matrix_col,
+      }))
   })
 
   const toShortText = useEffectEvent((value: unknown, maxLen: number) => {
@@ -11942,6 +12037,20 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }).format(Math.max(0, minor || 0) / 100)
     return `${formatted} PLN`
   }
+  const formatSessionCreatePrice = (minor: number | null) => {
+    if (minor == null || !Number.isFinite(minor)) return '—'
+    const amount = Math.max(0, minor) / 100
+    const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
+    const formatted = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount)
+    return uiLanguage === 'Polish' ? `${formatted} zł` : `PLN ${formatted}`
+  }
+  const engineNameSaveLabel =
+    authSession?.user?.id && client
+      ? `${copy.engineNameSave} (${formatSessionCreatePrice(sessionCreatePriceMinor)})`
+      : copy.engineNameSave
 
     return withDevOverlay(
       <div className="app engine-preview" data-testid="active-session">
@@ -12576,7 +12685,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                     type="button"
                     className="primary"
                     data-testid="session-name-save"
-                    disabled={engineNameSaving}
+                    disabled={engineNameSaving || Boolean(authSession?.user?.id && client && sessionCreatePriceLoading)}
                     onClick={async () => {
                       markUserInitiatedInteraction('pointer')
                       setEngineLastInputActivityAt(Date.now())
@@ -12658,7 +12767,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                       setEngineLastInputActivityAt(Date.now())
                     }}
                   >
-                    {copy.engineNameSave}
+                    {engineNameSaveLabel}
                   </button>
                   <button
                     type="button"
@@ -13397,7 +13506,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
                               <li
                                 key={item.id}
                                 ref={(node) => {
-                                  engineEntryNodesRef.current[item.id] = node
+                                  if (node) {
+                                    engineEntryNodesRef.current[item.id] = node
+                                  } else {
+                                    delete engineEntryNodesRef.current[item.id]
+                                  }
                                 }}
                                 style={
                                   engineEntryRowSpans[item.id]

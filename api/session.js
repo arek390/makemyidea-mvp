@@ -1,6 +1,14 @@
+import { randomUUID } from 'crypto'
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../src/lib/server/http.js'
 import { resolveAction } from '../src/lib/server/router.js'
 import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
+import {
+  chargeUserBalance,
+  ensureBillingAccount,
+  getPriceForAction,
+  normalizeBillingError,
+} from '../src/lib/server/billing.js'
+import { recordSessionBillingEvent } from '../src/lib/server/aiCostEvents.js'
 
 const getBearerToken = (req) => {
   const authHeader =
@@ -16,6 +24,10 @@ const getBearerToken = (req) => {
 
 const logDeleteStage = (stage, meta) => {
   console.log('[session.delete]', stage, meta)
+}
+
+const logCreateStage = (stage, meta) => {
+  console.log('[session.create]', stage, meta)
 }
 
 const deleteAndCount = async ({ query, label, table, selectColumns, filters }) => {
@@ -45,6 +57,205 @@ export default async function handler(req, res) {
   if (body) req.body = body
 
   const action = resolveAction(req, body)
+  if (action === 'create') {
+    if (req.method !== 'POST') {
+      methodNotAllowed(res, ['POST'])
+      return
+    }
+
+    const token = getBearerToken(req)
+    if (!token) {
+      sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
+      return
+    }
+
+    const payload = body && typeof body === 'object' ? body : {}
+    const name = String(payload.name || payload.sessionName || '').replace(/\s+/g, ' ').trim().slice(0, 80)
+    if (!name) {
+      sendJson(res, 400, { ok: false, error: 'SESSION_NAME_REQUIRED' })
+      return
+    }
+
+    const supabaseAdmin = getSupabaseAdmin()
+    const authRes = await supabaseAdmin.auth.getUser(token)
+    const currentUserId = authRes?.data?.user?.id || null
+    if (authRes?.error || !currentUserId) {
+      sendJson(res, 401, { ok: false, error: 'AUTH_REQUIRED' })
+      return
+    }
+
+    const existingRes = await supabaseAdmin
+      .schema('public')
+      .from('sessions')
+      .select('id,name')
+      .eq('user_id', currentUserId)
+    if (existingRes.error) {
+      logCreateStage('name_check_failed', {
+        currentUserId,
+        message: existingRes.error.message || null,
+        code: existingRes.error.code || null,
+      })
+      sendJson(res, 500, { ok: false, error: 'SESSION_NAME_CHECK_FAILED' })
+      return
+    }
+    const normalizedName = name.toLowerCase()
+    const hasCollision = Boolean(
+      (existingRes.data || []).some((row) => String(row?.name || '').trim().toLowerCase() === normalizedName)
+    )
+    if (hasCollision) {
+      sendJson(res, 409, { ok: false, error: 'SESSION_NAME_COLLISION' })
+      return
+    }
+
+    let sessionCreatePriceMinor = null
+    try {
+      sessionCreatePriceMinor = await getPriceForAction('session_create', 'PLN', supabaseAdmin)
+      await ensureBillingAccount(currentUserId, supabaseAdmin)
+      const accountRes = await supabaseAdmin
+        .schema('public')
+        .from('billing_accounts')
+        .select('balance_pln_grosze')
+        .eq('user_id', currentUserId)
+        .maybeSingle()
+      if (accountRes.error) {
+        logCreateStage('balance_check_failed', {
+          currentUserId,
+          message: accountRes.error.message || null,
+          code: accountRes.error.code || null,
+        })
+        sendJson(res, 500, { ok: false, error: 'BILLING_ACCOUNT_LOOKUP_FAILED' })
+        return
+      }
+      const currentBalanceMinor = Number(accountRes.data?.balance_pln_grosze ?? 0)
+      if (!Number.isFinite(currentBalanceMinor) || currentBalanceMinor < sessionCreatePriceMinor) {
+        sendJson(res, 402, { ok: false, error: 'INSUFFICIENT_BALANCE' })
+        return
+      }
+    } catch (error) {
+      const normalized = normalizeBillingError(error)
+      if (normalized?.status) {
+        sendJson(res, normalized.status, { ok: false, error: normalized.code })
+        return
+      }
+      logCreateStage('billing_preflight_failed', {
+        currentUserId,
+        message: error?.message || null,
+        code: error?.code || null,
+      })
+      sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
+      return
+    }
+
+    const sessionId = randomUUID()
+    logCreateStage('insert_start', { sessionId, currentUserId })
+    const insertSessionRes = await supabaseAdmin
+      .schema('public')
+      .from('sessions')
+      .insert({ id: sessionId, user_id: currentUserId, name })
+      .select('id,user_id,name,created_at,updated_at,last_group_code,last_mode_code,last_category_code,stuck_counter')
+      .maybeSingle()
+    if (insertSessionRes.error || !insertSessionRes.data?.id) {
+      logCreateStage('insert_session_failed', {
+        sessionId,
+        currentUserId,
+        message: insertSessionRes.error?.message || null,
+        code: insertSessionRes.error?.code || null,
+      })
+      const code = insertSessionRes.error?.code === '23505' ? 'SESSION_NAME_COLLISION' : 'SESSION_CREATE_FAILED'
+      sendJson(res, code === 'SESSION_NAME_COLLISION' ? 409 : 500, { ok: false, error: code })
+      return
+    }
+
+    const insertAclRes = await supabaseAdmin
+      .schema('public')
+      .from('user_sessions')
+      .insert({
+        user_id: currentUserId,
+        session_id: sessionId,
+        payload: {},
+        updated_at: new Date().toISOString(),
+      })
+    if (insertAclRes.error) {
+      logCreateStage('insert_acl_failed', {
+        sessionId,
+        currentUserId,
+        message: insertAclRes.error.message || null,
+        code: insertAclRes.error.code || null,
+      })
+      await supabaseAdmin.schema('public').from('sessions').delete().eq('id', sessionId).catch(() => {})
+      sendJson(res, 500, { ok: false, error: 'SESSION_CREATE_FAILED' })
+      return
+    }
+
+    let billingResult = null
+    try {
+      billingResult = await chargeUserBalance(currentUserId, 'session_create', sessionId, supabaseAdmin)
+      await recordSessionBillingEvent(supabaseAdmin, {
+        sessionId,
+        reportId: null,
+        userId: currentUserId,
+        actionKey: 'session_create',
+        referenceId: sessionId,
+        amountMinor: billingResult.amountMinor,
+        currency: billingResult.currency,
+      })
+    } catch (error) {
+      const normalized = normalizeBillingError(error)
+      logCreateStage('billing_failed_rollback_start', {
+        sessionId,
+        currentUserId,
+        code: normalized?.code || error?.code || null,
+        message: error?.message || null,
+      })
+      const userSessionRollback = await supabaseAdmin
+        .schema('public')
+        .from('user_sessions')
+        .delete()
+        .eq('session_id', sessionId)
+        .eq('user_id', currentUserId)
+      const sessionRollback = await supabaseAdmin
+        .schema('public')
+        .from('sessions')
+        .delete()
+        .eq('id', sessionId)
+        .eq('user_id', currentUserId)
+      logCreateStage('billing_failed_rollback_complete', {
+        sessionId,
+        userSessionRollbackOk: !userSessionRollback.error,
+        sessionRollbackOk: !sessionRollback.error,
+      })
+      if (normalized?.code === 'INSUFFICIENT_BALANCE') {
+        sendJson(res, 402, { ok: false, error: 'INSUFFICIENT_BALANCE' })
+        return
+      }
+      if (normalized?.status) {
+        sendJson(res, normalized.status, { ok: false, error: normalized.code })
+        return
+      }
+      sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
+      return
+    }
+
+    logCreateStage('create_complete', {
+      sessionId,
+      currentUserId,
+      amountMinor: billingResult?.amountMinor ?? null,
+      balanceAfterMinor: billingResult?.balanceAfterMinor ?? null,
+      expectedAmountMinor: sessionCreatePriceMinor,
+    })
+    sendJson(res, 200, {
+      ok: true,
+      session: insertSessionRes.data,
+      balance_after_minor: billingResult?.balanceAfterMinor ?? null,
+      billing: {
+        actionKey: 'session_create',
+        currency: billingResult?.currency ?? 'PLN',
+        amountMinor: billingResult?.amountMinor ?? null,
+        balanceAfterMinor: billingResult?.balanceAfterMinor ?? null,
+      },
+    })
+    return
+  }
   if (action !== 'delete') {
     notFound(res)
     return
