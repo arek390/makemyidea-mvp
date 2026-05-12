@@ -5092,6 +5092,7 @@ button.danger-solid:hover:not(:disabled) {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 1rem;
 }
 
@@ -5251,6 +5252,9 @@ button.danger-solid:hover:not(:disabled) {
   justify-content: center;
   gap: 0.45rem;
   min-width: 140px;
+  max-width: 100%;
+  white-space: normal;
+  line-height: 1.2;
   position: relative;
 }
 
