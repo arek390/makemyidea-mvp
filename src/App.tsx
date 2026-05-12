@@ -4468,6 +4468,8 @@ const isAuthFlowInProgress = () => {
       id: item.id,
       text: item.text,
       createdAt: item.created_at,
+      matrix_row: item.matrix_row ?? null,
+      matrix_col: item.matrix_col ?? null,
       tags: item.label ? [item.label] : undefined,
     }))
     const matrixContext =
@@ -6910,24 +6912,24 @@ const isMissingLabel = (item: EngineBoardItem) => {
       }
       applyUsageModel(data.meta)
       void applyUsageToSession(data.meta, enginePreviewSessionId)
-      const baseQuestionId = normalized.questions.length
+      const contextualQuestionId = normalized.questions.length
         ? normalized.questions[0]?.id
         : normalized.questionObj?.id
-      console.log('[facilitation] rewrite', {
-        base_question_id: baseQuestionId ?? null,
-        llm_called: true,
+      console.log('[facilitation] contextual_question', {
+        question_id: contextualQuestionId ?? null,
+        llm_called: normalized.labelType !== 'fallback',
         raw_question_shown: false,
         model_used: data.meta?.modelUsed ?? null,
         items_count: boardEntries.length,
       })
-      logFacilitationEvent('facilitation_rewrite', {
-        base_question_id: baseQuestionId ?? null,
-        llm_called: true,
+      logFacilitationEvent('facilitation_contextual_question', {
+        question_id: contextualQuestionId ?? null,
+        llm_called: normalized.labelType !== 'fallback',
         raw_question_shown: false,
         model_used: data.meta?.modelUsed ?? null,
         items_count: boardEntries.length,
       })
-      if (normalized.labelType !== 'ai') {
+      if (normalized.labelType !== 'ai' && !normalized.questionText) {
         setEnginePromptSource(null)
         setEngineActivePrompt(null)
         setEngineUiState('FREE_FLOW')
@@ -6935,7 +6937,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         setEnginePreviewError(copy.engineFacilitationRetryMessage)
         return
       }
-      setEnginePromptSource('llm')
+      setEnginePromptSource(normalized.labelType === 'fallback' ? 'fallback' : 'llm')
       if (normalized.questions.length) {
         setLastLlmWhy(normalized.questions[0]?.why_this_question ?? null)
       } else if (normalized.questionObj) {
@@ -11016,6 +11018,23 @@ const isMissingLabel = (item: EngineBoardItem) => {
     </>
   )
 
+  const reportHydrationAttemptedRef = useRef(false)
+
+  useEffect(() => {
+    if (!isReport) {
+      reportHydrationAttemptedRef.current = false
+      return
+    }
+    if (reportHydrationAttemptedRef.current) return
+    if (typeof window === 'undefined') return
+    if (enginePreviewSessionId) return
+    const storedSessionId = window.sessionStorage.getItem('reportReturnSessionId')
+    const sessionId = String(storedSessionId || '').trim()
+    if (!sessionId) return
+    reportHydrationAttemptedRef.current = true
+    void openEngineSession(sessionId)
+  }, [isReport, enginePreviewSessionId])
+
   if (isDebugMatrix) {
     return withDevOverlay(<DebugMatrixPage llmApiBase={llmApiBase} uiLanguage={uiLanguage} />)
   }
@@ -11059,21 +11078,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
     )
   }
 
-  // Mobile gate: phones render a lightweight landing page only.
-  // Tablet and desktop (>= 768px) continue through the existing app unchanged.
-  if (isPhoneViewport) {
-    return withDevOverlay(
-      <MobileLanding
-        language={uiLanguage as MobileLandingLanguage}
-        logoUrl={landingLogoUrl}
-        onLanguageChange={(nextLanguage) => setUiLanguage(nextLanguage)}
-        feedbackLabel={copy.feedbackButtonLabel}
-        onFeedbackOpen={() => setFeedbackOpen(true)}
-        feedbackPanel={feedbackPanel}
-      />
-    )
-  }
-
   const llmUsageClass = llmUsageModel
     ? `llm-model-${llmUsageModel.replace(/\./g, '-')}`
     : 'llm-model-none'
@@ -11104,22 +11108,21 @@ const isMissingLabel = (item: EngineBoardItem) => {
       sessionUsageDiagnostics.eventsQueryStatus === 'error')
   const showSessionUsage =
     showDiagnostics && Boolean(activeUsageSessionId) && isAuthed && !sessionUsageHasReadError
-  const reportHydrationAttemptedRef = useRef(false)
 
-  useEffect(() => {
-    if (!isReport) {
-      reportHydrationAttemptedRef.current = false
-      return
-    }
-    if (reportHydrationAttemptedRef.current) return
-    if (typeof window === 'undefined') return
-    if (enginePreviewSessionId) return
-    const storedSessionId = window.sessionStorage.getItem('reportReturnSessionId')
-    const sessionId = String(storedSessionId || '').trim()
-    if (!sessionId) return
-    reportHydrationAttemptedRef.current = true
-    void openEngineSession(sessionId)
-  }, [isReport, enginePreviewSessionId])
+  // Mobile gate: phones render a lightweight landing page only.
+  // Keep this after all hooks so resizing across the phone breakpoint does not change hook order.
+  if (isPhoneViewport) {
+    return withDevOverlay(
+      <MobileLanding
+        language={uiLanguage as MobileLandingLanguage}
+        logoUrl={landingLogoUrl}
+        onLanguageChange={(nextLanguage) => setUiLanguage(nextLanguage)}
+        feedbackLabel={copy.feedbackButtonLabel}
+        onFeedbackOpen={() => setFeedbackOpen(true)}
+        feedbackPanel={feedbackPanel}
+      />
+    )
+  }
 
   if (isReport && !isTopup) {
     const snapshot = getReportSessionSnapshot()

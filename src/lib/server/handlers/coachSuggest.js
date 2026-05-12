@@ -1,5 +1,3 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import { runLlmTask, createRateLimiter } from '../../../llm/llmRouter.mjs'
 import { getSupabaseAdmin } from '../supabaseAdmin.js'
 import { recordSessionAiUsageEvent } from '../aiCostEvents.js'
@@ -13,7 +11,6 @@ import {
   sendJson,
 } from '../http.js'
 
-let cachedDataset = null
 const limiter = createRateLimiter({ windowMs: 60_000, max: 20 })
 
 const recordCoachUsageEvent = async ({ sessionId, currentUserId, actionKey, requestId, meta }) => {
@@ -27,44 +24,6 @@ const recordCoachUsageEvent = async ({ sessionId, currentUserId, actionKey, requ
     requestId: requestId || null,
     feature: actionKey,
     meta,
-  })
-}
-
-const parseCsvRow = (line, delimiter) => {
-  const result = []
-  let current = ''
-  let inQuotes = false
-  for (let i = 0; i < line.length; i += 1) {
-    const char = line[i]
-    if (char === '"') {
-      if (inQuotes && line[i + 1] === '"') {
-        current += '"'
-        i += 1
-      } else {
-        inQuotes = !inQuotes
-      }
-    } else if (char === delimiter && !inQuotes) {
-      result.push(current)
-      current = ''
-    } else {
-      current += char
-    }
-  }
-  result.push(current)
-  return result.map((value) => value.trim())
-}
-
-const parseCsv = (contents) => {
-  const lines = contents.split(/\r?\n/).filter((line) => line.trim())
-  if (!lines.length) return []
-  const delimiter = ';'
-  const headers = parseCsvRow(lines[0], delimiter)
-  return lines.slice(1).map((line) => {
-    const values = parseCsvRow(line, delimiter)
-    return headers.reduce((acc, header, index) => {
-      acc[header] = values[index] ?? ''
-      return acc
-    }, {})
   })
 }
 
@@ -96,91 +55,6 @@ const sanitizeTranscriptCorrectionText = (input) =>
     .replace(/([,.;:!?])(?=[^\s])/g, '$1 ')
     .trim()
 
-const resolveCsvPath = () =>
-  path.join(process.cwd(), 'public', 'questions_enriched_pl_eng.csv')
-
-const loadQuestionsFromCsvOnce = () => {
-  if (cachedDataset) return cachedDataset
-  const csvPath = resolveCsvPath()
-  if (!fs.existsSync(csvPath)) {
-    throw new Error(`CSV_NOT_FOUND at ${csvPath}`)
-  }
-  const contents = fs.readFileSync(csvPath, 'utf8')
-  const rows = parseCsv(contents)
-  if (rows.length <= 1000) {
-    throw new Error(`CSV_INVALID: rows=${rows.length}`)
-  }
-  const byId = new Map()
-  const langSet = new Set()
-  rows.forEach((row) => {
-    const id = row.id
-    if (!id) return
-    const lang = normalizeLang(row.lang)
-    langSet.add(lang)
-    const entry = byId.get(id) || {
-      id,
-      group_code: row.group_code,
-      mode_code: Number(row.mode_code),
-      category_code: row.category_code,
-      intent_code: row.intent_code,
-      difficulty: Number(row.difficulty),
-      priority: row.priority ? Number(row.priority) : 50,
-      is_active: row.is_active ? Number(row.is_active) : 1,
-      texts: {},
-    }
-    entry.texts[lang] = row.text ?? ''
-    byId.set(id, entry)
-  })
-  const uniqueIds = byId.size
-  if (uniqueIds < 800 || uniqueIds > 900) {
-    throw new Error(`CSV_INVALID: uniqueIds=${uniqueIds}`)
-  }
-  if (!langSet.has('pl') || !langSet.has('en')) {
-    throw new Error(`CSV_INVALID: langs=${Array.from(langSet).join(',')}`)
-  }
-  cachedDataset = {
-    byId,
-    list: Array.from(byId.values()),
-    stats: { rows: rows.length, uniqueIds, langs: Array.from(langSet) },
-    csvPath,
-  }
-  return cachedDataset
-}
-
-const sortByNumericSuffix = (items) =>
-  [...items].sort((a, b) => {
-    const aNum = Number(String(a.id).split('_')[1] || 0)
-    const bNum = Number(String(b.id).split('_')[1] || 0)
-    if (aNum === bNum) return String(a.id).localeCompare(String(b.id))
-    return aNum - bNum
-  })
-
-const pickRandom = (items) => {
-  if (!items.length) return null
-  return items[Math.floor(Math.random() * items.length)]
-}
-
-const listNeighborCells = (group, mode) => {
-  const groups = ['A', 'B', 'C']
-  const groupIndex = groups.indexOf(group)
-  if (groupIndex === -1) return []
-  const neighbors = []
-  for (let g = -1; g <= 1; g += 1) {
-    for (let m = -1; m <= 1; m += 1) {
-      if (g === 0 && m === 0) continue
-      const nextGroup = groups[groupIndex + g]
-      const nextMode = mode + m
-      if (!nextGroup) continue
-      if (nextMode < 1 || nextMode > 3) continue
-      neighbors.push({ group: nextGroup, mode: nextMode })
-    }
-  }
-  return neighbors
-}
-
-const CELL_GROUPS = ['A', 'B', 'C']
-const CELL_MODES = [1, 2, 3]
-
 const cellKey = (group, mode) => `${group}:${mode}`
 
 const perspectiveToMode = (value) => {
@@ -190,86 +64,6 @@ const perspectiveToMode = (value) => {
   if (raw === 'should_be') return 3
   return null
 }
-
-const listAllCells = () =>
-  CELL_GROUPS.flatMap((group) => CELL_MODES.map((mode) => ({ group, mode })))
-
-const listCellsForPerspective = (mode, anchorGroup = null) => {
-  if (!Number.isFinite(Number(mode))) return []
-  if (!anchorGroup) {
-    return CELL_GROUPS.map((group) => ({ group, mode: Number(mode) }))
-  }
-  const groupIndex = CELL_GROUPS.indexOf(anchorGroup)
-  if (groupIndex === -1) {
-    return CELL_GROUPS.map((group) => ({ group, mode: Number(mode) }))
-  }
-  return [-1, 0, 1]
-    .map((delta) => CELL_GROUPS[groupIndex + delta])
-    .filter(Boolean)
-    .map((group) => ({ group, mode: Number(mode) }))
-}
-
-const listNeighborCellsChebyshev = (group, mode) => {
-  const neighbors = []
-  const groupIndex = CELL_GROUPS.indexOf(group)
-  if (groupIndex === -1) return neighbors
-  for (let dg = -1; dg <= 1; dg += 1) {
-    for (let dm = -1; dm <= 1; dm += 1) {
-      if (dg === 0 && dm === 0) continue
-      const nextGroup = CELL_GROUPS[groupIndex + dg]
-      const nextMode = mode + dm
-      if (!nextGroup) continue
-      if (nextMode < 1 || nextMode > 3) continue
-      neighbors.push({ group: nextGroup, mode: nextMode })
-    }
-  }
-  return neighbors
-}
-
-const getCellQuestions = (dataset, group, mode) =>
-  sortByNumericSuffix(
-    dataset.list.filter(
-      (q) => Number(q.is_active) === 1 && q.group_code === group && Number(q.mode_code) === Number(mode)
-    )
-  )
-
-const pickSequentialFromCell = ({ dataset, group, mode, pointer = 0, askedSet }) => {
-  const list = getCellQuestions(dataset, group, mode)
-  if (!list.length) return { question: null, nextPointer: pointer }
-  const start = pointer % list.length
-  let idx = start
-  for (let i = 0; i < list.length; i += 1) {
-    const candidate = list[idx]
-    if (!askedSet || !askedSet.has(candidate.id)) {
-      return { question: candidate, nextPointer: (idx + 1) % list.length }
-    }
-    idx = (idx + 1) % list.length
-  }
-  return { question: list[start], nextPointer: (start + 1) % list.length }
-}
-
-const pickRandomFromCell = ({ dataset, group, mode, askedSet }) => {
-  const list = getCellQuestions(dataset, group, mode)
-  if (!list.length) return null
-  if (askedSet && askedSet.size) {
-    const unasked = list.filter((q) => !askedSet.has(q.id))
-    if (unasked.length) {
-      return unasked[Math.floor(Math.random() * unasked.length)]
-    }
-  }
-  return list[Math.floor(Math.random() * list.length)]
-}
-
-const mapQuestion = (question, lang) => ({
-  id: question.id,
-  text: question.texts[lang] || question.texts.pl || '',
-  group_code: question.group_code,
-  mode_code: question.mode_code,
-  category_code: question.category_code,
-  intent_code: question.intent_code,
-  difficulty: question.difficulty,
-  priority: question.priority,
-})
 
 const normalizeQuestion = (input) => {
   if (!input) return null
@@ -328,6 +122,312 @@ const safeParseJson = (value, fallback) => {
     return fallback
   }
 }
+
+const TARGET_AREA_TO_MODE = {
+  as_is: 1,
+  not_working: 2,
+  should_be: 3,
+}
+
+const modeToTargetArea = (mode) => {
+  const numeric = Number(mode)
+  if (numeric === 1) return 'as_is'
+  if (numeric === 2) return 'not_working'
+  if (numeric === 3) return 'should_be'
+  return null
+}
+
+const normalizeTargetArea = (value) => {
+  const raw = String(value || '').trim().toLowerCase()
+  if (raw === 'as_is' || raw === 'asis' || raw === 'as-is') return 'as_is'
+  if (raw === 'not_working' || raw === 'not-working' || raw === 'notworking') return 'not_working'
+  if (raw === 'should_be' || raw === 'should-be' || raw === 'shouldbe') return 'should_be'
+  return null
+}
+
+const resolveTargetArea = ({ requestedPerspective, requestedMode, currentModeCode, action }) =>
+  normalizeTargetArea(requestedPerspective) ||
+  modeToTargetArea(requestedMode) ||
+  modeToTargetArea(currentModeCode) ||
+  (String(action || '').toUpperCase() === 'PERSPECTIVE' ? 'not_working' : 'not_working')
+
+const normalizeBoardArea = (value) => normalizeTargetArea(value) || modeToTargetArea(value)
+
+const clipLine = (value, max = 220) => {
+  const text = String(value || '').replace(/\s+/g, ' ').trim()
+  if (text.length <= max) return text
+  return `${text.slice(0, max - 1).trim()}…`
+}
+
+const groupBoardEntriesByArea = (items) => {
+  const grouped = {
+    as_is: [],
+    not_working: [],
+    should_be: [],
+    unassigned: [],
+  }
+  const source = Array.isArray(items) ? items : []
+  source.forEach((item) => {
+    const text = typeof item === 'string' ? item : item?.text
+    const clipped = clipLine(text)
+    if (!clipped) return
+    const area = typeof item === 'object' ? normalizeBoardArea(item.matrix_col) : null
+    const entry = typeof item === 'object' && item?.id ? `${item.id}: ${clipped}` : clipped
+    if (area && grouped[area]) {
+      grouped[area].push(entry)
+    } else {
+      grouped.unassigned.push(entry)
+    }
+  })
+  return grouped
+}
+
+const formatAreaSection = (label, items) => {
+  const limited = items.slice(-12)
+  if (!limited.length) return `${label}:\n- [empty]`
+  return `${label}:\n${limited.map((item) => `- ${item}`).join('\n')}`
+}
+
+const buildContextualQuestionPrompt = ({
+  lang,
+  targetArea,
+  sessionName,
+  boardEntriesRaw,
+  askedTexts,
+  lastQuestionText,
+}) => {
+  const grouped = groupBoardEntriesByArea(boardEntriesRaw)
+  const recentQuestions = [
+    ...askedTexts.slice(-6),
+    lastQuestionText,
+  ]
+    .map((item) => clipLine(item, 180))
+    .filter(Boolean)
+  const languageName = lang === 'pl' ? 'pl' : 'en'
+  const sessionText = clipLine(sessionName, 260) || '[not provided]'
+  return [
+    'SYSTEM:',
+    'You are a product discovery facilitator for early-stage product ideas. Your job is to ask one precise contextual question that helps the founder add a valuable board entry. The question should help reveal contradictions, tradeoffs, risks, constraints, failure modes, or decision criteria. Do not brainstorm solutions unless the target area is should_be and the question is about desired outcome or success criteria. Return strict JSON only.',
+    '',
+    'USER:',
+    `Language: ${languageName}`,
+    `Target area: ${targetArea}`,
+    '',
+    'Meaning of target area:',
+    '- as_is: ask about current situation, existing behavior, assumptions, constraints, dependencies, usage context, or current workaround.',
+    '- not_working: ask about contradiction, tension, failure mode, bottleneck, risk, unwanted compromise, or mismatch.',
+    '- should_be: ask about desired state, success condition, acceptable tradeoff, decision criterion, or target behavior.',
+    '',
+    'Session / idea:',
+    sessionText,
+    '',
+    'Current board entries grouped by area:',
+    formatAreaSection('AS_IS', grouped.as_is),
+    formatAreaSection('NOT_WORKING', grouped.not_working),
+    formatAreaSection('SHOULD_BE', grouped.should_be),
+    grouped.unassigned.length ? formatAreaSection('UNASSIGNED', grouped.unassigned) : '',
+    '',
+    'Recently asked questions:',
+    recentQuestions.length ? recentQuestions.map((item) => `- ${item}`).join('\n') : '- [none]',
+    '',
+    'Generate one new question for the target area.',
+    'The question must:',
+    '- be one sentence',
+    '- be specific to the current idea',
+    '- be answerable by the founder',
+    '- help create a useful board entry',
+    '- avoid repeating recent questions',
+    '- avoid generic discovery wording',
+    '- avoid mentioning matrix, cells, TRIZ, system, analysis, user',
+    '- return strict JSON only',
+    '',
+    'Return:',
+    '{"question":"...","target_area":"as_is|not_working|should_be","reason":"...","contradiction_signal":"..."}',
+  ]
+    .filter(Boolean)
+    .join('\n')
+}
+
+const hasForbiddenFacilitationTerm = (text) =>
+  /\b(?:matrix|triz|system|analysis|user|[ABC][123])\b/i.test(text) ||
+  /\b(?:matryca|analiza|użytkownik|uzytkownik)\b/i.test(text)
+
+const hasMarkdownSyntax = (text) => /[`*_#>\[\]\n\r]/.test(text)
+
+const isLikelyWrongLanguage = (text, lang) => {
+  const normalized = normalizeText(text)
+  if (lang === 'pl') {
+    const englishStart = /^(what|where|which|how|when|why|who|is|are|does|do|can|could|should)\b/.test(normalized)
+    const hasPolishSignal = /[ąćęłńóśżź]/i.test(text) || /\b(co|gdzie|który|ktory|jaki|jak|czy|po czym|które|ktore|w którym|w ktorym)\b/.test(normalized)
+    return englishStart && !hasPolishSignal
+  }
+  const polishStart = /^(co|gdzie|który|ktory|jaki|jak|czy|dlaczego|po czym|w którym|w ktorym)\b/.test(normalized)
+  return /[ąćęłńóśżź]/i.test(text) || polishStart
+}
+
+const tokenSet = (text) =>
+  new Set(
+    normalizeText(text)
+      .replace(/[^\p{L}\p{N}\s]/gu, ' ')
+      .split(/\s+/)
+      .filter((token) => token.length >= 4)
+  )
+
+const isNearDuplicateQuestion = (text, previousTexts) => {
+  const normalized = normalizeText(text)
+  if (!normalized) return true
+  return previousTexts.some((previous) => {
+    const prev = normalizeText(previous)
+    if (!prev) return false
+    if (prev === normalized) return true
+    if (prev.length > 24 && (prev.includes(normalized) || normalized.includes(prev))) return true
+    const a = tokenSet(normalized)
+    const b = tokenSet(prev)
+    if (a.size < 4 || b.size < 4) return false
+    const intersection = [...a].filter((token) => b.has(token)).length
+    const union = new Set([...a, ...b]).size
+    return union > 0 && intersection / union >= 0.82
+  })
+}
+
+const validateContextualQuestionPayload = ({ payload, targetArea, lang, previousQuestions }) => {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return { ok: false, reason: 'not_object' }
+  }
+  const rawQuestion = String(payload.question || '').trim()
+  if (hasMarkdownSyntax(rawQuestion)) return { ok: false, reason: 'markdown_or_newline' }
+  if (hasForbiddenFacilitationTerm(rawQuestion)) return { ok: false, reason: 'forbidden_term' }
+  const question = sanitizeQuestionText(rawQuestion)
+  if (!question) return { ok: false, reason: 'missing_question' }
+  if (!question.endsWith('?')) return { ok: false, reason: 'question_mark_required' }
+  if ((question.match(/\?/g) || []).length !== 1) return { ok: false, reason: 'multiple_questions' }
+  if (/[.!]\s+\S/.test(question.slice(0, -1))) return { ok: false, reason: 'multiple_sentences' }
+  if (normalizeTargetArea(payload.target_area) !== targetArea) return { ok: false, reason: 'target_area_mismatch' }
+  if (isNearDuplicateQuestion(question, previousQuestions)) return { ok: false, reason: 'duplicate_or_near_duplicate' }
+  if (isLikelyWrongLanguage(question, lang)) return { ok: false, reason: 'language_mismatch' }
+  return {
+    ok: true,
+    data: {
+      question,
+      target_area: targetArea,
+      reason: clipLine(payload.reason, 260),
+      contradiction_signal: clipLine(payload.contradiction_signal, 260),
+    },
+  }
+}
+
+const parseContextualQuestionResponse = ({ value, targetArea, lang, previousQuestions }) => {
+  const trimmed = String(value || '').trim()
+  if (!trimmed || trimmed.startsWith('```') || !trimmed.startsWith('{') || !trimmed.endsWith('}')) {
+    return { ok: false, reason: 'strict_json_required' }
+  }
+  const parsed = safeParseJson(trimmed, null)
+  return validateContextualQuestionPayload({
+    payload: parsed,
+    targetArea,
+    lang,
+    previousQuestions,
+  })
+}
+
+const buildQuestionRepairPrompt = ({
+  originalPrompt,
+  rawResponse,
+  validationReason,
+  targetArea,
+  lang,
+}) =>
+  [
+    originalPrompt,
+    '',
+    'REPAIR:',
+    `The previous response was invalid because: ${validationReason || 'invalid_response'}.`,
+    `Return one corrected strict JSON object only for target_area "${targetArea}" and language "${lang}".`,
+    'The question must end with exactly one question mark, contain no markdown, no forbidden words, and no second question.',
+    'Previous invalid response:',
+    String(rawResponse || '').slice(0, 1200),
+  ].join('\n')
+
+const contextualFallbackQuestions = {
+  pl: {
+    as_is: [
+      'Które obecne założenie lub ograniczenie najmocniej wpływa na to, jak ten pomysł działa dzisiaj?',
+      'Jaki fakt z obecnej sytuacji najbardziej ogranicza możliwe decyzje wokół tego pomysłu?',
+    ],
+    not_working: [
+      'Gdzie w tym pomyśle pojawia się napięcie między tym, czego oczekujesz, a tym, co obecnie ogranicza rozwiązanie?',
+      'Który kompromis w tym pomyśle może później stać się najtrudniejszy do zaakceptowania?',
+    ],
+    should_be: [
+      'Po czym poznasz, że docelowe rozwiązanie poprawia sytuację bez przenoszenia problemu w inne miejsce?',
+      'Jakie kryterium pokaże, że wybrany kierunek jest lepszy mimo koniecznych kompromisów?',
+    ],
+  },
+  en: {
+    as_is: [
+      'Which current assumption or constraint most shapes how this idea works today?',
+      'What fact about the current situation limits the decisions around this idea the most?',
+    ],
+    not_working: [
+      'Where does this idea create tension between what you want and what currently limits the solution?',
+      'Which compromise in this idea could become the hardest one to accept later?',
+    ],
+    should_be: [
+      'How will you know the target solution improves the situation without moving the problem somewhere else?',
+      'What criterion will show that the chosen direction is better despite the tradeoffs it requires?',
+    ],
+  },
+}
+
+const buildContextualFallbackQuestion = ({ lang, targetArea, previousQuestions }) => {
+  const locale = lang === 'pl' ? 'pl' : 'en'
+  const options = contextualFallbackQuestions[locale][targetArea] || contextualFallbackQuestions[locale].not_working
+  return options.find((question) => !isNearDuplicateQuestion(question, previousQuestions)) || options[0]
+}
+
+const hashQuestionId = (text) => {
+  let hash = 0
+  for (let i = 0; i < text.length; i += 1) {
+    hash = (hash * 31 + text.charCodeAt(i)) >>> 0
+  }
+  return hash.toString(16)
+}
+
+const mergeLlmMetas = (...metas) => {
+  const tokens = metas.reduce(
+    (acc, meta) => {
+      const input = Number(meta?.tokens?.input ?? 0)
+      const output = Number(meta?.tokens?.output ?? 0)
+      const total = Number(meta?.tokens?.total ?? input + output)
+      return {
+        input: acc.input + input,
+        output: acc.output + output,
+        total: acc.total + total,
+      }
+    },
+    { input: 0, output: 0, total: 0 }
+  )
+  const lastMeta = [...metas].reverse().find((meta) => meta?.modelUsed) || {}
+  return {
+    aiSupportEnabled: metas.some((meta) => meta?.aiSupportEnabled !== false),
+    modelUsed: lastMeta.modelUsed ?? null,
+    escalated: metas.some((meta) => Boolean(meta?.escalated)),
+    tokens,
+  }
+}
+
+const buildContextualQuestionObject = ({ text, targetArea, groupCode, reason, contradictionSignal, source }) => ({
+  id: `llm_contextual_${targetArea}_${hashQuestionId(text)}`,
+  text,
+  group_code: groupCode || null,
+  mode_code: TARGET_AREA_TO_MODE[targetArea],
+  category_code: 'llm_contextual',
+  intent_code: targetArea,
+  source,
+  target_area: targetArea,
+  reason: reason || '',
+  contradiction_signal: contradictionSignal || '',
+})
 
 const pickCellTexts = (cells, keys) =>
   keys.flatMap((key) =>
@@ -2556,8 +2656,6 @@ Write entries exactly in the same language as the input entries.
       }
     }
 
-    const dataset = loadQuestionsFromCsvOnce()
-
     if (process.env.NODE_ENV !== 'production') {
       if (!sessionName || !Array.isArray(boardEntriesRaw)) {
         sendErrorWithId(400, 'MISSING_CONTEXT', 'Missing session context.', 'MISSING_CONTEXT')
@@ -2587,13 +2685,6 @@ Write entries exactly in the same language as the input entries.
       }
     }
 
-    const resolveCurrentCell = () => {
-      if (currentGroupCode && Number.isFinite(Number(currentModeCode))) {
-        return { group: String(currentGroupCode), mode: Number(currentModeCode) }
-      }
-      return memory.currentCell
-    }
-
     const persistMemory = () => {
       if (!body.sessionId) return
       void updateSessionStateRow({
@@ -2621,217 +2712,152 @@ Write entries exactly in the same language as the input entries.
       persistMemory()
     }
 
-    const pickBestCell = (cells, current = null) => {
-      if (!cells.length) return null
-      const avoidKey =
-        previousGroupCode && Number.isFinite(Number(previousModeCode))
-          ? `${previousGroupCode}:${Number(previousModeCode)}`
-          : null
-      const recentSet = new Set([...memory.recentCells, ...recentCells])
-      const scored = cells.map((cell) => {
-        const key = cellKey(cell.group, cell.mode)
-        const visitScore = memory.visitCounts[key] || 0
-        let score = -visitScore
-        if (!recentSet.has(key)) score += 2
-        if (avoidKey && key === avoidKey) score -= 3
-        if (current && cell.group === current.group) score += 1
-        return { cell, key, score }
-      })
-      scored.sort((a, b) => b.score - a.score)
-      const bestScore = scored[0]?.score ?? 0
-      const best = scored.filter((s) => s.score === bestScore)
-      const pick = best[Math.floor(Math.random() * best.length)] || scored[0]
-      if (process.env.DEBUG_PERSPECTIVE === '1') {
-        console.log('[coach/suggest][perspective]', {
+    const targetArea = resolveTargetArea({
+      requestedPerspective,
+      requestedMode,
+      currentModeCode,
+      action: actionNormalized,
+    })
+    const targetMode = TARGET_AREA_TO_MODE[targetArea]
+    const fallbackGroup =
+      ['A', 'B', 'C'].includes(String(currentGroupCode))
+        ? String(currentGroupCode)
+        : memory.currentCell?.group && ['A', 'B', 'C'].includes(String(memory.currentCell.group))
+          ? String(memory.currentCell.group)
+          : ['A', 'B', 'C'].includes(String(previousGroupCode))
+            ? String(previousGroupCode)
+            : 'B'
+    const targetCell = { group: fallbackGroup, mode: targetMode }
+    const previousQuestions = [...askedTexts, lastQuestionText].filter(Boolean)
+    const sendQuestion = async ({ source, text, metaInput, reason = '', contradictionSignal = '', errorCategory = null }) => {
+      updateMemoryCell(targetCell)
+      const meta = {
+        ...buildMeta(metaInput || { aiSupportEnabled: source !== 'fallback', modelUsed: null }),
+        source,
+        errorCategory,
+      }
+      const finalQuestion = normalizeQuestion(
+        buildContextualQuestionObject({
+          text,
+          targetArea,
+          groupCode: targetCell.group,
+          reason,
+          contradictionSignal,
+          source,
+        })
+      )
+      assertQuestionShape(finalQuestion, 'llm_contextual_question')
+      if (source !== 'fallback') {
+        await recordCoachUsageEvent({
+          sessionId,
+          currentUserId,
+          actionKey: `coach-${String(actionNormalized || '').toLowerCase()}`,
           requestId,
-          prevCell: current ? `${current.group}:${Number(current.mode)}` : null,
-          avoidCell: avoidKey,
-          recentCells: [...recentSet],
-          candidates: scored.map((s) => ({ key: s.key, score: s.score })),
-          chosen: pick?.key ?? null,
+          meta,
         })
       }
-      return pick ? pick.cell : null
-    }
-
-    const pickPerspectiveCell = () => {
-      const current = resolveCurrentCell()
-      if (!current) return null
-      const neighbors = listNeighborCellsChebyshev(current.group, Number(current.mode))
-      return pickBestCell(neighbors, current)
-    }
-
-    const pickPerspectiveScopedCell = (targetMode, continuityMode) => {
-      if (!targetMode) return null
-      const current = resolveCurrentCell()
-      if (continuityMode === 'DEEPEN' && current && Number(current.mode) === Number(targetMode)) {
-        return current
-      }
-      const scopedCells = listCellsForPerspective(Number(targetMode), current?.group || null)
-      const pick = pickBestCell(scopedCells, current)
-      if (pick) return pick
-      const fallbackCells = listCellsForPerspective(Number(targetMode))
-      return pickBestCell(fallbackCells, current) || fallbackCells[0] || null
-    }
-
-    const pickRandomCell = () => {
-      const current = resolveCurrentCell()
-      const all = listAllCells()
-      const eligible = current
-        ? all.filter((cell) => cell.group !== current.group || cell.mode !== Number(current.mode))
-        : all
-      return eligible[Math.floor(Math.random() * eligible.length)] || null
-    }
-
-    const pickRandomPerspectiveCell = (targetMode) => {
-      if (!targetMode) return null
-      const cells = listCellsForPerspective(Number(targetMode))
-      return cells[Math.floor(Math.random() * cells.length)] || null
-    }
-
-    const selectBaseQuestion = (localAskedIds = [], mode) => {
-      const askedSet = new Set(localAskedIds.filter(Boolean))
-      const current = resolveCurrentCell()
-      const pickFromCell = (cell) => {
-        if (!cell) return { question: null, cell: null, pointer: null }
-        const key = cellKey(cell.group, cell.mode)
-        const pointer = memory.cellPointers[key] || 0
-        const { question, nextPointer } = pickSequentialFromCell({
-          dataset,
-          group: cell.group,
-          mode: Number(cell.mode),
-          pointer,
-          askedSet,
-        })
-        memory.cellPointers[key] = nextPointer
-        updateMemoryCell(cell)
-        return { question, cell, pointer: nextPointer }
-      }
-      if (mode === 'DEEPEN') {
-        if (requestedMode) {
-          const target =
-            pickPerspectiveScopedCell(requestedMode, 'DEEPEN') ||
-            pickRandomPerspectiveCell(requestedMode)
-          return pickFromCell(target)
-        }
-        const target = current || pickRandomCell()
-        return pickFromCell(target)
-      }
-      if (mode === 'PERSPECTIVE') {
-        if (requestedMode) {
-          const nextCell =
-            pickPerspectiveScopedCell(requestedMode, 'PERSPECTIVE') ||
-            pickRandomPerspectiveCell(requestedMode)
-          return pickFromCell(nextCell)
-        }
-        const nextCell = pickPerspectiveCell() || pickRandomCell()
-        return pickFromCell(nextCell)
-      }
-      if (mode === 'NEXT') {
-        const nextCell = pickRandomCell()
-        if (!nextCell) return { question: null, cell: null, pointer: null }
-        const question = pickRandomFromCell({
-          dataset,
-          group: nextCell.group,
-          mode: Number(nextCell.mode),
-          askedSet,
-        })
-        updateMemoryCell(nextCell)
-        return { question, cell: nextCell, pointer: null }
-      }
-      return { question: null, cell: null, pointer: null }
-    }
-
-    const buildBaseLog = (payload) =>
-      console.log('[coach/suggest][base_select]', {
+      console.log('[coach/suggest][llm-first-question][result]', {
         requestId,
-        ...payload,
+        action: actionNormalized,
+        requestedPerspective,
+        target_area: targetArea,
+        target_cell: `${targetCell.group}:${targetCell.mode}`,
+        source,
+        modelUsed: meta.modelUsed,
+        tokens: meta.tokens,
+        reason,
+        contradiction_signal: contradictionSignal,
+        questionText: finalQuestion?.text ?? null,
       })
-
-    const shouldRejectDuplicateText = (text) => {
-      const normalized = normalizeText(text)
-      if (!normalized) return true
-      if (lastQuestionText && normalizeText(lastQuestionText) === normalized) return true
-      if (askedTextSet.has(normalized)) return true
-      return false
+      sendJson(res, 200, {
+        ok: true,
+        source,
+        question: finalQuestion,
+        data: { questions: [{ ...finalQuestion }] },
+        groundedCount: 0,
+        meta,
+        usage: {
+          model: meta.modelUsed,
+          tokensIn: meta.tokens.input,
+          tokensOut: meta.tokens.output,
+        },
+      })
     }
 
-    if (!aiSupportEnabled) {
-      logStage('llm', { aiSupportEnabled: false })
-      sendJson(res, 200, {
-        ok: false,
-        code: 'LLM_DISABLED',
-        message: 'LLM disabled.',
-        meta: buildMeta({ aiSupportEnabled: false, modelUsed: null, escalated: false }),
+    const sendFallbackQuestion = async (errorCategory) => {
+      const text = buildContextualFallbackQuestion({ lang, targetArea, previousQuestions })
+      await sendQuestion({
+        source: 'fallback',
+        text,
+        metaInput: {
+          aiSupportEnabled: false,
+          modelUsed: null,
+          escalated: false,
+          tokens: { input: 0, output: 0, total: 0 },
+        },
+        reason: 'deterministic fallback after unavailable or invalid LLM response',
+        contradictionSignal: targetArea,
+        errorCategory,
       })
+    }
+
+    console.log('[coach/suggest][llm-first-question][start]', {
+      requestId,
+      action: actionNormalized,
+      requestedPerspective,
+      requestedMode,
+      target_area: targetArea,
+      target_cell: `${targetCell.group}:${targetCell.mode}`,
+      board_items_count: boardEntries.length,
+      asked_texts_count: askedTexts.length,
+      csv_used: false,
+    })
+
+    if (!aiSupportEnabled || killSwitch || !hasOpenAiKey) {
+      logStage('fallback', {
+        reason: killSwitch ? 'kill-switch' : !hasOpenAiKey ? 'missing-openai-key' : 'aiSupport=off',
+        target_area: targetArea,
+      })
+      await sendFallbackQuestion(killSwitch ? 'AI_DISABLED' : !hasOpenAiKey ? 'MISSING_OPENAI_KEY' : 'AI_DISABLED')
       return
     }
-    logStage('llm', { aiSupportEnabled: true })
-    const limitedEntries = boardEntries.slice(0, 10).map((entry) => String(entry || '').trim()).filter(Boolean)
-    const templateUsed = limitedEntries.length === 0 ? 'empty_board' : 'context'
-    const buildPrompt = (baseQuestionText) => {
-      if (lang === 'pl') {
-        if (templateUsed === 'empty_board') {
-          return [
-            'Masz zredagować jedno pytanie facylitacyjne dla użytkownika.',
-            `Tytuł sesji: ${sessionName || ''}`,
-            `Bazowe pytanie (CSV): ${baseQuestionText}`,
-            'Przepisz bazowe pytanie na naturalne pytanie w 2. osobie. Jedno zdanie.',
-            'Bez słów: użytkownik, system, analiza, matryca. Nie wspominaj, że tablica jest pusta.',
-            'Zachowaj sens bazowego pytania. Zwróć tylko pytanie.',
-          ].join('\n')
-        }
-        return [
-          'Masz zredagować jedno pytanie facylitacyjne.',
-          `Tytuł sesji: ${sessionName || ''}`,
-          `Bazowe pytanie (CSV): ${baseQuestionText}`,
-          `Wpisy użytkownika (skrócone):\n${limitedEntries
-            .map((item) => `- ${item}`)
-            .join('\n')}`,
-          'Przepisz bazowe pytanie na naturalne pytanie w 2. osobie, które nawiązuje do wpisów (bez cytowania dosłownie długich fragmentów).',
-          'Jedno zdanie. Zachowaj cel bazowego pytania.',
-          'Nie używaj słów: użytkownik, system, analiza, matryca. Nie używaj kodów A1..C3.',
-          'Zwróć tylko pytanie.',
-        ].join('\n')
-      }
-      if (templateUsed === 'empty_board') {
-        return [
-          'You must rewrite a single facilitation question for the user.',
-          `Session title: ${sessionName || ''}`,
-          `Base question (CSV): ${baseQuestionText}`,
-          'Rewrite the base question into a natural second-person question. One sentence.',
-          'Do not use the words: user, system, analysis, matrix. Do not mention the board is empty.',
-          'Keep the intent of the base question. Return only the question.',
-        ].join('\n')
-      }
-      return [
-        'You must rewrite a single facilitation question.',
-        `Session title: ${sessionName || ''}`,
-        `Base question (CSV): ${baseQuestionText}`,
-        `User entries (short):\n${limitedEntries.map((item) => `- ${item}`).join('\n')}`,
-        'Rewrite the base question into a natural second-person question that references the entries (no long quotes).',
-        'One sentence. Keep the intent of the base question.',
-        'Do not use the words: user, system, analysis, matrix. Do not use A1..C3 codes.',
-        'Return only the question.',
-      ].join('\n')
-    }
 
-    const runRewrite = async (baseQuestionText) =>
-      runLlmTask({
+    logStage('llm', { aiSupportEnabled: true, mode: 'llm-first-question', target_area: targetArea })
+    const prompt = buildContextualQuestionPrompt({
+      lang,
+      targetArea,
+      sessionName,
+      boardEntriesRaw,
+      askedTexts,
+      lastQuestionText,
+    })
+    const runContextualQuestion = async ({ input, repair = false }) => {
+      let rawResponse = ''
+      let validationReason = ''
+      const result = await runLlmTask({
         apiKey: process.env.OPENAI_API_KEY,
         aiSupportEnabled: true,
-        task: 'coach-rewrite',
-        input: buildPrompt(baseQuestionText),
+        task: repair ? 'coach-contextual-question-repair' : 'coach-contextual-question',
+        input,
         sessionId,
         language: lang === 'pl' ? 'Polish' : 'English',
         taskInstructions:
           lang === 'pl'
-            ? 'Zwróć wyłącznie treść jednego pytania. Bez JSON. Bez komentarzy.'
-            : 'Return only the final question text. No JSON, no commentary.',
+            ? 'Zwróć wyłącznie ścisły JSON z jednym pytaniem po polsku. Bez markdown, bez komentarzy.'
+            : 'Return only strict JSON with one English question. No markdown, no commentary.',
         parseResponse: (value) => {
-          const text = sanitizeQuestionText(String(value || ''))
-          if (!text) return null
-          return { text }
+          rawResponse = String(value || '')
+          const parsed = parseContextualQuestionResponse({
+            value,
+            targetArea,
+            lang,
+            previousQuestions,
+          })
+          if (!parsed.ok) {
+            validationReason = parsed.reason
+            return null
+          }
+          return parsed.data
         },
         fallbackData: null,
         models: {
@@ -2839,157 +2865,83 @@ Write entries exactly in the same language as the input entries.
           preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
           escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
         },
-        maxOutputTokens: 200,
+        maxOutputTokens: 260,
         rateLimiter: limiter,
         rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
       })
-
-    const baseSelection = selectBaseQuestion(askedIds, actionNormalized)
-    const baseQuestion = baseSelection.question
-    const baseMapped = baseQuestion ? mapQuestion(baseQuestion, lang) : null
-    if (!baseMapped || !baseMapped.text) {
-      console.error('[coach/suggest][base_missing]', {
-        requestId,
-        action: actionNormalized,
-        board_items_count: boardEntries.length,
-        payload: {
-          sessionId: body.sessionId || null,
-          sessionName: sessionName || null,
-          language: lang,
-          action: actionNormalized,
-          askedIdsCount: Array.isArray(askedIds) ? askedIds.length : 0,
-          boardEntriesCount: Array.isArray(boardEntries) ? boardEntries.length : 0,
-        },
-      })
-      sendJson(res, 200, {
-        ok: false,
-        code: 'BASE_QUESTION_MISSING',
-        message: 'Base question missing.',
-        meta: buildMeta({ aiSupportEnabled: true, modelUsed: null, escalated: false }),
-      })
-      return
+      return { ...result, rawResponse, validationReason }
     }
-    console.log('[coach/suggest][base_selected]', {
-      requestId,
-      action: actionNormalized,
-      base_question_id: baseMapped.id,
-      base_question_text_len: baseMapped.text.length,
-      board_items_count: boardEntries.length,
-      prompt_template_used: templateUsed,
-    })
-    buildBaseLog({
-      action: actionNormalized,
-      requestedPerspective,
-      attempt: 0,
-      baseQuestionId: baseQuestion.id,
-      baseQuestionCell: `${baseQuestion.group_code}:${baseQuestion.mode_code}`,
-      neighborCandidates: recentCells,
-      prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
-      avoidCell:
-        previousGroupCode && Number.isFinite(Number(previousModeCode))
-          ? `${previousGroupCode}:${Number(previousModeCode)}`
-          : null,
-      nextCell: baseSelection.cell
-        ? `${baseSelection.cell.group}:${Number(baseSelection.cell.mode)}`
-        : null,
-      pointer: baseSelection.pointer ?? null,
-      template_used: templateUsed,
-      board_items_count: limitedEntries.length,
-    })
-    console.log('[coach/suggest][rewrite]', {
-      requestId,
-      action: actionNormalized,
-      requestedPerspective,
-      baseQuestionId: baseMapped.id,
-      llm_called: true,
-      raw_question_shown: false,
-      template_used: templateUsed,
-      board_items_count: limitedEntries.length,
-    })
+
     let result
+    let firstInvalidResult = null
     try {
-      result = await runRewrite(baseMapped.text)
+      result = await runContextualQuestion({ input: prompt })
     } catch (err) {
-      console.error('[coach/suggest] llm_error', {
+      console.error('[coach/suggest][llm-first-question][llm_error]', {
         requestId,
         name: err?.name,
         message: err?.message,
         stack: typeof err?.stack === 'string' ? err.stack.slice(0, 800) : null,
         status: err?.status || err?.response?.status || null,
       })
-      sendJson(res, 200, {
-        ok: false,
-        code: 'LLM_FAILED',
-        message: 'LLM failed.',
-        meta: buildMeta({ aiSupportEnabled: true, modelUsed: null, escalated: false }),
-      })
+      await sendFallbackQuestion('LLM_FAILED')
       return
     }
-    if (!result.ok || !result.data?.text) {
-      sendJson(res, 200, {
-        ok: false,
-        code: 'LLM_FAILED',
-        message: 'LLM failed.',
-        meta: buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null, escalated: false }),
+
+    if (!result.ok || !result.data?.question) {
+      firstInvalidResult = result
+      console.warn('[coach/suggest][llm-first-question][invalid]', {
+        requestId,
+        target_area: targetArea,
+        reason: result.validationReason || result.error || 'invalid_response',
+        raw: String(result.rawResponse || '').slice(0, 800),
       })
+      const repairPrompt = buildQuestionRepairPrompt({
+        originalPrompt: prompt,
+        rawResponse: result.rawResponse,
+        validationReason: result.validationReason || result.error,
+        targetArea,
+        lang,
+      })
+      try {
+        result = await runContextualQuestion({ input: repairPrompt, repair: true })
+      } catch (err) {
+        console.error('[coach/suggest][llm-first-question][repair_error]', {
+          requestId,
+          name: err?.name,
+          message: err?.message,
+          stack: typeof err?.stack === 'string' ? err.stack.slice(0, 800) : null,
+        })
+        await sendFallbackQuestion('LLM_REPAIR_FAILED')
+        return
+      }
+    }
+
+    if (!result.ok || !result.data?.question) {
+      console.warn('[coach/suggest][llm-first-question][repair_invalid]', {
+        requestId,
+        target_area: targetArea,
+        reason: result.validationReason || result.error || 'invalid_repair_response',
+        raw: String(result.rawResponse || '').slice(0, 800),
+      })
+      await sendFallbackQuestion('LLM_INVALID')
       return
     }
-    const finalText = sanitizeQuestionText(result.data.text)
-    if (!finalText) {
-      sendJson(res, 200, {
-        ok: false,
-        code: 'LLM_EMPTY',
-        message: 'LLM empty.',
-        meta: buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null, escalated: false }),
-      })
-      return
+
+    const meta = {
+      ...buildMeta(
+        firstInvalidResult
+          ? mergeLlmMetas(firstInvalidResult.meta, result.meta)
+          : result.meta || { aiSupportEnabled: true, modelUsed: null }
+      ),
+      source: 'llm_contextual',
     }
-    if (shouldRejectDuplicateText(finalText)) {
-      sendJson(res, 200, {
-        ok: false,
-        code: 'DUPLICATE_TEXT',
-        message: 'Duplicate text.',
-        meta: buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null, escalated: false }),
-      })
-      return
-    }
-    const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
-    await recordCoachUsageEvent({
-      sessionId,
-      currentUserId,
-      actionKey: `coach-${String(actionNormalized || '').toLowerCase()}`,
-      meta,
-    })
-    const finalQuestion = normalizeQuestion({ ...baseMapped, text: finalText })
-    assertQuestionShape(finalQuestion, 'llm_rewrite_success')
-    console.log('[coach/suggest][result]', {
-      requestId,
-      action: actionNormalized,
-      requestedPerspective,
-      prevCell: currentGroupCode && currentModeCode ? `${currentGroupCode}:${currentModeCode}` : null,
-      baseQuestionId: baseMapped.id,
-      baseQuestionText: baseMapped.text,
-      finalQuestionText: finalQuestion?.text ?? null,
-      nextCell: baseSelection.cell
-        ? `${baseSelection.cell.group}:${Number(baseSelection.cell.mode)}`
-        : null,
-      pointer: baseSelection.pointer ?? null,
-      modelUsed: meta.modelUsed,
-      tokens: meta.tokens,
-      source: 'llm',
-      templateUsed,
-    })
-    sendJson(res, 200, {
-      ok: true,
-      question: finalQuestion,
-      data: { questions: [{ ...finalQuestion }] },
-      groundedCount: 0,
-      meta,
-      usage: {
-        model: meta.modelUsed,
-        tokensIn: meta.tokens.input,
-        tokensOut: meta.tokens.output,
-      },
+    await sendQuestion({
+      source: 'llm_contextual',
+      text: result.data.question,
+      metaInput: meta,
+      reason: result.data.reason,
+      contradictionSignal: result.data.contradiction_signal,
     })
     return
   } catch (error) {
