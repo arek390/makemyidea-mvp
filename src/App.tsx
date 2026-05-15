@@ -14044,7 +14044,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 {uiLanguage === 'Polish' && (
                   <a
                     className="primary landing-cta landing-cta-video"
-                    href="https://youtu.be/2mLESqZKDj0"
+                    href="https://youtube.com/shorts/j9SdRiFdirg?feature=share"
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -14056,13 +14056,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
                         />
                       </svg>
                     </span>
-                    Zobacz jak to działa (90 s)
+                    Zobacz jak to działa (60 s)
                   </a>
                 )}
                 {uiLanguage === 'English' && (
                   <a
                     className="primary landing-cta"
-                    href="https://youtu.be/0OBBZfOAltU"
+                    href="https://youtube.com/shorts/j9SdRiFdirg?feature=share"
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -14074,7 +14074,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                         />
                       </svg>
                     </span>
-                    Watch how it works (90 sec)
+                    Watch how it works (60 sec)
                   </a>
                 )}
               </div>
