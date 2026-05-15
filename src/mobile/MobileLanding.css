@@ -143,6 +143,9 @@
 
 .mobile-landing__cta {
   appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 1px solid #0c1f3f;
   border-radius: 999px;
   background: #0c1f3f;
@@ -152,6 +155,8 @@
   padding: 0.8rem 1.15rem;
   font-size: 1rem;
   font-weight: 900;
+  text-align: center;
+  text-decoration: none;
   cursor: pointer;
 }
 

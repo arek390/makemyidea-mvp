@@ -29,12 +29,13 @@ const polishDemoScreenshots = [
 ]
 
 const aremaiLogoUrl = new URL('../../logo/aremai_logo.png.webp', import.meta.url).href
+const mobileDemoVideoUrl = 'https://youtube.com/shorts/bmwDYhSOfXo?feature=share'
 
 const mobileCopy = {
   English: {
     languageLabel: 'Language',
     login: 'Log in',
-    start: 'Start free',
+    start: 'See how it works',
     openApp: 'Open app',
     heroTitle: 'Turn an idea into decisions and an action plan.',
     heroBody:
@@ -73,7 +74,7 @@ const mobileCopy = {
   Polish: {
     languageLabel: 'Język',
     login: 'Zaloguj',
-    start: 'Zacznij za darmo',
+    start: 'Zobacz jak to działa',
     openApp: 'Otwórz aplikację',
     heroTitle: 'Zamień pomysł w decyzje i plan działania.',
     heroBody:
@@ -198,9 +199,14 @@ export function MobileLanding({
           <p className="mobile-landing__eyebrow">MakeMyIdea.work</p>
           <h1>{copy.heroTitle}</h1>
           <p>{copy.heroBody}</p>
-          <button type="button" className="mobile-landing__cta" onClick={showWorkspaceNotice}>
+          <a
+            className="mobile-landing__cta"
+            href={mobileDemoVideoUrl}
+            target="_blank"
+            rel="noreferrer"
+          >
             {copy.start}
-          </button>
+          </a>
           <span className="mobile-landing__note">{copy.note}</span>
         </section>
 

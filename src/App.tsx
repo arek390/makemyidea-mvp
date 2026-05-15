@@ -937,7 +937,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     stepLabel: 'Step',
     appTitle: 'Idea Clarity Grid',
     landingHeroTitle: 'You have an idea.\nBut do you know what to do next?',
-    landingHeroSubtitle: 'Instead of another brainstorming session — move from idea to decisions and an action plan.',
+    landingHeroSubtitle: 'Instead of another brainstorming session - move from idea to decisions and an action plan.',
     landingHeroBullets: [
       '🎤 Describe the idea (text or voice)',
       '🧠 See what really doesn’t work',
@@ -984,8 +984,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingAfterLead:
       'It’s not an idea problem.\nIt’s simply hard to turn it into concrete decisions without the right structure.',
     landingAfterList: [
-      'Instead of a blank board — you get a process that guides you:',
-      '✅ Your description becomes concrete observations.\nYou see what works — and what doesn’t.',
+      'Instead of a blank board - you get a process that guides you:',
+      '✅ Your description becomes concrete observations.\nYou see what works - and what doesn’t.',
       '✅ Contradictions reveal new directions.\nDecisions stop being postponed.',
       '✅ In the end, you have a coherent action plan.',
       '',
@@ -1003,7 +1003,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingHowTitle: 'How it works in practice:',
     landingHowSteps: [],
     landingHowLines: [
-      'You start with an idea — you type or speak.',
+      'You start with an idea - you type or speak.',
       'You see the real state, without guessing.',
       'The app organizes the problems',
       'and asks questions that push you forward.',
@@ -1511,7 +1511,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     stepLabel: 'Krok',
     appTitle: 'Idea Clarity Grid',
     landingHeroTitle: 'Masz pomysł.\nAle czy wiesz, co z nim zrobić dalej?',
-    landingHeroSubtitle: 'Zamiast kolejnej burzy mózgów — przejdź od pomysłu do decyzji i planu działania.',
+    landingHeroSubtitle: 'Zamiast kolejnej burzy mózgów - przejdź od pomysłu do decyzji i planu działania.',
     landingHeroBullets: [
       '🎤 Opisz pomysł (tekstem lub głosem)',
       '🧠 Zobacz, co naprawdę w nim nie działa',
@@ -1559,7 +1559,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       'To nie jest problem pomysłu.\nPo prostu trudno przełożyć go na konkretne decyzje bez odpowiedniej struktury.',
     landingAfterList: [
       'Zamiast pustej tablicy - masz proces, który prowadzi:',
-      '✅ Z Twojego opisu powstają konkretne obserwacje.\nWidzisz, co działa — i co nie.',
+      '✅ Z Twojego opisu powstają konkretne obserwacje.\nWidzisz, co działa - i co nie.',
       '✅ Sprzeczności pokazują nowe kierunki.\nDecyzje przestają się odkładać.',
       '✅ Na końcu masz spójny plan działania.',
       '',
@@ -1578,7 +1578,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingHowTitle: 'Jak to działa w praktyce:',
     landingHowSteps: [],
     landingHowLines: [
-      'Zaczynasz od pomysłu — piszesz lub mówisz.',
+      'Zaczynasz od pomysłu - piszesz lub mówisz.',
       'Widzisz realny stan, bez zgadywania.',
       'Aplikacja porządkuje problemy',
       'i zadaje pytania, które pchają Cię dalej.',
