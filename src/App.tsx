@@ -14044,7 +14044,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 {uiLanguage === 'Polish' && (
                   <a
                     className="primary landing-cta landing-cta-video"
-                    href="https://youtube.com/shorts/APSrg3AOGEk?feature=share"
+                    href="https://youtube.com/shorts/AkVlKp5aKlY?feature=share"
                     target="_blank"
                     rel="noreferrer"
                   >
@@ -14062,7 +14062,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 {uiLanguage === 'English' && (
                   <a
                     className="primary landing-cta"
-                    href="https://youtube.com/shorts/APSrg3AOGEk?feature=share"
+                    href="https://youtube.com/shorts/AkVlKp5aKlY?feature=share"
                     target="_blank"
                     rel="noreferrer"
                   >
