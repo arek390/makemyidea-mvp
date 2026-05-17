@@ -584,6 +584,7 @@ type Translations = {
   }
   loginTitle: string
   loginSubtitle: string
+  loginSessionHelper: string
   topupTitle: string
   topupSubtitle: string
   topupConfig: {
@@ -1071,6 +1072,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     },
     loginTitle: 'Login',
     loginSubtitle: 'Sign in to continue.',
+    loginSessionHelper:
+      'We save your sessions and action plans so you can come back to them later.',
     topupTitle: 'Top up your account',
     topupSubtitle: '',
     topupConfig: {
@@ -1646,6 +1649,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     },
     loginTitle: 'Logowanie',
     loginSubtitle: 'Zaloguj się, aby kontynuować.',
+    loginSessionHelper:
+      'Zapisujemy Twoje sesje i plany akcji, żebyś mógł wrócić do nich później.',
     topupTitle: 'Doładuj konto',
     topupSubtitle: '',
     topupConfig: {
@@ -11821,7 +11826,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
           {!hasSupabaseEnv && (
             <p className="engine-error">{missingSupabaseEnvMessage}</p>
           )}
-          <p className="muted auth-subtitle">{copy.loginSubtitle}</p>
+          <div className="auth-intro">
+            <p className="muted auth-subtitle">{copy.loginSubtitle}</p>
+            <p className="muted auth-session-helper">{copy.loginSessionHelper}</p>
+          </div>
           <div className="auth-options auth-options--actions">
             <div className="auth-option auth-option--align-actions">
               <p className="auth-option-title">{copy.loginGoogleLabel}</p>
