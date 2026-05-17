@@ -29,7 +29,7 @@ const polishDemoScreenshots = [
 ]
 
 const aremaiLogoUrl = new URL('../../logo/aremai_logo.png.webp', import.meta.url).href
-const mobileDemoVideoUrl = 'https://youtube.com/shorts/AkVlKp5aKlY?feature=share'
+const mobileDemoVideoUrl = 'https://youtube.com/shorts/1JDZenJneEE?feature=share'
 
 const mobileCopy = {
   English: {
