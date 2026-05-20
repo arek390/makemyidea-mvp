@@ -807,6 +807,16 @@
   text-decoration: none;
 }
 
+.landing-bottom-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding-left: 160px;
+  padding-right: 20px;
+}
+
 .landing-bottom-logo {
   position: absolute;
   left: 20px;
@@ -1568,19 +1578,16 @@
   box-shadow: 0 6px 14px rgba(8, 26, 56, 0.25);
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
-  position: sticky;
-  top: 1rem;
   z-index: 2;
-  transform: translateY(-50px);
 }
 
 .topup-return-button:hover {
-  transform: translateY(-51px);
+  transform: translateY(-1px);
   box-shadow: 0 8px 18px rgba(8, 26, 56, 0.28);
 }
 
 .topup-return-button:active {
-  transform: translateY(-50px);
+  transform: translateY(0);
   box-shadow: 0 4px 10px rgba(8, 26, 56, 0.2);
 }
 
@@ -1588,10 +1595,16 @@
   display: flex;
   align-items: center;
   gap: 50px;
+  margin-top: 2rem;
 }
 
 .topup-panel {
   cursor: pointer;
+}
+
+.topup-panel--terms-pending {
+  cursor: not-allowed;
+  opacity: 0.72;
 }
 
 .topup-panel--disabled {
@@ -1614,6 +1627,45 @@
   width: auto;
 }
 
+.topup-terms {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  color: #1f2326;
+  font-size: 0.95rem;
+  font-weight: 600;
+  line-height: 1.4;
+  max-width: min(90vw, 920px);
+  text-align: left;
+}
+
+.topup-terms input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  margin-top: 0.1rem;
+  accent-color: #0b2f5f;
+}
+
+.topup-terms label {
+  cursor: pointer;
+}
+
+.topup-terms a {
+  color: #0b2f5f;
+  font-weight: 800;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.topup-notice {
+  display: inline-flex;
+  justify-content: center;
+  max-width: min(90vw, 520px);
+  text-align: center;
+}
+
 .topup-footer {
   margin: 0;
   text-align: center;
@@ -1621,6 +1673,10 @@
   color: var(--muted);
   max-width: 720px;
   line-height: 1.4;
+}
+
+.topup-footer--service-balance {
+  margin-top: 1rem;
 }
 
 .topup-inner {
@@ -6306,6 +6362,16 @@ button.danger-solid:hover:not(:disabled) {
   line-height: 1.65;
   max-width: 62ch;
   text-align: center;
+}
+
+.terms-content {
+  max-width: 78ch;
+  margin: 28px auto 0;
+  color: #1f2326;
+  font-size: 0.96rem;
+  line-height: 1.65;
+  text-align: left;
+  white-space: pre-wrap;
 }
 
 .privacy-actions {

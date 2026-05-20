@@ -67,6 +67,7 @@ import { AdminPage } from './admin/AdminPage'
 import { useAuthState } from './lib/authState'
 import { AiCostButton } from './components/AiCostButton'
 import { ActionPlanReadinessGauge } from './components/ActionPlanReadinessGauge'
+import { termsAndConditionsEn, termsAndConditionsPl } from './legal/termsAndConditions'
 import { MobileLanding, type MobileLandingLanguage } from './mobile/MobileLanding'
 
 type StepId = 1 | 2 | 3 | 4
@@ -537,6 +538,8 @@ type Translations = {
   landingWhoList: string[]
   landingFinalLines: [string, string]
   landingPrivacyTitle: string
+  landingTermsTitle: string
+  landingContactTitle: string
   landingPrivacyBody: string
   landingPrivacyLink: string
   workInProgressLink: string
@@ -1021,6 +1024,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     ],
     landingFinalLines: ['You don’t need a perfect idea.', 'You need a process that gets you to a decision.'],
     landingPrivacyTitle: 'Privacy Policy',
+    landingTermsTitle: 'Terms and Conditions',
+    landingContactTitle: 'Contact',
     landingPrivacyBody:
       'We process account, session, board, report and AI usage data only to operate the product, paid features and admin diagnostics.',
     landingPrivacyLink: 'Read the full privacy policy',
@@ -1074,7 +1079,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     loginSubtitle: 'Sign in to continue.',
     loginSessionHelper:
       'We save your sessions and action plans so you can come back to them later.',
-    topupTitle: 'Top up your account',
+    topupTitle: 'Top up your service balance with obligation to pay',
     topupSubtitle: '',
     topupConfig: {
       amounts: ['20', '50', '100'],
@@ -1419,7 +1424,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       `${model}: ${input} in / ${output} out · $${usd}`,
     diagnosticsAuthLabel: 'auth',
     adminNavLabel: 'Admin',
-    insufficientBalanceNotice: 'Your balance is too low. Top up to continue.',
+    insufficientBalanceNotice: 'Your balance is too low. Top up your service balance to continue.',
     llmStatusOnline: 'Server status: online',
     llmStatusOffline: 'Server status: offline',
     llmStatusUnknown: 'Server status: unknown',
@@ -1598,6 +1603,8 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     ],
     landingFinalLines: ['Nie potrzebujesz idealnego pomysłu.', 'Potrzebujesz procesu, który doprowadzi Cię do decyzji.'],
     landingPrivacyTitle: 'Polityka prywatności',
+    landingTermsTitle: 'Regulamin serwisu',
+    landingContactTitle: 'Kontakt',
     landingPrivacyBody:
       'Aplikacja MakeMyIdea.work zbiera podstawowe dane użytkownika, takie jak adres email oraz identyfikator konta Google, wyłącznie w celu umożliwienia logowania i korzystania z aplikacji.',
     landingPrivacyLink: 'Przeczytaj pełną politykę prywatności',
@@ -1651,7 +1658,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     loginSubtitle: 'Zaloguj się, aby kontynuować.',
     loginSessionHelper:
       'Zapisujemy Twoje sesje i plany akcji, żebyś mógł wrócić do nich później.',
-    topupTitle: 'Doładuj konto',
+    topupTitle: 'Doładuj saldo (usługowe) z obowiązkiem zapłaty',
     topupSubtitle: '',
     topupConfig: {
       amounts: ['20', '50', '100'],
@@ -1998,7 +2005,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
       `${model}: ${input} wej. / ${output} wyj. · $${usd}`,
     diagnosticsAuthLabel: 'auth',
     adminNavLabel: 'Panel admina',
-    insufficientBalanceNotice: 'Saldo jest zbyt niskie. Doładuj konto, aby kontynuować.',
+    insufficientBalanceNotice: 'Saldo jest zbyt niskie. Doładuj saldo (usługowe), aby kontynuować.',
     llmStatusOnline: 'Status serwera: online',
     llmStatusOffline: 'Status serwera: offline',
     llmStatusUnknown: 'Status serwera: nieznany',
@@ -2700,6 +2707,8 @@ function App() {
   const [engineBoardLayoutVersion, setEngineBoardLayoutVersion] = useState(0)
   const wasTopupOpenRef = useRef(false)
   const [topupLoadingTier, setTopupLoadingTier] = useState<'S' | 'M' | 'L' | null>(null)
+  const [topupTermsAccepted, setTopupTermsAccepted] = useState(false)
+  const [topupDigitalServicesAccepted, setTopupDigitalServicesAccepted] = useState(false)
 
   const suggestDiagEnabled =
     import.meta.env.VITE_SUGGEST_DIAG === '1' || diagnosticsEnabledForUser
@@ -3725,6 +3734,7 @@ const isAuthFlowInProgress = () => {
   const isIdeaGrid = normalizedPath === '/grid'
   const isLogin = normalizedPath === '/login'
   const isPrivacy = normalizedPath === '/privacy'
+  const isTermsAndConditions = normalizedPath === '/termsandconditions'
   const isTopup =
     normalizedPath === '/topup' ||
     appPath === '/topup' ||
@@ -3855,6 +3865,14 @@ const isAuthFlowInProgress = () => {
   }
 
   const handleTopupClick = async (tier: 'S' | 'M' | 'L') => {
+    if (!topupTermsAccepted) {
+      showEngineNotice(notices.topupTermsRequired, 'error')
+      return
+    }
+    if (!topupDigitalServicesAccepted) {
+      showEngineNotice(notices.topupDigitalServicesRequired, 'error')
+      return
+    }
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search)
       const isDiagMode = params.get('diag') === '1'
@@ -4046,6 +4064,7 @@ const isAuthFlowInProgress = () => {
     if (typeof window === 'undefined') return
     if (isAuthCallback) return
     if (isAdminRoute) return
+    if (isPrivacy || isTermsAndConditions) return
     const nextRaw = readPostAuthNext()
     const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
     const lang = readPostAuthLang()
@@ -4064,7 +4083,7 @@ const isAuthFlowInProgress = () => {
       saveAuthCallbackDiag({ event: 'session_resolved_nav', next, target })
       safeNavigate(target)
     }
-  }, [authResolved, authSession?.user?.id])
+  }, [authResolved, authSession?.user?.id, isAuthCallback, isAdminRoute, isPrivacy, isTermsAndConditions])
 
   useEffect(() => {
     if (!isProtectedRoute || authLoading || authDisabled) return
@@ -4093,9 +4112,11 @@ const isAuthFlowInProgress = () => {
     const path = window.location.pathname
     let target = path
     const isReportPath = path.replace(/\/+$/, '') === '/report' || path.endsWith('/report')
-    const isPrivacyPath = path.replace(/\/+$/, '') === '/privacy'
+    const normalizedAuthPath = path.replace(/\/+$/, '')
+    const isPrivacyPath = normalizedAuthPath === '/privacy'
+    const isTermsAndConditionsPath = normalizedAuthPath === '/termsandconditions'
 
-    if (!canEnterApp && !isReportPath && !isPrivacyPath) {
+    if (!canEnterApp && !isReportPath && !isPrivacyPath && !isTermsAndConditionsPath) {
       if (
         path !== '/' &&
         !path.startsWith('/login') &&
@@ -5535,9 +5556,13 @@ const isAuthFlowInProgress = () => {
           : `Balance +${amount} added to your account (test mode).`,
       topupTestFailed: isPl
         ? 'Nie udało się doładować konta. Spróbuj ponownie.'
-        : 'Unable to top up the account. Please try again.',
-      topupUnauthorized: isPl ? 'Zaloguj się, aby doładować konto.' : 'Sign in to top up.',
+        : 'Unable to top up the service balance. Please try again.',
+      topupUnauthorized: isPl ? 'Zaloguj się, aby doładować konto.' : 'Sign in to top up your service balance.',
       topupInvalidTier: isPl ? 'Nieprawidłowy pakiet doładowania.' : 'Invalid top up tier.',
+      topupTermsRequired: isPl ? 'zaakceptuj regulamin.' : 'Accept the terms and conditions.',
+      topupDigitalServicesRequired: isPl
+        ? 'zaakceptuj wymagane oświadczenie.'
+        : 'Accept the required statement.',
       saveToCloudRequiresAuth: isPl
         ? 'Zaloguj się, aby zapisać w chmurze'
         : 'Sign in to save to the cloud.',
@@ -11559,6 +11584,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const topupAmountM = resolveAutopayTopupMinor('M').amountMinor
     const topupAmountL = resolveAutopayTopupMinor('L').amountMinor
     const isTopupBusy = topupLoadingTier !== null
+    const isTopupTermsPending = !topupTermsAccepted || !topupDigitalServicesAccepted
+    const topupServiceBalanceNote =
+      uiLanguage === 'Polish'
+        ? 'Doładowanie Salda Usługowego umożliwia korzystanie z odpłatnych funkcji MakeMyIdea.work. Saldo Usługowe jest przedpłatą na usługi cyfrowe dostępne wyłącznie w Serwisie. Nie jest tokenem, walutą wirtualną, pieniądzem elektronicznym ani instrumentem finansowym. Koszt użycia danej funkcji jest pokazany w aplikacji przed jej uruchomieniem.'
+        : 'Topping up the Service Balance enables the use of paid MakeMyIdea.work features. The Service Balance is a prepayment for digital services available exclusively in the Service. It is not a token, virtual currency, electronic money, or a financial instrument. The cost of using a given feature is shown in the application before it is launched.'
     if (typeof window !== 'undefined') {
       console.log('[TOPUP REAL COMPONENT LOADED]')
     }
@@ -11578,15 +11608,76 @@ const isMissingLabel = (item: EngineBoardItem) => {
             alt="MakeMyIdea.work"
           />
           <h1 className="topup-title">{copy.topupTitle}</h1>
+          <div className="topup-terms">
+            <input
+              id="topup-terms"
+              type="checkbox"
+              checked={topupTermsAccepted}
+              onChange={(event) => setTopupTermsAccepted(event.target.checked)}
+            />
+            {uiLanguage === 'Polish' ? (
+              <span>
+                <label htmlFor="topup-terms">Akceptuję </label>
+                <a href="/termsandconditions">regulamin serwisu MakeMyIdea.work</a>
+                <br />
+                <label htmlFor="topup-terms">
+                  i zamawiam Doładowanie Salda Usługowego u Usługodawcy prowadzącego Serwis w
+                  ramach działalności nierejestrowanej.
+                </label>
+              </span>
+            ) : (
+              <span>
+                <label htmlFor="topup-terms">I accept the </label>
+                <a href="/termsandconditions">MakeMyIdea.work terms and conditions</a>
+                <br />
+                <label htmlFor="topup-terms">
+                  and order the Service Balance Top-up from the Service Provider operating the
+                  Service as part of unregistered business activity.
+                </label>
+              </span>
+            )}
+          </div>
+          <div className="topup-terms">
+            <input
+              id="topup-digital-services"
+              type="checkbox"
+              checked={topupDigitalServicesAccepted}
+              onChange={(event) => setTopupDigitalServicesAccepted(event.target.checked)}
+            />
+            {uiLanguage === 'Polish' ? (
+              <label htmlFor="topup-digital-services">
+                Żądam rozpoczęcia świadczenia Usług Cyfrowych przed upływem 14-dniowego terminu
+                odstąpienia od umowy i przyjmuję do wiadomości, że po rozpoczęciu korzystania z
+                odpłatnej Usługi Cyfrowej mogę utracić prawo odstąpienia od umowy w zakresie usługi
+                już wykonanej lub części Salda Usługowego wykorzystanej na tę usługę.
+              </label>
+            ) : (
+              <label htmlFor="topup-digital-services">
+                I request that the provision of Digital Services begin before the end of the 14-day
+                withdrawal period and acknowledge that, after I start using a paid Digital Service, I
+                may lose the right to withdraw from the agreement with respect to the service already
+                performed or the part of the Service Balance used for that service.
+              </label>
+            )}
+          </div>
+          {engineNotice && !logoutInProgress ? (
+            <div
+              className={`engine-notice engine-notice--${engineNotice.variant} topup-notice`}
+              role={engineNotice.variant === 'error' ? 'alert' : 'status'}
+            >
+              {engineNotice.message}
+            </div>
+          ) : null}
           <div className="topup-row">
             <section
               className={`panel auth-panel auth-panel--topup topup-panel${
                 isTopupBusy ? ' topup-panel--disabled' : ''
+              }${isTopupTermsPending ? ' topup-panel--terms-pending' : ''
               }${topupLoadingTier === 'S' ? ' topup-panel--loading' : ''}`}
               style={{ width: '240px', height: '480px', maxWidth: '90vw', maxHeight: '90vh' }}
               role="button"
               tabIndex={0}
-              aria-disabled={isTopupBusy}
+              aria-disabled={isTopupBusy || isTopupTermsPending}
               aria-busy={topupLoadingTier === 'S'}
               onClick={() => {
                 console.log('[TOPUP REAL CLICK] S')
@@ -11627,11 +11718,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
             <section
               className={`panel auth-panel auth-panel--topup auth-panel--topup-m topup-panel${
                 isTopupBusy ? ' topup-panel--disabled' : ''
+              }${isTopupTermsPending ? ' topup-panel--terms-pending' : ''
               }${topupLoadingTier === 'M' ? ' topup-panel--loading' : ''}`}
               style={{ width: '240px', height: '480px', maxWidth: '90vw', maxHeight: '90vh' }}
               role="button"
               tabIndex={0}
-              aria-disabled={isTopupBusy}
+              aria-disabled={isTopupBusy || isTopupTermsPending}
               aria-busy={topupLoadingTier === 'M'}
               onClick={() => {
                 console.log('[TOPUP REAL CLICK] M')
@@ -11670,11 +11762,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
             <section
               className={`panel auth-panel auth-panel--topup topup-panel${
                 isTopupBusy ? ' topup-panel--disabled' : ''
+              }${isTopupTermsPending ? ' topup-panel--terms-pending' : ''
               }${topupLoadingTier === 'L' ? ' topup-panel--loading' : ''}`}
               style={{ width: '240px', height: '480px', maxWidth: '90vw', maxHeight: '90vh' }}
               role="button"
               tabIndex={0}
-              aria-disabled={isTopupBusy}
+              aria-disabled={isTopupBusy || isTopupTermsPending}
               aria-busy={topupLoadingTier === 'L'}
               onClick={() => {
                 console.log('[TOPUP REAL CLICK] L')
@@ -11714,8 +11807,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	          <p className="topup-footer">
 	            {topupCopy.footer}
 	          </p>
+	          <p className="topup-footer topup-footer--service-balance">
+	            {topupServiceBalanceNote}
+	          </p>
 	          {uiLanguage === 'English' && (
-	            <p className="muted topup-footer">All payments and account balances are processed in PLN.</p>
+	            <p className="muted topup-footer">All payments and service balances are processed in PLN.</p>
 	          )}
 	        </div>
 	      </div>
@@ -11774,6 +11870,49 @@ const isMissingLabel = (item: EngineBoardItem) => {
               }}
             >
               {privacyCopy.back}
+            </button>
+          </div>
+        </section>
+      </div>
+    )
+  }
+
+  if (isTermsAndConditions) {
+    const termsCopy =
+      uiLanguage === 'Polish'
+        ? {
+            title: 'Regulamin serwisu',
+            body: termsAndConditionsPl,
+            back: 'Wróć',
+          }
+        : {
+            title: 'Service Terms and Conditions',
+            body: termsAndConditionsEn,
+            back: 'Back',
+          }
+
+    return withDevOverlay(
+      <div className="app privacy-page">
+        <section className="privacy-panel">
+          <div className="privacy-header">
+            <img className="privacy-logo" src={landingLogoUrl} alt="MakeMyIdea.work" />
+          </div>
+          <h1>{termsCopy.title}</h1>
+          <div className="terms-content">{termsCopy.body}</div>
+          <div className="privacy-actions">
+            <button
+              type="button"
+              className="ghost"
+              onClick={() => {
+                if (typeof window === 'undefined') return
+                if (window.history.length > 1) {
+                  window.history.back()
+                } else {
+                  safeNavigate('/')
+                }
+              }}
+            >
+              {termsCopy.back}
             </button>
           </div>
         </section>
@@ -12198,7 +12337,11 @@ const isMissingLabel = (item: EngineBoardItem) => {
                   <button
                     type="button"
                     className="engine-balance-icon"
-                    aria-label={uiLanguage === 'Polish' ? 'Doładuj konto' : 'Top up'}
+                    aria-label={
+                      uiLanguage === 'Polish'
+                        ? 'Doładuj saldo (usługowe) z obowiązkiem zapłaty'
+                        : 'Top up service balance with obligation to pay'
+                    }
                   >
                     💰
                   </button>
@@ -15030,9 +15173,17 @@ const isMissingLabel = (item: EngineBoardItem) => {
       </main>
       {showLanding && (
         <footer className="landing-bottom-bar">
-          <a className="ghost landing-bottom-link" href="/privacy">
-            {copy.landingPrivacyTitle}
-          </a>
+          <nav className="landing-bottom-links" aria-label="Legal links">
+            <a className="ghost landing-bottom-link" href="/privacy">
+              {copy.landingPrivacyTitle}
+            </a>
+            <a className="ghost landing-bottom-link" href="/termsandconditions">
+              {copy.landingTermsTitle}
+            </a>
+            <a className="ghost landing-bottom-link" href="mailto:makemyideawork@aremai.tech">
+              {copy.landingContactTitle}
+            </a>
+          </nav>
           <a
             className="landing-bottom-logo-link"
             href="https://www.aremai.tech"

@@ -1030,7 +1030,7 @@ export const ReportPage = ({
   billingLoading = false,
   billingError = null,
   showInsufficientBalance = false,
-  insufficientBalanceNotice = 'Insufficient funds. Top up your account.',
+  insufficientBalanceNotice = 'Insufficient funds. Top up your service balance.',
 }: ReportPageProps) => {
   const t = reportCopy[language]
   const reportLogoUrl = new URL('../../logo/logo_makemyideawork.png', import.meta.url).href
@@ -2841,7 +2841,11 @@ export const ReportPage = ({
               <button
                 type="button"
                 className="engine-balance-icon"
-                aria-label={language === 'pl' ? 'Doładuj konto' : 'Top up'}
+                aria-label={
+                  language === 'pl'
+                    ? 'Doładuj saldo (usługowe) z obowiązkiem zapłaty'
+                    : 'Top up service balance with obligation to pay'
+                }
               >
                 💰
               </button>
