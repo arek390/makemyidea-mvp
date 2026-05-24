@@ -36,6 +36,43 @@ const normalizeCurrency = (value) => {
 const selectReportFields =
   'id,session_id,created_at,updated_at,summary_json,last_summary_text_hash,source_updated_at'
 
+const hasGeneratedReportContent = (report) => {
+  const summaryJson = report?.summary_json && typeof report.summary_json === 'object'
+    ? report.summary_json
+    : null
+  const contradictions = Array.isArray(summaryJson?.triz?.contradictions)
+    ? summaryJson.triz.contradictions
+    : []
+  const decisions = Array.isArray(summaryJson?.execution_report?.decisions)
+    ? summaryJson.execution_report.decisions
+    : []
+  return contradictions.length > 0 && decisions.length > 0
+}
+
+const createJsonCaptureResponse = () => {
+  const capture = {
+    statusCode: 200,
+    payload: null,
+    ended: false,
+  }
+  const response = {
+    status(statusCode) {
+      capture.statusCode = statusCode
+      return response
+    },
+    json(payload) {
+      capture.payload = payload
+      capture.ended = true
+      return response
+    },
+    end() {
+      capture.ended = true
+      return response
+    },
+  }
+  return { capture, response }
+}
+
 const isAdminUser = async (supabaseAdmin, userId) => {
   const adminRes = await supabaseAdmin
     .schema('public')
@@ -140,25 +177,6 @@ const handleReportGenerate = async (req, res) => {
   }
   const billingCurrency = normalizeCurrency(profileRes.data?.billing_currency)
 
-  console.log('[report][generate][billing]', {
-    userId,
-    sessionId,
-    currency: billingCurrency,
-    actionKey: 'report_generate',
-  })
-
-  const billingRes = await supabaseAdmin.rpc('charge_user_balance', {
-    p_user_id: userId,
-    p_action_key: 'report_generate',
-    p_reference_id: sessionId,
-    p_currency: billingCurrency,
-  })
-  if (billingRes.error) {
-    if (handleBillingError(res, billingRes.error)) return
-    sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
-    return
-  }
-
   const insertRes = await supabaseAdmin
     .schema('public')
     .from('reports')
@@ -178,21 +196,54 @@ const handleReportGenerate = async (req, res) => {
       .eq('session_id', sessionId)
       .maybeSingle()
     if (retry.data) {
-      const billingRow = Array.isArray(billingRes.data) ? billingRes.data[0] : billingRes.data
-      await recordSessionBillingEvent(supabaseAdmin, {
-        sessionId: retry.data.session_id ?? sessionId,
-        reportId: retry.data.id ?? null,
-        userId,
-        actionKey: 'report_generate',
-        referenceId: retry.data.id ?? sessionId,
-        amountMinor: billingRow?.amount_minor ?? null,
-        currency: billingRow?.currency ?? billingCurrency,
-      })
-      req.reportOptions = { skipBilling: true, returnReport: true, actionKey: 'report_generate' }
-      await handleReportUpdate(req, res)
+      if (hasGeneratedReportContent(retry.data)) {
+        sendJson(res, 200, { ok: true, report: retry.data })
+        return
+      }
+      sendJson(res, 409, { ok: false, error: 'REPORT_GENERATE_IN_PROGRESS' })
       return
     }
     sendJson(res, 500, { ok: false, error: 'REPORT_CREATE_FAILED' })
+    return
+  }
+
+  const { capture, response } = createJsonCaptureResponse()
+  req.reportOptions = { skipBilling: true, returnReport: true, actionKey: 'report_generate' }
+  await handleReportUpdate(req, response)
+
+  if (capture.statusCode < 200 || capture.statusCode >= 300 || !capture.payload?.ok || !capture.payload?.report) {
+    await supabaseAdmin.schema('public').from('reports').delete().eq('id', insertRes.data.id)
+    sendJson(res, capture.statusCode || 500, capture.payload || { ok: false, error: 'REPORT_GENERATE_FAILED' })
+    return
+  }
+
+  if (!hasGeneratedReportContent(capture.payload.report)) {
+    await supabaseAdmin.schema('public').from('reports').delete().eq('id', insertRes.data.id)
+    sendJson(res, 502, {
+      ok: false,
+      error: 'REPORT_CONTENT_NOT_GENERATED',
+      message: 'Report generation did not produce contradictions and decisions.',
+    })
+    return
+  }
+
+  console.log('[report][generate][billing]', {
+    userId,
+    sessionId,
+    currency: billingCurrency,
+    actionKey: 'report_generate',
+  })
+
+  const billingRes = await supabaseAdmin.rpc('charge_user_balance', {
+    p_user_id: userId,
+    p_action_key: 'report_generate',
+    p_reference_id: sessionId,
+    p_currency: billingCurrency,
+  })
+  if (billingRes.error) {
+    await supabaseAdmin.schema('public').from('reports').delete().eq('id', insertRes.data.id)
+    if (handleBillingError(res, billingRes.error)) return
+    sendJson(res, 500, { ok: false, error: 'BILLING_FAILED' })
     return
   }
 
@@ -206,8 +257,7 @@ const handleReportGenerate = async (req, res) => {
     amountMinor: billingRow?.amount_minor ?? null,
     currency: billingRow?.currency ?? billingCurrency,
   })
-  req.reportOptions = { skipBilling: true, returnReport: true, actionKey: 'report_generate' }
-  await handleReportUpdate(req, res)
+  sendJson(res, capture.statusCode, capture.payload)
 }
 
 const handleReportPatchMeta = async (req, res) => {

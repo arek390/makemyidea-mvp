@@ -115,6 +115,16 @@ const normalizeReportRow = (row: ReportRow): ReportRecord => {
   }
 }
 
+const hasGeneratedReportContent = (record: ReportRecord | null) => {
+  const contradictions = Array.isArray(record?.triz?.contradictions)
+    ? record.triz.contradictions
+    : []
+  const decisions = Array.isArray(record?.executionReport?.decisions)
+    ? record.executionReport.decisions
+    : []
+  return contradictions.length > 0 && decisions.length > 0
+}
+
 export const fetchReportBySessionId = async (
   sessionId: string
 ): Promise<ReportRecord | null> => {
@@ -173,7 +183,11 @@ export const ensureReportExists = async (
     console.error('[report] ensure failed', { sessionId, message })
     throw new Error(message)
   }
-  return normalizeReportRow(payload.report as ReportRow)
+  const record = normalizeReportRow(payload.report as ReportRow)
+  if (!hasGeneratedReportContent(record)) {
+    throw new Error('REPORT_CONTENT_NOT_GENERATED')
+  }
+  return record
 }
 
 export const updateReportBySessionId = async (

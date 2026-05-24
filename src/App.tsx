@@ -3136,6 +3136,10 @@ function App() {
   >(() => (getSpeechRecognitionCtor() ? 'idle' : 'unavailable'))
   const [resumeNamePromptAfterList, setResumeNamePromptAfterList] = useState(false)
   const [enginePreviewItems, setEnginePreviewItems] = useState<EngineBoardItem[]>([])
+  const enginePreviewItemsRef = useRef<EngineBoardItem[]>([])
+  useEffect(() => {
+    enginePreviewItemsRef.current = enginePreviewItems
+  }, [enginePreviewItems])
   const [engineBoardItemsLoadedBySession, setEngineBoardItemsLoadedBySession] = useState<
     Record<string, boolean>
   >({})
@@ -9479,8 +9483,23 @@ const isMissingLabel = (item: EngineBoardItem) => {
     if (sessionId) {
       if (authSession?.user?.id) {
         try {
+          await flushEngineEntryLabels()
+          const needsClassification = enginePreviewItemsRef.current.some(
+            (item) => !item.matrix_row || !item.matrix_col || item.classificationDirty
+          )
+          if (needsClassification) {
+            await fillNaAssignments('auto')
+          }
+          const stillNeedsClassification = enginePreviewItemsRef.current.some(
+            (item) => !item.matrix_row || !item.matrix_col || item.classificationDirty
+          )
+          if (stillNeedsClassification) {
+            showEngineNotice(notices.assignRetryFailed, 'error')
+            return
+          }
+          await persistBoardItemsToCloud(sessionId, authSession.user.id)
           const sourceUpdatedAt =
-            enginePreviewItems.reduce((max, item) => {
+            enginePreviewItemsRef.current.reduce((max, item) => {
               const updatedAt = Number(item.updated_at || item.created_at || 0)
               return Math.max(max, updatedAt)
             }, 0) || 0
@@ -9499,16 +9518,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
         } catch (error) {
           const message = error instanceof Error ? error.message : 'unknown'
           console.error('[report] ensure failed', { sessionId, message })
-          try {
-            const retryRecord = await fetchReportBySessionId(sessionId)
-            if (retryRecord?.id) {
-              setReportRecords((prev) => ({ ...prev, [sessionId]: retryRecord }))
-              window.history.pushState({ newlyCreated: false }, '', '/report')
-              setReportViewOpen(true)
-              return
+          if (message !== 'REPORT_CONTENT_NOT_GENERATED' && message !== 'REPORT_GENERATE_IN_PROGRESS') {
+            try {
+              const retryRecord = await fetchReportBySessionId(sessionId)
+              if (retryRecord?.id) {
+                setReportRecords((prev) => ({ ...prev, [sessionId]: retryRecord }))
+                window.history.pushState({ newlyCreated: false }, '', '/report')
+                setReportViewOpen(true)
+                return
+              }
+            } catch {
+              // Ignore retry lookup errors and fall through to the regular notice path.
             }
-          } catch {
-            // Ignore retry lookup errors and fall through to the regular notice path.
           }
           if (message === 'INSUFFICIENT_BALANCE') {
             triggerInsufficientBalance()
@@ -9617,7 +9638,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       .eq('session_id', sessionId)
       .eq('user_id', userId)
     if (error) throw error
-    const current = normalizeBoardItems(enginePreviewItems)
+    const current = normalizeBoardItems(enginePreviewItemsRef.current)
     const byId = new Map((existing || []).map((row) => [String(row.id), row]))
     const currentIds = new Set(current.map((item) => String(item.id)))
     const deletes = (existing || []).filter((row) => !currentIds.has(String(row.id)))
@@ -9813,6 +9834,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           classificationDirty: false,
         }
       })
+      enginePreviewItemsRef.current = updatedItems
       setEnginePreviewItems(updatedItems)
       const updates = enginePreviewItems
         .map((item) => {

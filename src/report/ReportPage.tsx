@@ -16,7 +16,7 @@ import type {
 } from '../storage/sessionStore'
 import { UsageBadge } from '../components/UsageBadge'
 import { buildSessionGoalText, extractProductNameFromSessionName } from './sessionGoal'
-import { fetchReportBySessionId, updateReportBySessionId } from '../lib/cloudReports'
+import { ensureReportExists, fetchReportBySessionId, updateReportBySessionId } from '../lib/cloudReports'
 import { supabase as client } from '../lib/supabase/client'
 import { AiCostButton } from '../components/AiCostButton'
  
@@ -1406,6 +1406,17 @@ export const ReportPage = ({
     }
     setIsReportUpdating(true)
     try {
+      if (!mode && needsActionPlanBootstrap && !reportIsOutdated) {
+        const record = await ensureReportExists(
+          reportSessionId || sessionId,
+          sourceUpdatedAt,
+          language
+        )
+        applyReportRecord(record, { authoritativeExecutionReport: true })
+        setSummaryStatus('done')
+        setUpdateNotice(t.reportUpdated)
+        return
+      }
       if (mode === 'plan_from_decisions' || mode === 'plan_from_decisions_only') {
         await pendingDecisionPersistRef.current
         await pendingTrizPersistRef.current
