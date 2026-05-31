@@ -3707,6 +3707,39 @@ const isAuthFlowInProgress = () => {
     if (queryIndex < 0) return new URLSearchParams()
     return new URLSearchParams(hash.slice(queryIndex + 1))
   }
+  const getStripeReturnParams = () => {
+    if (typeof window === 'undefined') return new URLSearchParams()
+    const searchParams = new URLSearchParams(window.location.search || '')
+    const payment = searchParams.get('payment')
+    if (payment === 'stripe_success' || payment === 'stripe_cancelled') return searchParams
+    return getTopupHashParams()
+  }
+  const clearStripeReturnParams = () => {
+    if (typeof window === 'undefined') return
+    const searchParams = new URLSearchParams(window.location.search || '')
+    const searchPayment = searchParams.get('payment')
+    if (searchPayment === 'stripe_success' || searchPayment === 'stripe_cancelled') {
+      searchParams.delete('payment')
+      searchParams.delete('session_id')
+      const search = searchParams.toString()
+      const nextUrl = `${window.location.pathname}${search ? `?${search}` : ''}${window.location.hash || ''}`
+      window.history.replaceState({}, '', nextUrl)
+      return
+    }
+
+    const hash = window.location.hash || ''
+    const queryIndex = hash.indexOf('?')
+    if (queryIndex < 0) return
+    const hashPathOnly = hash.slice(0, queryIndex)
+    const hashParams = new URLSearchParams(hash.slice(queryIndex + 1))
+    const hashPayment = hashParams.get('payment')
+    if (hashPayment !== 'stripe_success' && hashPayment !== 'stripe_cancelled') return
+    hashParams.delete('payment')
+    hashParams.delete('session_id')
+    const nextHashParams = hashParams.toString()
+    const nextUrl = `${window.location.pathname}${window.location.search || ''}${hashPathOnly}${nextHashParams ? `?${nextHashParams}` : ''}`
+    window.history.replaceState({}, '', nextUrl)
+  }
   const storeTopupReturnTo = () => {
     if (typeof window === 'undefined') return
     const returnTo = getAppPath() || window.location.pathname || '/'
@@ -3821,11 +3854,11 @@ const isAuthFlowInProgress = () => {
   ])
   useEffect(() => {
     if (typeof window === 'undefined') return
-    if (!isTopup) return
     if (stripePaymentReturnHandledRef.current) return
-    const params = getTopupHashParams()
+    const params = getStripeReturnParams()
     const payment = params.get('payment')
     if (payment !== 'stripe_success' && payment !== 'stripe_cancelled') return
+    if (payment === 'stripe_success' && !authSession?.user?.id) return
 
     stripePaymentReturnHandledRef.current = true
     const isPl = uiLanguage === 'Polish'
@@ -3837,6 +3870,7 @@ const isAuthFlowInProgress = () => {
       : 'Payment completed. We are confirming it with Stripe. Your balance will update shortly.'
     const stripeBalanceUpdated = isPl ? 'Saldo zaktualizowane.' : 'Balance updated.'
     const stripeWaitingConfirmation = isPl ? 'Czekamy na potwierdzenie płatności.' : 'Waiting for confirmation.'
+    clearStripeReturnParams()
     if (payment === 'stripe_cancelled') {
       showEngineNotice(stripePaymentCancelled, 'error')
       return
@@ -3875,7 +3909,9 @@ const isAuthFlowInProgress = () => {
       cancelled = true
     }
   }, [
-    isTopup,
+    appPath,
+    authSession?.user?.id,
+    normalizedPath,
     refreshBillingBalance,
     uiLanguage,
   ])
@@ -3951,9 +3987,13 @@ const isAuthFlowInProgress = () => {
     setTopupLoadingTier(tier)
     try {
       const amountPln = (topup.amountMinor / 100).toFixed(2)
+      const returnTo =
+        typeof window !== 'undefined'
+          ? window.sessionStorage.getItem(TOPUP_RETURN_TO_KEY) || '/engine'
+          : '/engine'
       const response = await apiFetch('/api/billing?action=create_stripe_checkout', {
         method: 'POST',
-        body: JSON.stringify({ amountPln }),
+        body: JSON.stringify({ amountPln, returnTo }),
       })
       const payload = await response.json().catch(() => null)
       if (!response.ok || !payload?.url) {

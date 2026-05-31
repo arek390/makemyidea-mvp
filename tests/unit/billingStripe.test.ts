@@ -146,7 +146,7 @@ describe('billing Stripe integration', () => {
     await billingHandler(makeReq({
       method: 'POST',
       url: '/api/billing?action=create_stripe_checkout',
-      body: { amountPln: '20.00' },
+      body: { amountPln: '20.00', returnTo: '/engine' },
     }), res)
 
     expect(res.statusCode).toBe(404)
@@ -202,13 +202,45 @@ describe('billing Stripe integration', () => {
       status: 'pending',
       amount_pln_grosze: 2000,
       tokens_to_add: 2000,
+      provider_payload: expect.objectContaining({
+        stripe: expect.objectContaining({
+          return_to: '/engine',
+        }),
+      }),
     }))
     expect(mocks.createStripeCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({
       orderId: expect.stringMatching(/^stripe_/),
       amountMinor: 2000,
       currency: 'pln',
+      returnTo: '/engine',
     }))
     expect(mocks.admin.rpc).not.toHaveBeenCalled()
+  })
+
+  it('redirects Stripe success return to the original app page without rendering topup', async () => {
+    const res = makeRes()
+
+    await billingHandler(makeReq({
+      method: 'GET',
+      url: '/api/billing?action=stripe_return&session_id=cs_test_123&return_to=%2Fengine',
+    }), res)
+
+    expect(res.statusCode).toBe(303)
+    expect(res.headers.Location).toBe('/engine?payment=stripe_success&session_id=cs_test_123')
+    expect(mocks.admin.from).not.toHaveBeenCalled()
+  })
+
+  it('redirects Stripe cancel return to the original app page without rendering topup', async () => {
+    const res = makeRes()
+
+    await billingHandler(makeReq({
+      method: 'GET',
+      url: '/api/billing?action=stripe_cancel_return&return_to=%2Fengine',
+    }), res)
+
+    expect(res.statusCode).toBe(303)
+    expect(res.headers.Location).toBe('/engine?payment=stripe_cancelled')
+    expect(mocks.admin.from).not.toHaveBeenCalled()
   })
 
   it('routes stripe_webhook before JSON parsing and rejects an invalid signature', async () => {

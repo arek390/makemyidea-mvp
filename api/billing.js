@@ -172,6 +172,51 @@ const mergeStripeEventPayload = (existingPayload, patch, event) => {
   }
 }
 
+const normalizeInternalReturnTo = (value) => {
+  const raw = String(value || '').trim()
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/engine'
+  if (raw.startsWith('/api/')) return '/engine'
+  if (raw === '/report#/topup' || raw.startsWith('/report#/topup?')) return '/engine'
+  return raw
+}
+
+const appendReturnPaymentParams = (returnTo, params) => {
+  const target = normalizeInternalReturnTo(returnTo)
+  const hashIndex = target.indexOf('#')
+  const beforeHash = hashIndex >= 0 ? target.slice(0, hashIndex) : target
+  const hash = hashIndex >= 0 ? target.slice(hashIndex) : ''
+  const query = new URLSearchParams()
+  for (const [key, value] of Object.entries(params || {})) {
+    if (value != null && value !== '') query.set(key, String(value))
+  }
+  const sep = beforeHash.includes('?') ? '&' : '?'
+  return `${beforeHash}${sep}${query.toString()}${hash}`
+}
+
+const resolveStripeReturnTo = async (req, sessionId) => {
+  const rawQueryReturnTo = resolveQueryValue(req, 'return_to')
+  const queryReturnTo = normalizeInternalReturnTo(rawQueryReturnTo)
+  if (rawQueryReturnTo != null && String(rawQueryReturnTo).trim()) return queryReturnTo
+  const safeSessionId = String(sessionId || '').trim()
+  if (!safeSessionId) return queryReturnTo
+  try {
+    const supabaseAdmin = getSupabaseAdmin()
+    const { data } = await supabaseAdmin
+      .from('payments')
+      .select('provider_payload')
+      .eq('provider', 'stripe')
+      .eq('provider_payload->stripe->>checkout_session_id', safeSessionId)
+      .maybeSingle()
+    return normalizeInternalReturnTo(data?.provider_payload?.stripe?.return_to || queryReturnTo)
+  } catch (error) {
+    console.error('[STRIPE RETURN] return_to_lookup_failed', {
+      sessionId: safeSessionId,
+      message: error?.message ?? String(error),
+    })
+    return queryReturnTo
+  }
+}
+
 const normalizeLang = (value, req) => {
   const raw = String(value || '').toLowerCase()
   if (raw.startsWith('pl')) return 'pl'
@@ -412,6 +457,7 @@ const handleCreateStripeCheckout = async (req, res) => {
 
   const body = req.body && typeof req.body === 'object' ? req.body : {}
   const amountPln = normalizeAmountPln(body.amountPln)
+  const returnTo = normalizeInternalReturnTo(body.returnTo)
   if (amountPln == null) {
     sendJson(res, 400, { ok: false, error: 'INVALID_AMOUNT' })
     return
@@ -457,6 +503,7 @@ const handleCreateStripeCheckout = async (req, res) => {
           created_at: createdAt,
           mode: 'checkout',
           test_mode: true,
+          return_to: returnTo,
         },
       },
     })
@@ -481,6 +528,7 @@ const handleCreateStripeCheckout = async (req, res) => {
       internalPaymentId: insertRes.data.id,
       amountMinor: amountGrosze,
       currency,
+      returnTo,
     })
   } catch (error) {
     console.error('[STRIPE CHECKOUT] session_create_failed', {
@@ -496,6 +544,7 @@ const handleCreateStripeCheckout = async (req, res) => {
     checkout_session_id: session.id,
     checkout_session_url_created: Boolean(session.url),
     payment_status: session.payment_status ?? null,
+    return_to: returnTo,
     updated_at: new Date().toISOString(),
   })
   const updateRes = await supabaseAdmin
@@ -872,8 +921,11 @@ const handleStripeReturn = async (req, res) => {
     return
   }
   const sessionId = String(resolveQueryValue(req, 'session_id') || '').trim()
-  const suffix = sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ''
-  redirect303(res, `/report#/topup?payment=stripe_success${suffix}`)
+  const returnTo = await resolveStripeReturnTo(req, sessionId)
+  redirect303(res, appendReturnPaymentParams(returnTo, {
+    payment: 'stripe_success',
+    session_id: sessionId,
+  }))
 }
 
 const handleStripeCancelReturn = async (req, res) => {
@@ -881,7 +933,12 @@ const handleStripeCancelReturn = async (req, res) => {
     methodNotAllowed(res, ['GET'])
     return
   }
-  redirect303(res, '/report#/topup?payment=stripe_cancelled')
+  const sessionId = String(resolveQueryValue(req, 'session_id') || '').trim()
+  const returnTo = await resolveStripeReturnTo(req, sessionId)
+  redirect303(res, appendReturnPaymentParams(returnTo, {
+    payment: 'stripe_cancelled',
+    session_id: sessionId,
+  }))
 }
 
 const lookupStripePaymentForSession = async (supabaseAdmin, session) => {

@@ -31,17 +31,25 @@ export const getStripeClient = async () => {
   return stripeClient
 }
 
+const appendReturnToParam = (url, returnTo) => {
+  const safeReturnTo = String(returnTo || '').trim()
+  if (!safeReturnTo) return url
+  const separator = String(url || '').includes('?') ? '&' : '?'
+  return `${url}${separator}return_to=${encodeURIComponent(safeReturnTo)}`
+}
+
 export const createStripeCheckoutSession = async ({
   userId,
   orderId,
   internalPaymentId,
   amountMinor,
   currency,
+  returnTo,
 }) => {
   const stripe = await getStripeClient()
   const safeCurrency = String(currency || resolveStripeCurrency()).trim().toLowerCase()
-  const successUrl = requireEnv('STRIPE_SUCCESS_URL')
-  const cancelUrl = requireEnv('STRIPE_CANCEL_URL')
+  const successUrl = appendReturnToParam(requireEnv('STRIPE_SUCCESS_URL'), returnTo)
+  const cancelUrl = appendReturnToParam(requireEnv('STRIPE_CANCEL_URL'), returnTo)
   const metadata = {
     provider: 'stripe',
     orderId: String(orderId || ''),
