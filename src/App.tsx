@@ -2709,6 +2709,7 @@ function App() {
   const [topupLoadingTier, setTopupLoadingTier] = useState<'S' | 'M' | 'L' | null>(null)
   const [topupTermsAccepted, setTopupTermsAccepted] = useState(false)
   const [topupDigitalServicesAccepted, setTopupDigitalServicesAccepted] = useState(false)
+  const [topupPaymentProvider, setTopupPaymentProvider] = useState<'autopay' | 'stripe'>('autopay')
 
   const suggestDiagEnabled =
     import.meta.env.VITE_SUGGEST_DIAG === '1' || diagnosticsEnabledForUser
@@ -2717,7 +2718,11 @@ function App() {
     String(import.meta.env.VITE_SEED_CLASSIFICATION_MODE || '').trim() || 'full_3x3 (default)'
   const useColumnFirstSeedMode = seedClassificationMode === 'column_first'
   // This section is part of the standard Engine view (not diagnostics-only).
-  const isEnvEnabled = (value: unknown) => value === '1' || value === 'true'
+  const isEnvEnabled = (value: unknown) => {
+    const normalized = String(value || '').trim().toLowerCase()
+    return normalized === '1' || normalized === 'true'
+  }
+  const stripeTopupEnabled = isEnvEnabled(import.meta.env.VITE_STRIPE_ENABLED)
   const actionPlanReadinessEnabled = isEnvEnabled(import.meta.env.VITE_ACTION_PLAN_READINESS_ENABLED)
   const actionPlanReadinessLlmEnabled =
     actionPlanReadinessEnabled && isEnvEnabled(import.meta.env.VITE_ACTION_PLAN_READINESS_LLM_ENABLED)
@@ -3187,6 +3192,7 @@ function App() {
   const engineIdleTimer = useRef<number | null>(null)
   const engineNoticeTimer = useRef<number | null>(null)
   const paymentReturnHandledRef = useRef(false)
+  const stripePaymentReturnHandledRef = useRef(false)
   const authCallbackErrorTimerRef = useRef<number | null>(null)
   const oauthStartOnceRef = useRef(false)
   const authRedirectedRef = useRef(false)
@@ -3694,6 +3700,13 @@ const isAuthFlowInProgress = () => {
     }
     return window.location.pathname || ''
   }
+  const getTopupHashParams = () => {
+    if (typeof window === 'undefined') return new URLSearchParams()
+    const hash = window.location.hash || ''
+    const queryIndex = hash.indexOf('?')
+    if (queryIndex < 0) return new URLSearchParams()
+    return new URLSearchParams(hash.slice(queryIndex + 1))
+  }
   const storeTopupReturnTo = () => {
     if (typeof window === 'undefined') return
     const returnTo = getAppPath() || window.location.pathname || '/'
@@ -3806,6 +3819,66 @@ const isAuthFlowInProgress = () => {
     isEnginePreview,
     uiLanguage,
   ])
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!isTopup) return
+    if (stripePaymentReturnHandledRef.current) return
+    const params = getTopupHashParams()
+    const payment = params.get('payment')
+    if (payment !== 'stripe_success' && payment !== 'stripe_cancelled') return
+
+    stripePaymentReturnHandledRef.current = true
+    const isPl = uiLanguage === 'Polish'
+    const stripePaymentCancelled = isPl
+      ? 'Płatność anulowana. Saldo nie zostało zmienione.'
+      : 'Payment cancelled. Your balance was not changed.'
+    const stripePaymentConfirming = isPl
+      ? 'Płatność zakończona. Potwierdzamy ją w Stripe. Saldo zaktualizuje się za chwilę.'
+      : 'Payment completed. We are confirming it with Stripe. Your balance will update shortly.'
+    const stripeBalanceUpdated = isPl ? 'Saldo zaktualizowane.' : 'Balance updated.'
+    const stripeWaitingConfirmation = isPl ? 'Czekamy na potwierdzenie płatności.' : 'Waiting for confirmation.'
+    if (payment === 'stripe_cancelled') {
+      showEngineNotice(stripePaymentCancelled, 'error')
+      return
+    }
+
+    const sessionId = params.get('session_id')
+    showEngineNotice(stripePaymentConfirming, 'success')
+    if (!sessionId) return
+
+    let cancelled = false
+    const checkPaymentStatus = async (attempt = 0) => {
+      try {
+        const response = await apiFetch(
+          `/api/billing?action=payment_status&provider=stripe&session_id=${encodeURIComponent(sessionId)}`,
+          { method: 'GET' }
+        )
+        const payload = await response.json().catch(() => null)
+        if (cancelled) return
+        if (response.ok && payload?.status === 'paid') {
+          showEngineNotice(stripeBalanceUpdated, 'success')
+          void refreshBillingBalance()
+          return
+        }
+        if (response.ok && payload?.status === 'pending' && attempt < 3) {
+          showEngineNotice(stripeWaitingConfirmation, 'success')
+          window.setTimeout(() => {
+            void checkPaymentStatus(attempt + 1)
+          }, 2000)
+        }
+      } catch {
+        // The webhook may still be in flight; the next balance refresh will catch up.
+      }
+    }
+    void checkPaymentStatus()
+    return () => {
+      cancelled = true
+    }
+  }, [
+    isTopup,
+    refreshBillingBalance,
+    uiLanguage,
+  ])
   const formatTopupAmountValue = (amountMinor: number) => {
     const amount = amountMinor / 100
     const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
@@ -3868,6 +3941,33 @@ const isAuthFlowInProgress = () => {
     }
   }
 
+  const handleStripeTopup = async (tier: 'S' | 'M' | 'L') => {
+    if (topupLoadingTier) return
+    if (!authSession?.user?.id) {
+      showEngineNotice(notices.topupUnauthorized, 'error')
+      return
+    }
+    const topup = resolveAutopayTopupMinor(tier)
+    setTopupLoadingTier(tier)
+    try {
+      const amountPln = (topup.amountMinor / 100).toFixed(2)
+      const response = await apiFetch('/api/billing?action=create_stripe_checkout', {
+        method: 'POST',
+        body: JSON.stringify({ amountPln }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error || 'Stripe checkout initialization failed')
+      }
+      if (typeof window !== 'undefined') {
+        window.location.href = String(payload.url)
+      }
+    } catch {
+      showEngineNotice(notices.topupTestFailed, 'error')
+      setTopupLoadingTier(null)
+    }
+  }
+
   const handleTopupClick = async (tier: 'S' | 'M' | 'L') => {
     if (!topupTermsAccepted) {
       showEngineNotice(notices.topupTermsRequired, 'error')
@@ -3885,7 +3985,11 @@ const isAuthFlowInProgress = () => {
         isDiagMode,
         location: window.location.href,
       })
-      console.log('[TOPUP PATH]', isDiagMode ? 'TEST_TOPUP' : 'AUTOPAY')
+      console.log('[TOPUP PATH]', topupPaymentProvider === 'stripe' ? 'STRIPE' : isDiagMode ? 'TEST_TOPUP' : 'AUTOPAY')
+    }
+    if (stripeTopupEnabled && topupPaymentProvider === 'stripe') {
+      await handleStripeTopup(tier)
+      return
     }
     await handleAutopayTopup(tier)
   }
@@ -5567,6 +5671,14 @@ const isAuthFlowInProgress = () => {
       topupDigitalServicesRequired: isPl
         ? 'zaakceptuj wymagane oświadczenie.'
         : 'Accept the required statement.',
+      stripePaymentConfirming: isPl
+        ? 'Płatność zakończona. Potwierdzamy ją w Stripe. Saldo zaktualizuje się za chwilę.'
+        : 'Payment completed. We are confirming it with Stripe. Your balance will update shortly.',
+      stripeBalanceUpdated: isPl ? 'Saldo zaktualizowane.' : 'Balance updated.',
+      stripeWaitingConfirmation: isPl ? 'Czekamy na potwierdzenie płatności.' : 'Waiting for confirmation.',
+      stripePaymentCancelled: isPl
+        ? 'Płatność anulowana. Saldo nie zostało zmienione.'
+        : 'Payment cancelled. Your balance was not changed.',
       saveToCloudRequiresAuth: isPl
         ? 'Zaloguj się, aby zapisać w chmurze'
         : 'Sign in to save to the cloud.',
@@ -11601,7 +11713,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       )
     }
     const topupCopy = copy.topupConfig
-    const topupCurrency: 'PLN' = 'PLN'
+    const topupCurrency = 'PLN' as const
     const topupAmountS = resolveAutopayTopupMinor('S').amountMinor
     const topupAmountM = resolveAutopayTopupMinor('M').amountMinor
     const topupAmountL = resolveAutopayTopupMinor('L').amountMinor
@@ -11682,15 +11794,45 @@ const isMissingLabel = (item: EngineBoardItem) => {
               </label>
             )}
           </div>
-          {engineNotice && !logoutInProgress ? (
-            <div
-              className={`engine-notice engine-notice--${engineNotice.variant} topup-notice`}
-              role={engineNotice.variant === 'error' ? 'alert' : 'status'}
-            >
-              {engineNotice.message}
+	          {engineNotice && !logoutInProgress ? (
+	            <div
+	              className={`engine-notice engine-notice--${engineNotice.variant} topup-notice`}
+	              role={engineNotice.variant === 'error' ? 'alert' : 'status'}
+	            >
+	              {engineNotice.message}
+	            </div>
+	          ) : null}
+          {stripeTopupEnabled ? (
+            <div className="topup-payment-methods" role="radiogroup" aria-label="Payment method">
+              <button
+                type="button"
+                className={`topup-payment-method${
+                  topupPaymentProvider === 'autopay' ? ' topup-payment-method--selected' : ''
+                }`}
+                role="radio"
+                aria-checked={topupPaymentProvider === 'autopay'}
+                disabled={isTopupBusy}
+                onClick={() => setTopupPaymentProvider('autopay')}
+              >
+                <span className="topup-payment-method__name">Autopay</span>
+                <span className="topup-payment-method__detail">Poland / BLIK / bank transfer</span>
+              </button>
+              <button
+                type="button"
+                className={`topup-payment-method${
+                  topupPaymentProvider === 'stripe' ? ' topup-payment-method--selected' : ''
+                }`}
+                role="radio"
+                aria-checked={topupPaymentProvider === 'stripe'}
+                disabled={isTopupBusy}
+                onClick={() => setTopupPaymentProvider('stripe')}
+              >
+                <span className="topup-payment-method__name">Stripe</span>
+                <span className="topup-payment-method__detail">International card payment</span>
+              </button>
             </div>
-          ) : null}
-          <div className="topup-row">
+	          ) : null}
+	          <div className="topup-row">
             <section
               className={`panel auth-panel auth-panel--topup topup-panel${
                 isTopupBusy ? ' topup-panel--disabled' : ''

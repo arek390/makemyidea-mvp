@@ -3,12 +3,18 @@ import { XMLParser } from 'fast-xml-parser'
 import { createSupabaseServerClient } from '../src/lib/server/supabaseServer.js'
 import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
 import { readJsonBody, sendJson, methodNotAllowed, notFound } from '../src/lib/server/http.js'
-import { resolveAction } from '../src/lib/server/router.js'
+import { resolveAction, resolveQueryValue } from '../src/lib/server/router.js'
 import {
   resolveBillingCurrency,
   ensureBillingAccount,
   grantWelcomeBalance,
 } from '../src/lib/server/billing.js'
+import {
+  createStripeCheckoutSession,
+  isStripeEnabled,
+  resolveStripeCurrency,
+  verifyStripeWebhook,
+} from '../src/lib/server/payments/stripe.js'
 
 const readRawBody = async (req) => {
   let body = ''
@@ -101,6 +107,69 @@ const parsePlnToGrosze = (value) => {
   const num = typeof value === 'string' ? Number(value.replace(',', '.').trim()) : Number(value)
   if (!Number.isFinite(num)) return null
   return Math.round(num * 100)
+}
+
+const resolveAuthenticatedUser = async (req, res, supabaseAdmin = getSupabaseAdmin()) => {
+  const supabase = createSupabaseServerClient(req, res)
+  const { data } = await supabase.auth.getUser()
+  let userId = data?.user?.id ?? null
+  let userEmail = data?.user?.email ?? null
+  if (!userId) {
+    const authHeader = req?.headers?.authorization || req?.headers?.Authorization || ''
+    const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : ''
+    if (token) {
+      const { data: tokenData, error: tokenError } = await supabaseAdmin.auth.getUser(token)
+      if (!tokenError && tokenData?.user?.id) {
+        userId = tokenData.user.id
+        userEmail = tokenData.user.email || null
+      }
+    }
+  }
+  return { userId, userEmail }
+}
+
+const mergeProviderPayload = (existingPayload, provider, patch) => {
+  const existing =
+    existingPayload && typeof existingPayload === 'object' && !Array.isArray(existingPayload)
+      ? existingPayload
+      : {}
+  const existingProvider =
+    existing[provider] && typeof existing[provider] === 'object' && !Array.isArray(existing[provider])
+      ? existing[provider]
+      : {}
+  return {
+    ...existing,
+    [provider]: {
+      ...existingProvider,
+      ...patch,
+    },
+  }
+}
+
+const mergeStripeEventPayload = (existingPayload, patch, event) => {
+  const previous = mergeProviderPayload(existingPayload, 'stripe', patch)
+  const stripePayload =
+    previous.stripe && typeof previous.stripe === 'object' && !Array.isArray(previous.stripe)
+      ? previous.stripe
+      : {}
+  const previousEvents =
+    stripePayload.events && typeof stripePayload.events === 'object' && !Array.isArray(stripePayload.events)
+      ? stripePayload.events
+      : {}
+  return {
+    ...previous,
+    stripe: {
+      ...stripePayload,
+      events: {
+        ...previousEvents,
+        [event.id]: {
+          type: event.type,
+          created: event.created ?? null,
+          received_at: new Date().toISOString(),
+        },
+      },
+    },
+  }
 }
 
 const normalizeLang = (value, req) => {
@@ -329,6 +398,113 @@ const handleCreatePayment = async (req, res) => {
   res.status(200)
   res.setHeader('Content-Type', 'text/html; charset=utf-8')
   res.send(html)
+}
+
+const handleCreateStripeCheckout = async (req, res) => {
+  if (req.method !== 'POST') {
+    methodNotAllowed(res, ['POST'])
+    return
+  }
+  if (!isStripeEnabled()) {
+    notFound(res)
+    return
+  }
+
+  const body = req.body && typeof req.body === 'object' ? req.body : {}
+  const amountPln = normalizeAmountPln(body.amountPln)
+  if (amountPln == null) {
+    sendJson(res, 400, { ok: false, error: 'INVALID_AMOUNT' })
+    return
+  }
+  if (amountPln < 0.1 || amountPln > 100000) {
+    sendJson(res, 400, { ok: false, error: 'AMOUNT_OUT_OF_RANGE' })
+    return
+  }
+
+  const supabaseAdmin = getSupabaseAdmin()
+  const { userId } = await resolveAuthenticatedUser(req, res, supabaseAdmin)
+  if (!userId) {
+    res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
+    return
+  }
+
+  const orderId = `stripe_${randomUUID().replace(/-/g, '')}`
+  const amountGrosze = Math.round(amountPln * 100)
+  const currency = resolveStripeCurrency()
+  const createdAt = new Date().toISOString()
+
+  const insertRes = await supabaseAdmin
+    .from('payments')
+    .insert({
+      user_id: userId,
+      provider: 'stripe',
+      order_id: orderId,
+      amount_pln: amountPln,
+      amount_pln_grosze: amountGrosze,
+      status: 'pending',
+      provider_payload: {
+        stripe: {
+          currency,
+          created_at: createdAt,
+          mode: 'checkout',
+          test_mode: true,
+        },
+      },
+    })
+    .select('id,provider_payload')
+    .single()
+  if (insertRes.error || !insertRes.data?.id) {
+    console.error('[STRIPE CHECKOUT] payment_insert_failed', {
+      message: insertRes.error?.message,
+      code: insertRes.error?.code,
+      details: insertRes.error?.details,
+      hint: insertRes.error?.hint,
+    })
+    sendJson(res, 500, { ok: false, error: 'PAYMENT_CREATE_FAILED' })
+    return
+  }
+
+  let session
+  try {
+    session = await createStripeCheckoutSession({
+      userId,
+      orderId,
+      internalPaymentId: insertRes.data.id,
+      amountMinor: amountGrosze,
+      currency,
+    })
+  } catch (error) {
+    console.error('[STRIPE CHECKOUT] session_create_failed', {
+      orderId,
+      message: error?.message ?? String(error),
+      code: error?.code ?? null,
+    })
+    sendJson(res, 500, { ok: false, error: 'STRIPE_SESSION_CREATE_FAILED' })
+    return
+  }
+
+  const providerPayload = mergeProviderPayload(insertRes.data.provider_payload, 'stripe', {
+    checkout_session_id: session.id,
+    checkout_session_url_created: Boolean(session.url),
+    payment_status: session.payment_status ?? null,
+    updated_at: new Date().toISOString(),
+  })
+  const updateRes = await supabaseAdmin
+    .from('payments')
+    .update({ provider_payload: providerPayload, updated_at: new Date().toISOString() })
+    .eq('id', insertRes.data.id)
+  if (updateRes.error) {
+    console.error('[STRIPE CHECKOUT] payment_session_update_failed', {
+      orderId,
+      sessionId: session.id,
+      message: updateRes.error.message,
+      code: updateRes.error.code,
+    })
+    sendJson(res, 500, { ok: false, error: 'PAYMENT_UPDATE_FAILED' })
+    return
+  }
+
+  sendJson(res, 200, { ok: true, url: session.url })
 }
 
 const handleBalance = async (req, res) => {
@@ -675,14 +851,261 @@ const handleAutopayReturn = async (req, res) => {
   res.end()
 }
 
+const redirect303 = (res, location) => {
+  res.statusCode = 303
+  res.setHeader('Location', location)
+  res.end()
+}
+
+const handleStripeReturn = async (req, res) => {
+  if (req.method !== 'GET') {
+    methodNotAllowed(res, ['GET'])
+    return
+  }
+  const sessionId = String(resolveQueryValue(req, 'session_id') || '').trim()
+  const suffix = sessionId ? `&session_id=${encodeURIComponent(sessionId)}` : ''
+  redirect303(res, `/report#/topup?payment=stripe_success${suffix}`)
+}
+
+const handleStripeCancelReturn = async (req, res) => {
+  if (req.method !== 'GET') {
+    methodNotAllowed(res, ['GET'])
+    return
+  }
+  redirect303(res, '/report#/topup?payment=stripe_cancelled')
+}
+
+const lookupStripePaymentForSession = async (supabaseAdmin, session) => {
+  const metadata = session?.metadata || {}
+  const internalPaymentId = String(metadata.internalPaymentId || '').trim()
+  const orderId = String(metadata.orderId || '').trim()
+  let query = supabaseAdmin
+    .from('payments')
+    .select('id,user_id,provider,order_id,amount_pln_grosze,status,provider_payload,paid_at')
+    .eq('provider', 'stripe')
+  if (internalPaymentId) {
+    query = query.eq('id', internalPaymentId)
+  } else if (orderId) {
+    query = query.eq('order_id', orderId)
+  } else {
+    return { payment: null, error: null }
+  }
+  const { data, error } = await query.maybeSingle()
+  return { payment: data ?? null, error }
+}
+
+const updateStripePaymentPayload = async (supabaseAdmin, payment, patch, event, status = null) => {
+  const providerPayload = mergeStripeEventPayload(payment.provider_payload, patch, event)
+  const update = {
+    provider_payload: providerPayload,
+    updated_at: new Date().toISOString(),
+  }
+  if (status && payment.status === 'pending') update.status = status
+  const { error } = await supabaseAdmin
+    .from('payments')
+    .update(update)
+    .eq('id', payment.id)
+    .eq('provider', 'stripe')
+  return error
+}
+
+const handleStripePaidSession = async ({ supabaseAdmin, session, event }) => {
+  if (session.payment_status !== 'paid') {
+    return { ok: true, skipped: 'NOT_PAID' }
+  }
+  const { payment, error } = await lookupStripePaymentForSession(supabaseAdmin, session)
+  if (error) {
+    return { ok: false, status: 500, error: 'PAYMENT_LOOKUP_FAILED', detail: error.message }
+  }
+  if (!payment) {
+    return { ok: false, status: 404, error: 'PAYMENT_NOT_FOUND' }
+  }
+  if (payment.provider !== 'stripe') {
+    return { ok: false, status: 400, error: 'PROVIDER_MISMATCH' }
+  }
+  if (payment.status !== 'pending' && payment.status !== 'paid') {
+    await updateStripePaymentPayload(supabaseAdmin, payment, {
+      checkout_session_id: session.id,
+      payment_status: session.payment_status ?? null,
+      ignored_status: payment.status,
+    }, event)
+    return { ok: true, skipped: 'PAYMENT_NOT_SETTLEABLE' }
+  }
+
+  const expectedAmount = Number(payment.amount_pln_grosze ?? NaN)
+  const stripeAmount = Number(session.amount_total ?? NaN)
+  const expectedCurrency = resolveStripeCurrency()
+  const stripeCurrency = String(session.currency || '').trim().toLowerCase()
+  if (!Number.isFinite(expectedAmount) || !Number.isFinite(stripeAmount) || stripeAmount !== expectedAmount) {
+    await updateStripePaymentPayload(supabaseAdmin, payment, {
+      checkout_session_id: session.id,
+      payment_status: session.payment_status ?? null,
+      amount_total: session.amount_total ?? null,
+      amount_mismatch: true,
+    }, event)
+    return { ok: false, status: 400, error: 'AMOUNT_MISMATCH' }
+  }
+  if (stripeCurrency !== expectedCurrency) {
+    await updateStripePaymentPayload(supabaseAdmin, payment, {
+      checkout_session_id: session.id,
+      payment_status: session.payment_status ?? null,
+      currency: stripeCurrency,
+      currency_mismatch: true,
+    }, event)
+    return { ok: false, status: 400, error: 'CURRENCY_MISMATCH' }
+  }
+
+  const preApplyUpdateError = await updateStripePaymentPayload(supabaseAdmin, payment, {
+    checkout_session_id: session.id,
+    payment_intent: typeof session.payment_intent === 'string' ? session.payment_intent : null,
+    payment_status: session.payment_status ?? null,
+    amount_total: session.amount_total ?? null,
+    currency: stripeCurrency,
+    last_success_event_id: event.id,
+  }, event)
+  if (preApplyUpdateError) {
+    return { ok: false, status: 500, error: 'PAYMENT_UPDATE_FAILED', detail: preApplyUpdateError.message }
+  }
+
+  const rpcRes = await supabaseAdmin.rpc('apply_payment', { order_id_in: payment.order_id })
+  if (rpcRes.error) {
+    return { ok: false, status: 500, error: 'APPLY_PAYMENT_FAILED', detail: rpcRes.error.message }
+  }
+  return { ok: true, settled: true }
+}
+
+const handleStripeWebhook = async (req, res) => {
+  if (req.method !== 'POST') {
+    methodNotAllowed(res, ['POST'])
+    return
+  }
+  if (!isStripeEnabled()) {
+    notFound(res)
+    return
+  }
+
+  const rawBody = await readRawBody(req)
+  const signature = req?.headers?.['stripe-signature'] || req?.headers?.['Stripe-Signature'] || ''
+  let event
+  try {
+    event = await verifyStripeWebhook(rawBody, signature)
+  } catch (error) {
+    const errorCode = String(error?.code || '')
+    if (errorCode.startsWith('MISSING_STRIPE_')) {
+      sendJson(res, 500, { ok: false, error: 'MISSING_STRIPE_ENV' })
+      return
+    }
+    console.error('[STRIPE WEBHOOK] signature_verification_failed', {
+      message: error?.message ?? String(error),
+    })
+    sendJson(res, 400, { ok: false, error: 'INVALID_SIGNATURE' })
+    return
+  }
+
+  const supabaseAdmin = getSupabaseAdmin()
+  const session = event?.data?.object
+  if (event.type === 'checkout.session.completed' || event.type === 'checkout.session.async_payment_succeeded') {
+    const result = await handleStripePaidSession({ supabaseAdmin, session, event })
+    if (!result.ok) {
+      console.error('[STRIPE WEBHOOK] paid_session_failed', {
+        eventId: event.id,
+        type: event.type,
+        error: result.error,
+        detail: result.detail ?? null,
+      })
+      sendJson(res, result.status || 500, { ok: false, error: result.error })
+      return
+    }
+    sendJson(res, 200, { ok: true })
+    return
+  }
+
+  if (event.type === 'checkout.session.async_payment_failed' || event.type === 'checkout.session.expired') {
+    const { payment, error } = await lookupStripePaymentForSession(supabaseAdmin, session)
+    if (error) {
+      sendJson(res, 500, { ok: false, error: 'PAYMENT_LOOKUP_FAILED' })
+      return
+    }
+    if (payment) {
+      const nextStatus = event.type === 'checkout.session.expired' ? 'canceled' : 'failed'
+      const updateError = await updateStripePaymentPayload(supabaseAdmin, payment, {
+        checkout_session_id: session.id,
+        payment_status: session.payment_status ?? null,
+        last_failure_event_id: event.id,
+      }, event, nextStatus)
+      if (updateError) {
+        sendJson(res, 500, { ok: false, error: 'PAYMENT_UPDATE_FAILED' })
+        return
+      }
+    }
+    sendJson(res, 200, { ok: true })
+    return
+  }
+
+  sendJson(res, 200, { ok: true, ignored: true })
+}
+
+const handlePaymentStatus = async (req, res) => {
+  if (req.method !== 'GET') {
+    methodNotAllowed(res, ['GET'])
+    return
+  }
+  const provider = String(resolveQueryValue(req, 'provider') || '').trim().toLowerCase()
+  const sessionId = String(resolveQueryValue(req, 'session_id') || '').trim()
+  if (provider !== 'stripe' || !sessionId) {
+    sendJson(res, 400, { ok: false, error: 'INVALID_PAYMENT_STATUS_QUERY' })
+    return
+  }
+
+  const supabaseAdmin = getSupabaseAdmin()
+  const { userId } = await resolveAuthenticatedUser(req, res, supabaseAdmin)
+  if (!userId) {
+    res.status(401).json({ ok: false, error: 'UNAUTHORIZED' })
+    return
+  }
+  const { data, error } = await supabaseAdmin
+    .from('payments')
+    .select('status,paid_at,provider_payload')
+    .eq('provider', 'stripe')
+    .eq('user_id', userId)
+    .eq('provider_payload->stripe->>checkout_session_id', sessionId)
+    .maybeSingle()
+  if (error) {
+    sendJson(res, 500, { ok: false, error: 'PAYMENT_STATUS_LOOKUP_FAILED' })
+    return
+  }
+  if (!data) {
+    sendJson(res, 404, { ok: false, error: 'PAYMENT_NOT_FOUND' })
+    return
+  }
+  const status = ['pending', 'paid', 'failed', 'canceled'].includes(data.status) ? data.status : 'pending'
+  sendJson(res, 200, {
+    ok: true,
+    status,
+    balanceUpdated: status === 'paid' && Boolean(data.paid_at),
+  })
+}
+
 export default async function handler(req, res) {
   const actionFromQuery = resolveAction(req, null)
   if (actionFromQuery === 'itn') {
     await handleAutopayItn(req, res)
     return
   }
+  if (actionFromQuery === 'stripe_webhook') {
+    await handleStripeWebhook(req, res)
+    return
+  }
   if (actionFromQuery === 'return') {
     await handleAutopayReturn(req, res)
+    return
+  }
+  if (actionFromQuery === 'stripe_return') {
+    await handleStripeReturn(req, res)
+    return
+  }
+  if (actionFromQuery === 'stripe_cancel_return') {
+    await handleStripeCancelReturn(req, res)
     return
   }
 
@@ -698,8 +1121,16 @@ export default async function handler(req, res) {
     await handleCreatePayment(req, res)
     return
   }
+  if (action === 'create_stripe_checkout') {
+    await handleCreateStripeCheckout(req, res)
+    return
+  }
   if (action === 'balance') {
     await handleBalance(req, res)
+    return
+  }
+  if (action === 'payment_status') {
+    await handlePaymentStatus(req, res)
     return
   }
   if (action === 'test_topup') {
