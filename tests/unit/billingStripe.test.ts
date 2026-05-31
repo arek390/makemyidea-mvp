@@ -200,8 +200,8 @@ describe('billing Stripe integration', () => {
     expect(insertBuilder.insert).toHaveBeenCalledWith(expect.objectContaining({
       provider: 'stripe',
       status: 'pending',
-      amount_pln: 20,
       amount_pln_grosze: 2000,
+      tokens_to_add: 2000,
     }))
     expect(mocks.createStripeCheckoutSession).toHaveBeenCalledWith(expect.objectContaining({
       orderId: expect.stringMatching(/^stripe_/),

@@ -430,8 +430,17 @@ const handleCreateStripeCheckout = async (req, res) => {
 
   const orderId = `stripe_${randomUUID().replace(/-/g, '')}`
   const amountGrosze = Math.round(amountPln * 100)
+  const tokensToAdd = amountGrosze
   const currency = resolveStripeCurrency()
   const createdAt = new Date().toISOString()
+
+  console.log('[STRIPE CHECKOUT] creating_payment', {
+    orderId,
+    amountPlnGrosze: amountGrosze,
+    tokensToAdd,
+    currency,
+    provider: 'stripe',
+  })
 
   const insertRes = await supabaseAdmin
     .from('payments')
@@ -439,8 +448,8 @@ const handleCreateStripeCheckout = async (req, res) => {
       user_id: userId,
       provider: 'stripe',
       order_id: orderId,
-      amount_pln: amountPln,
       amount_pln_grosze: amountGrosze,
+      tokens_to_add: tokensToAdd,
       status: 'pending',
       provider_payload: {
         stripe: {
