@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
   serverAuthGetUser: vi.fn(),
   isStripeEnabled: vi.fn(),
   resolveStripeCurrency: vi.fn(),
+  resolveStripeMode: vi.fn(),
   createStripeCheckoutSession: vi.fn(),
   verifyStripeWebhook: vi.fn(),
 }))
@@ -26,6 +27,7 @@ vi.mock('../../src/lib/server/supabaseServer.js', () => ({
 vi.mock('../../src/lib/server/payments/stripe.js', () => ({
   isStripeEnabled: mocks.isStripeEnabled,
   resolveStripeCurrency: mocks.resolveStripeCurrency,
+  resolveStripeMode: mocks.resolveStripeMode,
   createStripeCheckoutSession: mocks.createStripeCheckoutSession,
   verifyStripeWebhook: mocks.verifyStripeWebhook,
 }))
@@ -135,6 +137,7 @@ beforeEach(() => {
   })
   mocks.isStripeEnabled.mockReturnValue(true)
   mocks.resolveStripeCurrency.mockReturnValue('pln')
+  mocks.resolveStripeMode.mockReturnValue('test')
   mocks.admin.rpc.mockResolvedValue({ error: null })
 })
 
@@ -204,6 +207,7 @@ describe('billing Stripe integration', () => {
       tokens_to_add: 2000,
       provider_payload: expect.objectContaining({
         stripe: expect.objectContaining({
+          stripe_mode: 'test',
           return_to: '/engine',
         }),
       }),

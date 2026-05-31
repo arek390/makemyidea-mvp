@@ -13,6 +13,7 @@ import {
   createStripeCheckoutSession,
   isStripeEnabled,
   resolveStripeCurrency,
+  resolveStripeMode,
   verifyStripeWebhook,
 } from '../src/lib/server/payments/stripe.js'
 
@@ -478,6 +479,7 @@ const handleCreateStripeCheckout = async (req, res) => {
   const amountGrosze = Math.round(amountPln * 100)
   const tokensToAdd = amountGrosze
   const currency = resolveStripeCurrency()
+  const stripeMode = resolveStripeMode()
   const createdAt = new Date().toISOString()
 
   console.log('[STRIPE CHECKOUT] creating_payment', {
@@ -486,6 +488,7 @@ const handleCreateStripeCheckout = async (req, res) => {
     tokensToAdd,
     currency,
     provider: 'stripe',
+    stripeMode,
   })
 
   const insertRes = await supabaseAdmin
@@ -502,7 +505,7 @@ const handleCreateStripeCheckout = async (req, res) => {
           currency,
           created_at: createdAt,
           mode: 'checkout',
-          test_mode: true,
+          stripe_mode: stripeMode,
           return_to: returnTo,
         },
       },

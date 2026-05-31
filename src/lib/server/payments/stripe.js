@@ -8,6 +8,9 @@ export const isStripeEnabled = () => {
 export const resolveStripeCurrency = () =>
   String(process.env.STRIPE_CURRENCY || 'pln').trim().toLowerCase()
 
+export const resolveStripeMode = () =>
+  String(process.env.STRIPE_SECRET_KEY || '').trim().startsWith('sk_live_') ? 'live' : 'test'
+
 const requireEnv = (name) => {
   const value = String(process.env[name] || '').trim()
   if (!value) {
