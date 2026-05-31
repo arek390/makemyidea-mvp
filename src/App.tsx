@@ -11715,14 +11715,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const topupCopy = copy.topupConfig
     const topupCurrency = 'PLN' as const
     const topupAmountS = resolveAutopayTopupMinor('S').amountMinor
-    const topupAmountM = resolveAutopayTopupMinor('M').amountMinor
-    const topupAmountL = resolveAutopayTopupMinor('L').amountMinor
-    const isTopupBusy = topupLoadingTier !== null
-    const isTopupTermsPending = !topupTermsAccepted || !topupDigitalServicesAccepted
-    const topupServiceBalanceNote =
-      uiLanguage === 'Polish'
-        ? 'Doładowanie Salda Usługowego umożliwia korzystanie z odpłatnych funkcji MakeMyIdea.work. Saldo Usługowe jest przedpłatą na usługi cyfrowe dostępne wyłącznie w Serwisie. Nie jest tokenem, walutą wirtualną, pieniądzem elektronicznym ani instrumentem finansowym. Koszt użycia danej funkcji jest pokazany w aplikacji przed jej uruchomieniem.'
-        : 'Topping up the Service Balance enables the use of paid MakeMyIdea.work features. The Service Balance is a prepayment for digital services available exclusively in the Service. It is not a token, virtual currency, electronic money, or a financial instrument. The cost of using a given feature is shown in the application before it is launched.'
+	    const topupAmountM = resolveAutopayTopupMinor('M').amountMinor
+	    const topupAmountL = resolveAutopayTopupMinor('L').amountMinor
+	    const isTopupBusy = topupLoadingTier !== null
+	    const isTopupTermsPending = !topupTermsAccepted || !topupDigitalServicesAccepted
+	    const autopayLogoUrl = new URL('/logo/Autopay_500.svg', import.meta.url).href
+	    const stripeLogoUrl = new URL('/logo/Stripe wordmark - Blurple.svg', import.meta.url).href
+	    const topupServiceBalanceNote =
+	      uiLanguage === 'Polish'
+	        ? 'Doładowanie Salda Usługowego umożliwia korzystanie z odpłatnych funkcji MakeMyIdea.work. Saldo Usługowe jest przedpłatą na usługi cyfrowe dostępne wyłącznie w Serwisie. Nie jest tokenem, walutą wirtualną, pieniądzem elektronicznym ani instrumentem finansowym. Koszt użycia danej funkcji jest pokazany w aplikacji przed jej uruchomieniem.'
+	        : 'Topping up the Service Balance enables the use of paid MakeMyIdea.work features. The Service Balance is a prepayment for digital services available exclusively in the Service. It is not a token, virtual currency, electronic money, or a financial instrument. The cost of using a given feature is shown in the application before it is launched.'
     if (typeof window !== 'undefined') {
       console.log('[TOPUP REAL COMPONENT LOADED]')
     }
@@ -11802,35 +11804,54 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	              {engineNotice.message}
 	            </div>
 	          ) : null}
-          {stripeTopupEnabled ? (
-            <div className="topup-payment-methods" role="radiogroup" aria-label="Payment method">
-              <button
-                type="button"
-                className={`topup-payment-method${
-                  topupPaymentProvider === 'autopay' ? ' topup-payment-method--selected' : ''
-                }`}
-                role="radio"
-                aria-checked={topupPaymentProvider === 'autopay'}
-                disabled={isTopupBusy}
-                onClick={() => setTopupPaymentProvider('autopay')}
-              >
-                <span className="topup-payment-method__name">Autopay</span>
-                <span className="topup-payment-method__detail">Poland / BLIK / bank transfer</span>
-              </button>
-              <button
-                type="button"
-                className={`topup-payment-method${
-                  topupPaymentProvider === 'stripe' ? ' topup-payment-method--selected' : ''
-                }`}
-                role="radio"
-                aria-checked={topupPaymentProvider === 'stripe'}
-                disabled={isTopupBusy}
-                onClick={() => setTopupPaymentProvider('stripe')}
-              >
-                <span className="topup-payment-method__name">Stripe</span>
-                <span className="topup-payment-method__detail">International card payment</span>
-              </button>
-            </div>
+	          {stripeTopupEnabled ? (
+	            <div className="topup-payment-section">
+	              <p className="topup-footer">
+	                {uiLanguage === 'Polish' ? 'Wybierz metodę płatności.' : 'Choose a payment method.'}
+	              </p>
+	              <div className="topup-payment-methods" role="radiogroup" aria-label="Payment method">
+	                <button
+	                  type="button"
+	                  className={`topup-payment-method${
+	                    topupPaymentProvider === 'autopay' ? ' topup-payment-method--selected' : ''
+	                  }`}
+	                  role="radio"
+	                  aria-checked={topupPaymentProvider === 'autopay'}
+	                  disabled={isTopupBusy}
+	                  onClick={() => setTopupPaymentProvider('autopay')}
+	                >
+	                  <span className="topup-payment-method__copy">
+	                    <span className="topup-payment-method__name">Autopay</span>
+	                    <span className="topup-payment-method__detail">
+	                      {uiLanguage === 'Polish'
+	                        ? 'Polska / BLIK / przelew bankowy'
+	                        : 'Poland / BLIK / bank transfer'}
+	                    </span>
+	                  </span>
+	                  <img className="topup-payment-method__logo" src={autopayLogoUrl} alt="Autopay" />
+	                </button>
+	                <button
+	                  type="button"
+	                  className={`topup-payment-method${
+	                    topupPaymentProvider === 'stripe' ? ' topup-payment-method--selected' : ''
+	                  }`}
+	                  role="radio"
+	                  aria-checked={topupPaymentProvider === 'stripe'}
+	                  disabled={isTopupBusy}
+	                  onClick={() => setTopupPaymentProvider('stripe')}
+	                >
+	                  <span className="topup-payment-method__copy">
+	                    <span className="topup-payment-method__name">Stripe</span>
+	                    <span className="topup-payment-method__detail">
+	                      {uiLanguage === 'Polish'
+	                        ? 'Międzynarodowa płatność kartą'
+	                        : 'International card payment'}
+	                    </span>
+	                  </span>
+	                  <img className="topup-payment-method__logo" src={stripeLogoUrl} alt="Stripe" />
+	                </button>
+	              </div>
+	            </div>
 	          ) : null}
 	          <div className="topup-row">
             <section
