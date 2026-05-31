@@ -11719,8 +11719,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
 	    const topupAmountL = resolveAutopayTopupMinor('L').amountMinor
 	    const isTopupBusy = topupLoadingTier !== null
 	    const isTopupTermsPending = !topupTermsAccepted || !topupDigitalServicesAccepted
-	    const autopayLogoUrl = new URL('/logo/Autopay_500.svg', import.meta.url).href
-	    const stripeLogoUrl = new URL('/logo/Stripe wordmark - Blurple.svg', import.meta.url).href
+	    const autopayLogoUrl = new URL('../logo/Autopay_500.svg', import.meta.url).href
+	    const stripeLogoUrl = new URL('../logo/Stripe wordmark - Blurple.svg', import.meta.url).href
 	    const topupServiceBalanceNote =
 	      uiLanguage === 'Polish'
 	        ? 'Doładowanie Salda Usługowego umożliwia korzystanie z odpłatnych funkcji MakeMyIdea.work. Saldo Usługowe jest przedpłatą na usługi cyfrowe dostępne wyłącznie w Serwisie. Nie jest tokenem, walutą wirtualną, pieniądzem elektronicznym ani instrumentem finansowym. Koszt użycia danej funkcji jest pokazany w aplikacji przed jej uruchomieniem.'
