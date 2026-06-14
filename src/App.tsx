@@ -4126,7 +4126,12 @@ function BlogPage({
                   >
                     {copy.landingCta}
                   </a>
-                  <div className="landing-microcopy">{copy.landingCtaNote}</div>
+                  <div className="landing-microcopy">
+                    <span>{copy.landingCtaNote}</span>
+                    {copy.landingIntroCtaNoteLines[1] && (
+                      <span>{copy.landingIntroCtaNoteLines[1]}</span>
+                    )}
+                  </div>
                 </div>
               </>
             )}

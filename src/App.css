@@ -6692,6 +6692,10 @@ ul.blog-article-list {
   transform: translateY(0);
 }
 
+.blog-article-cta .landing-microcopy span {
+  display: block;
+}
+
 .privacy-page {
   min-height: 100vh;
   background:
