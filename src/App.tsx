@@ -2265,7 +2265,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingPrivacyTitle: 'Privacy Policy',
     landingTermsTitle: 'Terms and Conditions',
     landingContactTitle: 'Contact',
-    landingBlogTitle: 'Blog',
+    landingBlogTitle: 'Read the blog',
     landingPrivacyBody:
       'We process account, session, board, report and AI usage data only to operate the product, paid features and admin diagnostics.',
     landingPrivacyLink: 'Read the full privacy policy',
@@ -2885,7 +2885,7 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     landingPrivacyTitle: 'Polityka prywatności',
     landingTermsTitle: 'Regulamin serwisu',
     landingContactTitle: 'Kontakt',
-    landingBlogTitle: 'Blog',
+    landingBlogTitle: 'Przeczytaj blog',
     landingPrivacyBody:
       'Aplikacja MakeMyIdea.work zbiera podstawowe dane użytkownika, takie jak adres email oraz identyfikator konta Google, wyłącznie w celu umożliwienia logowania i korzystania z aplikacji.',
     landingPrivacyLink: 'Przeczytaj pełną politykę prywatności',
@@ -15958,9 +15958,14 @@ const isMissingLabel = (item: EngineBoardItem) => {
         )}
         <div className="topbar-links">
           {showLanding && (
-            <a className="primary topbar-link landing-login-link" href="/login" onClick={handleLandingCtaClick}>
-              {copy.landingLoginCta}
-            </a>
+            <>
+              <a className="ghost topbar-link landing-blog-link" href="/blog">
+                {copy.landingBlogTitle}
+              </a>
+              <a className="primary topbar-link landing-login-link" href="/login" onClick={handleLandingCtaClick}>
+                {copy.landingLoginCta}
+              </a>
+            </>
           )}
         </div>
         {(showLanding || activeStep === 1) && (

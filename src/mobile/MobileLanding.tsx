@@ -13,7 +13,6 @@ type MobileLandingProps = {
 }
 
 const englishDemoScreenshots = [
-  new URL('../../prtscreen/mobile_landingpage/screen_mobile_1.png', import.meta.url).href,
   new URL('../../prtscreen/mobile_landingpage/screen_mobile_2.png', import.meta.url).href,
   new URL('../../prtscreen/mobile_landingpage/screen_mobile_3.png', import.meta.url).href,
   new URL('../../prtscreen/mobile_landingpage/screen_mobile_4.png', import.meta.url).href,
@@ -21,7 +20,6 @@ const englishDemoScreenshots = [
 ]
 
 const polishDemoScreenshots = [
-  new URL('../../prtscreen/mobile_landingpage/PL/Zrzut ekranu 1.png', import.meta.url).href,
   new URL('../../prtscreen/mobile_landingpage/PL/Zrzut ekranu 2.png', import.meta.url).href,
   new URL('../../prtscreen/mobile_landingpage/PL/Zrzut ekranu 3.png', import.meta.url).href,
   new URL('../../prtscreen/mobile_landingpage/PL/Zrzut ekranu 4.png', import.meta.url).href,
@@ -36,32 +34,34 @@ const mobileCopy = {
     languageLabel: 'Language',
     login: 'Log in',
     start: 'See how it works',
+    readBlog: 'Read the blog',
     openApp: 'Open app',
-    heroTitle: 'Turn an idea into decisions and an action plan.',
+    brand: 'MAKEMYIDEA.WORK',
+    heroTitle: 'Turn messy situations into clear decisions.',
     heroBody:
-      'MakeMyIdea.work helps structure messy thoughts, expose contradictions, and leave you with the next practical steps.',
+      'MakeMyIdea.work helps you describe what you are trying to solve, understand, improve, or decide - and turns that input into structured entries, key tensions, decision points, and a practical next step.',
     note: 'The full workspace works best on desktop and tablet.',
     howTitle: 'How it works',
     steps: [
       {
-        title: 'Describe the idea',
-        body: 'Write or speak what you are trying to build, fix, or understand.',
+        title: 'Describe your situation',
+        body: 'Write freely about the problem, idea, observation, constraint, or decision you are facing.',
       },
       {
-        title: 'AI structures the work',
-        body: 'The app organizes contradictions, priorities, and decision points.',
+        title: 'AI structures the context',
+        body: 'The app organizes your input into clear entries, highlights gaps, tensions, and areas that need a decision.',
       },
       {
-        title: 'Get an action plan',
-        body: 'You leave with clear choices and a practical plan for the next session.',
+        title: 'Move toward a practical next step',
+        body: 'You get a structured view of the situation and a clearer direction for what to decide, test, or do next.',
       },
     ],
-    demoTitle: 'A focused workspace for idea work',
-    demoBody:
-      'On desktop and tablet, the workspace gives you the board, key contradictions, decisions, and the action plan in one flow.',
-    finalTitle: 'The full workspace is available on desktop and tablet.',
-    finalBody:
-      'There you can go through the complete process: idea, contradictions, decisions, and action plan.',
+    demoTitle: 'A focused workspace for turning context into decisions',
+    demoBodyLines: [
+      'On desktop and tablet, MakeMyIdea.work gives you the full flow: structured board, important tensions, decision points, and a practical action direction.',
+      'The mobile version is a quick introduction.',
+      'To use the complete workspace, open the app on desktop or tablet.',
+    ],
     modalTitle: 'Desktop or tablet recommended',
     modalBody: 'The full workspace is currently optimized for desktop and tablet devices.',
     openDesktop: 'Open on desktop',
@@ -75,32 +75,34 @@ const mobileCopy = {
     languageLabel: 'Język',
     login: 'Zaloguj',
     start: 'Zobacz jak to działa',
+    readBlog: 'Przeczytaj blog',
     openApp: 'Otwórz aplikację',
-    heroTitle: 'Zamień pomysł w decyzje i plan działania.',
+    brand: 'MAKEMYIDEA.WORK',
+    heroTitle: 'Zamień chaotyczne sytuacje w jasne decyzje.',
     heroBody:
-      'MakeMyIdea.work pomaga uporządkować niejasne myśli, nazwać sprzeczności i dojść do konkretnych kolejnych kroków.',
+      'MakeMyIdea.work pomaga opisać to, co próbujesz rozwiązać, zrozumieć, usprawnić albo zdecydować - i zamienia ten opis w uporządkowane wpisy, kluczowe napięcia, punkty decyzyjne i praktyczny kolejny krok.',
     note: 'Pełny workspace działa najlepiej na desktopie i tablecie.',
     howTitle: 'Jak to działa',
     steps: [
       {
-        title: 'Opisz pomysł',
-        body: 'Napisz lub powiedz, co chcesz zbudować, poprawić albo zrozumieć.',
+        title: 'Opisz swoją sytuację',
+        body: 'Napisz swobodnie o problemie, pomyśle, obserwacji, ograniczeniu albo decyzji, przed którą stoisz.',
       },
       {
-        title: 'AI porządkuje pracę',
-        body: 'Aplikacja układa sprzeczności, priorytety i miejsca wymagające decyzji.',
+        title: 'AI porządkuje kontekst',
+        body: 'Aplikacja układa Twój opis w czytelne wpisy, pokazuje luki, napięcia i obszary wymagające decyzji.',
       },
       {
-        title: 'Dostajesz plan działania',
-        body: 'Wychodzisz z jasnymi wyborami i praktycznym planem na następną sesję.',
+        title: 'Przejdź do praktycznego kolejnego kroku',
+        body: 'Otrzymujesz uporządkowany obraz sytuacji i jaśniejszy kierunek tego, co zdecydować, przetestować albo zrobić dalej.',
       },
     ],
-    demoTitle: 'Skupiony workspace do pracy nad pomysłem',
-    demoBody:
-      'Na desktopie i tablecie workspace prowadzi przez tablicę, kluczowe sprzeczności, decyzje i plan działania w jednym flow.',
-    finalTitle: 'Pełny workspace jest dostępny na desktopie i tablecie.',
-    finalBody:
-      'Tam przejdziesz przez cały proces: pomysł, sprzeczności, decyzje i plan działania.',
+    demoTitle: 'Skupiony workspace do zamiany kontekstu w decyzje',
+    demoBodyLines: [
+      'Na desktopie i tablecie MakeMyIdea.work daje pełny przepływ pracy: uporządkowaną tablicę, ważne napięcia, punkty decyzyjne i praktyczny kierunek działania.',
+      'Wersja mobilna jest krótkim wprowadzeniem.',
+      'Aby skorzystać z pełnego workspace, otwórz aplikację na desktopie albo tablecie.',
+    ],
     modalTitle: 'Zalecany desktop albo tablet',
     modalBody: 'Pełny workspace jest obecnie zoptymalizowany dla desktopów i tabletów.',
     openDesktop: 'Otwórz na desktopie',
@@ -114,16 +116,16 @@ const mobileCopy = {
   languageLabel: string
   login: string
   start: string
+  readBlog: string
   openApp: string
+  brand: string
   heroTitle: string
   heroBody: string
   note: string
   howTitle: string
   steps: { title: string; body: string }[]
   demoTitle: string
-  demoBody: string
-  finalTitle: string
-  finalBody: string
+  demoBodyLines: string[]
   modalTitle: string
   modalBody: string
   openDesktop: string
@@ -178,6 +180,12 @@ export function MobileLanding({
       <header className="mobile-landing__topbar">
         <img className="mobile-landing__logo" src={logoUrl} alt="MakeMyIdea.work" />
         <div className="mobile-landing__top-actions">
+          <a
+            className="mobile-landing__top-blog"
+            href="https://makemyidea.work/blog"
+          >
+            {copy.readBlog}
+          </a>
           <button type="button" className="mobile-landing__login" onClick={showWorkspaceNotice}>
             {copy.login}
           </button>
@@ -196,7 +204,7 @@ export function MobileLanding({
 
       <main>
         <section className="mobile-landing__hero">
-          <p className="mobile-landing__eyebrow">MakeMyIdea.work</p>
+          <p className="mobile-landing__eyebrow">{copy.brand}</p>
           <h1>{copy.heroTitle}</h1>
           <p>{copy.heroBody}</p>
           <a
@@ -241,13 +249,21 @@ export function MobileLanding({
           </div>
           <div>
             <h2>{copy.demoTitle}</h2>
-            <p>{copy.demoBody}</p>
+            <div className="mobile-landing__text-stack">
+              {copy.demoBodyLines.map((line) => (
+                <p key={line}>{line}</p>
+              ))}
+            </div>
           </div>
         </section>
 
         <section className="mobile-landing__final">
-          <h2>{copy.finalTitle}</h2>
-          <p>{copy.finalBody}</p>
+          <a
+            className="mobile-landing__blog-link"
+            href="https://makemyidea.work/blog"
+          >
+            {copy.readBlog}
+          </a>
           <button type="button" className="mobile-landing__cta" onClick={showWorkspaceNotice}>
             {copy.openApp}
           </button>
