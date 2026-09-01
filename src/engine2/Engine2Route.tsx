@@ -29,6 +29,7 @@ type Engine2RouteProps = {
   missingSupabaseEnvMessage: string
   isDiagEnabled: boolean
   publicLoginHref?: string
+  adminEngineSwitcher?: 'engine1' | 'engine2'
   onAdminClick: () => void
   onLogout: () => void
   onToggleDiagnostics: () => void
@@ -68,6 +69,7 @@ export function Engine2Route({
   missingSupabaseEnvMessage,
   isDiagEnabled,
   publicLoginHref,
+  adminEngineSwitcher,
   onAdminClick,
   onLogout,
   onToggleDiagnostics,
@@ -107,6 +109,7 @@ export function Engine2Route({
         modelUsageEntries={modelUsageEntries}
         diagnosticsAuthEmail={diagnosticsAuthEmail}
         publicLoginHref={publicLoginHref}
+        adminEngineSwitcher={adminEngineSwitcher}
         onBalanceClick={() => {}}
         onSaveSession={() => {}}
         onStartNewSession={() => {}}

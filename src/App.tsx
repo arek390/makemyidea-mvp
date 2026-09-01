@@ -4096,6 +4096,7 @@ type EngineHeaderProps = {
   modelUsageEntries: [string, ModelUsage][]
   diagnosticsAuthEmail: string | null
   publicLoginHref?: string
+  adminEngineSwitcher?: 'engine1' | 'engine2'
   onBalanceClick: () => void
   onSaveSession: () => void
   onStartNewSession: () => void
@@ -4137,6 +4138,7 @@ function EngineHeader({
   modelUsageEntries,
   diagnosticsAuthEmail,
   publicLoginHref,
+  adminEngineSwitcher,
   onBalanceClick,
   onSaveSession,
   onStartNewSession,
@@ -4219,6 +4221,22 @@ function EngineHeader({
           <a className="primary engine-public-login" href={publicLoginHref}>
             {copy.landingLoginCta}
           </a>
+        )}
+        {isAuthed && isAdmin && adminEngineSwitcher && (
+          <nav className="engine-admin-switcher" aria-label="Admin engine navigation">
+            <a
+              className={adminEngineSwitcher === 'engine1' ? 'secondary' : 'ghost'}
+              href="/engine"
+            >
+              Engine 1
+            </a>
+            <a
+              className={adminEngineSwitcher === 'engine2' ? 'secondary' : 'ghost'}
+              href="/engine_2"
+            >
+              Engine 2
+            </a>
+          </nav>
         )}
         {isAdmin && (
           <button className="ghost" type="button" onClick={onAdminClick}>
@@ -5224,6 +5242,12 @@ function App() {
     }
   }
 
+  const readAuthDestinationFromSearch = () => {
+    if (typeof window === 'undefined') return null
+    const params = new URLSearchParams(window.location.search)
+    return normalizeNextPath(params.get('returnTo')) || normalizeNextPath(params.get('next'))
+  }
+
   const clearPostAuthNext = () => {
     if (typeof window === 'undefined') return
     window.sessionStorage.removeItem(POST_AUTH_NEXT_KEY)
@@ -6172,11 +6196,7 @@ const isAuthFlowInProgress = () => {
           hasSession: true,
         })
         clearAuthRedirect()
-        const nextParam = normalizeNextPath(
-          typeof window !== 'undefined'
-            ? new URLSearchParams(window.location.search).get('next')
-            : null
-        )
+        const nextParam = readAuthDestinationFromSearch()
         const savedReturnTo = typeof window !== 'undefined' ? readPostAuthNext() : null
         const nextRaw = nextParam || savedReturnTo
         const nextPath = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
@@ -6196,7 +6216,7 @@ const isAuthFlowInProgress = () => {
         setAuthCallbackLoading(false)
         callbackSucceeded = true
         if (typeof window !== 'undefined') {
-          window.location.replace(`${window.location.origin}/engine`)
+          window.location.replace(target)
         }
       } finally {
         authCodeExchangeInProgress = false
@@ -6275,10 +6295,7 @@ const isAuthFlowInProgress = () => {
     } catch {
       // ignore
     }
-	    const next =
-	      typeof window !== 'undefined'
-	        ? normalizeNextPath(new URLSearchParams(window.location.search).get('next'))
-	        : null
+	    const next = readAuthDestinationFromSearch()
     const lang = uiLanguage || 'English'
     const normalizedNext = next || '/engine'
     if (oauthStartOnceRef.current) return
@@ -6359,6 +6376,10 @@ const isAuthFlowInProgress = () => {
       // ignore
     }
     setAuthFlowInProgress(true)
+    const next = readAuthDestinationFromSearch()
+    const normalizedNext = next || '/engine'
+    writePostAuthNext(normalizedNext)
+    writePostAuthLang(uiLanguage || 'English')
     recordAuthRedirect(redirectTo)
     logAuthDiagnostics('auth_magiclink_start', {
       origin: window.location.origin,
@@ -6436,6 +6457,10 @@ const isAuthFlowInProgress = () => {
         const codeValue = (error as { code?: string }).code
         const detail = import.meta.env.DEV && codeValue ? ` (${codeValue})` : ''
         setAuthError(`${error.message}${detail}`)
+      } else {
+        const next = readAuthDestinationFromSearch()
+        writePostAuthNext(next || '/engine')
+        writePostAuthLang(uiLanguage || 'English')
       }
     } else {
       const redirectTo = `${window.location.origin}/auth/callback`
@@ -13721,7 +13746,8 @@ const isMissingLabel = (item: EngineBoardItem) => {
         authDisabled={authDisabled}
         missingSupabaseEnvMessage={missingSupabaseEnvMessage}
         isDiagEnabled={isDiagEnabled()}
-        publicLoginHref={`/login?next=${encodeURIComponent('/engine_2')}`}
+        publicLoginHref={`/login?returnTo=${encodeURIComponent('/engine_2')}`}
+        adminEngineSwitcher="engine2"
         onAdminClick={() => {
           if (typeof window !== 'undefined') {
             window.location.hash = '#/admin'

@@ -955,6 +955,7 @@ export function Engine1App({
           sessionUsage={aiPlatform.sessionUsage}
           modelUsageEntries={aiPlatform.modelUsageEntries}
           diagnosticsAuthEmail={authPlatform.authSession?.user?.email ?? null}
+          adminEngineSwitcher="engine1"
           onBalanceClick={() => {
             if (typeof window !== 'undefined') {
               navigationPlatform.storeTopupReturnTo()
