@@ -27,6 +27,68 @@ const readRawBody = async (req) => {
 
 const sha256 = (value) => createHash('sha256').update(value, 'utf8').digest('hex')
 
+const BILLING_SITE_BY_HOST = Object.freeze({
+  'makemyidea.work': Object.freeze({
+    canonicalHost: 'www.makemyidea.work',
+    canonicalOrigin: 'https://www.makemyidea.work',
+    primaryAppRoute: '/engine',
+  }),
+  'www.makemyidea.work': Object.freeze({
+    canonicalHost: 'www.makemyidea.work',
+    canonicalOrigin: 'https://www.makemyidea.work',
+    primaryAppRoute: '/engine',
+  }),
+  'makemyproblem.work': Object.freeze({
+    canonicalHost: 'www.makemyproblem.work',
+    canonicalOrigin: 'https://www.makemyproblem.work',
+    primaryAppRoute: '/engine_2',
+  }),
+  'www.makemyproblem.work': Object.freeze({
+    canonicalHost: 'www.makemyproblem.work',
+    canonicalOrigin: 'https://www.makemyproblem.work',
+    primaryAppRoute: '/engine_2',
+  }),
+})
+
+const DEFAULT_BILLING_SITE = BILLING_SITE_BY_HOST['www.makemyidea.work']
+
+const normalizeBillingHostHeader = (value) => {
+  const rawValue = Array.isArray(value) ? value[0] : value
+  const raw = String(rawValue || '').split(',')[0].trim().toLowerCase()
+  if (!raw) return ''
+  return raw
+    .replace(/^https?:\/\//, '')
+    .split('/')[0]
+    .replace(/:\d+$/, '')
+    .replace(/\.$/, '')
+}
+
+const resolveBillingSiteFromRequest = (req) => {
+  const forwardedHost = normalizeBillingHostHeader(req?.headers?.['x-forwarded-host'])
+  if (forwardedHost && BILLING_SITE_BY_HOST[forwardedHost]) return BILLING_SITE_BY_HOST[forwardedHost]
+  const host = normalizeBillingHostHeader(req?.headers?.host)
+  if (host && BILLING_SITE_BY_HOST[host]) return BILLING_SITE_BY_HOST[host]
+  return null
+}
+
+const resolveBillingSite = (req) => resolveBillingSiteFromRequest(req) || DEFAULT_BILLING_SITE
+
+const buildBillingActionUrl = (site, action) => {
+  const url = new URL('/api/billing', site.canonicalOrigin)
+  url.searchParams.set('action', action)
+  return url.toString()
+}
+
+const resolveBillingActionUrl = (req, action, envName = null) => {
+  const requestSite = resolveBillingSiteFromRequest(req)
+  if (requestSite) return buildBillingActionUrl(requestSite, action)
+  const envUrl = envName ? String(process.env[envName] || '').trim() : ''
+  if (envUrl) return envUrl
+  return buildBillingActionUrl(DEFAULT_BILLING_SITE, action)
+}
+
+const resolveBillingDefaultReturnTo = (req) => resolveBillingSite(req).primaryAppRoute
+
 const buildHashPayload = (values) => values.map((value) => String(value ?? '').trim()).filter(Boolean).join('|')
 
 const resolveAutopayKey = ({ serviceId, kind }) => {
@@ -173,11 +235,20 @@ const mergeStripeEventPayload = (existingPayload, patch, event) => {
   }
 }
 
-const normalizeInternalReturnTo = (value) => {
+const normalizeInternalReturnFallback = (value) => {
   const raw = String(value || '').trim()
   if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/engine'
   if (raw.startsWith('/api/')) return '/engine'
   if (raw === '/report#/topup' || raw.startsWith('/report#/topup?')) return '/engine'
+  return raw
+}
+
+const normalizeInternalReturnTo = (value, fallback = '/engine') => {
+  const safeFallback = normalizeInternalReturnFallback(fallback)
+  const raw = String(value || '').trim()
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return safeFallback
+  if (raw.startsWith('/api/')) return safeFallback
+  if (raw === '/report#/topup' || raw.startsWith('/report#/topup?')) return safeFallback
   return raw
 }
 
@@ -196,7 +267,8 @@ const appendReturnPaymentParams = (returnTo, params) => {
 
 const resolveStripeReturnTo = async (req, sessionId) => {
   const rawQueryReturnTo = resolveQueryValue(req, 'return_to')
-  const queryReturnTo = normalizeInternalReturnTo(rawQueryReturnTo)
+  const fallbackReturnTo = resolveBillingDefaultReturnTo(req)
+  const queryReturnTo = normalizeInternalReturnTo(rawQueryReturnTo, fallbackReturnTo)
   if (rawQueryReturnTo != null && String(rawQueryReturnTo).trim()) return queryReturnTo
   const safeSessionId = String(sessionId || '').trim()
   if (!safeSessionId) return queryReturnTo
@@ -208,7 +280,7 @@ const resolveStripeReturnTo = async (req, sessionId) => {
       .eq('provider', 'stripe')
       .eq('provider_payload->stripe->>checkout_session_id', safeSessionId)
       .maybeSingle()
-    return normalizeInternalReturnTo(data?.provider_payload?.stripe?.return_to || queryReturnTo)
+    return normalizeInternalReturnTo(data?.provider_payload?.stripe?.return_to || queryReturnTo, fallbackReturnTo)
   } catch (error) {
     console.error('[STRIPE RETURN] return_to_lookup_failed', {
       sessionId: safeSessionId,
@@ -398,14 +470,10 @@ const handleCreatePayment = async (req, res) => {
     return
   }
 
-  const descriptionHost = String(req?.headers?.['x-forwarded-host'] || req?.headers?.host || '').trim()
-  const description = `Top up ${descriptionHost || 'makemyidea.work'}`
+  const billingSite = resolveBillingSite(req)
+  const description = `Top up ${billingSite.canonicalHost}`
   const currency = 'PLN'
-  const returnUrl = (() => {
-    const envReturnUrl = String(process.env.AUTOPAY_RETURN_URL || '').trim()
-    if (envReturnUrl) return envReturnUrl
-    return 'https://makemyidea.work/api/billing?action=return'
-  })()
+  const returnUrl = resolveBillingActionUrl(req, 'return', 'AUTOPAY_RETURN_URL')
   const hashPayload = buildHashPayload([
     serviceId,
     orderId,
@@ -458,7 +526,7 @@ const handleCreateStripeCheckout = async (req, res) => {
 
   const body = req.body && typeof req.body === 'object' ? req.body : {}
   const amountPln = normalizeAmountPln(body.amountPln)
-  const returnTo = normalizeInternalReturnTo(body.returnTo)
+  const returnTo = normalizeInternalReturnTo(body.returnTo, resolveBillingDefaultReturnTo(req))
   if (amountPln == null) {
     sendJson(res, 400, { ok: false, error: 'INVALID_AMOUNT' })
     return
@@ -532,6 +600,8 @@ const handleCreateStripeCheckout = async (req, res) => {
       amountMinor: amountGrosze,
       currency,
       returnTo,
+      successUrl: resolveBillingActionUrl(req, 'stripe_return', 'STRIPE_SUCCESS_URL'),
+      cancelUrl: resolveBillingActionUrl(req, 'stripe_cancel_return', 'STRIPE_CANCEL_URL'),
     })
   } catch (error) {
     console.error('[STRIPE CHECKOUT] session_create_failed', {
@@ -908,7 +978,9 @@ const handleAutopayReturn = async (req, res) => {
     return
   }
   res.statusCode = 303
-  res.setHeader('Location', '/engine?payment=success')
+  res.setHeader('Location', appendReturnPaymentParams(resolveBillingDefaultReturnTo(req), {
+    payment: 'success',
+  }))
   res.end()
 }
 

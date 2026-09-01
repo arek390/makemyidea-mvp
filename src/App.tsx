@@ -346,6 +346,7 @@ const site = resolveSite(
 const CANONICAL_URL = site.canonicalUrl
 const CANONICAL_HOST = site.canonicalHost
 const CANONICAL_DISPLAY_HOST = site.canonicalDisplayHost
+const postAuthDefaultPath = site.primaryAppRoute
 
 const getTranslations = createTranslationResolver({
   canonicalDisplayHost: CANONICAL_DISPLAY_HOST,
@@ -2273,8 +2274,8 @@ const isAuthFlowInProgress = () => {
       const amountPln = (topup.amountMinor / 100).toFixed(2)
       const returnTo =
         typeof window !== 'undefined'
-          ? window.sessionStorage.getItem(TOPUP_RETURN_TO_KEY) || '/engine'
-          : '/engine'
+          ? window.sessionStorage.getItem(TOPUP_RETURN_TO_KEY) || postAuthDefaultPath
+          : postAuthDefaultPath
       const response = await apiFetch('/api/billing?action=create_stripe_checkout', {
         method: 'POST',
         body: JSON.stringify({ amountPln, returnTo }),
@@ -2523,7 +2524,7 @@ const isAuthFlowInProgress = () => {
     if (isExamples || isBlog || isEnginePublicPreview) return
     if (isPrivacy || isTermsAndConditions) return
     const nextRaw = readPostAuthNext()
-    const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
+    const next = nextRaw && nextRaw !== '/' ? nextRaw : postAuthDefaultPath
     const lang = readPostAuthLang()
     if (lang) {
       setUiLanguage(lang)
@@ -2753,7 +2754,7 @@ const isAuthFlowInProgress = () => {
         const nextParam = readAuthDestinationFromSearch()
         const savedReturnTo = typeof window !== 'undefined' ? readPostAuthNext() : null
         const nextRaw = nextParam || savedReturnTo
-        const nextPath = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
+        const nextPath = nextRaw && nextRaw !== '/' ? nextRaw : postAuthDefaultPath
         const target = typeof window !== 'undefined' ? `${window.location.origin}${nextPath}` : nextPath
         console.info('[auth][callback]', {
           origin: typeof window !== 'undefined' ? window.location.origin : '',
@@ -2851,7 +2852,7 @@ const isAuthFlowInProgress = () => {
     }
 	    const next = readAuthDestinationFromSearch()
     const lang = uiLanguage || 'English'
-    const normalizedNext = next || '/engine'
+    const normalizedNext = next || postAuthDefaultPath
     if (oauthStartOnceRef.current) return
     oauthStartOnceRef.current = true
     setAuthFlowInProgress(true)
@@ -2931,7 +2932,7 @@ const isAuthFlowInProgress = () => {
     }
     setAuthFlowInProgress(true)
     const next = readAuthDestinationFromSearch()
-    const normalizedNext = next || '/engine'
+    const normalizedNext = next || postAuthDefaultPath
     writePostAuthNext(normalizedNext)
     writePostAuthLang(uiLanguage || 'English')
     recordAuthRedirect(redirectTo)
@@ -3013,7 +3014,7 @@ const isAuthFlowInProgress = () => {
         setAuthError(`${error.message}${detail}`)
       } else {
         const next = readAuthDestinationFromSearch()
-        writePostAuthNext(next || '/engine')
+        writePostAuthNext(next || postAuthDefaultPath)
         writePostAuthLang(uiLanguage || 'English')
       }
     } else {
@@ -10099,7 +10100,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const next =
         typeof window !== 'undefined'
           ? window.location.pathname + window.location.search
-          : '/engine'
+          : postAuthDefaultPath
       return withDevOverlay(
         <div className="app auth-screen">
           <section className="panel auth-panel">

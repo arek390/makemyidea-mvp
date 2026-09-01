@@ -48,11 +48,13 @@ export const createStripeCheckoutSession = async ({
   amountMinor,
   currency,
   returnTo,
+  successUrl: successUrlOverride,
+  cancelUrl: cancelUrlOverride,
 }) => {
   const stripe = await getStripeClient()
   const safeCurrency = String(currency || resolveStripeCurrency()).trim().toLowerCase()
-  const successUrl = appendReturnToParam(requireEnv('STRIPE_SUCCESS_URL'), returnTo)
-  const cancelUrl = appendReturnToParam(requireEnv('STRIPE_CANCEL_URL'), returnTo)
+  const successUrl = appendReturnToParam(successUrlOverride || requireEnv('STRIPE_SUCCESS_URL'), returnTo)
+  const cancelUrl = appendReturnToParam(cancelUrlOverride || requireEnv('STRIPE_CANCEL_URL'), returnTo)
   const metadata = {
     provider: 'stripe',
     orderId: String(orderId || ''),
