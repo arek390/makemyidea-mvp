@@ -13,6 +13,46 @@
       "destination": "/robots.txt"
     },
     {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.makemyidea.work"
+        }
+      ],
+      "destination": "/_sites/makemyidea/index.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "makemyidea.work"
+        }
+      ],
+      "destination": "/_sites/makemyidea/index.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.makemyproblem.work"
+        }
+      ],
+      "destination": "/_sites/makemyproblem/index.html"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "makemyproblem.work"
+        }
+      ],
+      "destination": "/_sites/makemyproblem/index.html"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

@@ -15,11 +15,6 @@ const resolveUiLanguage = () => {
   return 'English'
 }
 
-if (location.hostname === 'localhost') {
-  const el = document.getElementById('boot-overlay')
-  if (el) el.textContent += '\nREACT: entry loaded'
-}
-
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
   { error: Error | null; stack: string | null }
@@ -100,8 +95,3 @@ createRoot(document.getElementById('root')!).render(
     </ErrorBoundary>
   </StrictMode>,
 )
-
-if (location.hostname === 'localhost') {
-  const el = document.getElementById('boot-overlay')
-  if (el) el.textContent += '\nREACT: rendered'
-}
