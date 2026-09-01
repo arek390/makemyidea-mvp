@@ -2,6 +2,8 @@ import type { Dispatch, DragEvent, MouseEvent as ReactMouseEvent, ReactNode, Set
 import type { Idea, LabelItem, Language, OptionItem, Scenario, SpaceSlot, StepId, TimeOptionItem, TimeSlot, Translations } from '../App'
 import { Engine1LandingBody } from './Engine1LandingBody'
 import { Engine1LegacyModals } from './Engine1LegacyModals'
+import { Engine1LegacyResultFlow } from './Engine1LegacyResultFlow'
+import { Engine1LegacySetupFlow } from './Engine1LegacySetupFlow'
 type LegacyComponent = () => ReactNode
 type LlmStatus = 'unknown' | 'online' | 'offline'
 type LlmPingResult = {
@@ -399,644 +401,89 @@ export function Engine1LegacyRoute({
         showLanding={showLanding}
         uiLanguage={uiLanguage}
       />
-      {!showLanding && activeStep === 1 && (
-        <section className="panel">
-          <div className="step1-section">
-            <div className="panel-header">
-              <h1>{stepHeading(1)}</h1>
-              <p>{copy.step1Intro}</p>
-            </div>
-
-            <div className="field-group">
-              <label htmlFor="product-description">{copy.productDescriptionLabel}</label>
-              <div className="product-description-row">
-                <textarea
-                  id="product-description"
-                  rows={4}
-                  value={productDescription}
-                  onChange={(event) => {
-                    const next = limitWords(event.target.value, 500)
-                    setProductDescription(next)
-                  }}
-                  placeholder={copy.productDescriptionPlaceholder}
-                />
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={!productDescription.trim()}
-                  onClick={() => {
-                    void requestNameSuggestions()
-                  }}
-                >
-                  {copy.productDescriptionDoneLabel}
-                </button>
-              </div>
-            </div>
-
-            <div className="field-group">
-              <label htmlFor="product-name">{copy.productNameLabel}</label>
-              <div className="product-input">
-                <input
-                  id="product-name"
-                  type="text"
-                  value={productName}
-                  onChange={(event) => setProductName(event.target.value)}
-                  placeholder={copy.productNamePlaceholder}
-                  onDragOver={allowDrop}
-                  onDrop={(event) => {
-                    event.preventDefault()
-                    const dropped = event.dataTransfer.getData('text/plain')
-                    if (dropped) setProductName(dropped)
-                  }}
-                />
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={!productName.trim()}
-                  onClick={() => setProductConfirmed(true)}
-                >
-                  {copy.confirmProductLabel}
-                </button>
-              </div>
-              {productDescriptionConfirmed && (
-                <div className="name-suggestions">
-                  <span className="muted">{copy.productNameSuggestionsLabel}</span>
-                  <div className="name-suggestion-row">
-                    {productNameSuggestions.map((suggestion) => (
-                      <button
-                        key={suggestion}
-                        type="button"
-                        className="name-suggestion"
-                        draggable
-                        onDragStart={(event) => handleNameDragStart(event, suggestion)}
-                        onClick={() => setProductName(suggestion)}
-                      >
-                        {suggestion}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {productConfirmed && (
-            <div className="step1-section">
-              <div className="step1-panels">
-                <div className="step1-panel">
-                  <h2>{copy.step1SpacesTitle}</h2>
-                  <p className="muted">{copy.step1DragHint}</p>
-                  <div className="dropzone-stack">
-                    <div
-                      className={`step1-dropzone space ${
-                        spaceAssignments.supersystem !== null ? 'filled' : ''
-                      }`}
-                      onDragOver={allowDrop}
-                      onDrop={handleDropOnSpace('supersystem')}
-                    >
-                      <div className="dropzone-header">
-                        <span className="dropzone-title">{copy.axisSupersystem}</span>
-                      </div>
-                      <div className="dropzone-body">
-                        {spaceAssignments.supersystem === null ? (
-                          <span className="placeholder">{copy.step1DropHere}</span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="dropzone-value"
-                            draggable
-                            onDragStart={(event) =>
-                              handleDragStart(event, 'space', spaceAssignments.supersystem as number)
-                            }
-                          >
-                            {spaceOptionMap.get(spaceAssignments.supersystem)?.label || copy.notSet}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="step1-dropzone locked">
-                      <div className="dropzone-header">
-                        <span className="dropzone-title">{copy.step1SystemLabel}</span>
-                        <span className="lock-tag">{copy.step1SystemLocked}</span>
-                      </div>
-                      <div className="dropzone-body">
-                        <span className="dropzone-value static">
-                          {productName || copy.notSet}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div
-                      className={`step1-dropzone space ${
-                        spaceAssignments.subsystem !== null ? 'filled' : ''
-                      }`}
-                      onDragOver={allowDrop}
-                      onDrop={handleDropOnSpace('subsystem')}
-                    >
-                      <div className="dropzone-header">
-                        <span className="dropzone-title">{copy.axisSubsystem}</span>
-                      </div>
-                      <div className="dropzone-body">
-                        {spaceAssignments.subsystem === null ? (
-                          <span className="placeholder">{copy.step1DropHere}</span>
-                        ) : (
-                          <button
-                            type="button"
-                            className="dropzone-value"
-                            draggable
-                            onDragStart={(event) =>
-                              handleDragStart(event, 'space', spaceAssignments.subsystem as number)
-                            }
-                          >
-                            {spaceOptionMap.get(spaceAssignments.subsystem)?.label || copy.notSet}
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="step1-options">
-                    {spaceOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className={`step1-option ${
-                          assignedSpaceIds.includes(option.id) ? 'assigned' : ''
-                        }`}
-                        draggable
-                        onDragStart={(event) => handleDragStart(event, 'space', option.id)}
-                      >
-                        <span className="drag-handle" aria-hidden="true">
-                          ⋮⋮
-                        </span>
-                        <span className="option-icon" aria-hidden="true">
-                          {option.kind === 'world' ? <IconWorld /> : <IconElement />}
-                        </span>
-                        <span>{option.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="step1-panel">
-                  <h2>{copy.step1TimeframesTitle}</h2>
-                  <p className="muted">{copy.step1DragHint}</p>
-                  <div className="dropzone-stack">
-                    {(['past', 'now', 'future'] as const).map((slot) => (
-                      <div
-                        key={slot}
-                        className={`step1-dropzone time ${
-                          timeAssignments[slot] !== null ? 'filled' : ''
-                        }`}
-                        onDragOver={allowDrop}
-                        onDrop={handleDropOnTime(slot)}
-                      >
-                        <div className="dropzone-header">
-                          <span className="dropzone-title">{timeLabelMap[slot]}</span>
-                        </div>
-                        <div className="dropzone-body">
-                          {timeAssignments[slot] === null ? (
-                            <span className="placeholder">{copy.step1DropHere}</span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="dropzone-value"
-                              draggable
-                              onDragStart={(event) =>
-                                handleDragStart(event, 'time', timeAssignments[slot] as number)
-                              }
-                            >
-                              {timeOptionMap.get(timeAssignments[slot] as number) || copy.notSet}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="step1-options">
-                    {timeOptions.map((option) => (
-                      <button
-                        key={option.id}
-                        type="button"
-                        className={`step1-option ${
-                          assignedTimeIds.includes(option.id) ? 'assigned' : ''
-                        }`}
-                        draggable
-                        onDragStart={(event) => handleDragStart(event, 'time', option.id)}
-                      >
-                        <span className="drag-handle" aria-hidden="true">
-                          ⋮⋮
-                        </span>
-                        <span>{option.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              <div className="actions">
-                <button type="button" className="ghost" disabled>
-                  {copy.previousStepNone}
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={!canProceedToStep2}
-                  onClick={() => setActiveStep(2)}
-                >
-                  {copy.nextStepPrefix}
-                  {stepTitle(2)}
-                </button>
-              </div>
-            </div>
-          )}
-        </section>
-      )}
-
-      {!showLanding && activeStep === 2 && (
-        <section className="panel step2">
-          <div className="panel-header">
-            <h1>{stepHeading(2)}</h1>
-            <p>{copy.scenarioIntro}</p>
-          </div>
-
-          {selectedScenario && (
-            <div className="step2-grid">
-              {spaceSectionsStep2.map((section, rowIndex) => (
-                <div
-                  key={section}
-                  className="axis-definition step2-space"
-                  style={{ gridRow: rowIndex + 1, gridColumn: 1 }}
-                >
-                  <strong>{spaceLabelMap[section]}</strong>
-                  {section === 'system' ? (
-                    <input
-                      type="text"
-                      value={productName}
-                      readOnly
-                      className="read-only"
-                    />
-                  ) : (
-                    <textarea
-                      rows={1}
-                      ref={autosizeTextarea}
-                      value={selectedScenario.spaceDefs[section]}
-                      onChange={(event) => {
-                        updateScenarioSpaceDef(section, event.target.value)
-                        autosizeTextarea(event.currentTarget)
-                      }}
-                    />
-                  )}
-                </div>
-              ))}
-
-              {spaceSectionsStep2.map((spaceKey, rowIndex) =>
-                timeSections.map((timeKey, colIndex) => (
-                  <div
-                    key={`${spaceKey}-${timeKey}`}
-                    className="matrix-cell"
-                    style={{ gridRow: rowIndex + 1, gridColumn: colIndex + 2 }}
-                  />
-                ))
-              )}
-
-              {timeSections.map((section, colIndex) => (
-                <div
-                  key={section}
-                  className="axis-definition step2-time"
-                  style={{ gridRow: 4, gridColumn: colIndex + 2 }}
-                >
-                  <strong>{timeLabelMap[section]}</strong>
-                  <textarea
-                    rows={1}
-                    ref={autosizeTextarea}
-                    value={selectedScenario.timeDefs[section]}
-                    onChange={(event) => {
-                      updateScenarioTimeDef(section, event.target.value)
-                      autosizeTextarea(event.currentTarget)
-                    }}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
-
-          <div className="actions">
-            <button type="button" className="ghost" onClick={() => setActiveStep(1)}>
-              {copy.previousStepPrefix}
-              {stepTitle(1)}
-            </button>
-            <button
-              type="button"
-              className="primary"
-              disabled={!canProceedToStep3}
-              onClick={() => setActiveStep(3)}
-            >
-              {copy.nextStepPrefix}
-              {stepTitle(3)}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {!showLanding && activeStep === 3 && selectedScenario && (
-        <section className="panel step3">
-          <div className="step3-header">
-            <div className="panel-header">
-              <h1>{stepHeading(3)}</h1>
-              <p>{copy.workshopIntro}</p>
-            </div>
-            <div className="action-stack">
-              <button
-                type="button"
-                className="primary"
-                disabled={isSuggestLoading}
-                onClick={() => void requestImpulse()}
-                aria-busy={isSuggestLoading}
-              >
-                {showSuggestLoadingUI && (
-                  <span className="button-spinner" aria-hidden="true" />
-                )}
-                {showSuggestLoadingUI ? copy.engineFacilitationLoadingLabel : copy.impulseButtonLabel}
-              </button>
-              <button type="button" className="primary" onClick={() => void addLlmIdeas()}>
-                {copy.ideaGenerator}
-              </button>
-              <button type="button" className="primary" onClick={() => setConfirmRemoveOpen(true)}>
-                {copy.keepOnlyMyIdeasLabel}
-              </button>
-              <button type="button" className="primary" onClick={() => setLabelEditorOpen(true)}>
-                {copy.labelEditorLabel}
-              </button>
-            </div>
-          </div>
-
-          <div className="legend">
-            <div>
-              <IconIdea />
-              <span>{copy.legendIdea}</span>
-            </div>
-            <div>
-              <IconSearch />
-              <span>{copy.showIdeaLabel}</span>
-            </div>
-          </div>
-          <div className="legend-labels">
-            {ideaLabels.map((label) => (
-              <span
-                key={label.id}
-                className="legend-chip"
-                style={{ backgroundColor: withAlpha(label.color) }}
-              >
-                {label.text}
-              </span>
-            ))}
-          </div>
-
-          <div className="step3-grid">
-            {spaceSectionsStep3.map((section, rowIndex) => (
-              <div
-                key={section}
-                className={`axis-definition step3-space ${
-                  hoveredCell?.space === section ? 'highlight' : ''
-                }`}
-                style={{ gridRow: rowIndex + 1, gridColumn: 1 }}
-              >
-                <strong>{spaceLabelMap[section]}</strong>
-                <span>{selectedScenario.spaceDefs[section]}</span>
-              </div>
-            ))}
-
-            {spaceSectionsStep3.map((spaceKey, rowIndex) =>
-              timeSections.map((timeKey, colIndex) => {
-                const cellKey = `${spaceKey}-${timeKey}`
-                const ideas = workshopIdeas[cellKey] || []
-                const isHovered =
-                  hoveredCell?.space === spaceKey && hoveredCell?.time === timeKey
-                return (
-                  <div
-                    key={cellKey}
-                    className={`matrix-cell ${isHovered ? 'highlight' : ''}`}
-                    style={{ gridRow: rowIndex + 1, gridColumn: colIndex + 2 }}
-                    onMouseEnter={() => setHoveredCell({ space: spaceKey, time: timeKey })}
-                    onMouseLeave={() => setHoveredCell(null)}
-                  >
-                    <div className="cell-head">
-                      <span className="cell-label">
-                        {copy.cellLabel(spaceLabelMap[spaceKey], timeLabelMap[timeKey])}
-                      </span>
-                      <div className="cell-actions">
-                        <button
-                          type="button"
-                          className="icon-button"
-                          title={copy.addIdeaTooltip}
-                          onClick={() => {
-                            setActiveIdeaCell(cellKey)
-                            setIdeaDraft('')
-                            setIdeaLabelDraft(null)
-                          }}
-                        >
-                          <IconIdea />
-                        </button>
-                      </div>
-                    </div>
-                    <div className="post-it-area">
-                      {ideas.map((idea) => {
-                        const labelInfo = getLabelForIdea(idea.id)
-                        return (
-                          <button
-                            key={idea.id}
-                            type="button"
-                            className={`post-it ${idea.source}`}
-                            title={copy.editIdeaTooltip}
-                            onClick={() => {
-                              setPostItEdit(idea)
-                              setPostItEditCell(cellKey)
-                              setPostItLabelDraft(ideaLabelAssignments[idea.id] ?? null)
-                              setPostItEditOriginalText(idea.text)
-                            }}
-                          >
-                            <span
-                              className="post-it-zoom"
-                              onClick={(event) => {
-                                event.stopPropagation()
-                                setIdeaPreview(idea)
-                              }}
-                            >
-                              🔍
-                            </span>
-                            {labelInfo && (
-                              <span
-                                className="label-dot"
-                                style={{ color: labelInfo.color }}
-                              />
-                            )}
-                            {idea.text}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                )
-              })
-            )}
-
-            {timeSections.map((section, colIndex) => (
-              <div
-                key={section}
-                className={`axis-definition step3-time ${
-                  hoveredCell?.time === section ? 'highlight' : ''
-                }`}
-                style={{ gridRow: 4, gridColumn: colIndex + 2 }}
-              >
-                <strong>{timeLabelMap[section]}</strong>
-                <span>{selectedScenario.timeDefs[section]}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="actions">
-            <button type="button" className="ghost" onClick={() => setActiveStep(2)}>
-              {copy.previousStepPrefix}
-              {stepTitle(2)}
-            </button>
-            <button type="button" className="primary" onClick={() => setActiveStep(4)}>
-              {copy.nextStepPrefix}
-              {stepTitle(4)}
-            </button>
-          </div>
-        </section>
-      )}
-
-      {!showLanding && activeStep === 4 && (
-        <section className="panel">
-          <div className="panel-header">
-            <h1>{stepHeading(4)}</h1>
-            <p>{copy.finalReportIntro}</p>
-          </div>
-
-          <div className="field-group">
-            <label htmlFor="report-language">{copy.reportLanguageLabel}</label>
-            <select
-              id="report-language"
-              value={reportLanguage}
-              disabled
-            >
-              {languageOptions.map((language) => (
-                <option key={language} value={language}>
-                  {language}
-                </option>
-              ))}
-            </select>
-            <p className="muted">{copy.reportLanguageHint}</p>
-          </div>
-
-          <div className="report">
-            <div className="report-section">
-              <h2>{stepHeading(1)}</h2>
-              <p>
-                <strong>{copy.productLabel}:</strong>{' '}
-                {reportData.step1.productName || copy.notSet}
-              </p>
-              <p>
-                <strong>{copy.spacesLabel}:</strong>{' '}
-                {reportData.step1.spaces.length
-                  ? reportData.step1.spaces.join(', ')
-                  : copy.notSet}
-              </p>
-              <p>
-                <strong>{copy.timeFramesLabel}:</strong>{' '}
-                {reportData.step1.times.length ? reportData.step1.times.join(', ') : copy.notSet}
-              </p>
-            </div>
-
-            <div className="report-section">
-              <h2>{stepHeading(2)}</h2>
-              <p>
-                <strong>{copy.totalScenariosLabel}:</strong>{' '}
-                {reportData.step2.totalScenarios}
-              </p>
-              <p>
-                <strong>{copy.chosenScenarioLabel}:</strong>{' '}
-                {reportData.step2.selectedScenario || copy.notSelected}
-              </p>
-              {reportData.step3 ? (
-                <>
-                  <p>
-                    <strong>{copy.spaceDefinitionsLabel}:</strong>{' '}
-                    {`${reportData.step3.spaceDefs.subsystem} | ${reportData.step3.spaceDefs.system} | ${reportData.step3.spaceDefs.supersystem}`}
-                  </p>
-                  <p>
-                    <strong>{copy.timeDefinitionsLabel}:</strong>{' '}
-                    {`${reportData.step3.timeDefs.past} | ${reportData.step3.timeDefs.now} | ${reportData.step3.timeDefs.future}`}
-                  </p>
-                </>
-              ) : (
-                <p>{copy.noScenarioConfirmed}</p>
-              )}
-            </div>
-
-            <div className="report-section">
-              <h2>{stepHeading(3)}</h2>
-              <p>
-                <strong>{copy.totalIdeasLabel}:</strong> {reportData.step4.totalIdeas}
-              </p>
-              <p>
-                <strong>{copy.cellsWithIdeasLabel}:</strong> {reportData.step4.cellsWithIdeas} /
-                9
-              </p>
-              <div className="idea-groups">
-                <div>
-                  <strong>{copy.ideasUserLabel}:</strong>
-                  {reportData.step4.userIdeas.length ? (
-                    <ul className="idea-list">
-                      {reportData.step4.userIdeas.map((idea, index) => (
-                        <li key={`user-idea-${index}`}>{idea}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="muted">{copy.noIdeasLabel}</p>
-                  )}
-                </div>
-                <div>
-                  <strong>{copy.ideasGeneratedLabel}:</strong>
-                  {reportData.step4.llmIdeas.length ? (
-                    <ul className="idea-list">
-                      {reportData.step4.llmIdeas.map((idea, index) => (
-                        <li key={`llm-idea-${index}`}>{idea}</li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="muted">{copy.noIdeasLabel}</p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            <div className="report-section">
-              <h2>{stepHeading(4)}</h2>
-              <p>
-                <strong>{copy.selectedLanguageLabel}:</strong> {reportData.step4Report.language}
-              </p>
-            </div>
-          </div>
-
-          <div className="actions">
-            <button type="button" className="ghost" onClick={() => setActiveStep(3)}>
-              {copy.previousStepPrefix}
-              {stepTitle(3)}
-            </button>
-            <button type="button" className="secondary" onClick={() => setReportSnapshotOpen(true)}>
-              {copy.openReportPanel}
-            </button>
-            <button type="button" className="primary" disabled>
-              {copy.nextStepCompleted}
-            </button>
-          </div>
-        </section>
-      )}
+      <Engine1LegacySetupFlow
+        activeStep={activeStep}
+        allowDrop={allowDrop}
+        assignedSpaceIds={assignedSpaceIds}
+        assignedTimeIds={assignedTimeIds}
+        autosizeTextarea={autosizeTextarea}
+        canProceedToStep2={canProceedToStep2}
+        canProceedToStep3={canProceedToStep3}
+        copy={copy}
+        handleDragStart={handleDragStart}
+        handleDropOnSpace={handleDropOnSpace}
+        handleDropOnTime={handleDropOnTime}
+        handleNameDragStart={handleNameDragStart}
+        IconElement={IconElement}
+        IconWorld={IconWorld}
+        limitWords={limitWords}
+        productConfirmed={productConfirmed}
+        productDescription={productDescription}
+        productDescriptionConfirmed={productDescriptionConfirmed}
+        productName={productName}
+        productNameSuggestions={productNameSuggestions}
+        requestNameSuggestions={requestNameSuggestions}
+        selectedScenario={selectedScenario}
+        setActiveStep={setActiveStep}
+        setProductConfirmed={setProductConfirmed}
+        setProductDescription={setProductDescription}
+        setProductName={setProductName}
+        showLanding={showLanding}
+        spaceAssignments={spaceAssignments}
+        spaceLabelMap={spaceLabelMap}
+        spaceOptionMap={spaceOptionMap}
+        spaceOptions={spaceOptions}
+        spaceSectionsStep2={spaceSectionsStep2}
+        stepHeading={stepHeading}
+        stepTitle={stepTitle}
+        timeAssignments={timeAssignments}
+        timeLabelMap={timeLabelMap}
+        timeOptionMap={timeOptionMap}
+        timeOptions={timeOptions}
+        timeSections={timeSections}
+        updateScenarioSpaceDef={updateScenarioSpaceDef}
+        updateScenarioTimeDef={updateScenarioTimeDef}
+      />
+      <Engine1LegacyResultFlow
+        activeStep={activeStep}
+        addLlmIdeas={addLlmIdeas}
+        copy={copy}
+        getLabelForIdea={getLabelForIdea}
+        hoveredCell={hoveredCell}
+        IconIdea={IconIdea}
+        IconSearch={IconSearch}
+        ideaLabelAssignments={ideaLabelAssignments}
+        ideaLabels={ideaLabels}
+        isSuggestLoading={isSuggestLoading}
+        languageOptions={languageOptions}
+        reportData={reportData}
+        reportLanguage={reportLanguage}
+        requestImpulse={requestImpulse}
+        selectedScenario={selectedScenario}
+        setActiveIdeaCell={setActiveIdeaCell}
+        setActiveStep={setActiveStep}
+        setConfirmRemoveOpen={setConfirmRemoveOpen}
+        setHoveredCell={setHoveredCell}
+        setIdeaDraft={setIdeaDraft}
+        setIdeaLabelDraft={setIdeaLabelDraft}
+        setIdeaPreview={setIdeaPreview}
+        setLabelEditorOpen={setLabelEditorOpen}
+        setPostItEdit={setPostItEdit}
+        setPostItEditCell={setPostItEditCell}
+        setPostItEditOriginalText={setPostItEditOriginalText}
+        setPostItLabelDraft={setPostItLabelDraft}
+        setReportSnapshotOpen={setReportSnapshotOpen}
+        showLanding={showLanding}
+        showSuggestLoadingUI={showSuggestLoadingUI}
+        spaceLabelMap={spaceLabelMap}
+        spaceSectionsStep3={spaceSectionsStep3}
+        stepHeading={stepHeading}
+        stepTitle={stepTitle}
+        timeLabelMap={timeLabelMap}
+        timeSections={timeSections}
+        withAlpha={withAlpha}
+        workshopIdeas={workshopIdeas}
+      />
     </main>
     {showLanding && (
       <footer className="landing-bottom-bar">
