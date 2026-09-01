@@ -29,7 +29,7 @@
     "test": "npm run test:unit && npm run test:e2e"
   },
   "engines": {
-    "node": ">=20.19 <21"
+    "node": "24.x"
   },
   "dependencies": {
     "@supabase/ssr": "^0.6.1",
