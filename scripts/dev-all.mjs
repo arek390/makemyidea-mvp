@@ -8,7 +8,7 @@ const frontend = spawn(npmCommand, ['run', 'dev'], {
   shell: false,
 })
 
-const backend = spawn(nodeCommand, ['server.mjs'], {
+const backend = spawn(nodeCommand, ['--watch', 'server.mjs'], {
   stdio: 'inherit',
   shell: false,
   env: {

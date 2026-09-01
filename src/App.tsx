@@ -1,5 +1,5 @@
-import { useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { ChangeEvent, DragEvent as ReactDragEvent, MouseEvent as ReactMouseEvent } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import type { ChangeEvent, MouseEvent as ReactMouseEvent } from 'react'
 import './App.css'
 import {
   MATRIX_COLS,
@@ -34,12 +34,6 @@ import {
   updateBoardItemMatrix,
 } from './lib/cloudBoardItems'
 import {
-  ENGINE_ENTRY_LABELS,
-  ENGINE_ENTRY_LABEL_COLORS,
-  getEntryLabelText,
-  getNoLabelText,
-} from './engine/entryLabels'
-import {
   ensureReportExists,
   fetchReportBySessionId,
   type ReportRecord,
@@ -69,14 +63,55 @@ import { AiCostButton } from './components/AiCostButton'
 import { ActionPlanReadinessGauge } from './components/ActionPlanReadinessGauge'
 import { termsAndConditionsEn, termsAndConditionsPl } from './legal/termsAndConditions'
 import { MobileLanding, type MobileLandingLanguage } from './mobile/MobileLanding'
+import type { Engine2Copy } from './engine2/Engine2Page'
+import { Engine1Container } from './engine1/Engine1Container'
+import { Engine1LegacyRoute } from './engine1/Engine1LegacyRoute'
+import { Engine2Route } from './engine2/Engine2Route'
+import {
+  DEFAULT_IDLE_THRESHOLD_MS,
+  ENGINE_PERSPECTIVE_KEYS,
+  ENGINE_SORT_GAP,
+  ERASE_EMPTY_SECONDS_STRONG,
+  FACILITATION_PERSPECTIVE_MODE,
+  INITIAL_BRIEF_MIN_DISTINCT_MEANINGFUL_WORDS,
+  INITIAL_BRIEF_MIN_MEANINGFUL_WORDS,
+  INITIAL_BRIEF_WORD_LIMIT,
+  MAX_AUTO_CLASSIFY,
+  SHORT_ENTRY_WORDS,
+  WORD_LIMIT,
+} from './engine1/constants'
+import type {
+  ActionPlanReadinessLlmResult,
+  AiQuestion,
+  EnginePerspectiveKey,
+  FacilitationPerspective,
+  FacilitationPrompt,
+  FacilitationType,
+  SpeechRecognitionLike,
+} from './engine1/types'
+import {
+  applyTextEditClassification,
+  cellCodeToMatrix,
+  getEntryCellId,
+  getMeaningfulWords,
+  getSpeechRecognitionCtor,
+  modeToFacilitationPerspective,
+  normalizeBoardItem,
+  normalizeBoardItems,
+  normalizeEngineBoardEntryForLlm,
+  normalizeSuggestResponse,
+  perspectiveToAllowedCellIds,
+  toMatrixColKey,
+  toMatrixRowKey,
+} from './engine1/utils'
 
-type StepId = 1 | 2 | 3 | 4
+export type StepId = 1 | 2 | 3 | 4
 type ExampleId = 'example-1' | 'example-2' | 'example-3'
 type BlogId = 'blog-1' | 'blog-2' | 'blog-3'
-type SpaceSlot = 'supersystem' | 'subsystem'
-type TimeSlot = 'past' | 'now' | 'future'
+export type SpaceSlot = 'supersystem' | 'subsystem'
+export type TimeSlot = 'past' | 'now' | 'future'
 
-type Scenario = {
+export type Scenario = {
   id: string
   spaceId: number
   timeId: number
@@ -92,31 +127,31 @@ type Scenario = {
   }
 }
 
-type Idea = {
+export type Idea = {
   id: string
   text: string
   source: 'user' | 'llm'
 }
 
-type OptionItem = {
+export type OptionItem = {
   id: number
   label: string
   kind: 'world' | 'element'
 }
 
-type TimeOptionItem = {
+export type TimeOptionItem = {
   id: number
   label: string
 }
 
-type LabelItem = {
+export type LabelItem = {
   id: string
   text: string
   color: string
 }
 
 
-type Language = 'English' | 'Polish'
+export type Language = 'English' | 'Polish'
 
 type BlogArticleTextSegment = {
   text: string
@@ -242,123 +277,6 @@ type SessionUsageEventRow = {
   usage_cost_usd: number | string | null
 }
 
-type ActionPlanReadinessLlmResult = {
-  summary: string
-  howToBoost: string
-  biggestBoostRightNow: string
-  qualityLevel: 'low' | 'medium' | 'high'
-  // Legacy / optional (kept for compatibility while the endpoint migrates).
-  insights?: string[]
-  improvements?: string[]
-  nextBestAction?: string
-}
-
-type FacilitationType = 'NEXT' | 'DEEPEN' | 'PERSPECTIVE' | 'RESET'
-type FacilitationPrompt = { type: FacilitationType; text: string }
-type AiQuestion = {
-  id?: string
-  text?: string
-  grounded_in?: string[]
-  why_this_question?: string
-  group_code?: string
-  mode_code?: number
-}
-
-type SuggestLabelType = 'ai' | 'fallback'
-type SpeechRecognitionAlternativeLike = { transcript: string }
-type SpeechRecognitionResultLike = {
-  isFinal: boolean
-  length: number
-  [index: number]: SpeechRecognitionAlternativeLike
-}
-type SpeechRecognitionResultListLike = {
-  length: number
-  [index: number]: SpeechRecognitionResultLike
-}
-type SpeechRecognitionEventLike = Event & {
-  resultIndex?: number
-  results: SpeechRecognitionResultListLike
-}
-type SpeechRecognitionErrorEventLike = Event & {
-  error?: string
-}
-type SpeechRecognitionLike = {
-  continuous: boolean
-  interimResults: boolean
-  lang: string
-  onend: (() => void) | null
-  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null
-  onresult: ((event: SpeechRecognitionEventLike) => void) | null
-  abort: () => void
-  start: () => void
-  stop: () => void
-}
-type SpeechRecognitionCtor = new () => SpeechRecognitionLike
-type EnginePerspectiveKey = 'as_is' | 'not_working' | 'should_be'
-type FacilitationPerspective = EnginePerspectiveKey
-
-const FACILITATION_PERSPECTIVE_MODE: Record<FacilitationPerspective, 1 | 2 | 3> = {
-  as_is: 1,
-  not_working: 2,
-  should_be: 3,
-}
-
-const normalizeSuggestResponse = (payload: {
-  ok?: boolean
-  question?: string | AiQuestion | null
-  data?: { question?: string | AiQuestion | null; questions?: AiQuestion[] }
-  meta?: LlmUsageMeta
-  source?: string | null
-}) => {
-  const questions = Array.isArray(payload?.data?.questions) ? payload.data.questions : []
-  const primaryCandidate =
-    (questions[0] as AiQuestion | undefined) ??
-    (payload?.question as AiQuestion | string | null) ??
-    (payload?.data?.question as AiQuestion | string | null)
-  const mergeMetaCandidate =
-    (payload?.question as AiQuestion | null) ??
-    (payload?.data?.question as AiQuestion | null) ??
-    null
-  let questionObj: AiQuestion | null = null
-  if (typeof primaryCandidate === 'string') {
-    const text = primaryCandidate.trim()
-    questionObj = text ? { text } : null
-  } else if (primaryCandidate && typeof primaryCandidate === 'object') {
-    const text = typeof primaryCandidate.text === 'string' ? primaryCandidate.text.trim() : ''
-    if (text) {
-      const merged = mergeMetaCandidate && typeof mergeMetaCandidate === 'object'
-        ? { ...primaryCandidate, ...mergeMetaCandidate, text }
-        : { ...primaryCandidate, text }
-      questionObj = merged
-    }
-  }
-  const questionText = questionObj?.text ?? null
-  const sourceFromMeta = payload?.meta?.source ?? payload?.source ?? null
-  const tokenInput = Number(payload?.meta?.tokens?.input ?? 0)
-  const tokenOutput = Number(payload?.meta?.tokens?.output ?? 0)
-  const labelType: SuggestLabelType =
-    sourceFromMeta === 'fallback'
-      ? 'fallback'
-      : tokenInput || tokenOutput
-        ? 'ai'
-        : 'fallback'
-  return {
-    questionText,
-    questionObj,
-    labelType,
-    questions,
-  }
-}
-
-const WORD_LIMIT = 100
-const INITIAL_BRIEF_WORD_LIMIT = 1000
-const INITIAL_BRIEF_RECOMMENDED_WORD_TARGET = 200
-const INITIAL_BRIEF_MIN_MEANINGFUL_WORDS = 25
-const INITIAL_BRIEF_MIN_DISTINCT_MEANINGFUL_WORDS = 3
-const SHORT_ENTRY_WORDS = 12
-const DEFAULT_IDLE_THRESHOLD_MS = 15000
-const ERASE_EMPTY_SECONDS_STRONG = 10
-const MAX_AUTO_CLASSIFY = 25
 const UI_LANGUAGE_STORAGE_KEY = 'ui-language'
 const AUTH_LOGIN_ORIGIN_KEY = 'auth-login-origin'
 const AUTH_LOGIN_REDIRECT_KEY = 'auth-login-redirect'
@@ -447,118 +365,10 @@ const CANONICAL_HOST = (() => {
 })()
 const CANONICAL_DISPLAY_HOST = CANONICAL_HOST.replace(/^www\./, '')
 
-const toMatrixRowKey = (groupCode?: string | null) => {
-  const group = String(groupCode || '').toUpperCase()
-  if (group === 'A') return 'world'
-  if (group === 'B') return 'product'
-  if (group === 'C') return 'elements'
-  return null
-}
-
-const toMatrixColKey = (modeCode?: number | null) => {
-  if (modeCode === 1) return 'as_is'
-  if (modeCode === 2) return 'not_working'
-  if (modeCode === 3) return 'should_be'
-  return null
-}
-
-const getEntryCellId = (item: EngineBoardItem) => {
-  const row = String(item.matrix_row || '').toLowerCase()
-  const col = String(item.matrix_col || '').toLowerCase()
-  const group = row === 'world' ? 'A' : row === 'product' ? 'B' : row === 'elements' ? 'C' : null
-  const mode = col === 'as_is' ? '1' : col === 'not_working' ? '2' : col === 'should_be' ? '3' : null
-  return group && mode ? `${group}${mode}` : null
-}
-
-const normalizeEngineEntryTypeForLlm = (value: EngineBoardItem['entry_type'] | string | null | undefined) => {
-  const raw = String(value || '').trim().toLowerCase()
-  if (raw === 'facilitated_input') return 'facilitated_input'
-  if (raw === 'seed_from_brief') return 'seed_from_brief'
-  if (raw === 'manual_input' || raw === 'free_input') return 'manual_input'
-  return 'other'
-}
-
-const normalizeEngineAreaForLlm = (value: string | null | undefined) => {
-  const raw = String(value || '').trim().toLowerCase()
-  if (raw === 'as_is' || raw === 'not_working' || raw === 'should_be') return raw
-  return null
-}
-
-const clipLlmContextText = (value: unknown, maxLen: number) => {
-  const raw = typeof value === 'string' ? value : String(value ?? '')
-  const text = raw.replace(/\s+/g, ' ').trim()
-  if (!text) return ''
-  return text.length > maxLen ? `${text.slice(0, maxLen)}…` : text
-}
-
-const normalizeEngineBoardEntryForLlm = (
-  item: EngineBoardItem,
-  uiLanguage: Language,
-  options: { maxAnswerLen?: number; maxQuestionLen?: number } = {}
-) => {
-  const answer = clipLlmContextText(item.text, options.maxAnswerLen ?? 280)
-  if (!answer) return null
-  const primaryQuestion =
-    uiLanguage === 'English'
-      ? item.question_text_en ?? item.question_text_pl ?? null
-      : item.question_text_pl ?? item.question_text_en ?? null
-  const question = clipLlmContextText(primaryQuestion, options.maxQuestionLen ?? 260) || null
-  const matrix_row = item.matrix_row ?? null
-  const matrix_col = item.matrix_col ?? null
-  const entryType = normalizeEngineEntryTypeForLlm(item.entry_type)
-  return {
-    id: item.id,
-    area: normalizeEngineAreaForLlm(matrix_col),
-    matrix_cell: getEntryCellId(item),
-    matrix_row,
-    matrix_col,
-    entry_type: entryType === 'other' && question ? 'facilitated_input' : entryType,
-    question,
-    answer,
-    text: answer,
-    createdAt: item.created_at,
-    updatedAt: item.updated_at,
-    tags: item.label ? [item.label] : undefined,
-  }
-}
-
-const cellCodeToMatrix = (cellCode: string) => {
-  const code = String(cellCode || '').trim().toUpperCase()
-  if (!/^[ABC][123]$/.test(code)) return null
-  const group = code[0]
-  const mode = Number(code[1])
-  return {
-    matrix_row: toMatrixRowKey(group) ?? null,
-    matrix_col: toMatrixColKey(mode) ?? null,
-  }
-}
-
-const perspectiveToAllowedCellIds = (perspective: FacilitationPerspective | null) => {
-  if (perspective === 'as_is') return ['A1', 'B1', 'C1'] as const
-  if (perspective === 'not_working') return ['A2', 'B2', 'C2'] as const
-  if (perspective === 'should_be') return ['A3', 'B3', 'C3'] as const
-  return null
-}
-
-const modeToFacilitationPerspective = (modeCode?: number | null): FacilitationPerspective | null => {
-  if (modeCode === 1) return 'as_is'
-  if (modeCode === 2) return 'not_working'
-  if (modeCode === 3) return 'should_be'
-  return null
-}
-
-const sanitizeInlineHelperText = (value: string | null | undefined) =>
-  String(value || '')
-    .replace(/\s+/g, ' ')
-    .trim()
-
 const withAlpha = (hexColor: string, alphaHex = '66') => {
   const value = String(hexColor || '').trim()
   return /^#[0-9a-fA-F]{6}$/.test(value) ? `${value}${alphaHex}` : value
 }
-
-const ENGINE_PERSPECTIVE_KEYS: EnginePerspectiveKey[] = ['as_is', 'not_working', 'should_be']
-const ENGINE_SORT_GAP = 1024
 
 const createEmptySessionUsage = (): SessionUsage => ({
   perModel: {},
@@ -567,26 +377,19 @@ const createEmptySessionUsage = (): SessionUsage => ({
   totalTokens: 0,
 })
 
-const getSpeechRecognitionCtor = (): SpeechRecognitionCtor | null => {
-  if (typeof window === 'undefined') return null
-  const speechWindow = window as Window &
-    typeof globalThis & {
-      SpeechRecognition?: SpeechRecognitionCtor
-      webkitSpeechRecognition?: SpeechRecognitionCtor
-    }
-  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null
-}
-
 import { fetchFxUsdPlnRate, getFreshFxRate } from './lib/fx'
 
-type Translations = {
+export type Translations = {
   stepLabel: string
   appTitle: string
   landingHeroTitle: string
   landingHeroSubtitle: string
   landingHeroBullets: string[]
+  landingHeroTryWithoutSignupCta: string
+  landingHeroTryWithoutSignupNote: string
+  engine2: Engine2Copy
   landingIntroTitleLines: string[]
-  landingIntroSubtextLines: [string, string, string, string]
+  landingIntroSubtextLines: string[]
   landingIntroSubtextEmphasis: string
   landingIntroCtaNoteLines: string[]
   landingCta: string
@@ -2176,14 +1979,76 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
   English: {
     stepLabel: 'Step',
     appTitle: 'Idea Clarity Grid',
-    landingHeroTitle: 'Facing a problem, a customer need, or a new challenge?',
-    landingHeroSubtitle: 'Turn uncertainty into decisions and a structured action plan.',
+    landingHeroTitle: 'Have an idea? Make it stronger.',
+    landingHeroSubtitle: 'Explore it, challenge it and turn it into an actionable concept.',
     landingHeroBullets: [
       '🎤 Describe your situation',
       '🧠 Identify key unknowns and assumptions',
       '⚖️ Compare possible paths forward',
       '📍 Get a structured action plan',
     ],
+    landingHeroTryWithoutSignupCta: 'Try it without signing up',
+    landingHeroTryWithoutSignupNote: 'No credit card. No account needed. About 5 minutes.',
+    engine2: {
+      pageLabel: 'Public conversation workspace',
+      conversationTitle: 'Let’s understand what you’re working on',
+      resetConversationButton: 'Start new conversation',
+      initialAssistantMessage:
+        'Describe the situation, problem or idea as you understand it today. You don’t need to prepare a complete description or meet any length requirement. Start with what you already know — I’ll ask about anything else we may need.',
+      initialAssistantHint: 'Start with what you already know. We’ll organize the rest together.',
+      inputPlaceholder: 'Describe what you’re working on...',
+      inputAriaLabel: 'Describe what you’re working on',
+      sendButton: 'Send',
+      sendingButton: 'Analyzing your answer…',
+      findingsTitle: 'Conversation map',
+      pendingFindingsTitle: 'To confirm',
+      knowledgeTitle: 'What we know',
+      confirmedFindingsTitle: 'Confirmed',
+      knowledgeEmpty: 'After you confirm the first findings, the most important information will appear here.',
+      knowledgeShowMoreAction: 'Show more',
+      knowledgeShowLessAction: 'Show less',
+      openQuestionsTitle: 'What is still worth clarifying',
+      openQuestionsEmpty: 'No urgent open questions stand out right now.',
+      openQuestionsWaiting:
+        'Review the current proposals first. Then I will point to the next questions worth clarifying.',
+      openQuestionsAnswerAction: 'Answer',
+      selectedQuestionPrefix: 'You are answering:',
+      answeredQuestionPrefix: 'Reply to:',
+      clearSelectedQuestionAction: 'Cancel',
+      pendingReviewMessage:
+        'Check whether I understood you correctly. Accept, edit, or reject each proposal, then we’ll move on.',
+      pendingReviewBadge: 'Needs review',
+      blockedSendMessage:
+        'Review the current proposals first. They will not be used as facts until you accept or edit them.',
+      confirmAllAction: 'Confirm all',
+      rejectAllAction: 'Reject all',
+      retryAnalysisAction: 'Retry analysis',
+      retryQuestionGenerationAction: 'Retry question generation',
+      progressLabel: 'Readiness',
+      reportReadyTitle: 'Ready for the next step',
+      reportReadyBody:
+        'The confirmed findings are strong enough to prepare a report, but report generation is not enabled in this public trial yet.',
+      reportCtaDisabled: 'Report generation comes later',
+      trialEndedTitle: 'Public trial limit reached',
+      trialEndedBody:
+        'This trial has reached the AI response limit. Your work remains in this browser tab.',
+      errorMessage: 'Something went wrong. Please try again.',
+      adminUsageTitle: 'Trial AI usage',
+      adminLastCall: 'Last call',
+      adminTotal: 'Total',
+      adminModel: 'model',
+      adminTokens: 'tokens in/out',
+      adminCost: 'cost',
+      findingCard: {
+        confirmedStatus: 'Confirmed',
+        acceptAction: 'That’s right',
+        editAction: 'Edit',
+        rejectAction: 'Reject',
+        saveAction: 'Save as confirmed',
+        cancelAction: 'Cancel',
+        editInputAriaLabel: 'Edit finding content',
+      },
+    },
     landingIntroTitleLines: [
       CANONICAL_DISPLAY_HOST,
       'guides you from describing the situation',
@@ -2198,12 +2063,12 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     ],
     landingIntroSubtextEmphasis: 'you',
     landingIntroCtaNoteLines: [
-      '30-second signup • no credit card required',
-      'save your progress and return to your plans anytime',
+      'No signup required. No subscription.',
+      '',
     ],
-    landingCta: '▶ Describe the situation',
+    landingCta: 'Start your first session free.',
     landingLoginCta: 'Log in',
-    landingCtaNote: 'Sign up in 30 seconds • No credit card required',
+    landingCtaNote: 'No signup required. No subscription.',
     landingExamplesCta: 'See example action plans',
     landingThreeStepsCta: 'Start in 3 steps',
     landingThreeStepsTitle: '3 steps',
@@ -2796,14 +2661,76 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
   Polish: {
     stepLabel: 'Krok',
     appTitle: 'Idea Clarity Grid',
-    landingHeroTitle: 'Masz problem do rozwiązania, potrzebę klienta lub nowe wyzwanie?',
-    landingHeroSubtitle: 'Przejdź od niepewności do decyzji i planu działania.',
+    landingHeroTitle: 'Masz pomysł? Wzmocnij go.',
+    landingHeroSubtitle: 'Zbadaj go, poddaj próbie i zmień w koncepcję gotową do działania.',
     landingHeroBullets: [
       '🎤 Opisz sytuację',
       '🧠 Odkryj najważniejsze niewiadome',
       '⚖️ Oceń możliwe kierunki działania',
       '📍 Otrzymaj gotowy plan kolejnych kroków',
     ],
+    landingHeroTryWithoutSignupCta: 'Wypróbuj bez rejestracji',
+    landingHeroTryWithoutSignupNote: 'Bez karty płatniczej. Bez zakładania konta. Około 5 minut.',
+    engine2: {
+      pageLabel: 'Publiczny interfejs rozmowy',
+      conversationTitle: 'Zrozummy, nad czym pracujesz',
+      resetConversationButton: 'Nowa rozmowa',
+      initialAssistantMessage:
+        'Opisz sytuację, problem lub pomysł tak, jak rozumiesz go dzisiaj. Nie musisz przygotowywać pełnego opisu ani spełniać żadnego wymogu długości. Zacznij od tego, co już wiesz — dopytam o pozostałe informacje, których możemy potrzebować.',
+      initialAssistantHint: 'Zacznij od tego, co już wiesz. Resztę uporządkujemy wspólnie.',
+      inputPlaceholder: 'Opisz, nad czym pracujesz...',
+      inputAriaLabel: 'Opisz, nad czym pracujesz',
+      sendButton: 'Wyślij',
+      sendingButton: 'Analizuję odpowiedź…',
+      findingsTitle: 'Mapa rozmowy',
+      pendingFindingsTitle: 'Do potwierdzenia',
+      knowledgeTitle: 'Co już wiemy',
+      confirmedFindingsTitle: 'Potwierdzone',
+      knowledgeEmpty: 'Po potwierdzeniu pierwszych ustaleń pojawią się tutaj najważniejsze informacje.',
+      knowledgeShowMoreAction: 'Pokaż więcej',
+      knowledgeShowLessAction: 'Pokaż mniej',
+      openQuestionsTitle: 'Co warto jeszcze ustalić',
+      openQuestionsEmpty: 'Na tym etapie nie widać pilnych kwestii do doprecyzowania.',
+      openQuestionsWaiting:
+        'Najpierw rozpatrz bieżące propozycje. Potem wskażę kolejne kwestie, które warto wyjaśnić.',
+      openQuestionsAnswerAction: 'Odpowiedz',
+      selectedQuestionPrefix: 'Odpowiadasz na:',
+      answeredQuestionPrefix: 'Odpowiedź na:',
+      clearSelectedQuestionAction: 'Anuluj',
+      pendingReviewMessage:
+        'Sprawdź, czy dobrze zrozumiałem Twoją wypowiedź. Zaakceptuj, popraw lub odrzuć każdą propozycję, a przejdziemy dalej.',
+      pendingReviewBadge: 'Do sprawdzenia',
+      blockedSendMessage:
+        'Najpierw rozpatrz bieżące propozycje. Nie użyję ich jako faktów, dopóki ich nie zaakceptujesz albo nie poprawisz.',
+      confirmAllAction: 'Potwierdź wszystkie',
+      rejectAllAction: 'Odrzuć wszystkie',
+      retryAnalysisAction: 'Ponów analizę',
+      retryQuestionGenerationAction: 'Spróbuj ponownie wygenerować pytania',
+      progressLabel: 'Gotowość',
+      reportReadyTitle: 'Gotowe do kolejnego kroku',
+      reportReadyBody:
+        'Potwierdzone ustalenia wystarczają, aby przygotować raport, ale generowanie raportu nie jest jeszcze włączone w tej publicznej próbie.',
+      reportCtaDisabled: 'Raport będzie w kolejnym etapie',
+      trialEndedTitle: 'Limit publicznej próby osiągnięty',
+      trialEndedBody:
+        'Ta próba osiągnęła limit odpowiedzi AI. Twoja praca pozostaje w tej zakładce przeglądarki.',
+      errorMessage: 'Coś poszło nie tak. Spróbuj ponownie.',
+      adminUsageTitle: 'Użycie AI w próbie',
+      adminLastCall: 'Ostatnie wywołanie',
+      adminTotal: 'Łącznie',
+      adminModel: 'model',
+      adminTokens: 'tokeny wej./wyj.',
+      adminCost: 'koszt',
+      findingCard: {
+        confirmedStatus: 'Ustalone',
+        acceptAction: 'Zgadza się',
+        editAction: 'Popraw',
+        rejectAction: 'Odrzuć',
+        saveAction: 'Zapisz jako ustalone',
+        cancelAction: 'Anuluj',
+        editInputAriaLabel: 'Edytuj treść ustalenia',
+      },
+    },
     landingIntroTitleLines: [
       CANONICAL_DISPLAY_HOST,
       'prowadzi Cię od opisu sytuacji',
@@ -2818,12 +2745,12 @@ const translations: Partial<Record<Language, Partial<Translations>>> & { Polish:
     ],
     landingIntroSubtextEmphasis: 'Ciebie',
     landingIntroCtaNoteLines: [
-      'rejestracja w 30 s • bez karty',
-      'zapisuj postępy i wracaj do swoich planów',
+      'Bez rejestracji. Bez subskrypcji.',
+      '',
     ],
-    landingCta: '▶ Zacznij od opisu sytuacji',
+    landingCta: 'Rozpocznij pierwszą sesję za darmo.',
     landingLoginCta: 'Zaloguj',
-    landingCtaNote: 'rejestracja w 30 s • bez karty',
+    landingCtaNote: 'Bez rejestracji. Bez subskrypcji.',
     landingExamplesCta: 'Zobacz przykładowe plany działania',
     landingThreeStepsCta: 'Zacznij w 3 krokach',
     landingThreeStepsTitle: '3 kroki',
@@ -4142,6 +4069,246 @@ function BlogPage({
   )
 }
 
+type EngineHeaderProps = {
+  logoUrl: string
+  copy: Translations
+  uiLanguage: Language
+  isAuthed: boolean
+  isAdmin: boolean
+  logoutInProgress: boolean
+  billingLoading: boolean
+  billingError: string | null
+  billingBalanceMinor: number
+  billingBalanceOverrideMinor: number | null
+  insufficientBalanceActive: boolean
+  engineNotice: { message: string; variant: 'success' | 'error' } | null
+  showBalance: boolean
+  showWorkspaceActions: boolean
+  canStartNewSession: boolean
+  showDiagnostics: boolean
+  aiSupportEnabled: boolean
+  showSessionUsage: boolean
+  llmUsageClass: string
+  currentTokensTotal: number
+  totalCostUsd: number
+  totalCostPln: number | null
+  sessionUsage: SessionUsage
+  modelUsageEntries: [string, ModelUsage][]
+  diagnosticsAuthEmail: string | null
+  publicLoginHref?: string
+  onBalanceClick: () => void
+  onSaveSession: () => void
+  onStartNewSession: () => void
+  onAdminClick: () => void
+  onLogout: () => void
+  onToggleDiagnostics: () => void
+  onToggleAiSupport: () => void
+  formatBalanceMinor: (minor: number) => string
+  formatTokenTotal: (value: number) => string
+  formatUsd: (value: number) => string
+  formatPln: (value: number) => string
+  isDiagEnabled: boolean
+}
+
+function EngineHeader({
+  logoUrl,
+  copy,
+  uiLanguage,
+  isAuthed,
+  isAdmin,
+  logoutInProgress,
+  billingLoading,
+  billingError,
+  billingBalanceMinor,
+  billingBalanceOverrideMinor,
+  insufficientBalanceActive,
+  engineNotice,
+  showBalance,
+  showWorkspaceActions,
+  canStartNewSession,
+  showDiagnostics,
+  aiSupportEnabled,
+  showSessionUsage,
+  llmUsageClass,
+  currentTokensTotal,
+  totalCostUsd,
+  totalCostPln,
+  sessionUsage,
+  modelUsageEntries,
+  diagnosticsAuthEmail,
+  publicLoginHref,
+  onBalanceClick,
+  onSaveSession,
+  onStartNewSession,
+  onAdminClick,
+  onLogout,
+  onToggleDiagnostics,
+  onToggleAiSupport,
+  formatBalanceMinor,
+  formatTokenTotal,
+  formatUsd,
+  formatPln,
+  isDiagEnabled,
+}: EngineHeaderProps) {
+  return (
+    <header className="engine-header">
+      <div>
+        <a className="engine-header-logo" href="/" aria-label="MakeMyIdea.Work">
+          <img src={logoUrl} alt="MakeMyIdea.Work" />
+        </a>
+      </div>
+      {showBalance && isAuthed && !logoutInProgress && (
+        <div className="engine-header-balance" aria-live="polite">
+          <div className="engine-balance-row">
+            <div
+              className={`engine-balance${billingLoading || billingError ? ' engine-balance--loading' : ''}`}
+              role="button"
+              tabIndex={0}
+              onClick={onBalanceClick}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  onBalanceClick()
+                }
+              }}
+            >
+              <button
+                type="button"
+                className="engine-balance-icon"
+                aria-label={
+                  uiLanguage === 'Polish'
+                    ? 'Doładuj saldo (usługowe) z obowiązkiem zapłaty'
+                    : 'Top up service balance with obligation to pay'
+                }
+              >
+                💰
+              </button>
+              <span className="engine-balance-value">
+                {billingLoading || billingError
+                  ? '—'
+                  : formatBalanceMinor(billingBalanceOverrideMinor ?? billingBalanceMinor)}
+              </span>
+            </div>
+            {insufficientBalanceActive && (
+              <span className="engine-balance-warning">
+                {copy.insufficientBalanceNotice}
+              </span>
+            )}
+            {engineNotice && !logoutInProgress && (
+              <span className={`engine-notice engine-notice--${engineNotice.variant} engine-notice--inline`}>
+                {engineNotice.message}
+              </span>
+            )}
+          </div>
+        </div>
+      )}
+      <div className="engine-header-actions">
+        {showWorkspaceActions && (
+          <>
+            <button className="secondary" type="button" onClick={onSaveSession}>
+              {copy.engine.saveSession}
+            </button>
+            {canStartNewSession && (
+              <button className="secondary" type="button" onClick={onStartNewSession}>
+                {copy.engine.newSession}
+              </button>
+            )}
+          </>
+        )}
+        {!isAuthed && publicLoginHref && (
+          <a className="primary engine-public-login" href={publicLoginHref}>
+            {copy.landingLoginCta}
+          </a>
+        )}
+        {isAdmin && (
+          <button className="ghost" type="button" onClick={onAdminClick}>
+            {copy.adminNavLabel}
+          </button>
+        )}
+        {isAuthed && (
+          <button className="ghost" type="button" onClick={onLogout}>
+            {copy.auth.logout}
+          </button>
+        )}
+        {isDiagEnabled && (
+          <span className="muted">
+            {copy.diagnosticsAuthLabel}: {diagnosticsAuthEmail ?? '—'}
+          </span>
+        )}
+        {isAdmin && (
+          <button
+            className={`ai-support-toggle diagnostics-toggle ${showDiagnostics ? 'on' : 'off'}`}
+            type="button"
+            onClick={onToggleDiagnostics}
+          >
+            {showDiagnostics ? copy.diagnosticsOn : copy.diagnosticsOff}
+          </button>
+        )}
+        {showDiagnostics && (
+          <>
+            <button
+              className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
+              type="button"
+              onClick={onToggleAiSupport}
+            >
+              {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
+            </button>
+            {showSessionUsage && (
+              <>
+                <button
+                  className={`ai-support-toggle llm-usage-indicator ${llmUsageClass}`}
+                  type="button"
+                  aria-label={copy.llmUsageIndicatorLabel}
+                  title={copy.llmUsageIndicatorLabel}
+                  disabled
+                >
+                  {`${formatTokenTotal(currentTokensTotal)} tok`}
+                </button>
+                <div className="llm-cost-panel" aria-live="polite">
+                  <div className="llm-cost-line">
+                    {copy.llmCostLabel(formatUsd(totalCostUsd))}
+                  </div>
+                  <div className="llm-cost-line">
+                    {totalCostPln != null
+                      ? copy.llmCostPlnLabel(formatPln(totalCostPln || 0))
+                      : copy.llmCostPlnFallback}
+                  </div>
+                  <details className="llm-cost-details">
+                    <summary>{copy.llmCostBreakdown}</summary>
+                    <div className="llm-cost-breakdown">
+                      <div className="llm-cost-row">
+                        {copy.llmCostTotalTokens(formatTokenTotal(sessionUsage.totalTokens))}
+                      </div>
+                      <div className="llm-cost-row">
+                        {copy.llmCostTotalUsd(formatUsd(totalCostUsd))}
+                      </div>
+                      <div className="llm-cost-row">
+                        {totalCostPln != null
+                          ? copy.llmCostTotalPln(formatPln(totalCostPln || 0))
+                          : copy.llmCostTotalPlnFallback}
+                      </div>
+                      {modelUsageEntries.map(([model, usage]) => (
+                        <div key={model} className="llm-cost-row">
+                          {copy.llmCostModelRow(
+                            model,
+                            formatTokenTotal(usage.inputTokens),
+                            formatTokenTotal(usage.outputTokens),
+                            formatUsd(usage.totalUSD)
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                </div>
+              </>
+            )}
+          </>
+        )}
+      </div>
+    </header>
+  )
+}
+
 function App() {
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -4266,8 +4433,6 @@ function App() {
   const [reportCreatePriceMinor, setReportCreatePriceMinor] = useState<number | null>(null)
   const [reportCreatePriceLoading, setReportCreatePriceLoading] = useState(false)
   const [reportNavigationLoading, setReportNavigationLoading] = useState(false)
-  const [engineBoardLayoutVersion, setEngineBoardLayoutVersion] = useState(0)
-  const wasTopupOpenRef = useRef(false)
   const [topupLoadingTier, setTopupLoadingTier] = useState<'S' | 'M' | 'L' | null>(null)
   const [topupTermsAccepted, setTopupTermsAccepted] = useState(false)
   const [topupDigitalServicesAccepted, setTopupDigitalServicesAccepted] = useState(false)
@@ -4689,10 +4854,6 @@ function App() {
   const [postAuthLanguageApplied, setPostAuthLanguageApplied] = useState(false)
   const [enginePreviewSessionName, setEnginePreviewSessionName] = useState('')
   const [engineSessionPersisted, setEngineSessionPersisted] = useState(false)
-  const [engineNamePromptOpen, setEngineNamePromptOpen] = useState(false)
-  const [engineNameDraft, setEngineNameDraft] = useState('')
-  const [engineNameError, setEngineNameError] = useState<string | null>(null)
-  const [engineNameSaving, setEngineNameSaving] = useState(false)
   const [engineInitialBriefOpen, setEngineInitialBriefOpen] = useState(false)
   const [engineInitialBriefText, setEngineInitialBriefText] = useState('')
   const [engineInitialBriefError, setEngineInitialBriefError] = useState<string | null>(null)
@@ -4701,7 +4862,6 @@ function App() {
   const [engineInitialBriefVoiceState, setEngineInitialBriefVoiceState] = useState<
     'idle' | 'listening' | 'unavailable'
   >(() => (getSpeechRecognitionCtor() ? 'idle' : 'unavailable'))
-  const [resumeNamePromptAfterList, setResumeNamePromptAfterList] = useState(false)
   const [enginePreviewItems, setEnginePreviewItems] = useState<EngineBoardItem[]>([])
   const enginePreviewItemsRef = useRef<EngineBoardItem[]>([])
   useEffect(() => {
@@ -4785,13 +4945,9 @@ function App() {
   const [logoutInProgress, setLogoutInProgress] = useState(false)
   const [engineDeleteLoadingId, setEngineDeleteLoadingId] = useState<string | null>(null)
   const [engineSessionDetail, setEngineSessionDetail] = useState<EngineSessionDetail | null>(null)
-  const [engineEditItemId, setEngineEditItemId] = useState<string | null>(null)
-  const [engineEditText, setEngineEditText] = useState('')
+  const [engineEditResetSignal, setEngineEditResetSignal] = useState(0)
   const [engineEditLoading, setEngineEditLoading] = useState(false)
-  const [enginePreviewEditId, setEnginePreviewEditId] = useState<string | null>(null)
-  const [enginePreviewEditText, setEnginePreviewEditText] = useState('')
   const [engineAssignLoading, setEngineAssignLoading] = useState(false)
-  const [engineEntryDeleteId, setEngineEntryDeleteId] = useState<string | null>(null)
   const [, setEngineApiDebug] = useState<{
     endpoint: string
     status: number
@@ -4838,22 +4994,8 @@ function App() {
   const facilitationIntroRef = useRef<string | null>(null)
   const [feedbackCooldown, setFeedbackCooldown] = useState(0)
   const [feedbackNotice, setFeedbackNotice] = useState<{ message: string; variant: 'success' | 'error' } | null>(null)
-  const [engineEntryRowSpans, setEngineEntryRowSpans] = useState<Record<string, number>>({})
-  const [engineDraggingEntryId, setEngineDraggingEntryId] = useState<string | null>(null)
-  const [engineDragOverSection, setEngineDragOverSection] = useState<EnginePerspectiveKey | null>(null)
-  const [engineDragTargetIndex, setEngineDragTargetIndex] = useState<number | null>(null)
   const [engineMovingEntryId, setEngineMovingEntryId] = useState<string | null>(null)
   const [engineMatrixVisible] = useState(false)
-  const [engineLabelEditorId, setEngineLabelEditorId] = useState<string | null>(null)
-  const engineLabelEditorRef = useRef<HTMLDivElement | null>(null)
-  const engineLabelSelectRef = useRef<HTMLSelectElement | null>(null)
-  const engineDragHoverTimerRef = useRef<number | null>(null)
-  const enginePendingDragTargetRef = useRef<{
-    section: EnginePerspectiveKey
-    index: number
-  } | null>(null)
-  const engineEntryNodesRef = useRef<Record<string, HTMLLIElement | null>>({})
-  const wasPhoneViewportRef = useRef(false)
   const engineLabelCache = useRef<Record<string, string | null>>({})
   const openSessionDebugOnceRef = useRef(false)
   const engineInputRef = useRef<HTMLTextAreaElement | null>(null)
@@ -4894,8 +5036,6 @@ function App() {
     if (typeof window === 'undefined') return false
     return window.location.pathname.replace(/\/+$/, '') === '/report'
   })
-  const hasEngineBoardEntries = enginePreviewItems.length > 0
-
   const languageOptions: Language[] = ['English', 'Polish']
 
   const uiLanguageOptions: Language[] = ['Polish', 'English']
@@ -5340,6 +5480,7 @@ const isAuthFlowInProgress = () => {
   const normalizedPath = rawPath.replace(/\/+$/, '')
   const appPath = hashPath
   const isEnginePreview = normalizedPath === '/engine'
+  const isEnginePublicPreview = normalizedPath === '/engine_2'
   const isReportPath = normalizedPath === '/report' || normalizedPath.endsWith('/report')
   const isReport = isReportPath || reportViewOpen
   const isWorkInProgress = normalizedPath === '/wip'
@@ -5801,7 +5942,7 @@ const isAuthFlowInProgress = () => {
     if (typeof window === 'undefined') return
     if (isAuthCallback) return
     if (isAdminRoute) return
-    if (isExamples || isBlog) return
+    if (isExamples || isBlog || isEnginePublicPreview) return
     if (isPrivacy || isTermsAndConditions) return
     const nextRaw = readPostAuthNext()
     const next = nextRaw && nextRaw !== '/' ? nextRaw : '/engine'
@@ -5821,7 +5962,7 @@ const isAuthFlowInProgress = () => {
       saveAuthCallbackDiag({ event: 'session_resolved_nav', next, target })
       safeNavigate(target)
     }
-  }, [authResolved, authSession?.user?.id, isAuthCallback, isAdminRoute, isExamples, isBlog, isPrivacy, isTermsAndConditions])
+  }, [authResolved, authSession?.user?.id, isAuthCallback, isAdminRoute, isExamples, isBlog, isEnginePublicPreview, isPrivacy, isTermsAndConditions])
 
   useEffect(() => {
     if (!isProtectedRoute || authLoading || authDisabled) return
@@ -5856,7 +5997,8 @@ const isAuthFlowInProgress = () => {
     const isExamplesPath = normalizedAuthPath === '/examples'
     const isBlogPath = normalizedAuthPath === '/blog' || normalizedAuthPath.startsWith('/blog/')
 
-    if (!canEnterApp && !isReportPath && !isPrivacyPath && !isTermsAndConditionsPath && !isExamplesPath && !isBlogPath) {
+    const isEnginePublicPath = normalizedAuthPath === '/engine_2'
+    if (!canEnterApp && !isReportPath && !isPrivacyPath && !isTermsAndConditionsPath && !isExamplesPath && !isBlogPath && !isEnginePublicPath) {
       if (
         path !== '/' &&
         !path.startsWith('/login') &&
@@ -6548,42 +6690,6 @@ const isAuthFlowInProgress = () => {
     })
   }, [])
 
-  useEffect(() => {
-    if (!engineLabelEditorId) return
-    const handleClick = (event: MouseEvent) => {
-      if (!engineLabelEditorRef.current) return
-      if (!engineLabelEditorRef.current.contains(event.target as Node)) {
-        setEngineLabelEditorId(null)
-      }
-    }
-    document.addEventListener('mousedown', handleClick)
-    return () => document.removeEventListener('mousedown', handleClick)
-  }, [engineLabelEditorId])
-
-  useEffect(() => {
-    if (!engineLabelEditorId || typeof window === 'undefined') return
-    const select = engineLabelSelectRef.current
-    if (!select) return
-
-    const frame = window.requestAnimationFrame(() => {
-      const currentSelect = engineLabelSelectRef.current
-      if (!currentSelect) return
-      currentSelect.focus()
-      const pickerSelect = currentSelect as HTMLSelectElement & {
-        showPicker?: () => void
-      }
-      if (typeof pickerSelect.showPicker === 'function') {
-        pickerSelect.showPicker()
-        return
-      }
-      currentSelect.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }))
-      currentSelect.click()
-    })
-
-    return () => window.cancelAnimationFrame(frame)
-  }, [engineLabelEditorId])
-
-
   const isDebugMatrix =
     typeof window !== 'undefined' && window.location.pathname === '/debug/matrix'
 
@@ -6714,7 +6820,6 @@ const isAuthFlowInProgress = () => {
     setEngineNotice(null)
     setEnginePreviewError(null)
     setEngineFacilitationInlineError(null)
-    setEngineNameError(null)
     setEngineSessionsError(null)
     setAuthError(null)
     setAuthCallbackError(null)
@@ -6722,15 +6827,6 @@ const isAuthFlowInProgress = () => {
     setLoginNotice(null)
     setFeedbackNotice(null)
   }, [uiLanguage])
-
-  useEffect(() => {
-    return () => {
-      if (engineDragHoverTimerRef.current) {
-        window.clearTimeout(engineDragHoverTimerRef.current)
-        engineDragHoverTimerRef.current = null
-      }
-    }
-  }, [])
 
   useEffect(() => {
     if (postAuthLanguageApplied) return
@@ -7422,6 +7518,14 @@ const isAuthFlowInProgress = () => {
       honeypotLabel: isPl ? 'Strona' : 'Website',
     }
   }, [uiLanguage])
+  const formatBalanceMinor = (minor: number) => {
+    const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
+    const formatted = new Intl.NumberFormat(locale, {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(Math.max(0, minor || 0) / 100)
+    return `${formatted} PLN`
+  }
   const missingSupabaseEnvMessage =
     uiLanguage === 'Polish'
       ? 'Autoryzacja wyłączona w tym środowisku (brak VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY).'
@@ -7559,70 +7663,6 @@ const limitWords = (value: string, maxWords: number) => {
     return words.slice(0, maxWords).join(' ')
   }
 
-const applyTextEditClassification = (item: EngineBoardItem, nextText: string) => {
-  const last = item.lastClassifiedText ?? null
-  const dirty = !last || last !== nextText
-  return { ...item, text: nextText, classificationDirty: dirty }
-}
-
-const normalizeBoardItem = (item: EngineBoardItem) => {
-  const legacyRow = (item as { matrixRow?: string | null }).matrixRow ?? null
-  const legacyCol = (item as { matrixCol?: string | null }).matrixCol ?? null
-  const legacyCell = (item as { matrixCell?: string | null; cellCode?: string | null }).matrixCell ??
-    (item as { cellCode?: string | null }).cellCode ??
-    null
-  let matrixRow = item.matrix_row ?? legacyRow ?? null
-  let matrixCol = item.matrix_col ?? legacyCol ?? null
-  if ((!matrixRow || !matrixCol) && legacyCell) {
-    const mapped = cellCodeToMatrix(String(legacyCell))
-    if (mapped?.matrix_row && mapped?.matrix_col) {
-      matrixRow = mapped.matrix_row
-      matrixCol = mapped.matrix_col
-    }
-  }
-  const createdAtRaw = item.created_at ?? null
-  const updatedAtRaw = (item as { updated_at?: unknown }).updated_at ?? null
-  const createdAt =
-    typeof createdAtRaw === 'number'
-      ? createdAtRaw
-      : typeof createdAtRaw === 'string' && !Number.isNaN(Date.parse(createdAtRaw))
-        ? Date.parse(createdAtRaw)
-        : undefined
-  const updatedAt =
-    typeof updatedAtRaw === 'number'
-      ? updatedAtRaw
-      : typeof updatedAtRaw === 'string' && !Number.isNaN(Date.parse(updatedAtRaw))
-        ? Date.parse(updatedAtRaw)
-        : undefined
-  const sortOrderRaw = (item as { sort_order?: unknown }).sort_order ?? null
-  const sortOrder =
-    typeof sortOrderRaw === 'number'
-      ? sortOrderRaw
-      : typeof sortOrderRaw === 'string'
-        ? Number(sortOrderRaw)
-        : undefined
-  return {
-    ...item,
-    label: item.label ?? null,
-    matrix_row: matrixRow ?? null,
-    matrix_col: matrixCol ?? null,
-    sort_order: Number.isFinite(sortOrder ?? NaN) ? sortOrder : item.sort_order ?? null,
-    created_at: createdAt ?? item.created_at,
-    updated_at: updatedAt ?? item.updated_at,
-  }
-}
-
-const normalizeBoardItems = (items: EngineBoardItem[]) => {
-  const normalized = items.map(normalizeBoardItem)
-  return normalized.map((item, index) => ({
-    ...item,
-    sort_order:
-      typeof item.sort_order === 'number' && Number.isFinite(item.sort_order)
-        ? item.sort_order
-        : (index + 1) * ENGINE_SORT_GAP,
-  }))
-}
-
 const safeLower = (value: unknown) => String(value ?? '').toLowerCase()
 
 const toTimestamp = (value: unknown, fallback: number) => {
@@ -7645,11 +7685,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
     const matches = value.match(/[\p{L}\p{N}]+(?:['’_-][\p{L}\p{N}]+)*/gu)
     return matches?.length ?? 0
   }
-
-  const getMeaningfulWords = (value: string) =>
-    (value.match(/[\p{L}\p{N}]+(?:['’_-][\p{L}\p{N}]+)*/gu) ?? [])
-      .map((word) => word.trim().toLocaleLowerCase())
-      .filter((word) => word.length > 2)
 
   const applyEngineInitialBriefTextChange = (next: string, previous = engineInitialBriefText) => {
     const nextWords = countWords(next)
@@ -9448,6 +9483,41 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return null
   }
 
+  const createNamedEngineSession = async ({
+    name,
+    shouldShowInitialBrief,
+  }: {
+    name: string
+    shouldShowInitialBrief: boolean
+  }): Promise<
+    | { ok: true; sessionId: string }
+    | { ok: false; error?: 'SESSION_NAME_COLLISION' | 'SESSION_NAME_SAVE_FAILED' }
+  > => {
+    let createError: 'SESSION_NAME_COLLISION' | 'SESSION_NAME_SAVE_FAILED' | undefined
+    const sessionId = await ensureEnginePreviewSession(name, {
+      onNameCollision: () => {
+        createError = 'SESSION_NAME_COLLISION'
+      },
+      onInsertError: () => {
+        createError = 'SESSION_NAME_SAVE_FAILED'
+      },
+    })
+    if (!sessionId) return { ok: false, error: createError }
+    setEnginePreviewSessionName(name)
+    setEngineInitialBriefOpen(shouldShowInitialBrief)
+    if (shouldShowInitialBrief) {
+      setEngineInitialBriefText('')
+      setEngineInitialBriefError(null)
+    } else {
+      setEngineUiState('FREE_FLOW')
+      setEngineInputFocused(true)
+      engineInputRef.current?.focus()
+    }
+    engineInteractionBySession.current[sessionId] = true
+    setEngineLastInputActivityAt(Date.now())
+    return { ok: true, sessionId }
+  }
+
   const handleEnginePreviewAdd = async (
     nameOverride?: string,
     textOverride?: string,
@@ -9473,9 +9543,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }
     const nameToUse = (nameOverride ?? enginePreviewSessionName).trim()
     if (!nameToUse && enginePreviewItems.length === 0) {
-      setEngineNameDraft('')
-      setEngineNamePromptOpen(true)
-      return
+      return 'needs_name'
     }
     const sessionId = await ensureEnginePreviewSession()
     if (!sessionId) return
@@ -10059,8 +10127,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
     setEngineSessionDetail(null)
     setEngineSessionsError(null)
     setEngineUiState('INIT')
-    setEngineNamePromptOpen(false)
-    setEngineNameDraft('')
     setEngineInitialBriefOpen(false)
     setEngineInitialBriefText('')
     setEngineInitialBriefError(null)
@@ -10094,31 +10160,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return engineSessions.find((session) => session.id === enginePreviewSessionId) || null
   }, [enginePreviewSessionId, engineSessionDetail, engineSessions])
 
-  const orderedEnginePreviewItems = useMemo(() => {
-    return [...enginePreviewItems]
-      .map((item, index) => ({ item, index }))
-      .sort((a, b) => {
-        const aOrder =
-          typeof a.item.sort_order === 'number' && Number.isFinite(a.item.sort_order)
-            ? a.item.sort_order
-            : (a.index + 1) * ENGINE_SORT_GAP
-        const bOrder =
-          typeof b.item.sort_order === 'number' && Number.isFinite(b.item.sort_order)
-            ? b.item.sort_order
-            : (b.index + 1) * ENGINE_SORT_GAP
-        return aOrder - bOrder || a.index - b.index
-      })
-      .map(({ item }) => item)
-  }, [enginePreviewItems])
-
-  const resolveEngineEntryLayoutClass = (item: EngineBoardItem) => {
-    const wordCount = countWords(item.text)
-    const textLength = String(item.text || '').trim().length
-    if (wordCount > 45 || textLength > 280) return 'is-hero'
-    if (wordCount > 30 || textLength > 180) return 'is-wide'
-    return 'is-medium'
-  }
-
   const normalizeRecommendations = (value: unknown): ReportRecommendations | null => {
     if (!value || typeof value !== 'object') return null
     const current = value as Record<string, unknown>
@@ -10132,33 +10173,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
       market_trends: market_trends as ReportRecommendations['market_trends'],
     }
   }
-
-  const enginePerspectiveSections = useMemo(() => {
-    const sections = [
-      { key: 'as_is', title: copy.axisPast, toneClass: 'is-as-is' },
-      { key: 'not_working', title: copy.axisNow, toneClass: 'is-not-working' },
-      { key: 'should_be', title: copy.axisFuture, toneClass: 'is-should-be' },
-    ] as const
-    const grouped: Record<'as_is' | 'not_working' | 'should_be', EngineBoardItem[]> = {
-      as_is: [],
-      not_working: [],
-      should_be: [],
-    }
-    orderedEnginePreviewItems.forEach((item) => {
-      const key =
-        item.matrix_col === 'as_is' || item.matrix_col === 'not_working' || item.matrix_col === 'should_be'
-          ? item.matrix_col
-          : 'not_working'
-      grouped[key].push(item)
-    })
-    return sections.map((section) => ({
-      ...section,
-      items: grouped[section.key].map((item) => ({
-        item,
-        layoutClass: resolveEngineEntryLayoutClass(item),
-      })),
-    }))
-  }, [copy.axisFuture, copy.axisNow, copy.axisPast, orderedEnginePreviewItems])
 
   const getSortOrderForPlacement = (
     items: EngineBoardItem[],
@@ -10202,11 +10216,15 @@ const isMissingLabel = (item: EngineBoardItem) => {
     return (previousOrder ?? ENGINE_SORT_GAP) + ENGINE_SORT_GAP / 2
   }
 
-  const moveEngineEntryToSection = async (
-    itemId: string,
-    targetSection: EnginePerspectiveKey,
-    targetIndex: number
-  ) => {
+  const moveEngineEntryToSection = async ({
+    id: itemId,
+    section: targetSection,
+    index: targetIndex,
+  }: {
+    id: string
+    section: EnginePerspectiveKey
+    index: number
+  }) => {
     const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id
     if (!sessionId) {
       showEngineNotice(notices.createSessionFirst, 'error')
@@ -10328,268 +10346,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
     } finally {
       setEngineMovingEntryId(null)
     }
-  }
-
-  useLayoutEffect(() => {
-    if (typeof window === 'undefined') return
-    if (isPhoneViewport) {
-      setEngineEntryRowSpans({})
-      return
-    }
-
-    const calculateRowSpan = (id: string, node: HTMLLIElement) => {
-      const list = node.closest('.engine-entry-list')
-      if (!(list instanceof HTMLElement)) return
-      if (node.offsetWidth === 0 || list.offsetWidth === 0) return
-      const styles = window.getComputedStyle(list)
-      const rowHeight = parseFloat(styles.gridAutoRows || '') || 4
-      const rowGap =
-        parseFloat(styles.rowGap || '') || parseFloat(styles.getPropertyValue('grid-row-gap')) || 12
-      const content = node.querySelector('.engine-entry-main')
-      const contentHeight =
-        content instanceof HTMLElement ? content.scrollHeight : node.scrollHeight
-      const nodeStyles = window.getComputedStyle(node)
-      const verticalPadding =
-        (parseFloat(nodeStyles.paddingTop || '') || 0) +
-        (parseFloat(nodeStyles.paddingBottom || '') || 0)
-      const borderWidth =
-        (parseFloat(nodeStyles.borderTopWidth || '') || 0) +
-        (parseFloat(nodeStyles.borderBottomWidth || '') || 0)
-      const measuredHeight = contentHeight + verticalPadding + borderWidth
-      const span = Math.max(1, Math.ceil((measuredHeight + rowGap) / (rowHeight + rowGap)))
-      setEngineEntryRowSpans((prev) => (prev[id] === span ? prev : { ...prev, [id]: span }))
-    }
-
-    const nodes = Object.entries(engineEntryNodesRef.current).filter(
-      (entry): entry is [string, HTMLLIElement] => entry[1] instanceof HTMLLIElement
-    )
-    if (!nodes.length) return
-
-    nodes.forEach(([id, node]) => calculateRowSpan(id, node))
-
-    const frame = window.requestAnimationFrame(() => {
-      nodes.forEach(([id, node]) => calculateRowSpan(id, node))
-    })
-    const settleFrame = window.setTimeout(() => {
-      window.requestAnimationFrame(() => {
-        nodes.forEach(([id, node]) => calculateRowSpan(id, node))
-      })
-    }, 80)
-    const lateSettleFrame = window.setTimeout(() => {
-      window.requestAnimationFrame(() => {
-        nodes.forEach(([id, node]) => calculateRowSpan(id, node))
-      })
-    }, 280)
-
-    let cancelled = false
-    if (typeof document !== 'undefined' && 'fonts' in document && document.fonts?.ready) {
-      void document.fonts.ready.then(() => {
-        if (cancelled) return
-        window.requestAnimationFrame(() => {
-          nodes.forEach(([id, node]) => calculateRowSpan(id, node))
-        })
-      })
-    }
-
-    const resizeObserver =
-      typeof ResizeObserver === 'undefined'
-        ? null
-        : new ResizeObserver((entries) => {
-            entries.forEach((entry) => {
-              const node = entry.target
-              if (!(node instanceof HTMLLIElement)) return
-              const id = node.dataset.entryId
-              if (!id) return
-              calculateRowSpan(id, node)
-            })
-          })
-
-    nodes.forEach(([, node]) => resizeObserver?.observe(node))
-
-    const handleResize = () => {
-      nodes.forEach(([id, node]) => calculateRowSpan(id, node))
-    }
-
-    window.addEventListener('resize', handleResize)
-
-    return () => {
-      cancelled = true
-      window.cancelAnimationFrame(frame)
-      window.clearTimeout(settleFrame)
-      window.clearTimeout(lateSettleFrame)
-      window.removeEventListener('resize', handleResize)
-      resizeObserver?.disconnect()
-    }
-  }, [
-    enginePerspectiveSections,
-    engineEntryDeleteId,
-    engineLabelEditorId,
-    enginePreviewEditId,
-    enginePreviewEditText,
-    isReport,
-    isPhoneViewport,
-  ])
-
-  useEffect(() => {
-    if (isReport) return
-    setEngineEntryRowSpans({})
-  }, [isReport, enginePreviewSessionId])
-
-  useEffect(() => {
-    if (isPhoneViewport) {
-      wasPhoneViewportRef.current = true
-      setEngineEntryRowSpans({})
-      return
-    }
-    if (!wasPhoneViewportRef.current) return
-    wasPhoneViewportRef.current = false
-    engineEntryNodesRef.current = {}
-    setEngineEntryRowSpans({})
-    setEngineBoardLayoutVersion((prev) => prev + 1)
-    if (typeof window !== 'undefined') {
-      window.requestAnimationFrame(() => {
-        window.dispatchEvent(new Event('resize'))
-      })
-      window.setTimeout(() => {
-        window.dispatchEvent(new Event('resize'))
-      }, 120)
-      window.setTimeout(() => {
-        window.dispatchEvent(new Event('resize'))
-      }, 320)
-    }
-  }, [isPhoneViewport])
-
-  useEffect(() => {
-    if (isTopup) {
-      wasTopupOpenRef.current = true
-      return
-    }
-    if (!wasTopupOpenRef.current) return
-    wasTopupOpenRef.current = false
-    engineEntryNodesRef.current = {}
-    setEngineEntryRowSpans({})
-    setEngineBoardLayoutVersion((prev) => prev + 1)
-    if (typeof window !== 'undefined') {
-      window.requestAnimationFrame(() => {
-        window.dispatchEvent(new Event('resize'))
-      })
-      window.setTimeout(() => {
-        window.dispatchEvent(new Event('resize'))
-      }, 120)
-    }
-  }, [isTopup])
-
-  const handleEngineEntryDragStart = (
-    event: ReactDragEvent<HTMLLIElement>,
-    item: EngineBoardItem
-  ) => {
-    const target = event.target as HTMLElement | null
-    if (target?.closest('button, select, textarea, option')) {
-      event.preventDefault()
-      return
-    }
-    if (enginePreviewEditId === item.id || engineMovingEntryId === item.id) {
-      event.preventDefault()
-      return
-    }
-    setEngineDraggingEntryId(item.id)
-    setEngineDragOverSection(null)
-    event.dataTransfer.effectAllowed = 'move'
-    event.dataTransfer.setData('text/plain', item.id)
-  }
-
-  const handleEngineEntryDragEnd = () => {
-    if (engineDragHoverTimerRef.current) {
-      window.clearTimeout(engineDragHoverTimerRef.current)
-      engineDragHoverTimerRef.current = null
-    }
-    enginePendingDragTargetRef.current = null
-    setEngineDraggingEntryId(null)
-    setEngineDragOverSection(null)
-    setEngineDragTargetIndex(null)
-  }
-
-  const scheduleEngineDragTarget = (
-    sectionKey: EnginePerspectiveKey,
-    targetIndex: number
-  ) => {
-    const currentSection = engineDragOverSection
-    const currentIndex = engineDragTargetIndex
-    const pending = enginePendingDragTargetRef.current
-
-    if (currentSection !== sectionKey || currentIndex === null) {
-      if (engineDragHoverTimerRef.current) {
-        window.clearTimeout(engineDragHoverTimerRef.current)
-        engineDragHoverTimerRef.current = null
-      }
-      enginePendingDragTargetRef.current = null
-      setEngineDragOverSection(sectionKey)
-      setEngineDragTargetIndex(targetIndex)
-      return
-    }
-
-    if (currentIndex === targetIndex) return
-    if (pending?.section === sectionKey && pending.index === targetIndex) return
-
-    if (engineDragHoverTimerRef.current) {
-      window.clearTimeout(engineDragHoverTimerRef.current)
-    }
-    enginePendingDragTargetRef.current = { section: sectionKey, index: targetIndex }
-    engineDragHoverTimerRef.current = window.setTimeout(() => {
-      const next = enginePendingDragTargetRef.current
-      if (!next) return
-      setEngineDragOverSection(next.section)
-      setEngineDragTargetIndex(next.index)
-      enginePendingDragTargetRef.current = null
-      engineDragHoverTimerRef.current = null
-    }, 100)
-  }
-
-  const handleEngineSectionDragOver = (
-    event: ReactDragEvent<HTMLElement>,
-    sectionKey: EnginePerspectiveKey,
-    targetIndex: number
-  ) => {
-    if (!engineDraggingEntryId) return
-    event.preventDefault()
-    event.dataTransfer.dropEffect = 'move'
-    scheduleEngineDragTarget(sectionKey, targetIndex)
-  }
-
-  const handleEngineEntryDragOver = (
-    event: ReactDragEvent<HTMLLIElement>,
-    sectionKey: EnginePerspectiveKey,
-    itemIndex: number
-  ) => {
-    if (!engineDraggingEntryId) return
-    event.stopPropagation()
-    const rect = event.currentTarget.getBoundingClientRect()
-    const midpoint = rect.top + rect.height / 2
-    const targetIndex = event.clientY < midpoint ? itemIndex : itemIndex + 1
-    handleEngineSectionDragOver(event, sectionKey, targetIndex)
-  }
-
-  const handleEngineSectionDrop = async (
-    event: ReactDragEvent<HTMLElement>,
-    sectionKey: EnginePerspectiveKey
-  ) => {
-    event.preventDefault()
-    const draggedId = engineDraggingEntryId || event.dataTransfer.getData('text/plain')
-    const pendingTarget = enginePendingDragTargetRef.current
-    const targetIndex =
-      pendingTarget && pendingTarget.section === sectionKey
-        ? pendingTarget.index
-        : engineDragTargetIndex ?? 0
-    if (engineDragHoverTimerRef.current) {
-      window.clearTimeout(engineDragHoverTimerRef.current)
-      engineDragHoverTimerRef.current = null
-    }
-    enginePendingDragTargetRef.current = null
-    setEngineDragOverSection(null)
-    setEngineDragTargetIndex(null)
-    setEngineDraggingEntryId(null)
-    if (!draggedId) return
-    await moveEngineEntryToSection(draggedId, sectionKey, targetIndex)
   }
 
   const facilitationIntros = useMemo(
@@ -11168,7 +10924,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
     fetchActionPlanReadinessLlm,
   ])
 
-  const missingLabelModal = missingLabelModalOpen ? (
+  const renderMissingLabelModal = (openEngineLabelEditor: (entryId: string) => void) => missingLabelModalOpen ? (
     <div className="modal" role="dialog" aria-modal="true">
       <div className="modal-content">
         <div className="modal-header">
@@ -11189,7 +10945,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
                 const first = missingLabelEntries[0]
                 if (first && typeof window !== 'undefined') {
                   if (!autoOpenedMissingLabelRef.current) {
-                    setEngineLabelEditorId(first.id)
+                    openEngineLabelEditor(first.id)
                     autoOpenedMissingLabelRef.current = true
                   }
                   window.setTimeout(() => {
@@ -11220,6 +10976,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       </div>
     </div>
   ) : null
+  const missingLabelModal = renderMissingLabelModal(() => {})
 
   useEffect(() => {
     if (!highlightMissingLabels) return
@@ -11786,11 +11543,10 @@ const isMissingLabel = (item: EngineBoardItem) => {
   const startNewSession = async () => {
     if (enginePreviewSessionId) {
       const saved = await saveCurrentSessionToCloud(true)
-      if (!saved) return
+      if (!saved) return false
     }
     resetEnginePreview()
-    setEngineNameDraft('')
-    setEngineNamePromptOpen(true)
+    return true
   }
 
   const handleLogout = async () => {
@@ -12144,7 +11900,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
       }
       if (nextSessions.length === 0) {
         setEngineSessionsOpen(false)
-        setResumeNamePromptAfterList(false)
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
@@ -12249,8 +12004,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
   const fetchEngineSessionDetail = async (sessionId: string) => {
     setEngineSessionsError(null)
-    setEngineEditItemId(null)
-    setEngineEditText('')
+    setEngineEditResetSignal((prev) => prev + 1)
     try {
       const data = await getSession(sessionId)
       if (!data) throw new Error('Missing session')
@@ -12276,8 +12030,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
   const openEngineSession = async (sessionId: string) => {
     setEngineSessionsError(null)
-    setEngineEditItemId(null)
-    setEngineEditText('')
+    setEngineEditResetSignal((prev) => prev + 1)
     setEngineInitialBriefOpen(false)
     setEngineInitialBriefError(null)
     setEngineInitialBriefSubmitting(false)
@@ -12606,8 +12359,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
         syncEngineLabelCache(normalizedItems)
         setEnginePreviewInput('')
         setEnginePreviewError(null)
-        setEngineNamePromptOpen(false)
-        setEngineNameDraft('')
         setFeedbackReminder(null)
         const shouldResumeInitialBrief = Boolean(authSession?.user?.id && normalizedItems.length === 0)
         setEngineInitialBriefOpen(shouldResumeInitialBrief)
@@ -12712,8 +12463,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
       syncEngineLabelCache(normalizedItems)
       setEnginePreviewInput('')
       setEnginePreviewError(null)
-      setEngineNamePromptOpen(false)
-      setEngineNameDraft('')
       setFeedbackReminder(null)
       const shouldResumeInitialBrief = Boolean(authSession?.user?.id && normalizedItems.length === 0)
       setEngineInitialBriefOpen(shouldResumeInitialBrief)
@@ -12727,33 +12476,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
       if (data.session) {
         void updateSession({ ...data, boardItems: normalizedItems })
       }
-    } catch (error) {
+  } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(notices.saveChangesFailed(message))
       logSessionStore('engine_session_open_failed', { sessionId, message })
     }
   }
 
-  const startEditEngineItem = (item: EngineBoardItem) => {
-    setEngineEditItemId(item.id)
-    setEngineEditText(item.text)
-  }
-
-  const cancelEditEngineItem = () => {
-    setEngineEditItemId(null)
-    setEngineEditText('')
-  }
-
-  const finishEditEngineItem = () => {
-    setEngineEditItemId(null)
-    setEngineEditText('')
-  }
-
-  const saveEngineItem = async () => {
-    if (!engineEditItemId || !engineSessionDetail?.session) return
-    const targetId = engineEditItemId
+  const saveEngineItem = async ({ id, text }: { id: string; text: string }) => {
+    if (!id || !engineSessionDetail?.session) return false
+    const targetId = id
     const sessionId = engineSessionDetail.session.id
-    const nextText = engineEditText.trim()
+    const nextText = text.trim()
     setEngineEditLoading(true)
     setEngineSessionsError(null)
     try {
@@ -12776,36 +12510,26 @@ const isMissingLabel = (item: EngineBoardItem) => {
           ),
         }
       })
-      finishEditEngineItem()
       await fetchEngineSessionDetail(sessionId)
+      return true
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(notices.deleteItemFailed(message))
       logSessionStore('engine_item_save_failed', { sessionId, message })
+      return false
     } finally {
       setEngineEditLoading(false)
     }
   }
 
-  const startEnginePreviewEdit = (item: EngineBoardItem) => {
-    setEngineLabelEditorId(null)
-    setEnginePreviewEditId(item.id)
-    setEnginePreviewEditText(item.text)
-  }
-
-  const cancelEnginePreviewEdit = () => {
-    setEnginePreviewEditId(null)
-    setEnginePreviewEditText('')
-  }
-
-  const saveEnginePreviewEdit = async () => {
-    if (!enginePreviewEditId || !enginePreviewSessionId) return
-    const nextText = enginePreviewEditText.trim()
+  const saveEnginePreviewEdit = async ({ id, text }: { id: string; text: string }) => {
+    if (!id || !enginePreviewSessionId) return
+    const nextText = text.trim()
     if (!nextText) return
     const limited = limitWords(nextText, WORD_LIMIT)
     setEnginePreviewItems((prev) =>
       prev.map((item) =>
-        item.id === enginePreviewEditId ? applyTextEditClassification(item, limited) : item
+        item.id === id ? applyTextEditClassification(item, limited) : item
       )
     )
     if (engineSessionDetail?.session?.id === enginePreviewSessionId) {
@@ -12814,9 +12538,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
           ? {
               ...prev,
               boardItems: prev.boardItems.map((item) =>
-                item.id === enginePreviewEditId
-                  ? applyTextEditClassification(item, limited)
-                  : item
+                item.id === id ? applyTextEditClassification(item, limited) : item
               ),
             }
           : prev
@@ -12828,9 +12550,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const updatedDetail: EngineSessionDetail = {
         ...detail,
         boardItems: detail.boardItems.map((item) =>
-          item.id === enginePreviewEditId
-            ? applyTextEditClassification(item, limited)
-            : item
+          item.id === id ? applyTextEditClassification(item, limited) : item
         ),
         session: { ...detail.session, updated_at: Date.now() },
       }
@@ -12839,22 +12559,16 @@ const isMissingLabel = (item: EngineBoardItem) => {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(notices.deleteItemFailed(message))
       logSessionStore('engine_preview_edit_failed', { message })
-    } finally {
-      cancelEnginePreviewEdit()
     }
   }
 
-  const cancelEngineEntryDelete = () => {
-    setEngineEntryDeleteId(null)
-  }
-
-  const confirmEngineEntryDelete = async (itemId: string) => {
+  const deleteEngineEntry = async (itemId: string): Promise<boolean> => {
     const sessionId = enginePreviewSessionId || engineSessionDetail?.session?.id
-    if (!sessionId) return
+    if (!sessionId) return false
     setEngineSessionsError(null)
     try {
       const detail = await getSession(sessionId)
-      if (!detail?.session) return
+      if (!detail?.session) return false
       const updatedDetail: EngineSessionDetail = {
         ...detail,
         boardItems: detail.boardItems.filter((item) => item.id !== itemId),
@@ -12872,15 +12586,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
             : prev
         )
       }
-      if (enginePreviewEditId === itemId) cancelEnginePreviewEdit()
-      if (engineLabelEditorId === itemId) setEngineLabelEditorId(null)
       delete engineLabelCache.current[itemId]
+      return true
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
       setEngineSessionsError(notices.deleteItemFailed(message))
       logSessionStore('engine_preview_item_delete_failed', { itemId, message })
-    } finally {
-      setEngineEntryDeleteId(null)
+      return false
     }
   }
 
@@ -12897,7 +12609,6 @@ const isMissingLabel = (item: EngineBoardItem) => {
         session: { ...detail.session, updated_at: Date.now() },
       }
       await updateSession(updatedDetail)
-      if (engineEditItemId === itemId) cancelEditEngineItem()
       await fetchEngineSessionDetail(engineSessionDetail.session.id)
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Request failed'
@@ -13965,8 +13676,85 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   if (import.meta.env.DEV && typeof window !== 'undefined') {
-    const view = isExamples ? 'examples' : isBlog ? 'blog' : isReport ? 'report' : isEnginePreview ? 'engine' : showLanding ? 'landing' : 'app'
+    const view = isExamples
+      ? 'examples'
+      : isBlog
+        ? 'blog'
+        : isReport
+          ? 'report'
+          : isEnginePreview
+            ? 'engine'
+            : isEnginePublicPreview
+              ? 'engine_2'
+              : showLanding
+                ? 'landing'
+                : 'app'
     console.log('[router] path=', rawPath, '-> view=', view)
+  }
+
+  if (isEnginePublicPreview) {
+    return withDevOverlay(
+      <Engine2Route
+        EngineHeader={EngineHeader}
+        logoUrl={landingLogoUrl}
+        copy={copy}
+        uiLanguage={uiLanguage}
+        isAuthed={isAuthed}
+        isAdmin={isAdmin}
+        logoutInProgress={logoutInProgress}
+        billingLoading={billingAccount.loading}
+        billingError={billingAccount.error}
+        billingBalanceMinor={billingAccount.balanceMinor}
+        billingBalanceOverrideMinor={billingBalanceOverrideMinor}
+        insufficientBalanceActive={insufficientBalanceState.active}
+        engineNotice={engineNotice}
+        showDiagnostics={showDiagnostics}
+        aiSupportEnabled={aiSupportEnabled}
+        showSessionUsage={showSessionUsage}
+        llmUsageClass={llmUsageClass}
+        currentTokensTotal={currentTokensTotal}
+        totalCostUsd={totalCostUsd}
+        totalCostPln={totalCostPln}
+        sessionUsage={sessionUsage}
+        modelUsageEntries={modelUsageEntries}
+        diagnosticsAuthEmail={authSession?.user?.email ?? null}
+        authDisabled={authDisabled}
+        missingSupabaseEnvMessage={missingSupabaseEnvMessage}
+        isDiagEnabled={isDiagEnabled()}
+        onAdminClick={() => {
+          if (typeof window !== 'undefined') {
+            window.location.hash = '#/admin'
+          }
+        }}
+        onLogout={() => {
+          void handleLogout()
+        }}
+        onToggleDiagnostics={() => {
+          const nextEnabled = !showDiagnostics
+          setDiagnosticsEnabled(nextEnabled)
+          localStorage.setItem(DIAGNOSTICS_STORAGE_KEY, nextEnabled ? 'true' : 'false')
+        }}
+        onToggleAiSupport={() => {
+          const nextEnabled = !aiSupportEnabled
+          setAiSupportEnabled(nextEnabled)
+          localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
+          if (nextEnabled) {
+            void checkLlmStatus(normalizeApiBase(llmApiBase))
+          } else {
+            setLlmStatus('offline')
+          }
+        }}
+        formatBalanceMinor={formatBalanceMinor}
+        formatTokenTotal={formatTokenTotal}
+        formatUsd={formatUsd}
+        formatPln={formatPln}
+        getAccessToken={async () => {
+          if (!client) return ''
+          const { data } = await client.auth.getSession()
+          return data.session?.access_token || ''
+        }}
+      />
+    )
   }
 
   if (isEnginePreview) {
@@ -14027,121 +13815,12 @@ const isMissingLabel = (item: EngineBoardItem) => {
         </div>
       )
     }
-    const enginePlaceholder =
-      enginePreviewItems.length === 0
-        ? copy.enginePlaceholderInitial
-        : copy.enginePlaceholderContinue
-
-    const formatSessionLabel = (name: string | null | undefined, id: string) => {
-      if (name && name.trim()) {
-        return <span className="engine-session-name">{name}</span>
-      }
-      const shortId = id.slice(0, 8)
-      return `${notices.sessionLabelPrefix} ${shortId}`
-    }
-
-  const engineRemainingWords = Math.max(0, WORD_LIMIT - countWords(enginePreviewInput))
-  const isEngineWordLimitReached =
-    enginePreviewInput.trim().length > 0 && countWords(enginePreviewInput) >= WORD_LIMIT
-  const hasEngineDraftContent =
-    Boolean(enginePreviewInput.trim()) || enginePreviewVoiceState === 'listening'
-  const showEngineDraftRemove = Boolean(engineDraftTargetSection) && hasEngineDraftContent
-  const engineDraftToneClass =
-    engineDraftTargetSection === 'as_is'
-      ? 'is-as-is'
-      : engineDraftTargetSection === 'not_working'
-        ? 'is-not-working'
-        : engineDraftTargetSection === 'should_be'
-          ? 'is-should-be'
-          : ''
   const engineInitialBriefDisplayedText = getEngineInitialBriefDisplayedText()
-  const engineInitialBriefWords = countWords(engineInitialBriefDisplayedText)
   const engineInitialBriefMeaningfulWords = getMeaningfulWords(engineInitialBriefDisplayedText)
   const hasEnoughEngineInitialBriefContent =
     engineInitialBriefMeaningfulWords.length >= INITIAL_BRIEF_MIN_MEANINGFUL_WORDS &&
     new Set(engineInitialBriefMeaningfulWords).size >= INITIAL_BRIEF_MIN_DISTINCT_MEANINGFUL_WORDS
-  const engineInitialBriefRemainingWords = Math.max(
-    0,
-    INITIAL_BRIEF_WORD_LIMIT - engineInitialBriefWords
-  )
-  const engineInitialBriefRecommendedProgress = Math.min(
-    engineInitialBriefWords / INITIAL_BRIEF_RECOMMENDED_WORD_TARGET,
-    1
-  )
-  const engineInitialBriefRecommendedPercent = Math.round(
-    engineInitialBriefRecommendedProgress * 100
-  )
-  const engineInitialBriefLengthState =
-    engineInitialBriefWords >= INITIAL_BRIEF_RECOMMENDED_WORD_TARGET
-      ? 'enough'
-      : engineInitialBriefWords >= 120
-        ? 'strong'
-        : engineInitialBriefWords >= 40
-          ? 'useful'
-          : 'low'
-  const engineInitialBriefLengthStatus =
-    engineInitialBriefLengthState === 'enough'
-      ? copy.engineInitialBriefLengthEnough
-      : engineInitialBriefLengthState === 'strong'
-        ? copy.engineInitialBriefLengthStrong
-        : engineInitialBriefLengthState === 'useful'
-          ? copy.engineInitialBriefLengthUseful
-          : copy.engineInitialBriefLengthLow
-  const engineInitialBriefLengthMessage =
-    engineInitialBriefLengthState === 'low'
-      ? copy.engineInitialBriefLengthIntro
-      : engineInitialBriefLengthStatus
-  const isEngineInitialBriefLimitReached =
-    engineInitialBriefDisplayedText.trim().length > 0 &&
-    engineInitialBriefWords >= INITIAL_BRIEF_WORD_LIMIT
   const showEngineInputCaret = !engineInputFocused && !enginePreviewInput.trim()
-  const showFacilitationOffer =
-    engineUiState === 'FACILITATION_OFFER' ||
-    engineOfferReason === 'idle' ||
-    engineOfferReason === 'manual'
-  const showHelpButton = !showFacilitationOffer
-  const facilitationDisabled = !engineSessionPersisted || !enginePreviewSessionId
-  const facilitationPerspectiveActions: Array<{
-    key: FacilitationPerspective
-    label: string
-    toneClass: 'is-as-is' | 'is-not-working' | 'is-should-be'
-    testId: string
-  }> = [
-    {
-      key: 'as_is',
-      label: copy.engineFacilitationAsIs,
-      toneClass: 'is-as-is',
-      testId: 'facilitation-as-is',
-    },
-    {
-      key: 'not_working',
-      label: copy.engineFacilitationProblem,
-      toneClass: 'is-not-working',
-      testId: 'facilitation-not-working',
-    },
-    {
-      key: 'should_be',
-      label: copy.engineFacilitationDesired,
-      toneClass: 'is-should-be',
-      testId: 'facilitation-should-be',
-    },
-  ]
-  const resolveEntryQuestionHelperText = (item: EngineBoardItem) => {
-    const primary =
-      uiLanguage === 'Polish'
-        ? item.question_text_pl ?? item.question_text_en ?? null
-        : item.question_text_en ?? item.question_text_pl ?? null
-    const questionText = sanitizeInlineHelperText(primary)
-    return questionText || copy.engineEntryQuestionFallback
-  }
-  const formatBalanceMinor = (minor: number) => {
-    const locale = uiLanguage === 'Polish' ? 'pl-PL' : 'en-US'
-    const formatted = new Intl.NumberFormat(locale, {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(Math.max(0, minor || 0) / 100)
-    return `${formatted} PLN`
-  }
   const formatSessionCreatePrice = (minor: number | null) => {
     if (minor == null || !Number.isFinite(minor)) return '—'
     const amount = Math.max(0, minor) / 100
@@ -14152,1752 +13831,193 @@ const isMissingLabel = (item: EngineBoardItem) => {
     }).format(amount)
     return uiLanguage === 'Polish' ? `${formatted} zł` : `PLN ${formatted}`
   }
-  const engineInitialBriefSubmitLabel =
-    !hasEnoughEngineInitialBriefContent
+    const engineInitialBriefSubmitLabel =
+      !hasEnoughEngineInitialBriefContent
       ? copy.engineInitialBriefNeedsMoreInfo
       : authSession?.user?.id && client
       ? `${copy.engineInitialBriefSubmit} (${formatSessionCreatePrice(sessionCreatePriceMinor)})`
       : copy.engineInitialBriefSubmit
 
     return withDevOverlay(
-      <div className="app engine-preview" data-testid="active-session">
-        <header className="engine-header">
-          <div>
-            <div className="engine-header-logo">
-              <img src={landingLogoUrl} alt="MakeMyIdea.Work" />
-            </div>
-          </div>
-          {isAuthed && !logoutInProgress && (
-            <div className="engine-header-balance" aria-live="polite">
-              <div className="engine-balance-row">
-                <div
-                  className={`engine-balance${
-                    billingAccount.loading || billingAccount.error ? ' engine-balance--loading' : ''
-                  }`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => {
-                    if (typeof window !== 'undefined') {
-                      storeTopupReturnTo()
-                      window.location.hash = '#/topup'
-                      setHashPath('/topup')
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      if (typeof window !== 'undefined') {
-                        storeTopupReturnTo()
-                        window.location.hash = '#/topup'
-                        setHashPath('/topup')
-                      }
-                    }
-                  }}
-                >
-                  <button
-                    type="button"
-                    className="engine-balance-icon"
-                    aria-label={
-                      uiLanguage === 'Polish'
-                        ? 'Doładuj saldo (usługowe) z obowiązkiem zapłaty'
-                        : 'Top up service balance with obligation to pay'
-                    }
-                  >
-                    💰
-                  </button>
-	                  <span className="engine-balance-value">
-	                    {billingAccount.loading || billingAccount.error
-	                      ? '—'
-	                      : formatBalanceMinor(
-	                          billingBalanceOverrideMinor ?? billingAccount.balanceMinor
-	                        )}
-	                  </span>
-	                </div>
-                {insufficientBalanceState.active && (
-                  <span className="engine-balance-warning">
-                    {copy.insufficientBalanceNotice}
-                  </span>
-                )}
-                {engineNotice && !logoutInProgress && (
-                  <span className={`engine-notice engine-notice--${engineNotice.variant} engine-notice--inline`}>
-                    {engineNotice.message}
-                  </span>
-                )}
-              </div>
-            </div>
-          )}
-          <div className="engine-header-actions">
-            <button
-              className="secondary"
-              type="button"
-              onClick={() => {
-                void saveCurrentSessionToCloud()
-              }}
-            >
-              {copy.engine.saveSession}
-            </button>
-            {enginePreviewSessionId && !engineNamePromptOpen && (
-              <button
-                className="secondary"
-                type="button"
-                onClick={() => {
-                  void startNewSession()
-                }}
-              >
-                {copy.engine.newSession}
-              </button>
-            )}
-            {isAdmin && (
-              <button
-                className="ghost"
-                type="button"
-                onClick={() => {
-                  if (typeof window !== 'undefined') {
-                    window.location.hash = '#/admin'
-                  }
-                }}
-              >
-                {copy.adminNavLabel}
-              </button>
-            )}
-            <button className="ghost" type="button" onClick={handleLogout}>
-              {copy.auth.logout}
-            </button>
-            {isDiagEnabled() && (
-              <span className="muted">
-                {copy.diagnosticsAuthLabel}: {authSession?.user?.email ?? '—'}
-              </span>
-            )}
-            {isAdmin && (
-              <button
-                className={`ai-support-toggle diagnostics-toggle ${showDiagnostics ? 'on' : 'off'}`}
-                type="button"
-                onClick={() => {
-                  const nextEnabled = !showDiagnostics
-                  setDiagnosticsEnabled(nextEnabled)
-                  localStorage.setItem(
-                    DIAGNOSTICS_STORAGE_KEY,
-                    nextEnabled ? 'true' : 'false'
-                  )
-                }}
-              >
-                {showDiagnostics ? copy.diagnosticsOn : copy.diagnosticsOff}
-              </button>
-            )}
-            {showDiagnostics && (
-              <>
-                <button
-                  className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
-                  type="button"
-                  onClick={() => {
-                    const nextEnabled = !aiSupportEnabled
-                    setAiSupportEnabled(nextEnabled)
-                    localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
-                    if (nextEnabled) {
-                      void checkLlmStatus(normalizeApiBase(llmApiBase))
-                    } else {
-                      setLlmStatus('offline')
-                    }
-                  }}
-                >
-                  {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
-                </button>
-                {showSessionUsage && (
-                  <>
-                    <button
-                      className={`ai-support-toggle llm-usage-indicator ${llmUsageClass}`}
-                      type="button"
-                      aria-label={copy.llmUsageIndicatorLabel}
-                      title={copy.llmUsageIndicatorLabel}
-                      disabled
-                    >
-                      {`${formatTokenTotal(currentTokensTotal)} tok`}
-                    </button>
-                    <div className="llm-cost-panel" aria-live="polite">
-                      <div className="llm-cost-line">
-                        {copy.llmCostLabel(formatUsd(totalCostUsd))}
-                      </div>
-                      <div className="llm-cost-line">
-                        {totalCostPln != null
-                          ? copy.llmCostPlnLabel(formatPln(totalCostPln || 0))
-                          : copy.llmCostPlnFallback}
-                      </div>
-                      <details className="llm-cost-details">
-                        <summary>{copy.llmCostBreakdown}</summary>
-                        <div className="llm-cost-breakdown">
-                          <div className="llm-cost-row">
-                            {copy.llmCostTotalTokens(formatTokenTotal(sessionUsage.totalTokens))}
-                          </div>
-                          <div className="llm-cost-row">
-                            {copy.llmCostTotalUsd(formatUsd(totalCostUsd))}
-                          </div>
-                          <div className="llm-cost-row">
-                            {totalCostPln != null
-                              ? copy.llmCostTotalPln(formatPln(totalCostPln || 0))
-                              : copy.llmCostTotalPlnFallback}
-                          </div>
-                          {modelUsageEntries.map(([model, usage]) => (
-                            <div key={model} className="llm-cost-row">
-                              {copy.llmCostModelRow(
-                                model,
-                                formatTokenTotal(usage.inputTokens),
-                                formatTokenTotal(usage.outputTokens),
-                                formatUsd(usage.totalUSD)
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </details>
-                    </div>
-                  </>
-                )}
-              </>
-            )}
-          </div>
-        </header>
-        {authDisabled && (
-          <div className="engine-error" role="status">
-            {missingSupabaseEnvMessage}
-          </div>
-        )}
-        <main className="engine-main">
-          {feedbackReminderBanner}
-          <section className="engine-panel engine-panel-session">
-            <div className="engine-panel-header">
-              <h1>{copy.enginePreviewSessionTitle}</h1>
-              <div className="engine-actions engine-actions-session">
-                {!enginePreviewSessionId && !engineSessionsOpen && !engineNamePromptOpen && (
-                  <button
-                    type="button"
-                    className="primary"
-                    data-testid="session-create"
-                    onClick={async () => {
-                      markUserInitiatedInteraction('pointer')
-                      setEngineLastInputActivityAt(Date.now())
-                      armIdleWatch('create_session')
-                      setEngineNameDraft('')
-                      setEngineNamePromptOpen(true)
-                    }}
-                  >
-                    {copy.enginePreviewCreateSession}
-                  </button>
-                )}
-                {enginePreviewSessionId && hasEngineBoardEntries && (
-                  <div className="engine-actions-group">
-                    {(() => {
-                      const currentSessionId = enginePreviewSessionId
-                      const reportMeta = getReportMetaForSession(currentSessionId)
-                      const reportLookupResolved =
-                        !authSession?.user?.id ||
-                        Object.prototype.hasOwnProperty.call(reportRecords, currentSessionId) ||
-                        Boolean(reportMeta?.id)
-                      const hasReport = Boolean(
-                        currentSessionId && (reportRecords[currentSessionId]?.id || reportMeta?.id)
-                      )
-                      if (!reportLookupResolved) return null
-                      if (hasReport) {
-                        return (
-                          <button
-                            type="button"
-                            className="primary"
-                            data-testid="session-report"
-                            onClick={() => {
-                              markUserInitiatedInteraction('pointer')
-                              setEngineLastInputActivityAt(Date.now())
-                              goToActionPlan()
-                            }}
-                          >
-                            {copy.enginePreviewOpenReport}
-                          </button>
-                        )
-                      }
-                      return (
-                        <AiCostButton
-                          label={copy.enginePreviewCreateReport}
-                          lang={uiLanguage === 'Polish' ? 'pl' : 'en'}
-                          priceMinor={reportCreatePriceMinor}
-                          currency={balanceCurrency}
-                          priceLoading={reportCreatePriceLoading}
-                          loading={reportNavigationLoading}
-                          disabled={reportNavigationLoading}
-                          className="engine-create-report-btn"
-                          metaLayout="below"
-                          onClick={() => {
-                            markUserInitiatedInteraction('pointer')
-                            setEngineLastInputActivityAt(Date.now())
-                            void handleReportNavigation()
-                          }}
-                        />
-                      )
-                    })()}
-                  </div>
-                )}
-                {!enginePreviewSessionId &&
-                  authSession?.user?.id &&
-                  engineSessions.length > 0 && (
-                  <button
-                    type="button"
-                    className="primary"
-                    data-testid="session-list-toggle"
-                    onClick={() => {
-                      markUserInitiatedInteraction('pointer')
-                      setEngineLastInputActivityAt(Date.now())
-                      const next = !engineSessionsOpen
-                      const openList = async () => {
-                        if (next) await flushEngineEntryLabels()
-                        setEngineSessionsOpen(next)
-                        if (next) {
-                          if (engineNamePromptOpen) {
-                            setResumeNamePromptAfterList(true)
-                            setEngineNamePromptOpen(false)
-                          }
-                          if (engineNameError) setEngineNameError(null)
-                        } else if (!enginePreviewSessionId && resumeNamePromptAfterList) {
-                          setEngineNamePromptOpen(true)
-                          setResumeNamePromptAfterList(false)
-                        }
-                        if (next) fetchEngineSessions()
-                      }
-                      void openList()
-                    }}
-                  >
-                    {engineSessionsOpen
-                      ? copy.engineSessionsToggleClose
-                      : copy.engineSessionsToggleOpen}
-                  </button>
-                )}
-              </div>
-            </div>
-          {(enginePreviewSessionId || engineSessionsOpen || engineSessionDetail?.session) && (
-            <div className="engine-meta">
-              <span>{copy.enginePreviewSessionIdLabel}:</span>
-              <span className="engine-meta-value engine-meta-value--muted">
-                {enginePreviewSessionId
-                  ? formatSessionLabel(enginePreviewSessionName, enginePreviewSessionId)
-                  : copy.enginePreviewSessionEmpty}
-              </span>
-            </div>
-          )}
-        </section>
-
-        {engineSessionsOpen && (
-          <section className="engine-panel engine-sessions">
-            <div className="engine-panel-header">
-              <h2>{copy.engineSessionsTitle}</h2>
-              <div className="engine-actions">
-              </div>
-            </div>
-            {engineSessionsError && (
-              <div className="engine-error">{engineSessionsError}</div>
-            )}
-            {!engineSessionsError && engineSessions.length === 0 && (
-              <div className="engine-empty">{copy.engineSessionsEmpty}</div>
-            )}
-            <ul className="engine-list">
-              {engineSessions.map((session) => (
-                <li
-                  key={session.id}
-                  className="engine-session-row"
-                  data-testid={`session-item-${session.id}`}
-                >
-                  <span className="engine-session-id">{formatSessionLabel(session.name, session.id)}</span>
-                  <span className="engine-session-meta">
-                    {new Date(session.updated_at).toLocaleString()}
-                  </span>
-                  <button
-                    type="button"
-                    className="ghost"
-                    data-testid={`session-open-${session.id}`}
-                    onClick={() => {
-                      armIdleWatch('open_session')
-                      openEngineSession(session.id)
-                      setEngineSessionsOpen(false)
-                    }}
-                  >
-                    {copy.engineSessionsOpen}
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost danger"
-                    onClick={() => deleteEngineSession(session.id)}
-                    disabled={engineDeleteLoadingId === session.id}
-                  >
-                    {engineDeleteLoadingId === session.id
-                      ? copy.engineSessionsDeleting
-                      : copy.engineSessionsDelete}
-                  </button>
-                </li>
-              ))}
-            </ul>
-            {engineSessionDetail?.session && (
-                <div className="engine-session-detail">
-                  <h3>{copy.engineSessionDetailsTitle}</h3>
-                  <div className="engine-meta">
-                    <span>{copy.engineSessionDetailsIdLabel}:</span>
-                    <span className="engine-meta-value">{engineSessionDetail.session.id}</span>
-                  </div>
-                  <div className="engine-meta">
-                    <span>{copy.engineSessionDetailsNameLabel}:</span>
-                    <span className="engine-meta-value">{engineSessionDetail.session.name || '—'}</span>
-                  </div>
-                  <div className="engine-meta">
-                    <span>{copy.engineSessionDetailsUpdatedLabel}:</span>
-                    <span className="engine-meta-value">{new Date(engineSessionDetail.session.updated_at).toLocaleString()}</span>
-                  </div>
-                  <div className="engine-meta">
-                    <span>{copy.engineSessionDetailsQuestionsLabel}:</span>
-                    <span className="engine-meta-value">{engineSessionDetail.askedQuestionIds.length}</span>
-                  </div>
-                  <div className="engine-session-board">
-                    <h4>{copy.engineSessionDetailsBoardTitle}</h4>
-                    {engineSessionDetail.boardItems.length === 0 ? (
-                      <div className="engine-empty">{copy.engineSessionDetailsBoardEmpty}</div>
-                    ) : (
-                      <ul className="engine-list">
-                        {engineSessionDetail.boardItems.map((item) => {
-                          const isEditing = engineEditItemId === item.id
-                          return (
-                            <li key={item.id} className="engine-item-row">
-                              <span className="engine-badge">{item.type}</span>
-                              {isEditing ? (
-                                <textarea
-                                  className="engine-item-input"
-                                  rows={2}
-                                  value={engineEditText}
-                                  onChange={(event) => setEngineEditText(event.target.value)}
-                                />
-                              ) : (
-                                <span className="engine-item-text">{item.text}</span>
-                              )}
-                              <div className="engine-item-actions">
-                                {isEditing ? (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="primary"
-                                      onClick={saveEngineItem}
-                                      disabled={engineEditLoading || !engineEditText.trim()}
-                                    >
-                                      Zapisz
-                                    </button>
-                                    <button type="button" className="ghost" onClick={cancelEditEngineItem}>
-                                      Anuluj
-                                    </button>
-                                  </>
-                                ) : (
-                                  <>
-                                    <button
-                                      type="button"
-                                      className="ghost"
-                                      onClick={() => startEditEngineItem(item)}
-                                      disabled={engineEditLoading}
-                                    >
-                                      {notices.editAction}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="ghost danger"
-                                      onClick={() => deleteEngineItem(item.id)}
-                                      disabled={engineEditLoading}
-                                    >
-                                      {notices.deleteAction}
-                                    </button>
-                                  </>
-                                )}
-                              </div>
-                            </li>
-                          )
-                        })}
-                      </ul>
-                    )}
-                  </div>
-                </div>
-            )}
-          </section>
-        )}
-
-        {engineSessionsOpen && showDiagnostics && (
-          <section className="engine-panel">
-            <div className="engine-panel-header">
-              <h2>
-                {uiLanguage === 'Polish'
-                  ? 'Narzędzia diagnostyczne administracyjne'
-                  : 'Administrative diagnostics tools'}
-              </h2>
-              <div className="engine-actions">
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => {
-                    markUserInitiatedInteraction('pointer')
-                    setEngineLastInputActivityAt(Date.now())
-                    handleExportSessions()
-                  }}
-                >
-                  {copy.engineSessionsExport}
-                </button>
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => engineImportInputRef.current?.click()}
-                >
-                  {copy.engineSessionsImport}
-                </button>
-                <input
-                  ref={engineImportInputRef}
-                  type="file"
-                  accept="application/json"
-                  className="sr-only"
-                  onChange={handleImportSessions}
-                />
-              </div>
-            </div>
-            <div className="engine-helper">
-              <strong>Session usage diagnostics</strong>
-              <div className="engine-meta">
-                <span>sessionId:</span>
-                <span className="engine-meta-value">{activeUsageSessionIdNormalized || '—'}</span>
-              </div>
-              <div className="engine-meta">
-                <span>summary query:</span>
-                <span className="engine-meta-value">{sessionUsageDiagnostics.summaryQueryStatus}</span>
-              </div>
-              <div className="engine-meta">
-                <span>events query:</span>
-                <span className="engine-meta-value">{sessionUsageDiagnostics.eventsQueryStatus}</span>
-              </div>
-              <div className="engine-meta">
-                <span>realtime:</span>
-                <span className="engine-meta-value">{sessionUsageDiagnostics.realtimeStatus || '—'}</span>
-              </div>
-              <div className="engine-meta">
-                <span>last checked:</span>
-                <span className="engine-meta-value">
-                  {sessionUsageDiagnostics.lastCheckedAt
-                    ? new Date(sessionUsageDiagnostics.lastCheckedAt).toLocaleString()
-                    : '—'}
-                </span>
-              </div>
-              <div className="engine-meta">
-                <span>gpt-image-1:</span>
-                <span className="engine-meta-value">
-                  {sessionUsage.perModel['gpt-image-1']
-                    ? `${sessionUsage.perModel['gpt-image-1'].eventsCount} ev, ${formatTokenTotal(
-                        sessionUsage.perModel['gpt-image-1'].inputTokens
-                      )} in / ${formatTokenTotal(
-                        sessionUsage.perModel['gpt-image-1'].outputTokens
-                      )} out, $${formatUsd(sessionUsage.perModel['gpt-image-1'].totalUSD)}`
-                    : '—'}
-                </span>
-              </div>
-              {(sessionUsageDiagnostics.summaryError || sessionUsageDiagnostics.eventsError) && (
-                <div className="engine-meta">
-                  <span>error:</span>
-                  <span className="engine-meta-value">
-                    {sessionUsageDiagnostics.summaryError
-                      ? `summary ${sessionUsageDiagnostics.summaryError.code || '—'}: ${sessionUsageDiagnostics.summaryError.message}`
-                      : ''}
-                    {sessionUsageDiagnostics.summaryError && sessionUsageDiagnostics.eventsError ? ' | ' : ''}
-                    {sessionUsageDiagnostics.eventsError
-                      ? `events ${sessionUsageDiagnostics.eventsError.code || '—'}: ${sessionUsageDiagnostics.eventsError.message}`
-                      : ''}
-                  </span>
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
-          {debugMatrixData && engineMatrixVisible && (
-            <section className="engine-panel">
-              <div className="engine-panel-header">
-                <h2>{copy.engineMatrixTitle}</h2>
-              </div>
-              <div className="engine-debug-matrix" data-testid="debug-matrix">
-                <input
-                  type="checkbox"
-                  className="sr-only"
-                  data-testid="debug-matrix-toggle"
-                  checked
-                  readOnly
-                />
-                <div className="engine-debug-meta" data-testid="matrix-coverage">
-                  Coverage: {debugMatrixData.coverage}/9
-                </div>
-                <div className="engine-debug-meta">
-                  Gravity suggests next input toward:{' '}
-                  {debugMatrixData.rows.find((row) => row.key === debugMatrixData.targetCell.row)
-                    ?.label}{' '}
-                  ×{' '}
-                  {debugMatrixData.cols.find((col) => col.key === debugMatrixData.targetCell.col)
-                    ?.label}
-                </div>
-                <div className="engine-debug-grid">
-                  <div className="engine-debug-corner" />
-                  {debugMatrixData.cols.map((col) => (
-                    <div key={col.key} className="engine-debug-col-label">
-                      {col.label}
-                    </div>
-                  ))}
-                  {debugMatrixData.rows.map((row) => (
-                    <div key={row.key} className="engine-debug-row">
-                      <div className="engine-debug-row-label">{row.label}</div>
-                      {debugMatrixData.cols.map((col) => {
-                        const matrixKey = debugMatrixData.cellKey(row.key, col.key)
-                        const cell = debugMatrixData.cells.get(matrixKey)
-                        const isTarget =
-                          debugMatrixData.targetCell.row === row.key &&
-                          debugMatrixData.targetCell.col === col.key
-                        return (
-                          <div
-                            key={matrixKey}
-                            className={`engine-debug-cell ${isTarget ? 'target' : ''}`}
-                            data-testid={`matrix-cell-${row.key}-${col.key}`}
-                          >
-                            <div className="engine-debug-count">{cell?.count ?? 0}</div>
-                            <div className="engine-debug-items">
-                              {(cell?.entries ?? []).map((entry) => (
-                                <div key={entry.id} className="engine-debug-item" title={entry.text}>
-                                  {entry.text}
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </section>
-          )}
-
-          {engineNamePromptOpen && !enginePreviewSessionId && (
-            <section className="engine-panel">
-              <div className="engine-name-prompt">
-                <div className="engine-helper">{copy.engineNamePrompt}</div>
-                <label>
-                  <span>{copy.engineNameLabel}</span>
-                  <input
-                    data-testid="session-name-input"
-                    value={engineNameDraft}
-                    onChange={(event) => {
-                      setEngineNameDraft(event.target.value.slice(0, 40))
-                      if (engineNameError) setEngineNameError(null)
-                    }}
-                    placeholder={copy.engineNamePlaceholder}
-                  />
-                </label>
-                <div className="engine-facilitation-actions">
-                  {engineNameError && (
-                    <span className="text-sm text-red-600">{engineNameError}</span>
-                  )}
-                  <button
-                    type="button"
-                    className="primary"
-                    data-testid="session-name-save"
-                    disabled={engineNameSaving}
-                    onClick={async () => {
-                      markUserInitiatedInteraction('pointer')
-                      setEngineLastInputActivityAt(Date.now())
-                      if (engineNameSaving) return
-                      const name = engineNameDraft.trim().replace(/\s+/g, ' ')
-                      if (!name) {
-                        setEngineNameError(notices.sessionNameRequired)
-                        return
-                      }
-                      setEngineNameSaving(true)
-                      setEngineNameError(null)
-                      if (authSession?.user?.id && client) {
-                        const { data: u } = await client.auth.getUser()
-                        const userId = u?.user?.id ?? null
-                        if (!userId) {
-                          showEngineNotice(
-                            notices.authSessionExpired,
-                            'error'
-                          )
-                          setEngineNameSaving(false)
-                          return
-                        }
-                        const { data: existingByName } = await client
-                          .from('sessions')
-                          .select('id,name')
-                          .eq('user_id', userId)
-                        const normalizedName = name.trim().toLowerCase()
-                        const hasCollision = Boolean(
-                          (existingByName || []).some((row) => {
-                            const dbName = String(
-                              (row as { name?: string | null }).name ?? ''
-                            )
-                              .trim()
-                              .toLowerCase()
-                            return dbName === normalizedName
-                          })
-                        )
-                        console.log('[createSession] nameCollision', hasCollision)
-                        if (hasCollision) {
-                          setEngineNameError(notices.sessionNameCollision)
-                          setEngineNameSaving(false)
-                          return
-                        }
-                      }
-                      armIdleWatch('save_and_continue')
-                      engineInteractionBySession.current['new'] = true
-                      setEngineInputFocused(false)
-                      setEngineUiState('INIT')
-                      enginePendingArmingRef.current = false
-                      enginePendingFocusRef.current = false
-                      const sessionId = await ensureEnginePreviewSession(name, {
-                        onNameCollision: () =>
-                          setEngineNameError(notices.sessionNameCollision),
-                        onInsertError: () =>
-                          setEngineNameError(notices.sessionNameSaveFailed),
-                      })
-                      if (!sessionId) {
-                        setEngineNameSaving(false)
-                        return
-                      }
-                      setEnginePreviewSessionName(name)
-                      setEngineNamePromptOpen(false)
-                      const shouldShowInitialBrief = Boolean(authSession?.user?.id && client)
-                      setEngineInitialBriefOpen(shouldShowInitialBrief)
-                      if (shouldShowInitialBrief) {
-                        setEngineInitialBriefText('')
-                        setEngineInitialBriefError(null)
-                      } else {
-                        setEngineUiState('FREE_FLOW')
-                        setEngineInputFocused(true)
-                        engineInputRef.current?.focus()
-                      }
-                      setEngineNameSaving(false)
-                      if (sessionId) {
-                        engineInteractionBySession.current[sessionId] = true
-                        setEngineLastInputActivityAt(Date.now())
-                      }
-                      markUserInitiatedInteraction('pointer')
-                      setEngineLastInputActivityAt(Date.now())
-                    }}
-                  >
-                    {copy.engineNameSave}
-                  </button>
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => setEngineNamePromptOpen(false)}
-                  >
-                    {copy.cancel}
-                  </button>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {enginePreviewSessionId && showDiagnostics && (
-            <section className="engine-panel">
-              <div className="engine-panel-header">
-                <h2>{uiLanguage === 'Polish' ? 'Matryca pytań' : 'Question matrix'}</h2>
-                <div className="engine-helper">
-                  {uiLanguage === 'Polish'
-                    ? 'Liczba zadanych pytań w kategoriach + aktualna kategoria'
-                    : 'Question counts by category + current question category'}
-                </div>
-              </div>
-              <div className="engine-question-matrix">
-                <div className="engine-question-matrix-corner" />
-                {questionMatrix.cols.map((col) => (
-                  <div key={col.key} className="engine-question-matrix-col">
-                    {uiLanguage === 'Polish' ? col.labelPl : col.labelEn}
-                  </div>
-                ))}
-                {questionMatrix.rows.map((row) => (
-                  <div key={row.key} className="engine-question-matrix-row">
-                    <div className="engine-question-matrix-row-label">
-                      {uiLanguage === 'Polish' ? row.labelPl : row.labelEn}
-                    </div>
-                    {questionMatrix.cols.map((col) => {
-                      const key = `${row.key}${col.key}`
-                      const count = questionMatrix.counts[key] || 0
-                      const isCurrent = questionMatrix.currentKey === key
-                      return (
-                        <div
-                          key={key}
-                          className={`engine-question-matrix-cell ${isCurrent ? 'is-current' : ''}`}
-                        >
-                          <span className="engine-question-matrix-count">{count}</span>
-                          <span className="engine-question-matrix-code">{key}</span>
-                        </div>
-                      )
-                    })}
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {enginePreviewSessionId && engineInitialBriefOpen && (
-            <section className="engine-panel">
-              <div className="engine-panel-header">
-                <h2>{copy.engineInitialBriefTitle}</h2>
-              </div>
-              <div className="engine-helper">{copy.engineInitialBriefDescription}</div>
-              <div className="engine-board-input">
-                <div className="engine-input-field engine-input-field-with-action">
-                  <textarea
-                    ref={engineInitialBriefInputRef}
-                    data-testid="engine-initial-brief-input"
-                    value={getEngineInitialBriefDisplayedText()}
-                    onChange={(event) => {
-                      if (engineInitialBriefVoiceState === 'listening') {
-                        stopEngineInitialBriefRecognition('abort')
-                        setEngineInitialBriefVoiceState('idle')
-                        setEngineInitialBriefVoicePreview('')
-                      }
-                      engineInitialBriefVoiceCorrectionSeqRef.current += 1
-                      applyEngineInitialBriefTextChange(event.target.value)
-                      autosizeTextarea(event.currentTarget)
-                    }}
-                    placeholder={copy.engineInitialBriefPlaceholder}
-                    rows={6}
-                  />
-                  <button
-                    type="button"
-                    className={`ghost engine-input-action engine-input-action--voice is-${engineInitialBriefVoiceState}`}
-                    aria-label={
-                      engineInitialBriefVoiceState === 'listening'
-                        ? copy.engineInitialBriefVoiceInputListening
-                        : copy.engineInitialBriefVoiceInputLabel
-                    }
-                    title={
-                      engineInitialBriefVoiceState === 'listening'
-                        ? copy.engineInitialBriefVoiceInputListening
-                        : engineInitialBriefVoiceState === 'unavailable'
-                          ? copy.engineInitialBriefVoiceInputUnavailable
-                          : copy.engineInitialBriefVoiceInputLabel
-                    }
-                    onClick={toggleEngineInitialBriefVoiceInput}
-                    data-testid="engine-initial-brief-voice-input"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                      <path
-                        d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2.07A7 7 0 0 1 5 12a1 1 0 1 1 2 0 5 5 0 0 0 10 0Z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                    <span>
-                      {engineInitialBriefVoiceState === 'listening'
-                        ? copy.engineInitialBriefVoiceInputListening
-                        : copy.engineInitialBriefVoiceInputLabel}
-                    </span>
-                  </button>
-                </div>
-                {engineInitialBriefError && (
-                  <div className="engine-error">{engineInitialBriefError}</div>
-                )}
-                <div className={`engine-brief-length-guide is-${engineInitialBriefLengthState}`}>
-                  <div className="engine-brief-length-guide__header">
-                    <span>{copy.engineInitialBriefLengthTarget}</span>
-                    <span>
-                      {copy.engineInitialBriefLengthCount(
-                        engineInitialBriefWords,
-                        INITIAL_BRIEF_RECOMMENDED_WORD_TARGET
-                      )}
-                    </span>
-                  </div>
-                  <div
-                    className="engine-brief-length-guide__bar"
-                    role="progressbar"
-                    aria-valuemin={0}
-                    aria-valuemax={INITIAL_BRIEF_RECOMMENDED_WORD_TARGET}
-                    aria-valuenow={Math.min(
-                      engineInitialBriefWords,
-                      INITIAL_BRIEF_RECOMMENDED_WORD_TARGET
-                    )}
-                    aria-label={copy.engineInitialBriefLengthTarget}
-                  >
-                    <span
-                      className="engine-brief-length-guide__fill"
-                      style={{ width: `${engineInitialBriefRecommendedPercent}%` }}
-                    />
-                  </div>
-                  <div className="engine-brief-length-guide__footer">
-                    <span>{engineInitialBriefLengthMessage}</span>
-                  </div>
-                </div>
-                <div className="engine-input-footer">
-                  <span className="engine-word-count">
-                    {isEngineInitialBriefLimitReached
-                      ? copy.engineInitialBriefWordLimitReached
-                      : copy.engineInitialBriefWordCountRemaining(engineInitialBriefRemainingWords)}
-                  </span>
-                  <button
-                    type="button"
-                    className="primary"
-                    data-testid="engine-initial-brief-submit"
-                    onClick={() => {
-                      void submitEngineInitialBrief()
-                    }}
-                    disabled={
-                      !hasEnoughEngineInitialBriefContent ||
-                      engineInitialBriefSubmitting ||
-                      engineInitialBriefWords > INITIAL_BRIEF_WORD_LIMIT ||
-                      Boolean(authSession?.user?.id && client && sessionCreatePriceLoading)
-                    }
-                  >
-                    {engineInitialBriefSubmitting && (
-                      <span className="button-spinner" aria-hidden="true" />
-                    )}
-                    {engineInitialBriefSubmitting
-                      ? copy.engineInitialBriefSubmitting
-                      : engineInitialBriefSubmitLabel}
-                  </button>
-                </div>
-              </div>
-            </section>
-          )}
-
-          {enginePreviewSessionId && !engineInitialBriefOpen && (
-            <>
-              {actionPlanReadinessEnabled && (
-                <section className="engine-panel">
-                  <div className="engine-panel-header">
-                    <div className="action-plan-readiness-title-row">
-                      <h2>
-                        {uiLanguage === 'Polish'
-                          ? 'Jak zwiększyć gotowość planu działania'
-                          : 'Action plan readiness guide'}
-                      </h2>
-                      {actionPlanReadinessLlmCache.loading && (
-                        <span
-                          className="button-spinner button-spinner--dark action-plan-readiness-title-spinner"
-                          aria-hidden="true"
-                        />
-                      )}
-                    </div>
-                  </div>
-                  <div className="engine-helper">
-                    {(() => {
-                      if (!enginePreviewItems.length) {
-                        return (
-                          <div className="action-plan-readiness-layout">
-                            <div className="action-plan-readiness-layout__content" />
-                            <div className="action-plan-readiness-layout__gauge">
-                              <ActionPlanReadinessGauge
-                                score={0}
-                                level="not_ready"
-                                language={uiLanguage === 'Polish' ? 'pl' : 'en'}
-                              />
-                            </div>
-                          </div>
-                        )
-                      }
-
-                      // Only block content while the request is actually in-flight.
-                      // `pending` is a debounce marker and can stay true while items keep changing.
-                      const readinessLlmLoading = actionPlanReadinessLlmCache.loading
-                      const finalScore = actionPlanReadinessHeuristic.score
-                      if (readinessLlmLoading) {
-                        return (
-                          <div className="action-plan-readiness-layout">
-                            <div className="action-plan-readiness-layout__content" />
-                            <div className="action-plan-readiness-layout__gauge">
-                              <ActionPlanReadinessGauge
-                                score={finalScore}
-                                level={
-                                  actionPlanReadinessHeuristic.level === 'weak'
-                                    ? 'not_ready'
-                                    : actionPlanReadinessHeuristic.level === 'strong'
-                                      ? 'strong_material'
-                                      : 'can_proceed'
-                                }
-                                language={uiLanguage === 'Polish' ? 'pl' : 'en'}
-                              />
-                            </div>
-                          </div>
-                        )
-                      }
-
-                      const description = (() => {
-                        if (uiLanguage === 'Polish') {
-                          if (actionPlanReadinessMeaningfulCount < 3) {
-                            return 'Masz jeszcze za mało wpisów, żeby plan działania był konkretny.'
-                          }
-                          if (
-                            actionPlanReadinessMeaningfulCount >= 3 &&
-                            actionPlanReadinessHeuristic.notWorkingMeaningfulCount < 3
-                          ) {
-                            return 'Twój materiał jest jeszcze jednostronny — skupia się na tym, jak powinno być, ale brakuje tego, co nie działa.'
-                          }
-                          if (actionPlanReadinessHeuristic.coverage < 2) {
-                            return 'Materiał jest jeszcze wąski (brakuje perspektyw). Uzupełnij go, aby decyzje były lepiej ugruntowane.'
-                          }
-                          if (actionPlanReadinessHeuristic.coverage === 3) {
-                            return 'Materiał jest zbalansowany i powinien dać sensowne priorytety, decyzje i kolejne kroki.'
-                          }
-                          return 'Materiał wygląda wystarczająco, ale można go jeszcze wzmocnić, żeby plan działania był bardziej trafny.'
-                        }
-                        if (actionPlanReadinessMeaningfulCount < 3) {
-                          return 'There are not enough entries yet for a concrete action plan.'
-                        }
-                        if (
-                          actionPlanReadinessMeaningfulCount >= 3 &&
-                          actionPlanReadinessHeuristic.notWorkingMeaningfulCount < 3
-                        ) {
-                          return 'The material is still one-sided — it focuses on what should be, but misses what is not working.'
-                        }
-                        if (actionPlanReadinessHeuristic.coverage < 2) {
-                          return 'The material is still narrow (missing perspectives). Add more for better grounded decisions.'
-                        }
-                        if (actionPlanReadinessHeuristic.coverage === 3) {
-                          return 'The material is balanced and should yield clearer priorities, decisions, and next steps.'
-                        }
-                        return 'The material looks sufficient, but you can still strengthen it to make the action plan more grounded.'
-                      })()
-
-                      const llmSummary = actionPlanReadinessLlmCache.lastLLMResult?.summary || ''
-                      const llmHowToBoost = actionPlanReadinessLlmCache.lastLLMResult?.howToBoost || ''
-                      const llmBiggestBoostRightNow =
-                        actionPlanReadinessLlmCache.lastLLMResult?.biggestBoostRightNow || ''
-
-                      const summaryText = llmSummary || description
-                      const howToBoostText =
-                        llmHowToBoost ||
-                        actionPlanReadinessHeuristic.improvements.slice(0, 3).join(' · ')
-                      const biggestBoostRightNowText =
-                        llmBiggestBoostRightNow || actionPlanReadinessHeuristic.nextBestAction || ''
-                      const normalizeReadinessLine = (value: string) =>
-                        String(value || '').replace(/\s+/g, ' ').trim()
-                      const shouldShowHowToBoost = Boolean(
-                        normalizeReadinessLine(howToBoostText) &&
-                          normalizeReadinessLine(howToBoostText) !==
-                            normalizeReadinessLine(biggestBoostRightNowText)
-                      )
-                      return (
-                        <div className="action-plan-readiness-layout">
-                          <div className="action-plan-readiness-layout__content">
-                            <div className="action-plan-readiness-field">
-                              <div className="engine-meta">
-                                <span>{uiLanguage === 'Polish' ? 'Opis' : 'Summary'}</span>
-                                <span className="engine-meta-value">{summaryText}</span>
-                              </div>
-                            </div>
-                            {shouldShowHowToBoost && (
-                              <div className="action-plan-readiness-field">
-                                <div className="engine-meta">
-                                  <span>
-                                    {uiLanguage === 'Polish' ? 'Jak podnieść wynik' : 'How to boost'}
-                                  </span>
-                                  <span className="engine-meta-value">{howToBoostText}</span>
-                                </div>
-                              </div>
-                            )}
-                            {biggestBoostRightNowText && (
-                              <div className="action-plan-readiness-field is-boost-now">
-                                <div className="engine-meta">
-                                  <span>
-                                    {uiLanguage === 'Polish'
-                                      ? 'Najbardziej pomoże teraz'
-                                      : 'Biggest boost right now'}
-                                  </span>
-                                  <span className="engine-meta-value">{biggestBoostRightNowText}</span>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                          <div className="action-plan-readiness-layout__gauge">
-                            <ActionPlanReadinessGauge
-                              score={finalScore}
-                              level={
-                                actionPlanReadinessHeuristic.level === 'weak'
-                                  ? 'not_ready'
-                                  : actionPlanReadinessHeuristic.level === 'strong'
-                                    ? 'strong_material'
-                                    : 'can_proceed'
-                              }
-                              language={uiLanguage === 'Polish' ? 'pl' : 'en'}
-                            />
-                          </div>
-                        </div>
-                      )
-                    })()}
-                  </div>
-                </section>
-              )}
-
-              <section className="engine-panel">
-              <div className="engine-panel-header">
-                <h2>{copy.enginePreviewBoardItemsTitle}</h2>
-                {showDiagnostics && (
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={assignNaItems}
-                    disabled={
-                      engineAssignLoading ||
-                      engineUnassignedItems.length === 0 ||
-                      !aiSupportEnabled ||
-                      !engineSessionPersisted
-                    }
-                    title={
-                      !aiSupportEnabled
-                        ? notices.aiDisabled
-                        : !engineSessionPersisted
-                          ? notices.createSessionFirst
-                          : engineUnassignedItems.length === 0
-                          ? notices.noNaEntries
-                          : notices.assignNaAction
-                    }
-                  >
-                    {engineAssignLoading ? notices.assignNaLoading : notices.assignNaAction}
-                  </button>
-                )}
-                {highlightMissingLabels && missingLabelCount > 0 && (
-                  <span className="engine-missing-label-hint">{copy.missingLabelHint}</span>
-                )}
-                <button
-                  type="button"
-                  className={`ghost engine-help-trigger engine-facilitation-actions--fade ${
-                    showHelpButton ? 'is-visible' : 'is-hidden'
-                  }`}
-                  aria-label={copy.engineHelpButtonLabel}
-                  onClick={() => {
-                    clearEngineIdleTimer('manual_help')
-                    engineIdleTriggered.current = false
-                    engineIdleArmedRef.current = false
-                    setEngineLastInputActivityAt(Date.now())
-                    setEngineOfferReason('manual')
-                    if (engineUiState !== 'FACILITATED_INPUT') {
-                      setEngineUiState('FACILITATION_OFFER')
-                    }
-                  }}
-                >
-                  ?
-                </button>
-              </div>
-              {uiLanguage === 'English' && copy.engineQuestionsWipNote && (
-                <div className="engine-helper">{copy.engineQuestionsWipNote}</div>
-              )}
-              <div
-                className={`engine-facilitation-offer engine-facilitation-actions--fade ${
-                  showFacilitationOffer ? 'is-visible' : 'is-hidden'
-                }`}
-                aria-hidden={!showFacilitationOffer}
-              >
-                <div
-                  className="engine-helper engine-facilitation-note"
-                  style={
-                    uiLanguage === 'English'
-                      ? { transform: 'translate(-75px, -5px)' }
-                      : undefined
-                  }
-                >
-                  {copy.engineFacilitationNote}
-                </div>
-                <div
-                  className="engine-facilitation-actions"
-                  data-testid="facilitation-buttons"
-                >
-                  {engineFacilitationInlineError && (
-                    <span className="text-sm text-red-600">{engineFacilitationInlineError}</span>
-                  )}
-                  {facilitationPerspectiveActions.map((action) => {
-                    const isActive = engineActiveFacilitationPerspective === action.key
-                    return (
-                      <button
-                        key={action.key}
-                        type="button"
-                        className={`ghost engine-facilitation-perspective-button ${action.toneClass} ${
-                          isActive ? 'is-active' : ''
-                        }`}
-                        data-testid={action.testId}
-                        onClick={() => {
-                          if (facilitationDisabled) {
-                            setEngineFacilitationInlineError(notices.createSessionFirst)
-                            return
-                          }
-                          const nextType = resolveFacilitationRequestType(action.key)
-                          setFacilitationCooldown(`${nextType}:${action.key}`)
-                          armIdleWatch(
-                            nextType === 'DEEPEN'
-                              ? `facilitation_continue_${action.key}`
-                              : `facilitation_switch_${action.key}`
-                          )
-                          void activateFacilitationPrompt(nextType, action.key)
-                        }}
-                        disabled={
-                          !showFacilitationOffer || engineFacilitationLoading || facilitationDisabled
-                        }
-                      >
-                        {action.label}
-                      </button>
-                    )
-                  })}
-                </div>
-              </div>
-              {enginePreviewError && (
-                <div className="engine-error">
-                  <span>{enginePreviewError}</span>
-                  {lastFacilitationType && lastFacilitationPerspective && (
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => {
-                        void activateFacilitationPrompt(
-                          lastFacilitationType,
-                          lastFacilitationPerspective
-                        )
-                      }}
-                    >
-                      {copy.engineFacilitationRetryCta}
-                    </button>
-                  )}
-                </div>
-              )}
-              <div className="engine-board-input">
-                {(engineFacilitationLoading && showEngineFacilitationLoadingUI
-                  ? copy.engineFacilitationLoadingPerspective
-                  : engineActivePrompt?.text) && (
-                  <div
-                    className={`engine-helper engine-facilitation-prompt ${
-                      lastFacilitationPerspective === 'as_is'
-                        ? 'is-as-is'
-                        : lastFacilitationPerspective === 'not_working'
-                          ? 'is-not-working'
-                          : lastFacilitationPerspective === 'should_be'
-                            ? 'is-should-be'
-                            : ''
-                    }`}
-                  >
-                    <div className="engine-facilitation-question">
-                      {engineFacilitationLoading && showEngineFacilitationLoadingUI ? (
-                        <span className="engine-facilitation-loading-row">
-                          <span className="button-spinner" aria-hidden="true" />
-                          <span className="engine-facilitation-loading-text">
-                            {engineFacilitationLoadingType === 'DEEPEN'
-                              ? copy.engineFacilitationLoadingDeepen
-                              : copy.engineFacilitationLoadingPerspective}
-                          </span>
-                        </span>
-                      ) : (
-                        <>
-                          {showFirstQuestionWrapper && facilitationIntroRef.current ? (
-                            <div className="engine-facilitation-intro">
-                              {facilitationIntroRef.current}
-                            </div>
-                          ) : null}
-                          <div>{engineActivePrompt?.text}</div>
-                        </>
-                      )}
-                    </div>
-                    {!engineFacilitationLoading && showDiagnostics && enginePromptSource && (
-                      <span className="impulse-source-row">
-                        <span
-                          className={`impulse-source-chip ${
-                            enginePromptSource === 'fallback' ? 'fallback' : 'ai'
-                          }`}
-                        >
-                          {enginePromptSource === 'fallback'
-                            ? copy.impulseSourceFallback
-                            : copy.impulseSourceAi}
-                        </span>
-                        {import.meta.env.DEV && (
-                          <span className="impulse-source-note">
-                            {lastLlmSource === 'llm'
-                              ? copy.impulseSourceAiGenerated
-                              : copy.impulseSourceDeterministic}
-                            {lastLlmWhy ? ` · ${lastLlmWhy}` : ''}
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </div>
-                )}
-                <div
-                  className={`engine-input-field engine-input-field-with-action ${
-                    engineDraftToneClass ? `is-targeted ${engineDraftToneClass}` : ''
-                  }`}
-                >
-                  {showEngineInputCaret && <span className="engine-input-caret" aria-hidden="true" />}
-                  <textarea
-                    data-testid="engine-input"
-                    ref={engineInputRef}
-                    value={enginePreviewInput}
-                    onChange={(event) => {
-                      if (enginePreviewVoiceState === 'listening') {
-                        stopEnginePreviewRecognition('abort')
-                        setEnginePreviewVoiceState('idle')
-                      }
-                      handleEnginePreviewInputChange(event)
-                      engineIdleTriggered.current = false
-                      clearEngineIdleTimer('input_change')
-                      setEngineLastInputActivityAt(Date.now())
-                      logFacilitationEvent('idle_timer_reset', { reason: 'input_change', at: Date.now() })
-                    }}
-                    onPointerDown={() => {
-                      markUserInitiatedInteraction('pointer')
-                      engineAllowIdleWithoutFocusRef.current = false
-                      if (engineUiState === 'INIT') {
-                        setEngineUiState('FREE_FLOW')
-                      }
-                      engineIdleTriggered.current = false
-                      clearEngineIdleTimer('pointer')
-                      setEngineLastInputActivityAt(Date.now())
-                      logFacilitationEvent('idle_timer_reset', { reason: 'pointer', at: Date.now() })
-                    }}
-                    onKeyDown={() => {
-                      markUserInitiatedInteraction('keystroke')
-                      engineAllowIdleWithoutFocusRef.current = false
-                      if (engineOfferReason) {
-                        setEngineOfferReason(null)
-                        if (engineUiState === 'FACILITATION_OFFER') {
-                          setEngineUiState('FREE_FLOW')
-                        }
-                      }
-                      if (engineUiState === 'INIT') {
-                        setEngineUiState('FREE_FLOW')
-                      }
-                      engineIdleTriggered.current = false
-                      clearEngineIdleTimer('keystroke')
-                      setEngineLastInputActivityAt(Date.now())
-                      logFacilitationEvent('idle_timer_reset', { reason: 'keystroke', at: Date.now() })
-                    }}
-                    onFocus={() => {
-                      setEngineInputFocused(true)
-                      engineAllowIdleWithoutFocusRef.current = false
-                      logFacilitationEvent('input_focus', { sessionId: getEngineSessionKey() })
-                    }}
-                    onBlur={() => {
-                      setEngineInputFocused(false)
-                      clearEngineIdleTimer('input_blur')
-                      logFacilitationEvent('input_blur', { sessionId: getEngineSessionKey() })
-                    }}
-                    placeholder={enginePlaceholder}
-                    rows={3}
-                  />
-                  <button
-                    type="button"
-                    className={`ghost engine-input-action engine-input-action--voice is-${enginePreviewVoiceState}`}
-                    aria-label={
-                      enginePreviewVoiceState === 'listening'
-                        ? copy.engineInitialBriefVoiceInputListening
-                        : copy.engineInitialBriefVoiceInputLabel
-                    }
-                    title={
-                      enginePreviewVoiceState === 'listening'
-                        ? copy.engineInitialBriefVoiceInputListening
-                        : enginePreviewVoiceState === 'unavailable'
-                          ? copy.engineInitialBriefVoiceInputUnavailable
-                          : copy.engineInitialBriefVoiceInputLabel
-                    }
-                    onClick={toggleEnginePreviewVoiceInput}
-                    data-testid="engine-input-voice"
-                  >
-                    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                      <path
-                        d="M12 15a3 3 0 0 0 3-3V7a3 3 0 1 0-6 0v5a3 3 0 0 0 3 3Zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2.07A7 7 0 0 1 5 12a1 1 0 1 1 2 0 5 5 0 0 0 10 0Z"
-                        fill="currentColor"
-                      />
-                    </svg>
-                    <span>
-                      {enginePreviewVoiceState === 'listening'
-                        ? copy.engineInitialBriefVoiceInputListening
-                        : copy.engineInitialBriefVoiceInputLabel}
-                    </span>
-                  </button>
-                </div>
-                {enginePreviewVoiceError && (
-                  <div className="engine-helper">{enginePreviewVoiceError}</div>
-                )}
-                <div className="engine-input-footer">
-                  <span className="engine-word-count">
-                    {isEngineWordLimitReached
-                      ? copy.engineWordLimitReached
-                      : copy.engineWordCountRemaining(engineRemainingWords)}
-                  </span>
-                  <div className="engine-input-footer-actions">
-                    {showEngineDraftRemove && (
-                      <button
-                        type="button"
-                        className="ghost"
-                        onClick={clearEngineDraftTarget}
-                      >
-                        {copy.engineDraftRemoveEntry}
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      className="primary"
-                      data-testid="add-entry"
-                      onClick={() => {
-                        if (engineAddEntryLoading) return
-                        const syncedText = syncEnginePreviewVoiceTranscript()
-                        if (syncedText === null) return
-                        if (enginePreviewVoiceState === 'listening') {
-                          stopEnginePreviewRecognition('stop')
-                          setEnginePreviewVoiceState('idle')
-                        }
-                        markUserInitiatedInteraction('pointer')
-                        setEngineLastInputActivityAt(Date.now())
-                        setEngineInputFocused(true)
-                        engineAllowIdleWithoutFocusRef.current = true
-                        armIdleWatch('add_item')
-                        engineInputRef.current?.focus()
-                        void handleEnginePreviewAdd(undefined, syncedText, engineDraftTargetSection)
-                      }}
-                      disabled={!enginePreviewInput.trim() || engineAddEntryLoading}
-                    >
-                      {engineAddEntryLoading && <span className="button-spinner" aria-hidden="true" />}
-                      {copy.enginePreviewAddItem}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              {enginePreviewItems.length === 0 ? (
-                <div className="engine-empty">{copy.enginePreviewBoardItemsEmpty}</div>
-              ) : (
-                <div className="engine-perspective-board" key={`engine-board-${engineBoardLayoutVersion}`}>
-                  {enginePerspectiveSections.map((section) => (
-                    <section
-                      key={section.key}
-                      className={`engine-perspective-section ${section.toneClass} ${
-                        engineDragOverSection === section.key ? 'is-drop-target' : ''
-                      } ${engineDraggingEntryId ? 'is-drag-active' : ''}`}
-                      onDragOver={(event) =>
-                        handleEngineSectionDragOver(
-                          event,
-                          section.key as EnginePerspectiveKey,
-                          section.items.length
-                        )
-                      }
-                      onDrop={(event) =>
-                        void handleEngineSectionDrop(event, section.key as EnginePerspectiveKey)
-                      }
-                      onDragLeave={(event) => {
-                        if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
-                        if (engineDragHoverTimerRef.current) {
-                          window.clearTimeout(engineDragHoverTimerRef.current)
-                          engineDragHoverTimerRef.current = null
-                        }
-                        enginePendingDragTargetRef.current = null
-                        setEngineDragOverSection((prev) => (prev === section.key ? null : prev))
-                        setEngineDragTargetIndex(null)
-                      }}
-                    >
-                      <div className="engine-perspective-header">
-                        <h3>{section.title}</h3>
-                        <div className="engine-perspective-header-actions">
-                          <button
-                            type="button"
-                            className={`engine-perspective-add-button ${
-                              engineDraftTargetSection === section.key ? 'is-active' : ''
-                            }`}
-                            aria-label={copy.engineSectionAddEntryAria(section.title)}
-                            title={copy.engineSectionAddEntryHint}
-                            onClick={() => activateEngineDraftTarget(section.key as EnginePerspectiveKey)}
-                          >
-                            <span aria-hidden="true">+</span>
-                          </button>
-                          <span className="engine-perspective-count">{section.items.length}</span>
-                        </div>
-                      </div>
-                      <ul className="engine-entry-list">
-                        {(() => {
-                          const renderedItems: Array<
-                            | { kind: 'item'; item: EngineBoardItem; layoutClass: string; itemIndex: number }
-                            | { kind: 'placeholder'; key: string; layoutClass: string }
-                          > = []
-                          section.items.forEach(({ item, layoutClass }, itemIndex) => {
-                            if (
-                              engineDraggingEntryId &&
-                              engineDragOverSection === section.key &&
-                              engineDragTargetIndex === itemIndex
-                            ) {
-                              const dragged = enginePreviewItems.find((entry) => entry.id === engineDraggingEntryId)
-                              renderedItems.push({
-                                kind: 'placeholder',
-                                key: `placeholder-${section.key}-${itemIndex}`,
-                                layoutClass: dragged ? resolveEngineEntryLayoutClass(dragged) : 'is-medium',
-                              })
-                            }
-                            renderedItems.push({ kind: 'item', item, layoutClass, itemIndex })
-                          })
-                          if (
-                            engineDraggingEntryId &&
-                            engineDragOverSection === section.key &&
-                            engineDragTargetIndex === section.items.length
-                          ) {
-                            const dragged = enginePreviewItems.find((entry) => entry.id === engineDraggingEntryId)
-                            renderedItems.push({
-                              kind: 'placeholder',
-                              key: `placeholder-${section.key}-end`,
-                              layoutClass: dragged ? resolveEngineEntryLayoutClass(dragged) : 'is-medium',
-                            })
-                          }
-
-                          return renderedItems.map((rendered) => {
-                            if (rendered.kind === 'placeholder') {
-                              return (
-                                <li
-                                  key={rendered.key}
-                                  className={`engine-entry engine-entry-placeholder ${rendered.layoutClass}`}
-                                  aria-hidden="true"
-                                />
-                              )
-                            }
-
-                            const { item, layoutClass, itemIndex } = rendered
-                            return (
-                              <li
-                                key={item.id}
-                                ref={(node) => {
-                                  if (node) {
-                                    engineEntryNodesRef.current[item.id] = node
-                                  } else {
-                                    delete engineEntryNodesRef.current[item.id]
-                                  }
-                                }}
-                                style={
-                                  engineEntryRowSpans[item.id]
-                                    ? { gridRowEnd: `span ${engineEntryRowSpans[item.id]}` }
-                                    : undefined
-                                }
-                                className={`engine-entry ${layoutClass} ${
-                                  engineDraggingEntryId === item.id ? 'is-dragging' : ''
-                                } ${engineMovingEntryId === item.id ? 'is-moving' : ''} ${
-                                  highlightMissingLabels && isMissingLabel(item) ? 'missing-label' : ''
-                                }`}
-                                data-testid={`entry-row-${item.id}`}
-                                data-entry-id={item.id}
-                                draggable={enginePreviewEditId !== item.id && engineMovingEntryId !== item.id}
-                                onDragStart={(event) => handleEngineEntryDragStart(event, item)}
-                                onDragEnd={handleEngineEntryDragEnd}
-                                onDragOver={(event) =>
-                                  handleEngineEntryDragOver(
-                                    event,
-                                    section.key as EnginePerspectiveKey,
-                                    itemIndex
-                                  )
-                                }
-                              >
-                            {showDiagnostics &&
-                              (() => {
-                                const cellId = getEntryCellId(item)
-                                return (
-                                  <button
-                                    type="button"
-                                    className={`engine-entry-cell ${cellId ? '' : 'is-na'}`}
-                                    title={cellId ? `Cell ${cellId}` : 'N/A'}
-                                    disabled
-                                  >
-                                    {cellId || 'N/A'}
-                                  </button>
-                                )
-                              })()}
-                            <div className="engine-entry-main">
-                              {enginePreviewEditId === item.id ? (
-                                <div className="engine-entry-edit" onClick={(event) => event.stopPropagation()}>
-                                  <textarea
-                                    className="engine-entry-edit-input"
-                                    rows={3}
-                                    value={enginePreviewEditText}
-                                    onChange={(event) => {
-                                      const next = limitWords(event.target.value, WORD_LIMIT)
-                                      setEnginePreviewEditText(next)
-                                    }}
-                                  />
-                                  <div className="engine-entry-edit-actions">
-                                    <button
-                                      type="button"
-                                      className="primary"
-                                      onClick={saveEnginePreviewEdit}
-                                      disabled={!enginePreviewEditText.trim()}
-                                    >
-                                      {copy.save}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      className="ghost"
-                                      onClick={cancelEnginePreviewEdit}
-                                    >
-                                      {copy.cancel}
-                                    </button>
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="engine-entry-text">{item.text}</div>
-                              )}
-                              {enginePreviewEditId !== item.id &&
-                                engineEntryDeleteId !== item.id &&
-                                engineLabelEditorId !== item.id && (
-                                <div className="engine-entry-actions">
-                                  <div className="engine-entry-question-help">
-                                    <button
-                                      type="button"
-                                      className="engine-entry-question-button engine-entry-action"
-                                      aria-label={copy.engineEntryQuestionHint}
-                                      title={copy.engineEntryQuestionHint}
-                                      onClick={(event) => {
-                                        event.stopPropagation()
-                                      }}
-                                    >
-                                      ?
-                                    </button>
-                                    <div className="engine-entry-question-tooltip" role="note">
-                                      {resolveEntryQuestionHelperText(item)}
-                                    </div>
-                                  </div>
-                                  <button
-                                    type="button"
-                                    className="engine-entry-edit-button engine-entry-action"
-                                    aria-label={copy.engineEntryEditHint}
-                                    title={copy.engineEntryEditHint}
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      startEnginePreviewEdit(item)
-                                    }}
-                                  >
-                                    ✎
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="engine-entry-delete-button engine-entry-action"
-                                    aria-label={copy.engineEntryDeleteHint}
-                                    title={copy.engineEntryDeleteHint}
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setEngineEntryDeleteId(item.id)
-                                    }}
-                                  >
-                                    <svg
-                                      viewBox="0 0 24 24"
-                                      width="14"
-                                      height="14"
-                                      aria-hidden="true"
-                                    >
-                                      <path
-                                        fill="currentColor"
-                                        d="M9 3a1 1 0 0 0-1 1v1H5.5a1 1 0 1 0 0 2H6v12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7h.5a1 1 0 1 0 0-2H16V4a1 1 0 0 0-1-1H9zm1 2h4v1h-4V5zm-1 4a1 1 0 0 1 1 1v7a1 1 0 1 1-2 0v-7a1 1 0 0 1 1-1zm6 1a1 1 0 1 0-2 0v7a1 1 0 1 0 2 0v-7z"
-                                      />
-                                    </svg>
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="engine-entry-label-button engine-entry-action"
-                                    aria-label={copy.engineEntryLabelActionHint}
-                                    title={copy.engineEntryLabelActionHint}
-                                    onClick={(event) => {
-                                      event.stopPropagation()
-                                      setEngineLabelEditorId((prev) => (prev === item.id ? null : item.id))
-                                    }}
-                                  >
-                                    <svg
-                                      viewBox="0 0 24 24"
-                                      width="14"
-                                      height="14"
-                                      aria-hidden="true"
-                                    >
-                                      <path
-                                        fill="currentColor"
-                                        d="M10.59 13.41a1 1 0 0 1 0-1.41l6.3-6.3a3 3 0 1 1 4.24 4.24l-6.3 6.3a1 1 0 0 1-1.41 0l-2.83-2.83ZM18.3 7.1l-5.6 5.6 1.41 1.41 5.6-5.6a1 1 0 0 0-1.41-1.41ZM3 6a3 3 0 0 1 3-3h6a1 1 0 1 1 0 2H6a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-3a1 1 0 1 1 2 0v3a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6Z"
-                                      />
-                                    </svg>
-                                  </button>
-                                </div>
-                              )}
-                              <div className="engine-entry-label-group">
-                                {highlightMissingLabels && isMissingLabel(item) && (
-                                  <span className="engine-entry-missing-badge">
-                                    {copy.missingLabelBadge}
-                                  </span>
-                                )}
-                                {item.label && (
-                                  <span
-                                    className="engine-entry-label"
-                                    data-testid={`entry-label-${item.id}`}
-                                    style={{
-                                      backgroundColor:
-                                        withAlpha(ENGINE_ENTRY_LABEL_COLORS[item.label] || '#e7ebf0'),
-                                      color: '#000000',
-                                    }}
-                                  >
-                                    {uiLanguage === 'English'
-                                      ? getEntryLabelText(item.label, 'English')
-                                      : getEntryLabelText(item.label, 'Polish')}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                            {engineEntryDeleteId === item.id && (
-                              <div
-                                className="engine-entry-delete-confirm"
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                <span>{copy.engineEntryDeleteConfirm}</span>
-                                <div className="engine-entry-delete-actions">
-                                  <button
-                                    type="button"
-                                    className="primary"
-                                    onClick={() => confirmEngineEntryDelete(item.id)}
-                                  >
-                                    {copy.engineEntryDeleteYes}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    className="ghost"
-                                    onClick={cancelEngineEntryDelete}
-                                  >
-                                    {copy.engineEntryDeleteCancel}
-                                  </button>
-                                </div>
-                              </div>
-                            )}
-                            {engineLabelEditorId === item.id && (
-                              <div
-                                ref={engineLabelEditorRef}
-                                className="engine-entry-label-editor"
-                                onClick={(event) => event.stopPropagation()}
-                              >
-                                <label className="engine-entry-label-field">
-                                  <span className="sr-only">Etykieta wpisu</span>
-                                  <select
-                                    ref={engineLabelSelectRef}
-                                    data-testid={`entry-label-select-${item.id}`}
-                                    value={item.label ?? ''}
-                                    onChange={(event) => {
-                                      const nextValue = event.target.value || null
-                                      armIdleWatch('label_change')
-                                      setEngineLastInputActivityAt(Date.now())
-                                      void updateEngineEntryLabel(item.id, nextValue)
-                                      setEngineLabelEditorId(null)
-                                    }}
-                                  >
-                                  <option value="">{getNoLabelText(uiLanguage)}</option>
-                                  {ENGINE_ENTRY_LABELS.map((label) => (
-                                    <option key={label} value={label}>
-                                      {getEntryLabelText(label, uiLanguage)}
-                                    </option>
-                                  ))}
-                                  </select>
-                                </label>
-                              </div>
-                            )}
-                              </li>
-                            )
-                          })
-                        })()}
-                      </ul>
-                    </section>
-                  ))}
-                </div>
-              )}
-              </section>
-            </>
-          )}
-        </main>
-          {feedbackPanel}
-          {feedbackFab}
-          {missingLabelModal}
-        </div>
-      )
+      <Engine1Container
+        actionPlanReadinessEnabled={actionPlanReadinessEnabled}
+        ActionPlanReadinessGauge={ActionPlanReadinessGauge}
+        actionPlanReadinessHeuristic={actionPlanReadinessHeuristic}
+        actionPlanReadinessLlmCache={actionPlanReadinessLlmCache}
+        actionPlanReadinessMeaningfulCount={actionPlanReadinessMeaningfulCount}
+        activateEngineDraftTarget={activateEngineDraftTarget}
+        activateFacilitationPrompt={activateFacilitationPrompt}
+        AiCostButton={AiCostButton}
+        aiPlatform={{
+          aiSupportEnabled,
+          checkLlmStatus,
+          currentTokensTotal,
+          llmApiBase,
+          llmUsageClass,
+          modelUsageEntries,
+          normalizeApiBase,
+          sessionUsage,
+          totalCostPln,
+          totalCostUsd,
+        }}
+        applyEngineInitialBriefTextChange={applyEngineInitialBriefTextChange}
+        armIdleWatch={armIdleWatch}
+        assignNaItems={assignNaItems}
+        authPlatform={{
+          authDisabled,
+          authSession,
+          client,
+          handleLogout,
+          isAdmin,
+          isAuthed,
+          logoutInProgress,
+          missingSupabaseEnvMessage,
+        }}
+        autosizeTextarea={autosizeTextarea}
+        billingPlatform={{
+          balanceCurrency,
+          billingAccount,
+          billingBalanceOverrideMinor,
+          insufficientBalanceState,
+          reportCreatePriceLoading,
+          reportCreatePriceMinor,
+          sessionCreatePriceLoading,
+        }}
+        clearEngineDraftTarget={clearEngineDraftTarget}
+        clearEngineIdleTimer={clearEngineIdleTimer}
+        copy={copy}
+        debugMatrixData={debugMatrixData}
+        deleteEngineEntry={deleteEngineEntry}
+        deleteEngineItem={deleteEngineItem}
+        deleteEngineSession={deleteEngineSession}
+        createNamedEngineSession={createNamedEngineSession}
+        diagnosticsPlatform={{
+          activeUsageSessionIdNormalized,
+          DIAGNOSTICS_STORAGE_KEY,
+          isDiagEnabled,
+          sessionUsageDiagnostics,
+          setAiSupportEnabled,
+          setDiagnosticsEnabled,
+          setFacilitationCooldown,
+          setLlmStatus,
+          showDiagnostics,
+          showSessionUsage,
+        }}
+        engineActiveFacilitationPerspective={engineActiveFacilitationPerspective}
+        engineActivePrompt={engineActivePrompt}
+        engineAddEntryLoading={engineAddEntryLoading}
+        engineAllowIdleWithoutFocusRef={engineAllowIdleWithoutFocusRef}
+        engineAssignLoading={engineAssignLoading}
+        engineDeleteLoadingId={engineDeleteLoadingId}
+        engineDraftTargetSection={engineDraftTargetSection}
+        engineEditLoading={engineEditLoading}
+        engineEditResetSignal={engineEditResetSignal}
+        engineFacilitationInlineError={engineFacilitationInlineError}
+        engineFacilitationLoading={engineFacilitationLoading}
+        engineFacilitationLoadingType={engineFacilitationLoadingType}
+        EngineHeader={EngineHeader}
+        engineIdleArmedRef={engineIdleArmedRef}
+        engineIdleTriggered={engineIdleTriggered}
+        engineImportInputRef={engineImportInputRef}
+        engineInitialBriefError={engineInitialBriefError}
+        engineInitialBriefInputRef={engineInitialBriefInputRef}
+        engineInitialBriefOpen={engineInitialBriefOpen}
+        engineInitialBriefSubmitLabel={engineInitialBriefSubmitLabel}
+        engineInitialBriefSubmitting={engineInitialBriefSubmitting}
+        engineInitialBriefVoiceCorrectionSeqRef={engineInitialBriefVoiceCorrectionSeqRef}
+        engineInitialBriefVoiceState={engineInitialBriefVoiceState}
+        engineInputRef={engineInputRef}
+        engineInteractionBySession={engineInteractionBySession}
+        engineMatrixVisible={engineMatrixVisible}
+        engineMovingEntryId={engineMovingEntryId}
+        engineNotice={engineNotice}
+        engineOfferReason={engineOfferReason}
+        enginePendingArmingRef={enginePendingArmingRef}
+        enginePendingFocusRef={enginePendingFocusRef}
+        enginePreviewError={enginePreviewError}
+        enginePreviewInput={enginePreviewInput}
+        enginePreviewItems={enginePreviewItems}
+        enginePreviewSessionId={enginePreviewSessionId}
+        enginePreviewSessionName={enginePreviewSessionName}
+        enginePreviewVoiceError={enginePreviewVoiceError}
+        enginePreviewVoiceState={enginePreviewVoiceState}
+        enginePromptSource={enginePromptSource}
+        engineSessionDetail={engineSessionDetail}
+        engineSessionPersisted={engineSessionPersisted}
+        engineSessions={engineSessions}
+        engineSessionsError={engineSessionsError}
+        engineSessionsOpen={engineSessionsOpen}
+        engineUiState={engineUiState}
+        engineUnassignedItems={engineUnassignedItems}
+        facilitationIntroRef={facilitationIntroRef}
+        feedbackFab={feedbackFab}
+        feedbackPanel={feedbackPanel}
+        feedbackReminderBanner={feedbackReminderBanner}
+        fetchEngineSessions={fetchEngineSessions}
+        flushEngineEntryLabels={flushEngineEntryLabels}
+        formatBalanceMinor={formatBalanceMinor}
+        formatPln={formatPln}
+        formatTokenTotal={formatTokenTotal}
+        formatUsd={formatUsd}
+        getEngineInitialBriefDisplayedText={getEngineInitialBriefDisplayedText}
+        getEngineSessionKey={getEngineSessionKey}
+        getReportMetaForSession={getReportMetaForSession}
+        goToActionPlan={goToActionPlan}
+        handleEnginePreviewAdd={handleEnginePreviewAdd}
+        handleEnginePreviewInputChange={handleEnginePreviewInputChange}
+        handleExportSessions={handleExportSessions}
+        handleImportSessions={handleImportSessions}
+        handleReportNavigation={handleReportNavigation}
+        hasEnoughEngineInitialBriefContent={hasEnoughEngineInitialBriefContent}
+        highlightMissingLabels={highlightMissingLabels}
+        isPhoneViewport={isPhoneViewport}
+        landingLogoUrl={landingLogoUrl}
+        lastFacilitationPerspective={lastFacilitationPerspective}
+        lastFacilitationType={lastFacilitationType}
+        lastLlmSource={lastLlmSource}
+        lastLlmWhy={lastLlmWhy}
+        limitWords={limitWords}
+        logFacilitationEvent={logFacilitationEvent}
+        missingLabelCount={missingLabelCount}
+        renderMissingLabelModal={renderMissingLabelModal}
+        moveEngineEntryToSection={moveEngineEntryToSection}
+        notices={notices}
+        openEngineSession={openEngineSession}
+        navigationPlatform={{
+          reportNavigationLoading,
+          setHashPath,
+          storeTopupReturnTo,
+        }}
+        questionMatrix={questionMatrix}
+        reportRecords={reportRecords}
+        resolveFacilitationRequestType={resolveFacilitationRequestType}
+        saveCurrentSessionToCloud={saveCurrentSessionToCloud}
+        saveEngineItem={saveEngineItem}
+        saveEnginePreviewEdit={saveEnginePreviewEdit}
+        setEngineFacilitationInlineError={setEngineFacilitationInlineError}
+        setEngineInitialBriefVoicePreview={setEngineInitialBriefVoicePreview}
+        setEngineInitialBriefVoiceState={setEngineInitialBriefVoiceState}
+        setEngineInputFocused={setEngineInputFocused}
+        setEngineLastInputActivityAt={setEngineLastInputActivityAt}
+        setEngineOfferReason={setEngineOfferReason}
+        setEnginePreviewVoiceState={setEnginePreviewVoiceState}
+        setEngineSessionsOpen={setEngineSessionsOpen}
+        setEngineUiState={setEngineUiState}
+        showEngineFacilitationLoadingUI={showEngineFacilitationLoadingUI}
+        showEngineInputCaret={showEngineInputCaret}
+        showFirstQuestionWrapper={showFirstQuestionWrapper}
+        startNewSession={startNewSession}
+        stopEngineInitialBriefRecognition={stopEngineInitialBriefRecognition}
+        stopEnginePreviewRecognition={stopEnginePreviewRecognition}
+        submitEngineInitialBrief={submitEngineInitialBrief}
+        syncEnginePreviewVoiceTranscript={syncEnginePreviewVoiceTranscript}
+        toggleEngineInitialBriefVoiceInput={toggleEngineInitialBriefVoiceInput}
+        toggleEnginePreviewVoiceInput={toggleEnginePreviewVoiceInput}
+        uiLanguage={uiLanguage}
+        updateEngineEntryLabel={updateEngineEntryLabel}
+        withAlpha={withAlpha}
+      />
+    )
     }
 
   if (isWorkInProgress) {
@@ -15928,1790 +14048,132 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
 
   return withDevOverlay(
-    <div className="app">
-      <header className={`top-bar ${showLanding ? 'landing-top' : ''}`}>
-        {showLanding && (
-          <div className="landing-logo">
-            <img src={landingLogoUrl} alt="MakeMyIdea.Work" />
-          </div>
-        )}
-        {!showLanding && (
-          <div className="engine-brand">
-            <div className="engine-logo">
-              <img src={landingLogoUrl} alt="MakeMyIdea.Work" />
-            </div>
-          </div>
-        )}
-        {!showLanding && (
-          <div className="roadmap">
-            {stepOrder.map((stepId) => (
-              <button
-                key={stepId}
-                type="button"
-                className={`roadmap-step ${stepId === activeStep ? 'active' : ''}`}
-                onClick={() => {
-                  if (stepId <= activeStep) setActiveStep(stepId)
-                }}
-              >
-                <span className="step-index">
-                  {copy.stepLabel} {stepId}
-                </span>
-                <span className="step-title">{stepTitle(stepId)}</span>
-              </button>
-            ))}
-          </div>
-        )}
-        <div className="topbar-links">
-          {showLanding && (
-            <>
-              <a className="ghost topbar-link landing-blog-link" href="/blog">
-                {copy.landingBlogTitle}
-              </a>
-              <a className="primary topbar-link landing-login-link" href="/login" onClick={handleLandingCtaClick}>
-                {copy.landingLoginCta}
-              </a>
-            </>
-          )}
-        </div>
-        {(showLanding || activeStep === 1) && (
-          <label className="topbar-language">
-            <span>{copy.languageLabel}</span>
-            <select
-              value={uiLanguage}
-              onChange={(event) => setUiLanguage(event.target.value as Language)}
-            >
-              {uiLanguageOptions.map((language) => (
-                <option key={language} value={language}>
-                  {language}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        {!showLanding && isAdmin && (
-          <button
-            className={`ai-support-toggle diagnostics-toggle ${showDiagnostics ? 'on' : 'off'}`}
-            type="button"
-            onClick={() => {
-              const nextEnabled = !showDiagnostics
-              setDiagnosticsEnabled(nextEnabled)
-              localStorage.setItem(
-                DIAGNOSTICS_STORAGE_KEY,
-                nextEnabled ? 'true' : 'false'
-              )
-            }}
-          >
-            {showDiagnostics ? copy.diagnosticsOn : copy.diagnosticsOff}
-          </button>
-        )}
-        {!showLanding && showDiagnostics && (
-          <button
-            className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
-            type="button"
-            onClick={() => {
-              const nextEnabled = !aiSupportEnabled
-              setAiSupportEnabled(nextEnabled)
-              localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
-              if (nextEnabled) {
-                void checkLlmStatus(normalizeApiBase(llmApiBase))
-              } else {
-                setLlmStatus('offline')
-              }
-            }}
-          >
-            {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
-          </button>
-        )}
-        {!showLanding && (
-          <button
-            className="ghost llm-button"
-            type="button"
-            onClick={() => setLlmSettingsOpen(true)}
-          >
-            {copy.llmSettings}
-          </button>
-        )}
-        {!showLanding && activeStep !== 1 && (
-          <button className="report-button" type="button" onClick={() => setReportSnapshotOpen(true)}>
-            <IconReport />
-            <span>{copy.report}</span>
-          </button>
-        )}
-        {showLanding && (
-          <div className="scroll-progress" aria-hidden="true">
-            <span />
-          </div>
-        )}
-      </header>
-
-      <main className="content">
-        {showLanding && landingView === 'main' && (
-          <section className="landing">
-            <div className="landing-section hero in-view">
-              <div className="landing-inner">
-                <h1>{copy.landingHeroTitle}</h1>
-                <p>{copy.landingHeroSubtitle}</p>
-                {copy.landingHeroBullets.length > 0 && (
-                  <ul className="landing-hero-bullets">
-                    {copy.landingHeroBullets.map((line) => (
-                      <li key={line}>{line}</li>
-                    ))}
-                  </ul>
-                )}
-                {uiLanguage === 'Polish' && (
-                  <a
-                    className="primary landing-cta landing-cta-video"
-                    href="https://youtube.com/shorts/1JDZenJneEE?feature=share"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span className="landing-cta-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="36" height="36">
-                        <path
-                          fill="currentColor"
-                          d="M4 6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2.2l4.4 2.2a1 1 0 0 0 1.6-.8V8a1 1 0 0 0-1.6-.8L15 9.4V8a2 2 0 0 0-2-2H4z"
-                        />
-                      </svg>
-                    </span>
-                    Zobacz jak to działa (2 min)
-                  </a>
-                )}
-                {uiLanguage === 'English' && (
-                  <a
-                    className="primary landing-cta landing-cta-video"
-                    href="https://youtube.com/shorts/1JDZenJneEE?feature=share"
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <span className="landing-cta-icon" aria-hidden="true">
-                      <svg viewBox="0 0 24 24" width="36" height="36">
-                        <path
-                          fill="currentColor"
-                          d="M4 6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2v-2.2l4.4 2.2a1 1 0 0 0 1.6-.8V8a1 1 0 0 0-1.6-.8L15 9.4V8a2 2 0 0 0-2-2H4z"
-                        />
-                      </svg>
-                    </span>
-                    Watch how it works (2 min)
-                  </a>
-                )}
-              </div>
-            </div>
-
-            <div className="landing-section intro">
-              <div className="landing-inner">
-                <div className="intro-title">
-                  <span className="title-brand">{copy.landingIntroTitleLines[0]}</span>
-                  {copy.landingIntroTitleLines.slice(1).map((line) => (
-                    <span key={line} className="title-line">
-                      {line}
-                    </span>
-                  ))}
-                </div>
-                <p className="intro-subtext">
-                  {copy.landingIntroSubtextLines
-                    .filter((line) => line.trim().length > 0)
-                    .map((line, index) => (
-                      <span key={`intro-subtext-${index}`}>
-                        {line.includes('{emphasis}')
-                          ? line.split('{emphasis}').map((part, partIndex) =>
-                              partIndex === 0 ? (
-                                part
-                              ) : (
-                                <span key={`emphasis-${index}-${partIndex}`}>
-                                  <strong>{copy.landingIntroSubtextEmphasis}</strong>
-                                  {part}
-                                </span>
-                              )
-                            )
-                          : line}
-                      </span>
-                    ))}
-                </p>
-                <div className="intro-cta">
-                  <a
-                    className="primary landing-cta"
-                    href="/login"
-                    onClick={handleLandingCtaClick}
-                  >
-                    {copy.landingCta}
-                  </a>
-                  <div className="landing-microcopy">
-                    {copy.landingIntroCtaNoteLines.map((line) => (
-                      <span key={line}>{line}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="landing-section before">
-              <div className="landing-inner">
-                <p className="before-lead">
-                  {copy.landingBeforeLead.split('\n').map((line, index) =>
-                    index === 0 ? (
-                      <span key="before-lead-primary">{line}</span>
-                    ) : (
-                      <span
-                        key={`before-lead-${index}`}
-                        className={`before-lead-secondary ${uiLanguage === 'Polish' ? 'before-lead-secondary-pl' : 'before-lead-secondary-en'}`.trim()}
-                      >
-                        {line}
-                      </span>
-                    )
-                  )}
-                </p>
-                <ul className="icon-list negative">
-                  {copy.landingBeforeList.map((item, index) =>
-                    item.trim().length === 0 ? (
-                      <li key={`spacer-${index}`} className="icon-list-spacer" aria-hidden="true" />
-                    ) : (
-                      <li
-                        key={`${item}-${index}`}
-                        className={item.trim().endsWith('?') ? 'before-final' : undefined}
-                      >
-                        {item}
-                      </li>
-                    )
-                  )}
-                </ul>
-                {(copy.landingBeforeEmphasis.strong ||
-                  copy.landingBeforeEmphasis.medium ||
-                  copy.landingBeforeEmphasis.rest) && (
-                  <div className="landing-emphasis">
-                    <span className="emphasis-strong">{copy.landingBeforeEmphasis.strong}</span>{' '}
-                    <span className="emphasis-medium">{copy.landingBeforeEmphasis.medium}</span>{' '}
-                    {copy.landingBeforeEmphasis.rest}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="landing-section after">
-              <div className="landing-inner">
-                <p className="before-lead">
-                  {copy.landingAfterLead.split('\n').map((line, index) =>
-                    index === 0 ? (
-                      <span key="after-lead-primary">{line}</span>
-                    ) : (
-                      <span key={`after-lead-${index}`} className="after-lead-secondary">
-                        {line}
-                      </span>
-                    )
-                  )}
-                </p>
-                <ul className="icon-list positive">
-                  {copy.landingAfterList.map((item, index) =>
-                    item.trim().length === 0 ? (
-                      <li key={`after-spacer-${index}`} className="icon-list-spacer" aria-hidden="true" />
-                    ) : (
-                      <li
-                        key={`${item}-${index}`}
-                        className={
-                          index === copy.landingAfterList.length - 1
-                            ? 'after-final'
-                            : item.trim().endsWith(':') || item.trim().startsWith('✅')
-                              ? 'after-muted'
-                              : undefined
-                        }
-                      >
-                        {item}
-                      </li>
-                    )
-                  )}
-                </ul>
-              </div>
-            </div>
-
-            <div className="landing-section how">
-              <div className="landing-inner">
-                <h3>{copy.landingHowTitle}</h3>
-                {copy.landingHowSteps.length > 0 ? (
-                  <ol className="how-steps">
-                    {copy.landingHowSteps.map((step) => (
-                      <li key={step.title} className="how-step">
-                        <div className="how-step-title">{step.title}</div>
-                        <div className="how-step-body">
-                          {step.lines.map((line) => (
-                            <div key={`${step.title}-${line}`}>{line}</div>
-                          ))}
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                ) : (
-                  <div className="how-lines">
-                    {copy.landingHowLines.map((line, index) => (
-                      <div key={`${line}-${index}`}>{line}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="landing-section why">
-              <div className="landing-inner">
-                <p className="before-lead why-lead">
-                  {copy.landingWhyLead.split('\n').map((line) => (
-                    <span key={line}>{line}</span>
-                  ))}
-                </p>
-                <div className="stacked-lines">
-                  <span className="stacked-brand">{copy.landingWhyLines[0]}</span>
-                  {copy.landingWhyLines.slice(1).map((item) => (
-                    <span
-                      key={item}
-                      className={
-                        uiLanguage === 'English' && (item === 'AI assists.' || item === 'Humans decide.')
-                          ? 'stacked-line-shift-en'
-                          : uiLanguage === 'Polish' && (item === 'AI pomaga.' || item === 'Człowiek decyduje.')
-                            ? 'stacked-line-shift-pl'
-                            : undefined
-                      }
-                    >
-                      {item}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            <div className="landing-section who">
-              <div className="landing-inner">
-                <h2>{copy.landingWhoTitle}</h2>
-                <ul className="icon-list neutral">
-                  {copy.landingWhoList.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-                <div className="landing-final">
-                  <p>{copy.landingFinalLines[0]}</p>
-                  <p className="final-shift">{copy.landingFinalLines[1]}</p>
-                  <a
-                    className="primary landing-cta"
-                    href="/login"
-                    onClick={handleLandingCtaClick}
-                  >
-                    {copy.landingCta}
-                  </a>
-                  <div className="landing-microcopy">
-                    <span>{copy.landingCtaNote}</span>
-                    {copy.landingIntroCtaNoteLines[1] && (
-                      <span>{copy.landingIntroCtaNoteLines[1]}</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-          </section>
-        )}
-        {showLanding && landingView === 'threeSteps' && (
-          <section className="landing">
-            <div className="landing-section hero in-view">
-              <div className="landing-inner">
-                <div className="three-steps-title">{copy.landingThreeStepsTitle}</div>
-                <h1>{copy.landingHeroTitle}</h1>
-                <p>{copy.landingHeroSubtitle}</p>
-                <button type="button" className="ghost landing-back" onClick={openMainLanding}>
-                  {copy.landingBackToFull}
-                </button>
-              </div>
-            </div>
-
-            <div className="landing-section intro">
-              <div className="landing-inner">
-                <div className="intro-title">
-                  <span className="title-brand">{copy.landingIntroTitleLines[0]}</span>
-                  {copy.landingIntroTitleLines.slice(1).map((line) => (
-                    <span key={line} className="title-line">
-                      {line}
-                    </span>
-                  ))}
-                </div>
-                <p className="intro-subtext">
-                  {copy.landingIntroSubtextLines
-                    .filter((line) => line.trim().length > 0)
-                    .map((line, index) => (
-                      <span key={`intro-subtext-three-${index}`}>
-                        {line.includes('{emphasis}')
-                          ? line.split('{emphasis}').map((part, partIndex) =>
-                              partIndex === 0 ? (
-                                part
-                              ) : (
-                                <span key={`emphasis-three-${index}-${partIndex}`}>
-                                  <strong>{copy.landingIntroSubtextEmphasis}</strong>
-                                  {part}
-                                </span>
-                              )
-                            )
-                          : line}
-                      </span>
-                    ))}
-                </p>
-                <div className="intro-cta">
-                  <a
-                    className="primary landing-cta"
-                    href="/login"
-                    onClick={handleLandingCtaClick}
-                  >
-                    {copy.landingCta}
-                  </a>
-                  <div className="landing-microcopy">
-                    {copy.landingIntroCtaNoteLines.map((line) => (
-                      <span key={line}>{line}</span>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="landing-section before">
-              <div className="landing-inner">
-                <p className="before-lead">
-                  {copy.landingBeforeLead.split('\n').map((line, index) =>
-                    index === 0 ? (
-                      <span key="before-lead-primary">{line}</span>
-                    ) : (
-                      <span key={`before-lead-${index}`} className="before-lead-secondary">
-                        {line}
-                      </span>
-                    )
-                  )}
-                </p>
-                <ul className="icon-list negative">
-                  {copy.landingBeforeList.map((item, index) =>
-                    item.trim().length === 0 ? (
-                      <li key={`spacer-${index}`} className="icon-list-spacer" aria-hidden="true" />
-                    ) : (
-                      <li
-                        key={`${item}-${index}`}
-                        className={item.trim().endsWith('?') ? 'before-final' : undefined}
-                      >
-                        {item}
-                      </li>
-                    )
-                  )}
-                </ul>
-                {(copy.landingBeforeEmphasis.strong ||
-                  copy.landingBeforeEmphasis.medium ||
-                  copy.landingBeforeEmphasis.rest) && (
-                  <div className="landing-emphasis">
-                    <span className="emphasis-strong">{copy.landingBeforeEmphasis.strong}</span>{' '}
-                    <span className="emphasis-medium">{copy.landingBeforeEmphasis.medium}</span>{' '}
-                    {copy.landingBeforeEmphasis.rest}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="landing-section who">
-              <div className="landing-inner">
-                <h2>{copy.landingWhoTitle}</h2>
-                <ul className="icon-list neutral">
-                  {copy.landingWhoList.map((item) => (
-                    <li key={item}>{item}</li>
-                  ))}
-                </ul>
-                <div className="landing-final">
-                  <p>{copy.landingFinalLines[0]}</p>
-                  <p className="final-shift">{copy.landingFinalLines[1]}</p>
-                  <a
-                    className="primary landing-cta"
-                    href="/login"
-                    onClick={handleLandingCtaClick}
-                  >
-                    {copy.landingCta}
-                  </a>
-                  <div className="landing-microcopy">{copy.landingCtaNote}</div>
-                </div>
-              </div>
-            </div>
-
-          </section>
-        )}
-        {!showLanding && activeStep === 1 && (
-          <section className="panel">
-            <div className="step1-section">
-              <div className="panel-header">
-                <h1>{stepHeading(1)}</h1>
-                <p>{copy.step1Intro}</p>
-              </div>
-
-              <div className="field-group">
-                <label htmlFor="product-description">{copy.productDescriptionLabel}</label>
-                <div className="product-description-row">
-                  <textarea
-                    id="product-description"
-                    rows={4}
-                    value={productDescription}
-                    onChange={(event) => {
-                      const next = limitWords(event.target.value, 500)
-                      setProductDescription(next)
-                    }}
-                    placeholder={copy.productDescriptionPlaceholder}
-                  />
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={!productDescription.trim()}
-                    onClick={() => {
-                      void requestNameSuggestions()
-                    }}
-                  >
-                    {copy.productDescriptionDoneLabel}
-                  </button>
-                </div>
-              </div>
-
-              <div className="field-group">
-                <label htmlFor="product-name">{copy.productNameLabel}</label>
-                <div className="product-input">
-                  <input
-                    id="product-name"
-                    type="text"
-                    value={productName}
-                    onChange={(event) => setProductName(event.target.value)}
-                    placeholder={copy.productNamePlaceholder}
-                    onDragOver={allowDrop}
-                    onDrop={(event) => {
-                      event.preventDefault()
-                      const dropped = event.dataTransfer.getData('text/plain')
-                      if (dropped) setProductName(dropped)
-                    }}
-                  />
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={!productName.trim()}
-                    onClick={() => setProductConfirmed(true)}
-                  >
-                    {copy.confirmProductLabel}
-                  </button>
-                </div>
-                {productDescriptionConfirmed && (
-                  <div className="name-suggestions">
-                    <span className="muted">{copy.productNameSuggestionsLabel}</span>
-                    <div className="name-suggestion-row">
-                      {productNameSuggestions.map((suggestion) => (
-                        <button
-                          key={suggestion}
-                          type="button"
-                          className="name-suggestion"
-                          draggable
-                          onDragStart={(event) => handleNameDragStart(event, suggestion)}
-                          onClick={() => setProductName(suggestion)}
-                        >
-                          {suggestion}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {productConfirmed && (
-              <div className="step1-section">
-                <div className="step1-panels">
-                  <div className="step1-panel">
-                    <h2>{copy.step1SpacesTitle}</h2>
-                    <p className="muted">{copy.step1DragHint}</p>
-                    <div className="dropzone-stack">
-                      <div
-                        className={`step1-dropzone space ${
-                          spaceAssignments.supersystem !== null ? 'filled' : ''
-                        }`}
-                        onDragOver={allowDrop}
-                        onDrop={handleDropOnSpace('supersystem')}
-                      >
-                        <div className="dropzone-header">
-                          <span className="dropzone-title">{copy.axisSupersystem}</span>
-                        </div>
-                        <div className="dropzone-body">
-                          {spaceAssignments.supersystem === null ? (
-                            <span className="placeholder">{copy.step1DropHere}</span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="dropzone-value"
-                              draggable
-                              onDragStart={(event) =>
-                                handleDragStart(event, 'space', spaceAssignments.supersystem as number)
-                              }
-                            >
-                              {spaceOptionMap.get(spaceAssignments.supersystem)?.label || copy.notSet}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      <div className="step1-dropzone locked">
-                        <div className="dropzone-header">
-                          <span className="dropzone-title">{copy.step1SystemLabel}</span>
-                          <span className="lock-tag">{copy.step1SystemLocked}</span>
-                        </div>
-                        <div className="dropzone-body">
-                          <span className="dropzone-value static">
-                            {productName || copy.notSet}
-                          </span>
-                        </div>
-                      </div>
-
-                      <div
-                        className={`step1-dropzone space ${
-                          spaceAssignments.subsystem !== null ? 'filled' : ''
-                        }`}
-                        onDragOver={allowDrop}
-                        onDrop={handleDropOnSpace('subsystem')}
-                      >
-                        <div className="dropzone-header">
-                          <span className="dropzone-title">{copy.axisSubsystem}</span>
-                        </div>
-                        <div className="dropzone-body">
-                          {spaceAssignments.subsystem === null ? (
-                            <span className="placeholder">{copy.step1DropHere}</span>
-                          ) : (
-                            <button
-                              type="button"
-                              className="dropzone-value"
-                              draggable
-                              onDragStart={(event) =>
-                                handleDragStart(event, 'space', spaceAssignments.subsystem as number)
-                              }
-                            >
-                              {spaceOptionMap.get(spaceAssignments.subsystem)?.label || copy.notSet}
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="step1-options">
-                      {spaceOptions.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          className={`step1-option ${
-                            assignedSpaceIds.includes(option.id) ? 'assigned' : ''
-                          }`}
-                          draggable
-                          onDragStart={(event) => handleDragStart(event, 'space', option.id)}
-                        >
-                          <span className="drag-handle" aria-hidden="true">
-                            ⋮⋮
-                          </span>
-                          <span className="option-icon" aria-hidden="true">
-                            {option.kind === 'world' ? <IconWorld /> : <IconElement />}
-                          </span>
-                          <span>{option.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="step1-panel">
-                    <h2>{copy.step1TimeframesTitle}</h2>
-                    <p className="muted">{copy.step1DragHint}</p>
-                    <div className="dropzone-stack">
-                      {(['past', 'now', 'future'] as const).map((slot) => (
-                        <div
-                          key={slot}
-                          className={`step1-dropzone time ${
-                            timeAssignments[slot] !== null ? 'filled' : ''
-                          }`}
-                          onDragOver={allowDrop}
-                          onDrop={handleDropOnTime(slot)}
-                        >
-                          <div className="dropzone-header">
-                            <span className="dropzone-title">{timeLabelMap[slot]}</span>
-                          </div>
-                          <div className="dropzone-body">
-                            {timeAssignments[slot] === null ? (
-                              <span className="placeholder">{copy.step1DropHere}</span>
-                            ) : (
-                              <button
-                                type="button"
-                                className="dropzone-value"
-                                draggable
-                                onDragStart={(event) =>
-                                  handleDragStart(event, 'time', timeAssignments[slot] as number)
-                                }
-                              >
-                                {timeOptionMap.get(timeAssignments[slot] as number) || copy.notSet}
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="step1-options">
-                      {timeOptions.map((option) => (
-                        <button
-                          key={option.id}
-                          type="button"
-                          className={`step1-option ${
-                            assignedTimeIds.includes(option.id) ? 'assigned' : ''
-                          }`}
-                          draggable
-                          onDragStart={(event) => handleDragStart(event, 'time', option.id)}
-                        >
-                          <span className="drag-handle" aria-hidden="true">
-                            ⋮⋮
-                          </span>
-                          <span>{option.label}</span>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <div className="actions">
-                  <button type="button" className="ghost" disabled>
-                    {copy.previousStepNone}
-                  </button>
-                  <button
-                    type="button"
-                    className="primary"
-                    disabled={!canProceedToStep2}
-                    onClick={() => setActiveStep(2)}
-                  >
-                    {copy.nextStepPrefix}
-                    {stepTitle(2)}
-                  </button>
-                </div>
-              </div>
-            )}
-          </section>
-        )}
-
-        {!showLanding && activeStep === 2 && (
-          <section className="panel step2">
-            <div className="panel-header">
-              <h1>{stepHeading(2)}</h1>
-              <p>{copy.scenarioIntro}</p>
-            </div>
-
-            {selectedScenario && (
-              <div className="step2-grid">
-                {spaceSectionsStep2.map((section, rowIndex) => (
-                  <div
-                    key={section}
-                    className="axis-definition step2-space"
-                    style={{ gridRow: rowIndex + 1, gridColumn: 1 }}
-                  >
-                    <strong>{spaceLabelMap[section]}</strong>
-                    {section === 'system' ? (
-                      <input
-                        type="text"
-                        value={productName}
-                        readOnly
-                        className="read-only"
-                      />
-                    ) : (
-                      <textarea
-                        rows={1}
-                        ref={autosizeTextarea}
-                        value={selectedScenario.spaceDefs[section]}
-                        onChange={(event) => {
-                          updateScenarioSpaceDef(section, event.target.value)
-                          autosizeTextarea(event.currentTarget)
-                        }}
-                      />
-                    )}
-                  </div>
-                ))}
-
-                {spaceSectionsStep2.map((spaceKey, rowIndex) =>
-                  timeSections.map((timeKey, colIndex) => (
-                    <div
-                      key={`${spaceKey}-${timeKey}`}
-                      className="matrix-cell"
-                      style={{ gridRow: rowIndex + 1, gridColumn: colIndex + 2 }}
-                    />
-                  ))
-                )}
-
-                {timeSections.map((section, colIndex) => (
-                  <div
-                    key={section}
-                    className="axis-definition step2-time"
-                    style={{ gridRow: 4, gridColumn: colIndex + 2 }}
-                  >
-                    <strong>{timeLabelMap[section]}</strong>
-                    <textarea
-                      rows={1}
-                      ref={autosizeTextarea}
-                      value={selectedScenario.timeDefs[section]}
-                      onChange={(event) => {
-                        updateScenarioTimeDef(section, event.target.value)
-                        autosizeTextarea(event.currentTarget)
-                      }}
-                    />
-                  </div>
-                ))}
-              </div>
-            )}
-
-            <div className="actions">
-              <button type="button" className="ghost" onClick={() => setActiveStep(1)}>
-                {copy.previousStepPrefix}
-                {stepTitle(1)}
-              </button>
-              <button
-                type="button"
-                className="primary"
-                disabled={!canProceedToStep3}
-                onClick={() => setActiveStep(3)}
-              >
-                {copy.nextStepPrefix}
-                {stepTitle(3)}
-              </button>
-            </div>
-          </section>
-        )}
-
-        {!showLanding && activeStep === 3 && selectedScenario && (
-          <section className="panel step3">
-            <div className="step3-header">
-              <div className="panel-header">
-                <h1>{stepHeading(3)}</h1>
-                <p>{copy.workshopIntro}</p>
-              </div>
-              <div className="action-stack">
-                <button
-                  type="button"
-                  className="primary"
-                  disabled={isSuggestLoading}
-                  onClick={() => void requestImpulse()}
-                  aria-busy={isSuggestLoading}
-                >
-                  {showSuggestLoadingUI && (
-                    <span className="button-spinner" aria-hidden="true" />
-                  )}
-                  {showSuggestLoadingUI ? copy.engineFacilitationLoadingLabel : copy.impulseButtonLabel}
-                </button>
-                <button type="button" className="primary" onClick={() => void addLlmIdeas()}>
-                  {copy.ideaGenerator}
-                </button>
-                <button type="button" className="primary" onClick={() => setConfirmRemoveOpen(true)}>
-                  {copy.keepOnlyMyIdeasLabel}
-                </button>
-                <button type="button" className="primary" onClick={() => setLabelEditorOpen(true)}>
-                  {copy.labelEditorLabel}
-                </button>
-              </div>
-            </div>
-
-            <div className="legend">
-              <div>
-                <IconIdea />
-                <span>{copy.legendIdea}</span>
-              </div>
-              <div>
-                <IconSearch />
-                <span>{copy.showIdeaLabel}</span>
-              </div>
-            </div>
-            <div className="legend-labels">
-              {ideaLabels.map((label) => (
-                <span
-                  key={label.id}
-                  className="legend-chip"
-                  style={{ backgroundColor: withAlpha(label.color) }}
-                >
-                  {label.text}
-                </span>
-              ))}
-            </div>
-
-            <div className="step3-grid">
-              {spaceSectionsStep3.map((section, rowIndex) => (
-                <div
-                  key={section}
-                  className={`axis-definition step3-space ${
-                    hoveredCell?.space === section ? 'highlight' : ''
-                  }`}
-                  style={{ gridRow: rowIndex + 1, gridColumn: 1 }}
-                >
-                  <strong>{spaceLabelMap[section]}</strong>
-                  <span>{selectedScenario.spaceDefs[section]}</span>
-                </div>
-              ))}
-
-              {spaceSectionsStep3.map((spaceKey, rowIndex) =>
-                timeSections.map((timeKey, colIndex) => {
-                  const cellKey = `${spaceKey}-${timeKey}`
-                  const ideas = workshopIdeas[cellKey] || []
-                  const isHovered =
-                    hoveredCell?.space === spaceKey && hoveredCell?.time === timeKey
-                  return (
-                    <div
-                      key={cellKey}
-                      className={`matrix-cell ${isHovered ? 'highlight' : ''}`}
-                      style={{ gridRow: rowIndex + 1, gridColumn: colIndex + 2 }}
-                      onMouseEnter={() => setHoveredCell({ space: spaceKey, time: timeKey })}
-                      onMouseLeave={() => setHoveredCell(null)}
-                    >
-                      <div className="cell-head">
-                        <span className="cell-label">
-                          {copy.cellLabel(spaceLabelMap[spaceKey], timeLabelMap[timeKey])}
-                        </span>
-                        <div className="cell-actions">
-                          <button
-                            type="button"
-                            className="icon-button"
-                            title={copy.addIdeaTooltip}
-                            onClick={() => {
-                              setActiveIdeaCell(cellKey)
-                              setIdeaDraft('')
-                              setIdeaLabelDraft(null)
-                            }}
-                          >
-                            <IconIdea />
-                          </button>
-                        </div>
-                      </div>
-                      <div className="post-it-area">
-                        {ideas.map((idea) => {
-                          const labelInfo = getLabelForIdea(idea.id)
-                          return (
-                            <button
-                              key={idea.id}
-                              type="button"
-                              className={`post-it ${idea.source}`}
-                              title={copy.editIdeaTooltip}
-                              onClick={() => {
-                                setPostItEdit(idea)
-                                setPostItEditCell(cellKey)
-                                setPostItLabelDraft(ideaLabelAssignments[idea.id] ?? null)
-                                setPostItEditOriginalText(idea.text)
-                              }}
-                            >
-                              <span
-                                className="post-it-zoom"
-                                onClick={(event) => {
-                                  event.stopPropagation()
-                                  setIdeaPreview(idea)
-                                }}
-                              >
-                                🔍
-                              </span>
-                              {labelInfo && (
-                                <span
-                                  className="label-dot"
-                                  style={{ color: labelInfo.color }}
-                                />
-                              )}
-                              {idea.text}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-
-              {timeSections.map((section, colIndex) => (
-                <div
-                  key={section}
-                  className={`axis-definition step3-time ${
-                    hoveredCell?.time === section ? 'highlight' : ''
-                  }`}
-                  style={{ gridRow: 4, gridColumn: colIndex + 2 }}
-                >
-                  <strong>{timeLabelMap[section]}</strong>
-                  <span>{selectedScenario.timeDefs[section]}</span>
-                </div>
-              ))}
-            </div>
-
-            <div className="actions">
-              <button type="button" className="ghost" onClick={() => setActiveStep(2)}>
-                {copy.previousStepPrefix}
-                {stepTitle(2)}
-              </button>
-              <button type="button" className="primary" onClick={() => setActiveStep(4)}>
-                {copy.nextStepPrefix}
-                {stepTitle(4)}
-              </button>
-            </div>
-          </section>
-        )}
-
-        {!showLanding && activeStep === 4 && (
-          <section className="panel">
-            <div className="panel-header">
-              <h1>{stepHeading(4)}</h1>
-              <p>{copy.finalReportIntro}</p>
-            </div>
-
-            <div className="field-group">
-              <label htmlFor="report-language">{copy.reportLanguageLabel}</label>
-              <select
-                id="report-language"
-                value={reportLanguage}
-                disabled
-              >
-                {languageOptions.map((language) => (
-                  <option key={language} value={language}>
-                    {language}
-                  </option>
-                ))}
-              </select>
-              <p className="muted">{copy.reportLanguageHint}</p>
-            </div>
-
-            <div className="report">
-              <div className="report-section">
-                <h2>{stepHeading(1)}</h2>
-                <p>
-                  <strong>{copy.productLabel}:</strong>{' '}
-                  {reportData.step1.productName || copy.notSet}
-                </p>
-                <p>
-                  <strong>{copy.spacesLabel}:</strong>{' '}
-                  {reportData.step1.spaces.length
-                    ? reportData.step1.spaces.join(', ')
-                    : copy.notSet}
-                </p>
-                <p>
-                  <strong>{copy.timeFramesLabel}:</strong>{' '}
-                  {reportData.step1.times.length ? reportData.step1.times.join(', ') : copy.notSet}
-                </p>
-              </div>
-
-              <div className="report-section">
-                <h2>{stepHeading(2)}</h2>
-                <p>
-                  <strong>{copy.totalScenariosLabel}:</strong>{' '}
-                  {reportData.step2.totalScenarios}
-                </p>
-                <p>
-                  <strong>{copy.chosenScenarioLabel}:</strong>{' '}
-                  {reportData.step2.selectedScenario || copy.notSelected}
-                </p>
-                {reportData.step3 ? (
-                  <>
-                    <p>
-                      <strong>{copy.spaceDefinitionsLabel}:</strong>{' '}
-                      {`${reportData.step3.spaceDefs.subsystem} | ${reportData.step3.spaceDefs.system} | ${reportData.step3.spaceDefs.supersystem}`}
-                    </p>
-                    <p>
-                      <strong>{copy.timeDefinitionsLabel}:</strong>{' '}
-                      {`${reportData.step3.timeDefs.past} | ${reportData.step3.timeDefs.now} | ${reportData.step3.timeDefs.future}`}
-                    </p>
-                  </>
-                ) : (
-                  <p>{copy.noScenarioConfirmed}</p>
-                )}
-              </div>
-
-              <div className="report-section">
-                <h2>{stepHeading(3)}</h2>
-                <p>
-                  <strong>{copy.totalIdeasLabel}:</strong> {reportData.step4.totalIdeas}
-                </p>
-                <p>
-                  <strong>{copy.cellsWithIdeasLabel}:</strong> {reportData.step4.cellsWithIdeas} /
-                  9
-                </p>
-                <div className="idea-groups">
-                  <div>
-                    <strong>{copy.ideasUserLabel}:</strong>
-                    {reportData.step4.userIdeas.length ? (
-                      <ul className="idea-list">
-                        {reportData.step4.userIdeas.map((idea, index) => (
-                          <li key={`user-idea-${index}`}>{idea}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="muted">{copy.noIdeasLabel}</p>
-                    )}
-                  </div>
-                  <div>
-                    <strong>{copy.ideasGeneratedLabel}:</strong>
-                    {reportData.step4.llmIdeas.length ? (
-                      <ul className="idea-list">
-                        {reportData.step4.llmIdeas.map((idea, index) => (
-                          <li key={`llm-idea-${index}`}>{idea}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="muted">{copy.noIdeasLabel}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="report-section">
-                <h2>{stepHeading(4)}</h2>
-                <p>
-                  <strong>{copy.selectedLanguageLabel}:</strong> {reportData.step4Report.language}
-                </p>
-              </div>
-            </div>
-
-            <div className="actions">
-              <button type="button" className="ghost" onClick={() => setActiveStep(3)}>
-                {copy.previousStepPrefix}
-                {stepTitle(3)}
-              </button>
-              <button type="button" className="secondary" onClick={() => setReportSnapshotOpen(true)}>
-                {copy.openReportPanel}
-              </button>
-              <button type="button" className="primary" disabled>
-                {copy.nextStepCompleted}
-              </button>
-            </div>
-          </section>
-        )}
-      </main>
-      {showLanding && (
-        <footer className="landing-bottom-bar">
-          <nav className="landing-bottom-links" aria-label="Legal links">
-            <a className="ghost landing-bottom-link" href="/privacy">
-              {copy.landingPrivacyTitle}
-            </a>
-            <a className="ghost landing-bottom-link" href="/blog">
-              {copy.landingBlogTitle}
-            </a>
-            <a className="ghost landing-bottom-link" href="/termsandconditions">
-              {copy.landingTermsTitle}
-            </a>
-            <a className="ghost landing-bottom-link" href="mailto:makemyideawork@aremai.tech">
-              {copy.landingContactTitle}
-            </a>
-          </nav>
-          <a
-            className="landing-bottom-logo-link"
-            href="https://www.aremai.tech"
-            target="_blank"
-            rel="noopener noreferrer"
-            aria-label="AremAI website"
-          >
-            <img
-              className="landing-bottom-logo"
-              src={new URL('/logo/aremai_logo.png.webp', import.meta.url).href}
-              alt="AremAI"
-              loading="lazy"
-            />
-          </a>
-        </footer>
-      )}
-      {activeIdeaCell && (
-        <div className="modal" role="dialog" aria-modal="true">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>{copy.editIdeaTitle}</h2>
-              {(() => {
-                const labelItem = getLabelById(ideaLabelDraft)
-                const isFilled = Boolean(labelItem)
-                const color = labelItem?.color || null
-                return (
-                  <div
-                    className={`label-drop-target ${isFilled ? 'filled' : 'placeholder'}`}
-                    style={
-                      isFilled && color
-                        ? { backgroundColor: withAlpha(color), borderColor: color }
-                        : undefined
-                    }
-                    onDragOver={allowDrop}
-                    onDrop={(event) => {
-                      event.preventDefault()
-                      const dropped = event.dataTransfer.getData('application/label')
-                      setIdeaLabelDraft(dropped || null)
-                    }}
-                  >
-                    {isFilled ? labelItem?.text : copy.labelDropPlaceholder}
-                  </div>
-                )
-              })()}
-            </div>
-            <div className="modal-body">
-              <textarea
-                className="modal-textarea"
-                value={ideaDraft}
-                onChange={(event) => setIdeaDraft(event.target.value)}
-                placeholder={copy.ideaPlaceholder}
-              />
-              <div className="label-row">
-                <button
-                  type="button"
-                  className="label-chip no-label"
-                  draggable
-                  onDragStart={(event) => handleLabelDragStart(event, null)}
-                >
-                  {copy.noLabelText}
-                </button>
-                {ideaLabels.map((label) => (
-                  <button
-                    key={label.id}
-                    type="button"
-                    className="label-chip"
-                    draggable
-                    onDragStart={(event) => handleLabelDragStart(event, label.id)}
-                    style={{
-                      backgroundColor: withAlpha(label.color),
-                    }}
-                  >
-                    {label.text}
-                  </button>
-                ))}
-              </div>
-              <div className="idea-editor-actions">
-                <span>{copy.wordCount(countWords(ideaDraft))}</span>
-                <div>
-                  <button type="button" className="ghost" onClick={() => setActiveIdeaCell(null)}>
-                    {copy.cancel}
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={!ideaDraft.trim() || countWords(ideaDraft) > 50}
-                    onClick={() => {
-                      const ideaId = `user-${Date.now()}`
-                      setWorkshopIdeas((prev) => ({
-                        ...prev,
-                        [activeIdeaCell]: [...(prev[activeIdeaCell] || []), { id: ideaId, text: ideaDraft.trim(), source: 'user' }],
-                      }))
-                      if (ideaLabelDraft) {
-                        setIdeaLabelAssignments((prev) => ({
-                          ...prev,
-                          [ideaId]: ideaLabelDraft,
-                        }))
-                      }
-                      setActiveIdeaCell(null)
-                    }}
-                  >
-                    {copy.saveIdea}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {impulseOpen && (
-        <div className="modal" role="dialog" aria-modal="true">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>{copy.impulseTitle}</h2>
-              <button type="button" className="ghost" onClick={() => setImpulseOpen(false)}>
-                {copy.impulseClose}
-              </button>
-            </div>
-            <div className="modal-body">
-              {isSuggestLoading ? (
-                showSuggestLoadingUI ? (
-                  <div className="impulse-placeholder" role="status" aria-live="polite">
-                    <div className="impulse-placeholder-line" />
-                    <div className="impulse-placeholder-line short" />
-                    <p className="muted">{copy.engineFacilitationLoadingPerspective}</p>
-                  </div>
-                ) : (
-                  <div className="impulse-placeholder" aria-hidden="true" />
-                )
-              ) : (
-                <p>{impulseQuestion || copy.impulseEmpty}</p>
-              )}
-              {!isSuggestLoading && impulseQuestion && impulseSource && showDiagnostics && (
-                <span className="impulse-source-row">
-                  <span
-                    className={`impulse-source-chip ${
-                      impulseSource === 'fallback' ? 'fallback' : 'ai'
-                    }`}
-                  >
-                    {impulseSource === 'fallback'
-                      ? copy.impulseSourceFallback
-                      : copy.impulseSourceAi}
-                  </span>
-                  {import.meta.env.DEV && (
-                    <span className="impulse-source-note">
-                      {lastLlmSource === 'llm'
-                        ? copy.impulseSourceAiGenerated
-                        : copy.impulseSourceDeterministic}
-                      {lastLlmWhy ? ` · ${lastLlmWhy}` : ''}
-                    </span>
-                  )}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {reportSnapshotOpen && (
-        <div className="modal" role="dialog" aria-modal="true">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>{copy.reportSnapshotTitle}</h2>
-              <button type="button" className="ghost" onClick={() => setReportSnapshotOpen(false)}>
-                {copy.close}
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="field-group">
-                <label htmlFor="report-language-modal">{copy.reportLanguageLabel}</label>
-                <select
-                  id="report-language-modal"
-                  value={reportLanguage}
-                  disabled
-                >
-                  {languageOptions.map((language) => (
-                    <option key={language} value={language}>
-                      {language}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="report-section">
-                <h3>{stepHeading(1)}</h3>
-                <p>
-                  <strong>{copy.productLabel}:</strong>{' '}
-                  {reportData.step1.productName || copy.notSet}
-                </p>
-                <p>
-                  <strong>{copy.spacesLabel}:</strong>{' '}
-                  {reportData.step1.spaces.length
-                    ? reportData.step1.spaces.join(', ')
-                    : copy.notSet}
-                </p>
-                <p>
-                  <strong>{copy.timeFramesLabel}:</strong>{' '}
-                  {reportData.step1.times.length
-                    ? reportData.step1.times.join(', ')
-                    : copy.notSet}
-                </p>
-              </div>
-              <div className="report-section">
-                <h3>{stepHeading(2)}</h3>
-                <p>
-                  <strong>{copy.totalScenariosLabel}:</strong>{' '}
-                  {reportData.step2.totalScenarios}
-                </p>
-                <p>
-                  <strong>{copy.chosenScenarioLabel}:</strong>{' '}
-                  {reportData.step2.selectedScenario || copy.notSelected}
-                </p>
-                {reportData.step3 ? (
-                  <>
-                    <p>
-                      <strong>{copy.spaceDefinitionsLabel}:</strong>{' '}
-                      {`${reportData.step3.spaceDefs.subsystem} | ${reportData.step3.spaceDefs.system} | ${reportData.step3.spaceDefs.supersystem}`}
-                    </p>
-                    <p>
-                      <strong>{copy.timeDefinitionsLabel}:</strong>{' '}
-                      {`${reportData.step3.timeDefs.past} | ${reportData.step3.timeDefs.now} | ${reportData.step3.timeDefs.future}`}
-                    </p>
-                  </>
-                ) : (
-                  <p>{copy.noScenarioConfirmed}</p>
-                )}
-              </div>
-              <div className="report-section">
-                <h3>{stepHeading(3)}</h3>
-                <p>
-                  <strong>{copy.totalIdeasLabel}:</strong> {reportData.step4.totalIdeas}
-                </p>
-                <p>
-                  <strong>{copy.cellsWithIdeasLabel}:</strong> {reportData.step4.cellsWithIdeas} /
-                  9
-                </p>
-                <div className="idea-groups">
-                  <div>
-                    <strong>{copy.ideasUserLabel}:</strong>
-                    {reportData.step4.userIdeas.length ? (
-                      <ul className="idea-list">
-                        {reportData.step4.userIdeas.map((idea, index) => (
-                          <li key={`user-idea-modal-${index}`}>{idea}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="muted">{copy.noIdeasLabel}</p>
-                    )}
-                  </div>
-                  <div>
-                    <strong>{copy.ideasGeneratedLabel}:</strong>
-                    {reportData.step4.llmIdeas.length ? (
-                      <ul className="idea-list">
-                        {reportData.step4.llmIdeas.map((idea, index) => (
-                          <li key={`llm-idea-modal-${index}`}>{idea}</li>
-                        ))}
-                      </ul>
-                    ) : (
-                      <p className="muted">{copy.noIdeasLabel}</p>
-                    )}
-                  </div>
-                </div>
-              </div>
-              <div className="report-section">
-                <h3>{stepHeading(4)}</h3>
-                <p>
-                  <strong>{copy.selectedLanguageLabel}:</strong> {reportData.step4Report.language}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {labelEditorOpen && (
-        <div className="modal" role="dialog" aria-modal="true">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>{copy.labelEditorTitle}</h2>
-              <button type="button" className="ghost" onClick={() => setLabelEditorOpen(false)}>
-                {copy.close}
-              </button>
-            </div>
-            <div className="modal-body">
-              <div className="label-editor-list">
-                {ideaLabels.map((label) => (
-                  <div key={label.id} className="label-editor-row">
-                    <input
-                      type="text"
-                      value={label.text}
-                      onChange={(event) => {
-                        const next = ideaLabels.map((item) =>
-                          item.id === label.id ? { ...item, text: event.target.value } : item
-                        )
-                        setIdeaLabels(next)
-                      }}
-                      style={{ backgroundColor: withAlpha(label.color) }}
-                    />
-                    <button
-                      type="button"
-                      className="label-delete"
-                      aria-label={copy.removeLabelAriaLabel}
-                      title={copy.removeLabelAriaLabel}
-                      onClick={() => {
-                        setIdeaLabels((prev) => prev.filter((item) => item.id !== label.id))
-                        setIdeaLabelAssignments((prev) => {
-                          const next: Record<string, string | null> = {}
-                          Object.entries(prev).forEach(([ideaId, labelId]) => {
-                            if (labelId !== label.id) next[ideaId] = labelId
-                          })
-                          return next
-                        })
-                        if (ideaLabelDraft === label.id) setIdeaLabelDraft(null)
-                        if (postItLabelDraft === label.id) setPostItLabelDraft(null)
-                      }}
-                    >
-                      ×
-                    </button>
-                  </div>
-                ))}
-                {ideaLabels.length < 10 && (
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() =>
-                      setIdeaLabels((prev) => [
-                        ...prev,
-                        {
-                          id: `label-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-                          text: '',
-                          color: getNextLabelColor(prev),
-                        },
-                      ])
-                    }
-                  >
-                    {copy.labelEditorAdd}
-                  </button>
-                )}
-              </div>
-              <div className="actions label-editor-actions">
-                <button type="button" className="primary" onClick={() => setLabelEditorOpen(false)}>
-                  {copy.labelEditorSave}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {postItEdit && postItEditCell && (
-        <div className="modal" role="dialog" aria-modal="true">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>{copy.editIdeaTitle}</h2>
-              {(() => {
-                const labelItem = getLabelById(postItLabelDraft)
-                const isFilled = Boolean(labelItem)
-                const color = labelItem?.color || null
-                return (
-                  <div
-                    className={`label-drop-target ${isFilled ? 'filled' : 'placeholder'}`}
-                    style={
-                      isFilled && color
-                        ? { backgroundColor: withAlpha(color), borderColor: color }
-                        : undefined
-                    }
-                    onDragOver={allowDrop}
-                    onDrop={(event) => {
-                      event.preventDefault()
-                      const dropped = event.dataTransfer.getData('application/label')
-                      setPostItLabelDraft(dropped || null)
-                    }}
-                  >
-                    {isFilled ? labelItem?.text : copy.labelDropPlaceholder}
-                  </div>
-                )
-              })()}
-            </div>
-            <div className="modal-body">
-              <textarea
-                className="modal-textarea"
-                value={postItEdit.text}
-                readOnly={postItEdit.source !== 'user'}
-                onChange={(event) =>
-                  setPostItEdit({ ...postItEdit, text: event.target.value })
-                }
-              />
-              <div className="label-row">
-                <button
-                  type="button"
-                  className="label-chip no-label"
-                  draggable
-                  onDragStart={(event) => handleLabelDragStart(event, null)}
-                >
-                  {copy.noLabelText}
-                </button>
-                {ideaLabels.map((label) => (
-                  <button
-                    key={label.id}
-                    type="button"
-                    className="label-chip"
-                    draggable
-                    onDragStart={(event) => handleLabelDragStart(event, label.id)}
-                    style={{
-                      backgroundColor: withAlpha(label.color),
-                    }}
-                  >
-                    {label.text}
-                  </button>
-                ))}
-              </div>
-              <div className="idea-editor-actions">
-                <span>{copy.wordCount(countWords(postItEdit.text))}</span>
-                <div>
-                  <button
-                    type="button"
-                    className="ghost"
-                    onClick={() => {
-                      setPostItEdit(null)
-                      setPostItEditCell(null)
-                    }}
-                  >
-                    {copy.cancel}
-                  </button>
-                  <button
-                    type="button"
-                    className="secondary"
-                    disabled={
-                      countWords(postItEdit.text) > 50 ||
-                      (postItEdit.source !== 'user' &&
-                        postItLabelDraft === (ideaLabelAssignments[postItEdit.id] ?? null)) ||
-                      (postItEdit.source === 'user' &&
-                        postItEdit.text === postItEditOriginalText &&
-                        postItLabelDraft === (ideaLabelAssignments[postItEdit.id] ?? null))
-                    }
-                    onClick={() => {
-                      if (postItEdit.source === 'user') {
-                        setWorkshopIdeas((prev) => {
-                          const current = prev[postItEditCell] || []
-                          return {
-                            ...prev,
-                            [postItEditCell]: current.map((idea) =>
-                              idea.id === postItEdit.id
-                                ? { ...idea, text: postItEdit.text }
-                                : idea
-                            ),
-                          }
-                        })
-                      }
-                      setIdeaLabelAssignments((prev) => ({
-                        ...prev,
-                        [postItEdit.id]: postItLabelDraft ?? null,
-                      }))
-                      setPostItEdit(null)
-                      setPostItEditCell(null)
-                    }}
-                  >
-                    {copy.save}
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {ideaPreview && (
-        <div className="modal" role="dialog" aria-modal="true">
-          <div
-            className="idea-preview"
-            style={{
-              background:
-                ideaPreview.source === 'user'
-                  ? 'rgba(247, 215, 122, 1)'
-                  : 'rgba(142, 192, 255, 1)',
-            }}
-          >
-            <button
-              type="button"
-              className="idea-preview-close"
-              onMouseEnter={() => setIdeaPreview(null)}
-            >
-              ×
-            </button>
-            <p>{ideaPreview.text}</p>
-          </div>
-        </div>
-      )}
-
-      {confirmRemoveOpen && (
-        <div className="modal" role="dialog" aria-modal="true">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>{copy.confirmRemoveIdeasTitle}</h2>
-            </div>
-            <div className="modal-body">
-              <p>{copy.confirmRemoveIdeasMessage}</p>
-              <div className="confirm-actions">
-                <button
-                  type="button"
-                  className="ghost"
-                  onClick={() => setConfirmRemoveOpen(false)}
-                >
-                  {copy.confirmNo}
-                </button>
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => {
-                    keepOnlyUserIdeas()
-                    setConfirmRemoveOpen(false)
-                  }}
-                >
-                  {copy.confirmYes}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {llmSettingsOpen && (
-        <div className="modal" role="dialog" aria-modal="true">
-          <div className="modal-content">
-            <div className="modal-header">
-              <h2>{copy.llmSettingsTitle}</h2>
-              <button type="button" className="ghost" onClick={() => setLlmSettingsOpen(false)}>
-                {copy.close}
-              </button>
-            </div>
-            <div className="modal-body">
-              <p className="muted">{copy.llmSettingsIntro}</p>
-              <div className="field-group">
-                <label htmlFor="llm-api-base">{copy.llmApiBaseLabel}</label>
-                <input
-                  id="llm-api-base"
-                  type="text"
-                  value={llmApiBase}
-                  onChange={(event) => {
-                    setLlmApiBase(event.target.value)
-                    setLlmSaved(false)
-                    setLlmStatus('unknown')
-                  }}
-                  placeholder={copy.llmApiBasePlaceholder}
-                />
-              </div>
-              <p className="muted">
-                {llmStatus === 'online'
-                  ? copy.llmStatusOnline
-                  : llmStatus === 'offline'
-                    ? copy.llmStatusOffline
-                    : copy.llmStatusUnknown}
-              </p>
-              <p className="muted">{copy.llmSettingsCostNote}</p>
-              <div className="actions">
-                <button
-                  type="button"
-                  className="secondary"
-                  onClick={() => {
-                    const normalized = normalizeApiBase(llmApiBase)
-                    setLlmApiBase(normalized)
-                    void checkLlmStatus(normalized)
-                  }}
-                  disabled={!aiSupportEnabled}
-                >
-                  {copy.llmTestConnection}
-                </button>
-                <button
-                  type="button"
-                  className="primary"
-                  onClick={() => {
-                    const normalized = normalizeApiBase(llmApiBase)
-                    setLlmApiBase(normalized)
-                    localStorage.setItem('llm_api_base', normalized)
-                    void checkLlmStatus(normalized)
-                    setLlmSaved(true)
-                  }}
-                  disabled={!aiSupportEnabled}
-                >
-                  {copy.llmSettingsSave}
-                </button>
-                {llmSaved && <span className="muted">{copy.llmSettingsSaved}</span>}
-              </div>
-              {showDiagnostics && (
-                <div className="actions llm-toggle">
-                  <button
-                    type="button"
-                    className={`ai-support-toggle ${aiSupportEnabled ? 'on' : 'off'}`}
-                    onClick={() => {
-                      const nextEnabled = !aiSupportEnabled
-                      setAiSupportEnabled(nextEnabled)
-                      localStorage.setItem('aiSupportEnabled', nextEnabled ? 'true' : 'false')
-                      if (nextEnabled) {
-                        void checkLlmStatus(normalizeApiBase(llmApiBase))
-                      } else {
-                        setLlmStatus('offline')
-                      }
-                    }}
-                  >
-                    {aiSupportEnabled ? copy.aiSupportOn : copy.aiSupportOff}
-                  </button>
-                  {import.meta.env.DEV && (
-                    <button type="button" className="ghost" onClick={handleLlmPing}>
-                      LLM ping
-                    </button>
-                  )}
-                </div>
-              )}
-              {import.meta.env.DEV && llmPingResult && (
-                <div className="engine-helper">
-                  {llmPingResult.error
-                    ? `Ping error: ${llmPingResult.error}`
-                    : `Ping OK: ${llmPingResult.model ?? 'model?'} | in ${
-                        llmPingResult.tokensIn ?? 0
-                      } / out ${llmPingResult.tokensOut ?? 0}${
-                        llmPingResult.message ? ` | ${llmPingResult.message}` : ''
-                      }`}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {feedbackPanel}
-      {feedbackFab}
-      {missingLabelModal}
-    </div>
+    <Engine1LegacyRoute
+      activeIdeaCell={activeIdeaCell}
+      activeStep={activeStep}
+      addLlmIdeas={addLlmIdeas}
+      aiSupportEnabled={aiSupportEnabled}
+      allowDrop={allowDrop}
+      assignedSpaceIds={assignedSpaceIds}
+      assignedTimeIds={assignedTimeIds}
+      autosizeTextarea={autosizeTextarea}
+      canProceedToStep2={canProceedToStep2}
+      canProceedToStep3={canProceedToStep3}
+      checkLlmStatus={checkLlmStatus}
+      confirmRemoveOpen={confirmRemoveOpen}
+      copy={copy}
+      countWords={countWords}
+      DIAGNOSTICS_STORAGE_KEY={DIAGNOSTICS_STORAGE_KEY}
+      feedbackFab={feedbackFab}
+      feedbackPanel={feedbackPanel}
+      getLabelById={getLabelById}
+      getLabelForIdea={getLabelForIdea}
+      getNextLabelColor={getNextLabelColor}
+      handleDragStart={handleDragStart}
+      handleDropOnSpace={handleDropOnSpace}
+      handleDropOnTime={handleDropOnTime}
+      handleLabelDragStart={handleLabelDragStart}
+      handleLandingCtaClick={handleLandingCtaClick}
+      handleLlmPing={handleLlmPing}
+      handleNameDragStart={handleNameDragStart}
+      hoveredCell={hoveredCell}
+      IconElement={IconElement}
+      IconIdea={IconIdea}
+      IconReport={IconReport}
+      IconSearch={IconSearch}
+      IconWorld={IconWorld}
+      ideaDraft={ideaDraft}
+      ideaLabelAssignments={ideaLabelAssignments}
+      ideaLabelDraft={ideaLabelDraft}
+      ideaLabels={ideaLabels}
+      ideaPreview={ideaPreview}
+      impulseOpen={impulseOpen}
+      impulseQuestion={impulseQuestion}
+      impulseSource={impulseSource}
+      isAdmin={isAdmin}
+      isSuggestLoading={isSuggestLoading}
+      keepOnlyUserIdeas={keepOnlyUserIdeas}
+      labelEditorOpen={labelEditorOpen}
+      landingLogoUrl={landingLogoUrl}
+      landingView={landingView}
+      languageOptions={languageOptions}
+      lastLlmSource={lastLlmSource}
+      lastLlmWhy={lastLlmWhy}
+      limitWords={limitWords}
+      llmApiBase={llmApiBase}
+      llmPingResult={llmPingResult}
+      llmSaved={llmSaved}
+      llmSettingsOpen={llmSettingsOpen}
+      llmStatus={llmStatus}
+      missingLabelModal={missingLabelModal}
+      normalizeApiBase={normalizeApiBase}
+      openMainLanding={openMainLanding}
+      postItEdit={postItEdit}
+      postItEditCell={postItEditCell}
+      postItEditOriginalText={postItEditOriginalText}
+      postItLabelDraft={postItLabelDraft}
+      productConfirmed={productConfirmed}
+      productDescription={productDescription}
+      productDescriptionConfirmed={productDescriptionConfirmed}
+      productName={productName}
+      productNameSuggestions={productNameSuggestions}
+      reportData={reportData}
+      reportLanguage={reportLanguage}
+      reportSnapshotOpen={reportSnapshotOpen}
+      requestImpulse={requestImpulse}
+      requestNameSuggestions={requestNameSuggestions}
+      selectedScenario={selectedScenario}
+      setActiveIdeaCell={setActiveIdeaCell}
+      setActiveStep={setActiveStep}
+      setAiSupportEnabled={setAiSupportEnabled}
+      setConfirmRemoveOpen={setConfirmRemoveOpen}
+      setDiagnosticsEnabled={setDiagnosticsEnabled}
+      setHoveredCell={setHoveredCell}
+      setIdeaDraft={setIdeaDraft}
+      setIdeaLabelAssignments={setIdeaLabelAssignments}
+      setIdeaLabelDraft={setIdeaLabelDraft}
+      setIdeaLabels={setIdeaLabels}
+      setIdeaPreview={setIdeaPreview}
+      setImpulseOpen={setImpulseOpen}
+      setLabelEditorOpen={setLabelEditorOpen}
+      setLlmApiBase={setLlmApiBase}
+      setLlmSaved={setLlmSaved}
+      setLlmSettingsOpen={setLlmSettingsOpen}
+      setLlmStatus={setLlmStatus}
+      setPostItEdit={setPostItEdit}
+      setPostItEditCell={setPostItEditCell}
+      setPostItEditOriginalText={setPostItEditOriginalText}
+      setPostItLabelDraft={setPostItLabelDraft}
+      setProductConfirmed={setProductConfirmed}
+      setProductDescription={setProductDescription}
+      setProductName={setProductName}
+      setReportSnapshotOpen={setReportSnapshotOpen}
+      setUiLanguage={setUiLanguage}
+      setWorkshopIdeas={setWorkshopIdeas}
+      showDiagnostics={showDiagnostics}
+      showLanding={showLanding}
+      showSuggestLoadingUI={showSuggestLoadingUI}
+      spaceAssignments={spaceAssignments}
+      spaceLabelMap={spaceLabelMap}
+      spaceOptionMap={spaceOptionMap}
+      spaceOptions={spaceOptions}
+      spaceSectionsStep2={spaceSectionsStep2}
+      spaceSectionsStep3={spaceSectionsStep3}
+      stepHeading={stepHeading}
+      stepOrder={stepOrder}
+      stepTitle={stepTitle}
+      timeAssignments={timeAssignments}
+      timeLabelMap={timeLabelMap}
+      timeOptionMap={timeOptionMap}
+      timeOptions={timeOptions}
+      timeSections={timeSections}
+      uiLanguage={uiLanguage}
+      uiLanguageOptions={uiLanguageOptions}
+      updateScenarioSpaceDef={updateScenarioSpaceDef}
+      updateScenarioTimeDef={updateScenarioTimeDef}
+      withAlpha={withAlpha}
+      workshopIdeas={workshopIdeas}
+    />
   )
 }
 

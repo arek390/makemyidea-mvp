@@ -369,6 +369,27 @@
   transform: translateY(30px);
 }
 
+.landing-hero-secondary-cta {
+  display: grid;
+  justify-items: center;
+  gap: 0.55rem;
+  margin-top: 3.25rem;
+}
+
+.landing-hero-secondary-cta .landing-cta {
+  min-width: 0;
+  justify-content: center;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.landing-hero-secondary-note {
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+  font-size: 0.88rem;
+  text-align: center;
+  max-width: 28rem;
+}
+
 .landing-examples-cta {
   border-color: transparent;
 }
@@ -490,6 +511,22 @@
 
 .intro-cta .landing-microcopy span {
   display: block;
+}
+
+.engine-preview-public {
+  min-height: 100vh;
+}
+
+.engine-main--public {
+  min-height: calc(100vh - 9rem);
+}
+
+.engine-public-login {
+  white-space: nowrap;
+}
+
+.engine-public-notice {
+  margin: 0 1.5rem;
 }
 
 /* Keep CTA animation only; microcopy is always visible */
@@ -933,6 +970,16 @@
     width: 100%;
     padding: 0.75rem 1.4rem;
     font-size: 1.35rem;
+    white-space: normal;
+  }
+
+  .landing-hero-secondary-cta {
+    margin-top: 3rem;
+    width: min(100%, 420px);
+  }
+
+  .landing-hero-secondary-cta .landing-cta {
+    width: 100%;
     white-space: normal;
   }
 }
@@ -4327,12 +4374,18 @@ details.report-section > summary {
 .engine-header-logo {
   display: flex;
   align-items: center;
+  border-radius: 8px;
 }
 
 .engine-header-logo img {
   display: block;
   height: 64px;
   width: auto;
+}
+
+.engine-header-logo:focus-visible {
+  outline: 3px solid rgba(11, 47, 95, 0.35);
+  outline-offset: 4px;
 }
 
 .engine-kicker {

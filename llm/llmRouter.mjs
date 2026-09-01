@@ -4,7 +4,7 @@ import {
   buildPreprocessUserPrompt,
   buildGenerationUserPrompt,
 } from './llmPrompts.mjs'
-import { callOpenAIChat } from '../src/lib/server/openaiClient.js'
+import { callOpenAIChat, buildSafeOpenAiErrorDiagnostic } from '../src/lib/server/openaiClient.js'
 import { getSupabaseAdmin } from '../src/lib/server/supabaseAdmin.js'
 
 const DEFAULT_MODELS = {
@@ -91,6 +91,28 @@ const normalizeString = (value) => String(value || '').replace(/\s+/g, ' ').trim
 
 const truncateInput = (value, maxChars = MAX_INPUT_CHARS) =>
   String(value || '').slice(0, maxChars)
+
+const flattenProviderDiagnostics = (diagnostics = {}) => ({
+  providerCallStartedAt: diagnostics.providerCallStartedAt ?? null,
+  providerCallResolvedAt: diagnostics.providerCallResolvedAt ?? null,
+  providerCallAbortedAt: diagnostics.providerCallAbortedAt ?? null,
+  abortReason: diagnostics.abortReason ?? null,
+  timeoutSource: diagnostics.timeoutSource ?? null,
+  providerTimeoutMs: diagnostics.timeoutMs ?? null,
+  providerModel: diagnostics.model ?? null,
+  responseFormatName: diagnostics.responseFormatName ?? null,
+  providerRequestId: diagnostics.providerRequestId ?? null,
+})
+
+export const classifyLlmErrorCategory = (error) => {
+  const message = String(error?.message || error || '')
+  if (message.includes('Invalid model response.')) return 'PARSE_ERROR'
+  if (error?.code === 'OPENAI_REQUEST_TIMEOUT' || error?.name === 'AbortError') return 'TIMEOUT'
+  if (error?.code === 'OPENAI_TRANSPORT_ERROR' || /fetch failed/i.test(message)) return 'TRANSPORT_ERROR'
+  if (error?.code === 'OPENAI_REQUEST_FAILED' || message.includes('OPENAI_REQUEST_FAILED:')) return 'API_HTTP_ERROR'
+  if (error?.code === 'OPENAI_EMPTY_RESPONSE' || message.includes('OPENAI_EMPTY_RESPONSE')) return 'EMPTY_RESPONSE'
+  return 'LLM_ERROR'
+}
 
 export const parseJsonArray = (value) => {
   const parsed = safeJsonParse(value)
@@ -180,7 +202,11 @@ export const runLlmTask = async ({
   sessionId = null,
   skipPreprocess = false,
   forceEscalation = false,
+  useDefaultModelWhenSkippingPreprocess = false,
   onRawResponse = null,
+  responseFormat = null,
+  systemPrompt = null,
+  maxInputChars = MAX_INPUT_CHARS,
 }) => {
   let usageTotals = buildEmptyUsage()
   const finalize = async (payload) => {
@@ -194,7 +220,14 @@ export const runLlmTask = async ({
     return await finalize({
       ok: true,
       data: fallbackData,
-      meta: { aiSupportEnabled: false, modelUsed: null, escalated: false, tokens: buildEmptyUsage() },
+      meta: {
+        aiSupportEnabled: false,
+        modelUsed: null,
+        attemptedModel: null,
+        escalated: false,
+        errorCategory: 'AI_DISABLED',
+        tokens: buildEmptyUsage(),
+      },
     })
   }
 
@@ -205,7 +238,14 @@ export const runLlmTask = async ({
     return await finalize({
       ok: false,
       error: 'OPENAI_API_KEY is not set on the server.',
-      meta: { aiSupportEnabled: true, modelUsed: null, escalated: false, tokens: buildEmptyUsage() },
+      meta: {
+        aiSupportEnabled: true,
+        modelUsed: null,
+        attemptedModel: null,
+        escalated: false,
+        errorCategory: 'MISSING_API_KEY',
+        tokens: buildEmptyUsage(),
+      },
     })
   }
 
@@ -218,12 +258,19 @@ export const runLlmTask = async ({
       return await finalize({
         ok: false,
         error: 'Rate limit exceeded.',
-        meta: { aiSupportEnabled: true, modelUsed: null, escalated: false, tokens: buildEmptyUsage() },
+        meta: {
+          aiSupportEnabled: true,
+          modelUsed: null,
+          attemptedModel: null,
+          escalated: false,
+          errorCategory: 'RATE_LIMIT',
+          tokens: buildEmptyUsage(),
+        },
       })
     }
   }
 
-  const safeInput = truncateInput(input)
+  const safeInput = truncateInput(input, maxInputChars)
 
   let preprocess = {
     cleaned_input: normalizeString(safeInput),
@@ -300,7 +347,7 @@ export const runLlmTask = async ({
   const escalated = forceEscalation
     ? true
     : skipPreprocess
-      ? true
+      ? !useDefaultModelWhenSkippingPreprocess
       : preprocessSucceeded
         ? shouldEscalate({ cleanedInput, preprocess })
         : false
@@ -315,7 +362,7 @@ export const runLlmTask = async ({
   }
 
   const buildMessages = () => [
-    { role: 'system', content: BASE_SYSTEM_PROMPT },
+    { role: 'system', content: systemPrompt || BASE_SYSTEM_PROMPT },
     {
       role: 'user',
       content: buildGenerationUserPrompt({
@@ -332,6 +379,32 @@ export const runLlmTask = async ({
     const messages = buildMessages()
     logCoachSuggestStart(model, messages)
     let result
+    const providerDiagnostics = {
+      providerCallStartedAt: null,
+      providerCallResolvedAt: null,
+      providerCallAbortedAt: null,
+      abortReason: null,
+      timeoutSource: null,
+      timeoutMs,
+      model,
+      responseFormatName: responseFormat?.json_schema?.name || responseFormat?.type || null,
+      providerRequestId: null,
+    }
+    const onProviderEvent = (event) => {
+      if (!event || typeof event !== 'object') return
+      if (event.providerCallStartedAt) providerDiagnostics.providerCallStartedAt = event.providerCallStartedAt
+      if (event.providerCallResolvedAt) providerDiagnostics.providerCallResolvedAt = event.providerCallResolvedAt
+      if (event.providerCallAbortedAt) providerDiagnostics.providerCallAbortedAt = event.providerCallAbortedAt
+      if (event.abortReason) providerDiagnostics.abortReason = event.abortReason
+      if (event.timeoutSource) providerDiagnostics.timeoutSource = event.timeoutSource
+      if (event.timeoutMs) providerDiagnostics.timeoutMs = event.timeoutMs
+      if (event.model) providerDiagnostics.model = event.model
+      if (event.responseFormatName) providerDiagnostics.responseFormatName = event.responseFormatName
+      if (event.providerRequestId) providerDiagnostics.providerRequestId = event.providerRequestId
+      if (event.requestBodyBytes) providerDiagnostics.requestBodyBytes = event.requestBodyBytes
+      if (event.endpoint) providerDiagnostics.endpoint = event.endpoint
+      if (event.status) providerDiagnostics.status = event.status
+    }
     try {
       result = await callOpenAIChat({
         apiKey,
@@ -340,21 +413,42 @@ export const runLlmTask = async ({
         maxTokens: maxOutputTokens,
         temperature,
         timeoutMs,
+        responseFormat,
+        onProviderEvent,
       })
+      Object.assign(providerDiagnostics, result.providerDiagnostics || {})
     } catch (err) {
+      err.providerDiagnostics = err.providerDiagnostics || providerDiagnostics
       logCoachSuggestError(err)
       throw err
     }
     if (typeof onRawResponse === 'function') {
-      onRawResponse({ task, model, content: result.content })
+      onRawResponse({
+        task,
+        model,
+        content: result.content,
+        providerRequestId: result.providerRequestId ?? null,
+        latencyMs: result.latencyMs ?? null,
+        providerDiagnostics,
+      })
     }
     const parsed = parseResponse(result.content)
     if (!parsed) {
       const error = new Error('Invalid model response.')
       error.usage = result.usage
+      error.providerRequestId = result.providerRequestId ?? null
+      error.latencyMs = result.latencyMs ?? null
+      error.providerDiagnostics = providerDiagnostics
       throw error
     }
-    return { parsed, usage: result.usage, model }
+    return {
+      parsed,
+      usage: result.usage,
+      model,
+      providerRequestId: result.providerRequestId ?? null,
+      latencyMs: result.latencyMs ?? null,
+      providerDiagnostics,
+    }
   }
 
   try {
@@ -366,7 +460,14 @@ export const runLlmTask = async ({
       meta: {
         aiSupportEnabled: true,
         modelUsed: result.model,
+        attemptedModel: result.model,
         escalated,
+        providerRequestId: result.providerRequestId,
+        llmLatencyMs: result.latencyMs,
+        generationFallbackUsed: false,
+        providerDiagnostics: result.providerDiagnostics,
+        ...flattenProviderDiagnostics(result.providerDiagnostics),
+        errorCategory: null,
         tokens: usageTotals,
       },
     })
@@ -387,7 +488,14 @@ export const runLlmTask = async ({
           meta: {
             aiSupportEnabled: true,
             modelUsed: fallback.model,
+            attemptedModel: fallback.model,
             escalated: false,
+            providerRequestId: fallback.providerRequestId,
+            llmLatencyMs: fallback.latencyMs,
+            generationFallbackUsed: true,
+            providerDiagnostics: fallback.providerDiagnostics,
+            ...flattenProviderDiagnostics(fallback.providerDiagnostics),
+            errorCategory: null,
             tokens: usageTotals,
           },
         })
@@ -398,14 +506,40 @@ export const runLlmTask = async ({
         return await finalize({
           ok: false,
           error: String(fallbackError),
-          meta: { aiSupportEnabled: true, modelUsed: null, escalated: true, tokens: usageTotals },
-        })
+      meta: {
+        aiSupportEnabled: true,
+        modelUsed: null,
+        attemptedModel: models.default,
+        escalated: true,
+        errorCategory: classifyLlmErrorCategory(fallbackError),
+        errorInfo: buildSafeOpenAiErrorDiagnostic(fallbackError),
+        providerRequestId: fallbackError?.providerRequestId ?? null,
+        llmLatencyMs: fallbackError?.latencyMs ?? null,
+        generationFallbackUsed: true,
+        providerDiagnostics: fallbackError?.providerDiagnostics || null,
+        ...flattenProviderDiagnostics(fallbackError?.providerDiagnostics),
+        tokens: usageTotals,
+      },
+    })
       }
     }
     return await finalize({
       ok: false,
       error: String(error),
-      meta: { aiSupportEnabled: true, modelUsed: null, escalated: false, tokens: usageTotals },
+      meta: {
+        aiSupportEnabled: true,
+        modelUsed: null,
+        attemptedModel: primaryModel,
+        escalated: false,
+        errorCategory: classifyLlmErrorCategory(error),
+        errorInfo: buildSafeOpenAiErrorDiagnostic(error),
+        providerRequestId: error?.providerRequestId ?? null,
+        llmLatencyMs: error?.latencyMs ?? null,
+        generationFallbackUsed: false,
+        providerDiagnostics: error?.providerDiagnostics || null,
+        ...flattenProviderDiagnostics(error?.providerDiagnostics),
+        tokens: usageTotals,
+      },
     })
   }
 }

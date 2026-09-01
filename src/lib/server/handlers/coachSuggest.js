@@ -14,6 +14,9 @@ import {
   sendError,
   sendJson,
 } from '../http.js'
+import {
+  analyzeSeedLikeText,
+} from '../seedAnalysis.js'
 
 const limiter = createRateLimiter({ windowMs: 60_000, max: 20 })
 
@@ -1483,428 +1486,48 @@ export const handleCoachSuggest = async (req, res) => {
         })
         return
       }
-      const fallbackEntries = buildSeedFallbackEntries(text, 8)
-      if (!aiSupportEnabled || killSwitch || !hasOpenAiKey) {
-        const errorCategory = killSwitch
-          ? 'AI_DISABLED'
-          : !hasOpenAiKey
-            ? 'MISSING_OPENAI_KEY'
-            : 'AI_DISABLED'
-        sendJson(res, 200, {
-          ok: true,
-          requestId,
-          source: 'fallback',
-          entries: fallbackEntries,
-          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
-          meta: {
-            aiSupportEnabled: false,
-            modelUsed: null,
-            escalated: false,
-            tokens: { input: 0, output: 0, total: 0 },
-            errorCategory,
-          },
-        })
-        return
-      }
-      const extractionInstructions = `
-Extract ALL distinct atomic ideas from the user's brief.
-
-Goal:
-- HIGH RECALL: capture all important ideas.
-- HIGH PRECISION OF ATOMS: each entry must express exactly ONE idea.
-
-Semantic purity rules:
-- Do NOT combine current state, problem, desired state, solution concept, or requirement in one entry.
-- Split mixed sentences into separate entries whenever they contain more than one of these:
-  1. observation about the current situation,
-  2. user pain / problem / friction / damage / inefficiency,
-  3. proposed solution or feature idea,
-  4. requirement or constraint for the solution.
-- Keep the user's meaning, but rewrite into short, explicit, single-idea statements when needed.
-- Do not summarize multiple ideas into one sentence.
-- Do not invent facts that are not present in the brief.
-
-Semantic distinctions:
-- CURRENT STATE = what exists today, what is observed now.
-- PROBLEM = what causes harm, friction, inefficiency, confusion, damage, risk, or extra effort.
-- DESIRED / SOLUTION = what could help, what should exist, what feature is proposed.
-- REQUIREMENT / CONSTRAINT = what the proposed solution must satisfy.
-
-Length rule:
-- Prefer short entries.
-- Each entry should usually stay under 160 characters unless a longer phrasing is necessary for clarity.
-
-Good examples:
-- "Obecne koszyki ciągnięte za uchwyt są głębokie."
-- "Delikatne produkty na dole mogą zostać zgniecione przez cięższe produkty."
-- "Klient musi przekładać delikatne produkty na górę."
-- "To dodaje niepotrzebną czynność podczas zakupów."
-- "Koszyk mógłby mieć pionową przegrodę."
-- "Przegroda powinna być łatwa do przestawienia."
-- "The current pull-behind baskets are deep."
-- "Fragile products at the bottom can be crushed by heavier items."
-- "Customers must move fragile items to the top."
-- "This adds an unnecessary action during shopping."
-- "The basket could include a vertical divider."
-- "The divider should be easy to reposition."
-
-Bad examples:
-- "Deep baskets crush fragile items, so a divider would help."
-- "Customers move fragile items because baskets are deep and should have a divider."
-- "A stable movable divider would solve the problem."
-
-Return STRICT JSON ONLY:
-{"entries":[{"text":"..."}]}
-
-Write entries in Polish when locale is "pl". Write entries in English when locale is "en".
-`.trim()
-
-      const classificationInstructions = `
-Classify each entry into a 3x3 matrix cell A1..C3 or null.
-
-Columns:
-- A = AS_IS: current reality, existing state, observed facts, comparisons describing how things work today.
-- B = NOT_WORKING: pain, friction, failure, inefficiency, risk, damage, unnecessary effort, negative consequence.
-- C = SHOULD_BE: desired future state, proposal, feature idea, design requirement, expected property.
-
-Rows:
-- 1 = WORLD / CONTEXT: shopping context, store process, customer behavior, checkout flow, general usage situation.
-- 2 = PRODUCT / SYSTEM: the basket as a whole, basket type, overall product structure or form.
-- 3 = ELEMENT / COMPONENT: divider, handle, wheel, compartment, specific part or internal feature.
-
-Hard rules:
-- Do not rewrite text.
-- Do not drop entries.
-- If an entry expresses pain, risk, damage, friction, or unnecessary effort, prefer column B.
-- If an entry expresses a proposal, desired capability, requirement, or expected property, prefer column C.
-- If an entry only describes what exists today, prefer column A.
-- If an entry describes another existing product variant that works better today, classify it as A unless it explicitly proposes adopting that variant.
-- Requirements and constraints for a proposed solution belong to column C, not B.
-- If an entry mixes multiple semantic roles and cannot be classified safely, return null.
-
-Return STRICT JSON ONLY:
-{"entries":[{"text":"...","cellCode":"A1","confidence":0.92,"kind":"idea"}]}
-`.trim()
-
-      const classificationInstructionsColumnFirst = `
-Classify each entry into a semantic column 1..3.
-
-Columns:
-- 1 = AS_IS: current reality, existing state, neutral observations, comparisons describing how things work today.
-- 2 = NOT_WORKING: pain, friction, failure, inefficiency, risk, damage, unnecessary effort, negative consequence.
-- 3 = SHOULD_BE: desired future state, proposal, feature idea, requirement, expected property.
-
-Core principle:
-Choose the MOST LIKELY dominant intent of the entry.
-
-Very important rules:
-
-1. ALWAYS assign 1, 2, or 3.
-Do NOT return null unless the text is completely unreadable.
-
-2. Real user statements often mix:
-- observation + problem
-- problem + solution
-- context + consequence
-
-This is NORMAL.
-Your job is NOT to reject them.
-Your job is to choose the dominant meaning.
-
-3. If unsure:
-- make your best guess
-- lower the confidence instead of returning null
-
-4. Confidence scale:
-- 0.9–1.0 → very clear
-- 0.7–0.9 → quite confident
-- 0.5–0.7 → uncertain but best guess
-- <0.5 → only if truly ambiguous
-
-5. Strong signals:
-
-SHOULD_BE (3):
-- "powinien", "musi", "mógłby", "pozwoliłby"
-- "should", "must", "could", "would help"
-- requirements like "must be stable", "easy to move"
-
-NOT_WORKING (2):
-- "problem", "trudno", "muszą", "dodatkowa czynność"
-- "problem", "must", "extra step", "risk", "damage"
-
-AS_IS (1):
-- "obecne", "dzisiaj", "są", "currently", "existing"
-- descriptions of how things work now
-
-6. Benchmark rule:
-If describing an existing alternative that already works better → 1 (NOT 3)
-
-7. Requirements rule:
-Constraints like:
-- "must be stable"
-- "should be easy to reposition"
-→ ALWAYS 3
-
-Hard rules:
-- Do not rewrite text.
-- Do not drop entries.
-- Pain / damage / friction / unnecessary effort -> 2
-- Proposal / idea / requirement / expected property -> 3
-- Pure observation / neutral fact / benchmark about an existing alternative -> 1
-
-Return STRICT JSON ONLY:
-{"entries":[{"id":"1","text":"...","column":"1","confidence":0.82}]}
-
-Output requirements:
-- Return exactly one output item per input item.
-- Preserve every input id (do not reorder ids).
-- Do not rewrite input text (copy it verbatim).
-
-Write entries exactly in the same language as the input entries.
-`.trim()
-
-      const parseJson = (value) => {
-        try {
-          const parsed = JSON.parse(value)
-          return parsed ?? null
-        } catch {
-          return null
-        }
-      }
-
-      const seedRateLimitKey =
-        req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown'
-
-      const seedModelsDefault = {
-        default: process.env.OPENAI_MODEL_DEFAULT || 'gpt-4.1-mini',
-        preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
-        escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
-      }
-      const seedModelsEscalate1 = {
-        default: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
-        preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
-        escalation: process.env.OPENAI_MODEL_ESCALATION || 'gpt-5-mini',
-      }
-      const seedModelsEscalate2 = {
-        default:
-          process.env.OPENAI_MODEL_ESCALATION_2 ||
-          process.env.OPENAI_MODEL_ESCALATION ||
-          'gpt-5',
-        preprocess: process.env.OPENAI_MODEL_PREPROCESS || 'gpt-5-nano',
-        escalation:
-          process.env.OPENAI_MODEL_ESCALATION_2 ||
-          process.env.OPENAI_MODEL_ESCALATION ||
-          'gpt-5',
-      }
-
-      const shouldSkipPreprocess = text.length > 800
-      const forceEscalation = text.length > 800
-
-      const runExtractionPass = async (modelSet) =>
-        runLlmTask({
-          apiKey: process.env.OPENAI_API_KEY,
-          aiSupportEnabled: true,
-          task: 'seed-extraction',
-          input: text,
+      const result = await analyzeSeedLikeText({
+        text,
+        locale,
+        apiKey: process.env.OPENAI_API_KEY,
+        aiSupportEnabled: aiSupportEnabled && !killSwitch && hasOpenAiKey,
+        sessionId,
+        rateLimiter: limiter,
+        rateLimitKey: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || 'unknown',
+        mode: 'brief',
+        allowTextFallback: true,
+      })
+      if (result.ok && result.entries.length) {
+        const meta = buildMeta(result.meta || { aiSupportEnabled: true, modelUsed: null })
+        await recordCoachUsageEvent({
           sessionId,
-          language: locale === 'pl' ? 'Polish' : 'English',
-          taskInstructions: extractionInstructions,
-          parseResponse: parseJson,
-          fallbackData: null,
-          models: modelSet,
-          maxOutputTokens: 1600,
-          temperature: 0.2,
-          skipPreprocess: shouldSkipPreprocess,
-          forceEscalation,
-          rateLimiter: limiter,
-          rateLimitKey: seedRateLimitKey,
+          currentUserId,
+          actionKey: 'seed-from-brief',
+          requestId,
+          meta,
         })
-
-      const seedClassificationMode = resolveSeedClassificationMode()
-      if (process.env.NODE_ENV !== 'production') {
-        console.log('[seed] classificationMode:', seedClassificationMode, {
-          SEED_CLASSIFICATION_MODE: process.env.SEED_CLASSIFICATION_MODE ?? null,
-          NODE_ENV: process.env.NODE_ENV ?? null,
-        })
-      }
-
-      const runClassificationPass = async (extracted, modelSet) =>
-        runLlmTask({
-          apiKey: process.env.OPENAI_API_KEY,
-          aiSupportEnabled: true,
-          task: 'seed-classification',
-          input: JSON.stringify(extracted ?? {}),
-          sessionId,
-          language: locale === 'pl' ? 'Polish' : 'English',
-          taskInstructions:
-            seedClassificationMode === 'column_first'
-              ? classificationInstructionsColumnFirst
-              : classificationInstructions,
-          parseResponse: parseJson,
-          fallbackData: null,
-          models: modelSet,
-          maxOutputTokens: 1600,
-          temperature: seedClassificationMode === 'column_first' ? 0.3 : 0.1,
-          skipPreprocess: shouldSkipPreprocess,
-          forceEscalation,
-          rateLimiter: limiter,
-          rateLimitKey: seedRateLimitKey,
-        })
-      try {
-        let extractionResult = await runExtractionPass(seedModelsDefault)
-        let extractedEntries = extractionResult.ok
-          ? parseSeedEntriesPayload(extractionResult.data, resolveSeedMaxEntries())
-          : null
-        if (!extractedEntries || extractedEntries.length < 2) {
-          const retryExtraction = await runExtractionPass(seedModelsEscalate1)
-          if (retryExtraction.ok) {
-            extractionResult = retryExtraction
-            extractedEntries = parseSeedEntriesPayload(
-              retryExtraction.data,
-              resolveSeedMaxEntries()
-            )
-          }
-        }
-
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[seed] extraction_count:', extractedEntries?.length ?? 0)
-        }
-
-        const normalizedExtractedTexts = normalizeSeedEntriesForClassification(
-          (extractedEntries || []).map((entry) => entry?.text).filter((value) => typeof value === 'string')
-        )
-        const extractedPayload =
-          seedClassificationMode === 'column_first'
-            ? { entries: normalizedExtractedTexts.map((text, index) => ({ id: String(index + 1), text })) }
-            : { entries: normalizedExtractedTexts.map((text) => ({ text })) }
-
-        const shouldRetryColumnFirst = (stats) => {
-          const total = Number(stats?.total) || 0
-          const classified = Number(stats?.classified) || 0
-          if (classified < 2) return true
-          if (total >= 2 && classified / total < 0.5) return true
-          return false
-        }
-
-        let classificationResult = null
-        let entries = null
-
-        if (seedClassificationMode === 'column_first') {
-          const attempts = [
-            { attempt: 1, modelSet: seedModelsDefault, label: 'default' },
-            { attempt: 2, modelSet: seedModelsEscalate1, label: 'escalation_1' },
-            { attempt: 3, modelSet: seedModelsEscalate2, label: 'escalation_2' },
-          ]
-
-          let lastStats = { total: normalizedExtractedTexts.length, classified: 0, nullCount: normalizedExtractedTexts.length }
-          for (const { attempt, modelSet, label } of attempts) {
-            classificationResult = await runClassificationPass(extractedPayload, modelSet)
-            if (!classificationResult.ok) {
-              if (process.env.NODE_ENV !== 'production') {
-                console.log('[seed][column_first] classify_attempt_failed', {
-                  attempt,
-                  modelSet: { default: modelSet?.default ?? null, escalation: modelSet?.escalation ?? null, label },
-                  inputCount: normalizedExtractedTexts.length,
-                })
-              }
-              continue
-            }
-
-            const parsed = buildColumnFirstClassificationFromLlm({
-              inputEntries: extractedPayload.entries,
-              llmPayload: classificationResult.data,
-            })
-            entries = parsed.entries
-            lastStats = parsed.stats
-
-            if (process.env.NODE_ENV !== 'production') {
-              console.log('[seed][column_first] classify_attempt', {
-                attempt,
-                modelSet: { default: modelSet?.default ?? null, escalation: modelSet?.escalation ?? null, label },
-                inputCount: normalizedExtractedTexts.length,
-                classifiedCount: lastStats.classified,
-                nullCount: lastStats.nullCount,
-                byColumn: lastStats.byColumn ?? null,
-              })
-            }
-
-            if (!shouldRetryColumnFirst(lastStats)) break
-          }
-
-          if (!entries || !entries.length) {
-            entries = normalizeSeedEntries(
-              normalizedExtractedTexts.map((entryText) => ({
-                text: entryText,
-                cellCode: null,
-                confidence: null,
-                kind: 'note',
-              })),
-              resolveSeedMaxEntries()
-            )
-          }
-        } else {
-          classificationResult = await runClassificationPass(extractedPayload, seedModelsDefault)
-          if (classificationResult.ok) {
-            entries = parseSeedEntriesPayload(classificationResult.data, resolveSeedMaxEntries())
-            entries = entries ? applySeedClassificationSafetyCheck(entries) : null
-          }
-
-          if (!entries || entries.length < 2) {
-            const retryClassify = await runClassificationPass(extractedPayload, seedModelsEscalate1)
-            if (retryClassify.ok) {
-              classificationResult = retryClassify
-              entries = parseSeedEntriesPayload(retryClassify.data, resolveSeedMaxEntries())
-              entries = entries ? applySeedClassificationSafetyCheck(entries) : null
-            }
-          }
-        }
-
-        if (process.env.NODE_ENV !== 'production') {
-          console.log('[seed] final_count:', entries?.length ?? 0)
-        }
-
-        if (classificationResult.ok && entries && entries.length) {
-          const meta = buildMeta(
-            classificationResult.meta || { aiSupportEnabled: true, modelUsed: null }
-          )
-          await recordCoachUsageEvent({
-            sessionId,
-            currentUserId,
-            actionKey: 'seed-from-brief',
-            requestId,
-            meta,
-          })
-          const usage = buildUsagePayload(meta)
-          sendJson(res, 200, {
-            ok: true,
-            requestId,
-            source: 'llm',
-            entries,
-            usage,
-            meta,
-          })
-          return
-        }
         sendJson(res, 200, {
           ok: true,
           requestId,
-          source: 'fallback',
-          entries: fallbackEntries,
-          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
-          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
-        })
-        return
-      } catch (error) {
-        sendJson(res, 200, {
-          ok: true,
-          requestId,
-          source: 'fallback',
-          entries: fallbackEntries,
-          usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
-          meta: { ...buildMeta({ aiSupportEnabled: false, modelUsed: null }), errorCategory: 'LLM_FAILED' },
+          source: result.source,
+          entries: result.entries,
+          usage: buildUsagePayload(meta),
+          meta,
         })
         return
       }
+      sendJson(res, 200, {
+        ok: true,
+        requestId,
+        source: 'fallback',
+        entries: result.fallbackEntries,
+        usage: buildUsagePayload({ tokens: { input: 0, output: 0, total: 0 }, modelUsed: null }),
+        meta: {
+          ...buildMeta({ aiSupportEnabled: false, modelUsed: null }),
+          errorCategory: result.meta?.errorCategory || 'LLM_FAILED',
+        },
+      })
+      return
     }
 
     if (actionNormalized === 'INTERPRET_TRANSCRIPT') {

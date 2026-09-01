@@ -42,6 +42,7 @@ import boardItemsHandler from './api/board-items.js'
 import billingHandler from './api/billing.js'
 import reportHandler from './api/report.js'
 import sessionHandler from './api/session.js'
+import engine2Handler from './api/engine_2.js'
 import { createSupabaseServerClient } from './src/lib/server/supabaseServer.js'
 import { chargeUserBalance, normalizeBillingError } from './src/lib/server/billing.js'
 import {
@@ -427,6 +428,20 @@ const server = http.createServer(async (req, res) => {
       await coachHandler(req, resShim)
     } catch (error) {
       console.error('[server][coach] unhandled error', {
+        name: error?.name,
+        message: error?.message,
+      })
+      sendJson(res, 500, { ok: false, error: 'SERVER_ERROR', message: 'Server error.' })
+    }
+    return
+  }
+
+  if (url.pathname === '/api/engine_2') {
+    const resShim = createResShim(res)
+    try {
+      await engine2Handler(req, resShim)
+    } catch (error) {
+      console.error('[server][engine_2] unhandled error', {
         name: error?.name,
         message: error?.message,
       })
