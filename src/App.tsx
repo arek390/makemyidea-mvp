@@ -13721,6 +13721,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
         authDisabled={authDisabled}
         missingSupabaseEnvMessage={missingSupabaseEnvMessage}
         isDiagEnabled={isDiagEnabled()}
+        publicLoginHref={`/login?next=${encodeURIComponent('/engine_2')}`}
         onAdminClick={() => {
           if (typeof window !== 'undefined') {
             window.location.hash = '#/admin'
