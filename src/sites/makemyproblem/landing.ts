@@ -30,11 +30,27 @@ type LandingContent = {
   }
   conversation: {
     title: string
-    cards: readonly string[]
+    cards: readonly { title: string; body: string }[]
   }
   examples: {
     title: string
-    items: readonly { title: string; body: string }[]
+    items: readonly { key: string; title: string; description: string; futureHref?: string }[]
+  }
+  trialPricing: {
+    title: string
+    signup: {
+      title: string
+      body: string
+      benefits: readonly string[]
+    }
+    pricing: {
+      title: string
+      main: string
+      mainLabel: string
+      secondary: string
+      secondaryLabel: string
+      body: string
+    }
   }
   finalCta: {
     title: string
@@ -49,6 +65,7 @@ type LandingContent = {
 }
 
 const makeMyProblemSite = siteConfigs.makeMyProblem
+const landingTrialPrice = '$0.50'
 
 const alternateLinks = [
   { hreflang: 'en', href: `${makeMyProblemSite.canonicalUrl}/en` },
@@ -75,10 +92,10 @@ const landingContent: readonly LandingContent[] = [
     },
     hero: {
       eyebrow: 'AI problem solving',
-      title: 'From problem to action plan',
+      title: 'Got a problem? Let’s work it out.',
       copy:
         'MakeMyProblem.Work helps you clarify a problem through a short AI-guided conversation, organize what matters and move toward concrete next actions.',
-      cta: 'Start solving',
+      cta: "Let's work on it",
       reassurance: 'Short conversation. No long briefing required.',
       aside:
         'Built for moments when the situation is unclear, the tradeoffs are real and you need a practical way forward instead of a long generic answer.',
@@ -92,28 +109,95 @@ const landingContent: readonly LandingContent[] = [
       ],
     },
     conversation: {
-      title: 'What the conversation does',
+      title: 'A short conversation, not a long chat',
       cards: [
-        'It asks focused questions instead of producing a generic answer too early.',
-        'It looks for missing information, unclear assumptions and conflicting requirements.',
-        'It structures what is already known so the real decision becomes easier to see.',
-        'It leads toward concrete next actions for structured problem solving.',
+        {
+          title: 'Short, focused exchange',
+          body: 'No long AI essays. The conversation moves forward with short, focused questions.',
+        },
+        {
+          title: 'You confirm the understanding',
+          body: 'Before moving on, you confirm that the problem and important details have been understood correctly.',
+        },
+        {
+          title: 'Every question has a purpose',
+          body:
+            'Questions focus on missing information, unclear assumptions and conflicting requirements that can affect the solution.',
+        },
+        {
+          title: 'It moves toward action',
+          body:
+            'As soon as enough is clear, the conversation turns what you discussed into a concrete action plan.',
+        },
       ],
     },
     examples: {
-      title: 'Problems it can help with',
+      title: 'Technical situations where it helps',
       items: [
-        { title: 'Technical or product issue', body: 'Clarify symptoms, constraints and likely next checks.' },
-        { title: 'Project or process blocker', body: 'Separate facts, assumptions and coordination gaps.' },
-        { title: 'Decision with tradeoffs', body: 'Compare conflicting requirements before choosing a path.' },
-        { title: 'Unclear root cause', body: 'Map what is known before jumping to a solution.' },
+        {
+          key: 'customer-complaint',
+          title: 'A customer complaint just arrived',
+          description:
+            'Turn an incomplete complaint into likely causes, missing information and concrete next checks before you respond.',
+        },
+        {
+          key: 'technical-customer-meeting',
+          title: "You're in a technical customer meeting",
+          description:
+            'Quickly structure what you know, clarify assumptions and find useful technical directions while the discussion is still going on.',
+        },
+        {
+          key: 'exhausted-troubleshooting-options',
+          title: "You've already tried the obvious options",
+          description:
+            'Explore new hypotheses, alternative approaches and checks when your usual troubleshooting list is exhausted.',
+        },
+        {
+          key: 'technical-options-needed',
+          title: 'Your team is waiting for technical options',
+          description:
+            'Turn a blocked or unclear issue into several concrete paths the team can evaluate instead of starting from a blank page.',
+        },
+        {
+          key: 'conflicting-requirements',
+          title: 'Requirements are pulling in different directions',
+          description:
+            'Clarify tradeoffs when performance, cost, timing, weight, reliability or other constraints conflict.',
+        },
+        {
+          key: 'unclear-root-cause',
+          title: 'The root cause is still unclear',
+          description:
+            'Separate facts from assumptions and identify what should be checked next before committing to a solution.',
+        },
       ],
+    },
+    trialPricing: {
+      title: 'Try it without committing',
+      signup: {
+        title: 'Start without signing up',
+        body:
+          "You don't need an account to see if the conversation helps.<br />Start with the problem you have now.",
+        benefits: [
+          '<strong>First conversation free. No sign-up required.</strong>',
+          'No long briefing.',
+          'Sign in only if you want to save your action plan or come back to it later.',
+        ],
+      },
+      pricing: {
+        title: 'Simple pricing',
+        main: 'First conversation is free',
+        mainLabel: 'Conversation + action plan',
+        secondary: `Then ${landingTrialPrice}`,
+        secondaryLabel: 'per conversation with an action plan',
+        body: 'No subscription. Pay only when you use it.',
+      },
     },
     finalCta: {
       title: 'Start with the problem you have now',
       body:
         'A few focused answers are enough to begin. MakeMyProblem.Work will help you clarify the situation and shape a practical action plan.',
-      cta: 'Start solving',
+      cta: "Let's work on it",
     },
     footer: {
       tagline: 'AI-assisted web apps for problem solving.',
@@ -137,11 +221,11 @@ const landingContent: readonly LandingContent[] = [
     },
     hero: {
       eyebrow: 'Rozwiązywanie problemów z AI',
-      title: 'Od problemu do planu działania',
+      title: 'Masz problem? Rozwiążmy go.',
       copy:
         'MakeMyProblem.Work pomaga doprecyzować problem w krótkiej rozmowie wspieranej przez AI, uporządkować to, co ważne, i przejść do konkretnych kolejnych działań.',
-      cta: 'Zacznij rozwiązywać',
-      reassurance: 'Krótka rozmowa. Bez długiego briefu.',
+      cta: 'Popracujmy nad tym',
+      reassurance: 'Krótka rozmowa. Nie dlugi czat.',
       aside:
         'Dla sytuacji, w których kontekst jest niejasny, kompromisy są realne i potrzebujesz praktycznej drogi naprzód zamiast ogólnej odpowiedzi.',
     },
@@ -154,28 +238,96 @@ const landingContent: readonly LandingContent[] = [
       ],
     },
     conversation: {
-      title: 'Co robi rozmowa',
+      title: 'Krótka rozmowa, nie długi czat',
       cards: [
-        'Zadaje ukierunkowane pytania zamiast zbyt wcześnie generować ogólną odpowiedź.',
-        'Szuka brakujących informacji, niejasnych założeń i sprzecznych wymagań.',
-        'Porządkuje to, co już wiadomo, aby łatwiej zobaczyć właściwą decyzję.',
-        'Prowadzi do konkretnych kolejnych działań w uporządkowanym rozwiązywaniu problemu.',
+        {
+          title: 'Krótka, skupiona wymiana',
+          body: 'Bez długich esejów AI. Rozmowa idzie naprzód przez krótkie, konkretne pytania.',
+        },
+        {
+          title: 'Potwierdzasz zrozumienie',
+          body:
+            'Zanim przejdziesz dalej, potwierdzasz, że problem i ważne szczegóły zostały właściwie zrozumiane.',
+        },
+        {
+          title: 'Każde pytanie ma cel',
+          body:
+            'Pytania skupiają się na brakujących informacjach, niejasnych założeniach i sprzecznych wymaganiach, które mogą wpłynąć na rozwiązanie.',
+        },
+        {
+          title: 'Rozmowa prowadzi do działania',
+          body:
+            'Gdy sytuacja jest wystarczająco jasna, rozmowa zamienia to, co omówiliście, w konkretny plan działania.',
+        },
       ],
     },
     examples: {
-      title: 'Problemy, w których może pomóc',
+      title: 'Techniczne sytuacje, w których to się przydaje',
       items: [
-        { title: 'Problem techniczny lub produktowy', body: 'Doprecyzuj objawy, ograniczenia i prawdopodobne kolejne sprawdzenia.' },
-        { title: 'Blokada w projekcie lub procesie', body: 'Oddziel fakty, założenia i luki koordynacyjne.' },
-        { title: 'Decyzja z kompromisami', body: 'Porównaj sprzeczne wymagania przed wyborem kierunku.' },
-        { title: 'Niejasna przyczyna źródłowa', body: 'Zmapuj to, co wiadomo, zanim przejdziesz do rozwiązania.' },
+        {
+          key: 'customer-complaint',
+          title: 'Właśnie wpadła reklamacja od klienta',
+          description:
+            'Szybko uporządkuj zgłoszenie, sprawdź czego jeszcze brakuje i przygotuj sensowne kolejne kroki, zanim odpowiesz klientowi.',
+        },
+        {
+          key: 'technical-customer-meeting',
+          title: 'Jesteś na technicznym spotkaniu z klientem',
+          description:
+            'Zbierz w jednym miejscu to, co już wiadomo, wychwyć niejasności i szybko znajdź kierunki, które warto omówić dalej.',
+        },
+        {
+          key: 'exhausted-troubleshooting-options',
+          title: 'Sprawdziłeś już wszystkie oczywiste opcje',
+          description:
+            'Poszukaj nowych hipotez, innych podejść i rzeczy, które warto jeszcze przetestować, gdy standardowe pomysły się skończyły.',
+        },
+        {
+          key: 'technical-options-needed',
+          title: 'Zespół czeka na techniczne opcje',
+          description:
+            'Uporządkuj problem i przygotuj kilka konkretnych kierunków, które można od razu przedyskutować z zespołem.',
+        },
+        {
+          key: 'conflicting-requirements',
+          title: 'Wymagania zaczynają się ze sobą gryźć',
+          description:
+            'Sprawdź, gdzie naprawdę jest konflikt i jakie kompromisy warto rozważyć między kosztem, masą, terminem, niezawodnością czy osiągami.',
+        },
+        {
+          key: 'unclear-root-cause',
+          title: 'Nadal nie wiesz, gdzie leży przyczyna',
+          description:
+            'Oddziel fakty od założeń i ustal, co warto sprawdzić jako następne, zanim zespół pójdzie za daleko w jednym kierunku.',
+        },
       ],
+    },
+    trialPricing: {
+      title: 'Spróbuj bez zobowiązań',
+      signup: {
+        title: 'Zacznij bez rejestracji',
+        body:
+          'Nie potrzebujesz konta, żeby sprawdzić, czy ta rozmowa Ci pomoże.<br />Zacznij od problemu, który masz teraz.',
+        benefits: [
+          '<strong>Pierwsza rozmowa za darmo. Bez rejestracji.</strong>',
+          'Bez długiego opisywania sytuacji.',
+          'Zaloguj się dopiero, jeśli chcesz zapisać plan działania albo wrócić do niego później.',
+        ],
+      },
+      pricing: {
+        title: 'Prosta cena',
+        main: 'Pierwsza rozmowa<br />za darmo',
+        mainLabel: 'Rozmowa + plan działania',
+        secondary: `Kolejne: ${landingTrialPrice}`,
+        secondaryLabel: 'za rozmowę z planem działania',
+        body: 'Bez abonamentu. Płacisz tylko wtedy, gdy korzystasz.',
+      },
     },
     finalCta: {
       title: 'Zacznij od problemu, który masz teraz',
       body:
         'Wystarczy kilka konkretnych odpowiedzi, żeby zacząć. MakeMyProblem.Work pomoże doprecyzować sytuację i przygotować praktyczny plan działania.',
-      cta: 'Zacznij rozwiązywać',
+      cta: 'Popracujmy nad tym',
     },
     footer: {
       tagline: 'Aplikacje webowe wspierane przez AI do rozwiązywania problemów.',
@@ -199,7 +351,7 @@ const landingContent: readonly LandingContent[] = [
     },
     hero: {
       eyebrow: 'KI-gestützte Problemlösung',
-      title: 'Vom Problem zum Aktionsplan',
+      title: 'Hast du ein Problem? Lass es uns lösen.',
       copy:
         'MakeMyProblem.Work hilft, ein Problem in einem kurzen KI-gestützten Gespräch zu klären, das Wesentliche zu strukturieren und konkrete nächste Schritte abzuleiten.',
       cta: 'Problem lösen',
@@ -216,22 +368,90 @@ const landingContent: readonly LandingContent[] = [
       ],
     },
     conversation: {
-      title: 'Was das Gespräch leistet',
+      title: 'Ein kurzes Gespräch, kein langer Chat',
       cards: [
-        'Es stellt gezielte Fragen, statt zu früh eine allgemeine Antwort zu liefern.',
-        'Es sucht nach fehlenden Informationen, unklaren Annahmen und widersprüchlichen Anforderungen.',
-        'Es strukturiert das bereits Bekannte, damit die eigentliche Entscheidung leichter erkennbar wird.',
-        'Es führt zu konkreten nächsten Schritten für eine strukturierte Problemlösung.',
+        {
+          title: 'Kurzer, fokussierter Austausch',
+          body: 'Keine langen KI-Aufsätze. Das Gespräch kommt mit kurzen, gezielten Fragen voran.',
+        },
+        {
+          title: 'Du bestätigst das Verständnis',
+          body:
+            'Bevor es weitergeht, bestätigst du, dass das Problem und die wichtigen Details richtig verstanden wurden.',
+        },
+        {
+          title: 'Jede Frage hat einen Zweck',
+          body:
+            'Die Fragen konzentrieren sich auf fehlende Informationen, unklare Annahmen und widersprüchliche Anforderungen, die die Lösung beeinflussen können.',
+        },
+        {
+          title: 'Es führt zur Handlung',
+          body:
+            'Sobald genug klar ist, verwandelt das Gespräch das Besprochene in einen konkreten Aktionsplan.',
+        },
       ],
     },
     examples: {
-      title: 'Probleme, bei denen es helfen kann',
+      title: 'Technische Situationen, in denen es hilft',
       items: [
-        { title: 'Technisches oder produktbezogenes Problem', body: 'Kläre Symptome, Rahmenbedingungen und wahrscheinliche nächste Prüfungen.' },
-        { title: 'Blockade im Projekt oder Prozess', body: 'Trenne Fakten, Annahmen und Abstimmungslücken.' },
-        { title: 'Entscheidung mit Zielkonflikten', body: 'Vergleiche widersprüchliche Anforderungen, bevor du eine Richtung wählst.' },
-        { title: 'Unklare Grundursache', body: 'Ordne das Bekannte, bevor du zu einer Lösung springst.' },
+        {
+          key: 'customer-complaint',
+          title: 'Eine Kundenreklamation ist gerade eingetroffen',
+          description:
+            'Verwandle eine unvollständige Reklamation in wahrscheinliche Ursachen, fehlende Informationen und konkrete nächste Prüfungen, bevor du antwortest.',
+        },
+        {
+          key: 'technical-customer-meeting',
+          title: 'Du bist in einem technischen Kundengespräch',
+          description:
+            'Strukturiere schnell, was bekannt ist, kläre Annahmen und finde nützliche technische Richtungen, während die Diskussion noch läuft.',
+        },
+        {
+          key: 'exhausted-troubleshooting-options',
+          title: 'Die naheliegenden Optionen sind bereits geprüft',
+          description:
+            'Entwickle neue Hypothesen, alternative Ansätze und Prüfungen, wenn deine übliche Troubleshooting-Liste erschöpft ist.',
+        },
+        {
+          key: 'technical-options-needed',
+          title: 'Dein Team wartet auf technische Optionen',
+          description:
+            'Verwandle ein blockiertes oder unklares Thema in mehrere konkrete Wege, die das Team bewerten kann, statt bei null anzufangen.',
+        },
+        {
+          key: 'conflicting-requirements',
+          title: 'Anforderungen ziehen in verschiedene Richtungen',
+          description:
+            'Kläre Zielkonflikte, wenn Leistung, Kosten, Timing, Gewicht, Zuverlässigkeit oder andere Randbedingungen kollidieren.',
+        },
+        {
+          key: 'unclear-root-cause',
+          title: 'Die Grundursache ist noch unklar',
+          description:
+            'Trenne Fakten von Annahmen und erkenne, was als Nächstes geprüft werden sollte, bevor du dich auf eine Lösung festlegst.',
+        },
       ],
+    },
+    trialPricing: {
+      title: 'Ausprobieren ohne Verpflichtung',
+      signup: {
+        title: 'Ohne Registrierung starten',
+        body:
+          'Du brauchst kein Konto, um zu sehen, ob dir das Gespräch hilft.<br />Beginne mit dem Problem, das du jetzt hast.',
+        benefits: [
+          '<strong>Erstes Gespräch kostenlos. Keine Registrierung erforderlich.</strong>',
+          'Kein langes Briefing.',
+          'Melde dich erst an, wenn du deinen Aktionsplan speichern oder später darauf zurückkommen möchtest.',
+        ],
+      },
+      pricing: {
+        title: 'Einfache Preisgestaltung',
+        main: 'Erstes Gespräch — kostenlos',
+        mainLabel: 'Gespräch + Aktionsplan',
+        secondary: `Danach ${landingTrialPrice}`,
+        secondaryLabel: 'pro Gespräch mit Aktionsplan',
+        body: 'Kein Abo. Du zahlst nur, wenn du es nutzt.',
+      },
     },
     finalCta: {
       title: 'Beginne mit dem Problem, das du jetzt hast',
@@ -477,7 +697,7 @@ const styles = `
 
     .hero-copy {
       max-width: 38rem;
-      margin: 20px 0 0;
+      margin: 40px 0 0;
       color: #314338;
       font-size: clamp(1.08rem, 4.5vw, 1.35rem);
       line-height: 1.5;
@@ -513,8 +733,7 @@ const styles = `
     }
 
     section {
-      padding: 34px 0;
-      border-top: 1px solid rgba(49, 72, 58, 0.16);
+      padding: 68px 0;
       scroll-margin-top: 96px;
     }
 
@@ -532,11 +751,12 @@ const styles = `
       gap: 12px;
       margin: 0;
       padding: 0;
+    }
+
+    .steps {
       list-style: none;
     }
 
-    .steps li,
-    .use-cases li,
     .conversation-card {
       border: 1px solid rgba(29, 58, 42, 0.14);
       border-radius: 24px;
@@ -545,16 +765,108 @@ const styles = `
       box-shadow: 0 12px 30px rgba(30, 51, 38, 0.07);
     }
 
-    .steps strong,
-    .use-cases strong {
+    .use-case-band {
+      --use-case-band-bg: #d7e0d3;
+      width: 100vw;
+      margin-left: calc(50% - 50vw);
+      background: var(--use-case-band-bg);
+      padding: 86px 0;
+    }
+
+    .use-case-band__inner {
+      width: min(100%, 1120px);
+      margin: 0 auto;
+      padding: 0 20px;
+    }
+
+    .use-case-band h2 {
+      margin-bottom: 34px;
+    }
+
+    .use-cases {
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    .use-case-card {
+      display: block;
+      min-height: 190px;
+      border: 1px solid rgba(29, 58, 42, 0.16);
+      border-radius: 24px;
+      background: rgba(255, 252, 244, 0.9);
+      padding: 22px;
+      color: inherit;
+      text-decoration: none;
+      box-shadow: 0 12px 30px rgba(30, 51, 38, 0.08);
+    }
+
+    .use-case-card h3 {
+      margin: 0;
+      color: #1c3527;
+      font-size: 1.08rem;
+      line-height: 1.2;
+    }
+
+    .use-case-card p {
+      margin: 12px 0 0;
+      color: #354a3c;
+      line-height: 1.55;
+    }
+
+    #how-it-works .steps {
+      max-width: 900px;
+      margin: 36px auto 0;
+      gap: 0;
+      text-align: left;
+    }
+
+    .steps li {
+      position: relative;
+      display: grid;
+      grid-template-rows: 52px auto auto;
+      align-items: start;
+      justify-items: start;
+      gap: 8px;
+      padding: 0 20px;
+    }
+
+    .steps li::after {
+      content: "";
+      position: absolute;
+      top: 24px;
+      left: 72px;
+      right: 0;
+      height: 1px;
+      background: rgba(29, 58, 42, 0.28);
+    }
+
+    .steps li:last-child::after {
+      display: none;
+    }
+
+    .step-number {
+      position: relative;
+      z-index: 1;
+      display: inline-flex;
+      width: 48px;
+      height: 48px;
+      align-items: center;
+      justify-content: center;
+      border-radius: 999px;
+      background: #1d3a2a;
+      color: #fffaf0;
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .steps strong {
       display: block;
       margin-bottom: 6px;
       color: #1c3527;
       font-size: 1.03rem;
     }
 
-    .steps span,
-    .use-cases span,
+    .steps li > span:not(.step-number),
     .conversation-card p {
       color: #4b5e51;
       line-height: 1.55;
@@ -565,8 +877,90 @@ const styles = `
       gap: 12px;
     }
 
-    .conversation-card p {
+    .conversation-card h3 {
       margin: 0;
+      color: #1c3527;
+      font-size: 1.03rem;
+      line-height: 1.2;
+    }
+
+    .conversation-card p {
+      margin: 10px 0 0;
+    }
+
+    .trial-pricing {
+      padding-top: 72px;
+    }
+
+    .trial-pricing h2 {
+      margin-bottom: 30px;
+    }
+
+    .trial-pricing__panel {
+      display: grid;
+      gap: 0;
+      overflow: hidden;
+      border: 1px solid rgba(29, 58, 42, 0.14);
+      border-radius: 24px;
+      background: rgba(255, 252, 244, 0.78);
+      box-shadow: 0 12px 30px rgba(30, 51, 38, 0.07);
+    }
+
+    .trial-pricing__column {
+      padding: 26px;
+    }
+
+    .trial-pricing__column + .trial-pricing__column {
+      border-top: 1px solid rgba(29, 58, 42, 0.14);
+    }
+
+    .trial-pricing__column h3 {
+      margin: 0;
+      color: #1c3527;
+      font-size: 1.12rem;
+      line-height: 1.2;
+    }
+
+    .trial-pricing__column p {
+      margin: 12px 0 0;
+      color: #3e5145;
+      line-height: 1.55;
+    }
+
+    .trial-pricing__column ul {
+      display: grid;
+      gap: 8px;
+      margin: 18px 0 0;
+      padding-left: 1.2rem;
+      color: #3e5145;
+      line-height: 1.45;
+    }
+
+    .trial-pricing__column li strong {
+      color: #1c3527;
+      font-weight: 800;
+    }
+
+    .trial-pricing__column .trial-pricing__price {
+      color: #1d3a2a;
+      font-size: clamp(2.25rem, 7vw, 3.7rem);
+      font-weight: 800;
+      line-height: 1;
+    }
+
+    .trial-pricing__price-label {
+      font-weight: 800;
+    }
+
+    .trial-pricing__column .trial-pricing__secondary-price {
+      color: #1d3a2a;
+      font-size: clamp(1.25rem, 3.5vw, 1.8rem);
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    .trial-pricing__secondary-label {
+      font-size: 0.95rem;
     }
 
     .final-cta {
@@ -701,17 +1095,39 @@ const styles = `
         padding-left: 28px;
       }
 
-      .steps,
-      .use-cases {
+      .steps {
         grid-template-columns: repeat(3, minmax(0, 1fr));
       }
 
+      .use-case-band__inner {
+        padding: 0 36px;
+      }
+
       .use-cases {
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .conversation-grid {
-        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      .trial-pricing__panel {
+        grid-template-columns: minmax(0, 1fr) minmax(280px, 0.72fr);
+      }
+
+      .trial-pricing__column {
+        padding: 30px;
+      }
+
+      .trial-pricing__column + .trial-pricing__column {
+        border-top: 0;
+        border-left: 1px solid rgba(29, 58, 42, 0.14);
+      }
+    }
+
+    @media (min-width: 1024px) {
+      .use-cases {
+        grid-template-columns: repeat(3, minmax(0, 1fr));
       }
     }
 
@@ -802,6 +1218,70 @@ const styles = `
         margin-top: 8px;
       }
 
+      .use-case-band {
+        padding: 52px 0;
+      }
+
+      .use-case-band h2 {
+        margin-bottom: 24px;
+      }
+
+      .use-cases {
+        gap: 12px;
+      }
+
+      .use-case-card {
+        min-height: 0;
+        padding: 18px;
+      }
+
+      .trial-pricing {
+        padding-top: 52px;
+      }
+
+      .trial-pricing h2 {
+        margin-bottom: 22px;
+      }
+
+      .trial-pricing__column {
+        padding: 20px;
+      }
+
+      #how-it-works .steps {
+        max-width: none;
+        margin-top: 30px;
+        gap: 28px;
+      }
+
+      .steps li {
+        display: grid;
+        grid-template-columns: 54px minmax(0, 1fr);
+        grid-template-rows: auto auto;
+        column-gap: 18px;
+        row-gap: 8px;
+        padding: 0;
+      }
+
+      .steps li::after {
+        top: 48px;
+        bottom: -28px;
+        left: 24px;
+        right: auto;
+        width: 1px;
+        height: auto;
+        background: rgba(29, 58, 42, 0.3);
+      }
+
+      .step-number {
+        grid-row: 1 / span 2;
+        grid-column: 1;
+      }
+
+      .steps strong,
+      .steps li > span:not(.step-number) {
+        grid-column: 2;
+      }
+
       .site-footer__top {
         grid-template-columns: 1fr;
         justify-items: start;
@@ -887,6 +1367,41 @@ const renderLanguageSwitcher = (activeLang: LandingLang) => {
           </details>`
 }
 
+const renderUseCaseCard = (item: LandingContent['examples']['items'][number]) => {
+  const content = `<h3>${item.title}</h3>
+              <p>${item.description}</p>`
+  if (item.futureHref) {
+    return `<a class="use-case-card use-case-card--link" href="${item.futureHref}" data-use-case="${item.key}">
+              ${content}
+            </a>`
+  }
+  return `<article class="use-case-card" data-use-case="${item.key}">
+              ${content}
+            </article>`
+}
+
+const renderTrialPricingSection = (content: LandingContent['trialPricing']) => `
+        <section class="trial-pricing" aria-labelledby="trial-pricing-title">
+          <h2 id="trial-pricing-title">${content.title}</h2>
+          <div class="trial-pricing__panel">
+            <article class="trial-pricing__column">
+              <h3>${content.signup.title}</h3>
+              <p>${content.signup.body}</p>
+              <ul>
+                ${content.signup.benefits.map((benefit) => `<li>${benefit}</li>`).join('\n                ')}
+              </ul>
+            </article>
+            <article class="trial-pricing__column trial-pricing__column--price">
+              <h3>${content.pricing.title}</h3>
+              <p class="trial-pricing__price">${content.pricing.main}</p>
+              <p class="trial-pricing__price-label">${content.pricing.mainLabel}</p>
+              <p class="trial-pricing__secondary-price">${content.pricing.secondary}</p>
+              <p class="trial-pricing__secondary-label">${content.pricing.secondaryLabel}</p>
+              <p>${content.pricing.body}</p>
+            </article>
+          </div>
+        </section>`
+
 const renderLandingBody = (content: LandingContent) => `
     <header class="site-header" aria-label="Primary navigation">
       <div class="site-header__inner">
@@ -930,7 +1445,8 @@ const renderLandingBody = (content: LandingContent) => `
           <ul class="steps">
             ${content.how.steps
               .map(
-                (step) => `<li>
+                (step, index) => `<li>
+              <span class="step-number" aria-hidden="true">${index + 1}</span>
               <strong>${step.title}</strong>
               <span>${step.body}</span>
             </li>`
@@ -939,32 +1455,32 @@ const renderLandingBody = (content: LandingContent) => `
           </ul>
         </section>
 
+        <section id="examples" class="use-case-band" aria-labelledby="use-cases-title">
+          <div class="use-case-band__inner">
+            <h2 id="use-cases-title">${content.examples.title}</h2>
+            <div class="use-cases">
+            ${content.examples.items
+              .map((item) => renderUseCaseCard(item))
+              .join('\n            ')}
+            </div>
+          </div>
+        </section>
+
         <section aria-labelledby="conversation-title">
           <h2 id="conversation-title">${content.conversation.title}</h2>
           <div class="conversation-grid">
             ${content.conversation.cards
               .map(
-                (card) => `<div class="conversation-card">
-              <p>${card}</p>
-            </div>`
+                (card) => `<article class="conversation-card">
+              <h3>${card.title}</h3>
+              <p>${card.body}</p>
+            </article>`
               )
               .join('\n            ')}
           </div>
         </section>
 
-        <section id="examples" aria-labelledby="use-cases-title">
-          <h2 id="use-cases-title">${content.examples.title}</h2>
-          <ul class="use-cases">
-            ${content.examples.items
-              .map(
-                (item) => `<li>
-              <strong>${item.title}</strong>
-              <span>${item.body}</span>
-            </li>`
-              )
-              .join('\n            ')}
-          </ul>
-        </section>
+        ${renderTrialPricingSection(content.trialPricing)}
 
         <section id="pricing" class="final-cta" aria-labelledby="final-title">
           <h2 id="final-title">${content.finalCta.title}</h2>
