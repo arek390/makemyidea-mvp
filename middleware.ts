@@ -1,4 +1,4 @@
-import { resolveSite } from './src/sites/siteConfig'
+import { resolveSite } from './src/sites/siteConfig.js'
 
 const publicLandingLanguages = new Set(['en', 'pl', 'de'])
 const languageAlternates = (origin: string) =>
