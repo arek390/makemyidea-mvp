@@ -275,13 +275,23 @@ export function Engine1LegacyRoute({
   withAlpha,
   workshopIdeas,
 }: Engine1LegacyRouteProps) {
+  const landingPathname = typeof window !== 'undefined' ? window.location.pathname.replace(/\/+$/, '') : ''
+  const landingLanguage = landingPathname === '/pl' ? 'pl' : landingPathname === '/de' ? 'de' : 'en'
+  const landingLanguages = [
+    { lang: 'en', name: 'English', code: 'EN' },
+    { lang: 'de', name: 'Deutsch', code: 'DE' },
+    { lang: 'pl', name: 'Polski', code: 'PL' },
+  ] as const
+  const activeLandingLanguage =
+    landingLanguages.find((language) => language.lang === landingLanguage) || landingLanguages[0]
+
   return (
   <div className="app">
     <header className={`top-bar ${showLanding ? 'landing-top' : ''}`}>
       {showLanding && (
-        <div className="landing-logo">
+        <a className="landing-logo" href={`/${landingLanguage}`} aria-label="MakeMyIdea.Work home">
           <img src={landingLogoUrl} alt="MakeMyIdea.Work" />
-        </div>
+        </a>
       )}
       {!showLanding && (
         <div className="engine-brand">
@@ -309,19 +319,52 @@ export function Engine1LegacyRoute({
           ))}
         </div>
       )}
-      <div className="topbar-links">
-        {showLanding && (
-          <>
-            <a className="ghost topbar-link landing-blog-link" href="/blog">
-              {copy.landingBlogTitle}
-            </a>
-            <a className="primary topbar-link landing-login-link" href="/login" onClick={handleLandingCtaClick}>
+      {showLanding ? (
+        <>
+          <input className="landing-header-toggle" id="landing-header-menu-toggle" type="checkbox" />
+          <label className="landing-header-toggle-button" htmlFor="landing-header-menu-toggle" aria-label="Open menu">
+            <span />
+          </label>
+          <nav className="landing-header-menu" aria-label="Primary menu">
+            <a className="landing-header-link" href={`/${landingLanguage}`}>Home</a>
+            <a className="landing-header-link" href="#how">How It Works</a>
+            <a className="landing-header-link" href="/examples">Examples</a>
+            <a className="landing-header-link" href="/blog">Read the blog</a>
+            <a className="landing-header-link" href="https://www.aremai.tech">About</a>
+            <details className="landing-header-language">
+              <summary aria-label="Change language">
+                <span className="landing-header-language-globe" aria-hidden="true">◎</span>
+                <span>{activeLandingLanguage.code}</span>
+                <span className="landing-header-language-chevron" aria-hidden="true">⌄</span>
+              </summary>
+              <div className="landing-header-language-menu">
+                {landingLanguages.map((language) => (
+                  <a
+                    key={language.lang}
+                    className="landing-header-language-option"
+                    href={`/${language.lang}`}
+                    lang={language.lang}
+                    aria-current={language.lang === landingLanguage ? 'page' : undefined}
+                    onClick={() => setUiLanguage(language.lang === 'pl' ? 'Polish' : 'English')}
+                  >
+                    <span className="landing-header-language-check" aria-hidden="true">
+                      {language.lang === landingLanguage ? '✓' : ''}
+                    </span>
+                    <span>{language.name}</span>
+                    <span className="landing-header-language-code">{language.code}</span>
+                  </a>
+                ))}
+              </div>
+            </details>
+            <a className="landing-header-login" href="/login" onClick={handleLandingCtaClick}>
               {copy.landingLoginCta}
             </a>
-          </>
-        )}
-      </div>
-      {(showLanding || activeStep === 1) && (
+          </nav>
+        </>
+      ) : (
+        <div className="topbar-links" />
+      )}
+      {!showLanding && activeStep === 1 && (
         <label className="topbar-language">
           <span>{copy.languageLabel}</span>
           <select
@@ -487,34 +530,49 @@ export function Engine1LegacyRoute({
     </main>
     {showLanding && (
       <footer className="landing-bottom-bar">
-        <nav className="landing-bottom-links" aria-label="Legal links">
-          <a className="ghost landing-bottom-link" href="/privacy">
-            {copy.landingPrivacyTitle}
-          </a>
-          <a className="ghost landing-bottom-link" href="/blog">
-            {copy.landingBlogTitle}
-          </a>
-          <a className="ghost landing-bottom-link" href="/termsandconditions">
-            {copy.landingTermsTitle}
-          </a>
-          <a className="ghost landing-bottom-link" href="mailto:makemyideawork@aremai.tech">
-            {copy.landingContactTitle}
-          </a>
-        </nav>
-        <a
-          className="landing-bottom-logo-link"
-          href="https://www.aremai.tech"
-          target="_blank"
-          rel="noopener noreferrer"
-          aria-label="AremAI website"
-        >
-          <img
-            className="landing-bottom-logo"
-            src={new URL('/logo/aremai_logo.png.webp', import.meta.url).href}
-            alt="AremAI"
-            loading="lazy"
-          />
-        </a>
+        <div className="landing-bottom-inner">
+          <div className="landing-bottom-top">
+            <div className="landing-bottom-brand">
+              <a
+                className="landing-bottom-logo-link"
+                href="https://www.aremai.tech"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="AremAI website"
+              >
+                <img
+                  className="landing-bottom-logo"
+                  src={new URL('/logo/aremai_logo_footer.webp', import.meta.url).href}
+                  alt="AremAI"
+                  loading="lazy"
+                />
+              </a>
+              <p className="landing-bottom-tagline">AI-assisted web apps for idea development.</p>
+            </div>
+            <nav className="landing-bottom-links" aria-label="Legal links">
+              <a className="landing-bottom-link" href="/privacy">
+                {copy.landingPrivacyTitle}
+              </a>
+              <a className="landing-bottom-link" href="/blog">
+                {copy.landingBlogTitle}
+              </a>
+              <a className="landing-bottom-link" href="/termsandconditions">
+                {copy.landingTermsTitle}
+              </a>
+              <a className="landing-bottom-link" href="mailto:makemyideawork@aremai.tech">
+                {copy.landingContactTitle}
+              </a>
+            </nav>
+          </div>
+          <div className="landing-bottom-disclaimer-row">
+            <p className="landing-bottom-disclaimer">
+              <strong>Disclaimer:</strong> AI-generated outputs require independent validation and are not production approval.
+            </p>
+          </div>
+          <div className="landing-bottom-copyright-row">
+            <p className="landing-bottom-copyright">© 2026 MakeMyIdeaWork All rights reserved.</p>
+          </div>
+        </div>
       </footer>
     )}
     <Engine1LegacyModals

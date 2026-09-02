@@ -2577,7 +2577,8 @@ const isAuthFlowInProgress = () => {
     const isBlogPath = normalizedAuthPath === '/blog' || normalizedAuthPath.startsWith('/blog/')
 
     const isEnginePublicPath = normalizedAuthPath === '/engine_2'
-    if (!canEnterApp && !isReportPath && !isPrivacyPath && !isTermsAndConditionsPath && !isExamplesPath && !isBlogPath && !isEnginePublicPath) {
+    const isPublicLanguageLandingPath = ['en', 'pl', 'de'].includes(normalizedAuthPath.slice(1)) && !normalizedAuthPath.slice(2).includes('/')
+    if (!canEnterApp && !isReportPath && !isPrivacyPath && !isTermsAndConditionsPath && !isExamplesPath && !isBlogPath && !isEnginePublicPath && !isPublicLanguageLandingPath) {
       if (
         path !== '/' &&
         !path.startsWith('/login') &&

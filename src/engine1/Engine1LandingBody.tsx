@@ -69,14 +69,6 @@ export function Engine1LandingBody({
                   Watch how it works (2 min)
                 </a>
               )}
-              <div className="landing-hero-secondary-cta">
-                <a className="primary landing-cta" href="/engine_2">
-                  {copy.landingHeroTryWithoutSignupCta}
-                </a>
-                <div className="landing-microcopy landing-hero-secondary-note">
-                  {copy.landingHeroTryWithoutSignupNote}
-                </div>
-              </div>
             </div>
           </div>
 
@@ -205,7 +197,7 @@ export function Engine1LandingBody({
             </div>
           </div>
 
-          <div className="landing-section how">
+          <div id="how" className="landing-section how">
             <div className="landing-inner">
               <h3>{copy.landingHowTitle}</h3>
               {copy.landingHowSteps.length > 0 ? (

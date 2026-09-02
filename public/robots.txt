@@ -1,4 +1,5 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://makemyidea.work/sitemap.xml
+Sitemap: https://www.makemyidea.work/sitemap.xml
+Sitemap: https://www.makemyproblem.work/sitemap.xml

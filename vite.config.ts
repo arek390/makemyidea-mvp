@@ -27,6 +27,11 @@ const siteOutputDirs: Record<SiteId, string> = {
   makeMyProblem: 'makemyproblem',
 }
 
+const localPublicSiteHosts: Record<string, SiteId> = {
+  'makemyidea.localhost': 'makeMyIdea',
+  'makemyproblem.localhost': 'makeMyProblem',
+}
+
 const escapeHtml = (value: string) =>
   value
     .replace(/&/g, '&amp;')
@@ -38,12 +43,22 @@ const escapeHtml = (value: string) =>
 const isHtmlPublicPage = (page: (typeof publicPages)[number]): page is HtmlPublicPageDefinition =>
   'bodyHtml' in page
 
+const renderAlternateLinks = (page: (typeof publicPages)[number]) =>
+  (page.alternateLinks || [])
+    .map(
+      (link) =>
+        `    <link rel="alternate" hreflang="${escapeHtml(link.hreflang)}" href="${escapeHtml(link.href)}" />`
+    )
+    .join('\n')
+
 const renderPublicPageHtml = (page: (typeof publicPages)[number]) => {
   const site = siteConfigs[page.siteId]
   const canonicalUrl = `${site.canonicalUrl}${page.pathname}`
   const escapedTitle = escapeHtml(page.title)
   const escapedDescription = escapeHtml(page.description)
   const escapedCanonicalUrl = escapeHtml(canonicalUrl)
+  const lang = escapeHtml(page.lang || 'en')
+  const alternateLinks = renderAlternateLinks(page)
 
   const bodyContent = isHtmlPublicPage(page)
     ? page.bodyHtml
@@ -58,14 +73,14 @@ const renderPublicPageHtml = (page: (typeof publicPages)[number]) => {
   const styles = isHtmlPublicPage(page) ? `\n    <style>${page.styles}\n    </style>` : ''
 
   return `<!doctype html>
-<html lang="en">
+<html lang="${lang}">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapedTitle}</title>
     <meta name="description" content="${escapedDescription}" />
     <link rel="canonical" href="${escapedCanonicalUrl}" />
-    <meta property="og:title" content="${escapedTitle}" />
+${alternateLinks ? `${alternateLinks}\n` : ''}    <meta property="og:title" content="${escapedTitle}" />
     <meta property="og:description" content="${escapedDescription}" />
     <meta property="og:url" content="${escapedCanonicalUrl}" />
     <meta property="og:type" content="website" />
@@ -87,11 +102,12 @@ const renderPublicPageHead = (page: (typeof publicPages)[number]) => {
   const escapedTitle = escapeHtml(page.title)
   const escapedDescription = escapeHtml(page.description)
   const escapedCanonicalUrl = escapeHtml(canonicalUrl)
+  const alternateLinks = renderAlternateLinks(page)
 
   return `    <title>${escapedTitle}</title>
     <meta name="description" content="${escapedDescription}" />
     <link rel="canonical" href="${escapedCanonicalUrl}" />
-    <meta property="og:title" content="${escapedTitle}" />
+${alternateLinks ? `${alternateLinks}\n` : ''}    <meta property="og:title" content="${escapedTitle}" />
     <meta property="og:description" content="${escapedDescription}" />
     <meta property="og:url" content="${escapedCanonicalUrl}" />
     <meta property="og:type" content="website" />
@@ -102,8 +118,17 @@ const renderPublicPageHead = (page: (typeof publicPages)[number]) => {
 
 const renderPublicAppShellHtml = (page: (typeof publicPages)[number], spaHtml: string) => {
   const head = renderPublicPageHead(page)
+  const lang = escapeHtml(page.lang || 'en')
   return spaHtml
+    .replace(/<html lang="[^"]*">/, `<html lang="${lang}">`)
     .replace(/    <title>[\s\S]*?<\/title>/, head)
+}
+
+const getPublicPageOutputDir = (outDir: string, page: (typeof publicPages)[number]) => {
+  const siteDir = siteOutputDirs[page.siteId]
+  if (page.pathname === '/') return path.join(outDir, '_sites', siteDir)
+  const pathnameDir = page.pathname.replace(/^\/+/, '').replace(/\/+$/, '')
+  return path.join(outDir, '_sites', siteDir, pathnameDir)
 }
 
 const publicSitesPlugin = (): Plugin => {
@@ -116,17 +141,47 @@ const publicSitesPlugin = (): Plugin => {
     },
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
-        if (req.url !== '/') {
-          next()
-          return
-        }
+        const requestUrl = new URL(req.url || '/', 'http://localhost')
         const host = String(req.headers.host || '').split(':')[0]?.toLowerCase()
-        if (host !== 'makemyproblem.localhost') {
+        const siteId = localPublicSiteHosts[host]
+        if (!siteId) {
           next()
           return
         }
-        const page = publicPages.find((item) => item.siteId === 'makeMyProblem' && item.pathname === '/')
+
+        const normalizedPathname = requestUrl.pathname.toLowerCase().replace(/\/+$/, '') || '/'
+        if (requestUrl.pathname === '/') {
+          res.statusCode = 308
+          res.setHeader('Location', '/en')
+          res.end()
+          return
+        }
+
+        if (!['/en', '/pl', '/de'].includes(normalizedPathname)) {
+          if (/^\/[a-z]{2}\/?$/i.test(requestUrl.pathname)) {
+            res.statusCode = 404
+            res.setHeader('Content-Type', 'text/plain; charset=utf-8')
+            res.end('Not Found')
+            return
+          }
+          next()
+          return
+        }
+
+        if (requestUrl.pathname !== normalizedPathname) {
+          res.statusCode = 308
+          res.setHeader('Location', normalizedPathname)
+          res.end()
+          return
+        }
+
+        const pathname = normalizedPathname === '/' ? '/en' : normalizedPathname
+        const page = publicPages.find((item) => item.siteId === siteId && item.pathname === pathname)
         if (!page) {
+          next()
+          return
+        }
+        if (page.siteId === 'makeMyIdea' && !isHtmlPublicPage(page)) {
           next()
           return
         }
@@ -139,11 +194,10 @@ const publicSitesPlugin = (): Plugin => {
       const spaHtml = await readFile(path.join(outDir, 'index.html'), 'utf8')
       await Promise.all(
         publicPages.map(async (page) => {
-          const siteDir = siteOutputDirs[page.siteId]
-          const outputDir = path.join(outDir, '_sites', siteDir)
+          const outputDir = getPublicPageOutputDir(outDir, page)
           await mkdir(outputDir, { recursive: true })
           const html =
-            page.siteId === 'makeMyIdea'
+            page.siteId === 'makeMyIdea' && !isHtmlPublicPage(page)
               ? renderPublicAppShellHtml(page, spaHtml)
               : renderPublicPageHtml(page)
           await writeFile(path.join(outputDir, 'index.html'), html, 'utf8')
