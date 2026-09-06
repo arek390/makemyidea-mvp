@@ -59,6 +59,7 @@ const renderPublicPageHtml = (page: (typeof publicPages)[number]) => {
   const escapedCanonicalUrl = escapeHtml(canonicalUrl)
   const lang = escapeHtml(page.lang || 'en')
   const alternateLinks = renderAlternateLinks(page)
+  const robotsMeta = page.indexable === false ? '    <meta name="robots" content="noindex, follow" />\n' : ''
 
   const bodyContent = isHtmlPublicPage(page)
     ? page.bodyHtml
@@ -79,7 +80,7 @@ const renderPublicPageHtml = (page: (typeof publicPages)[number]) => {
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapedTitle}</title>
     <meta name="description" content="${escapedDescription}" />
-    <link rel="canonical" href="${escapedCanonicalUrl}" />
+${robotsMeta}    <link rel="canonical" href="${escapedCanonicalUrl}" />
 ${alternateLinks ? `${alternateLinks}\n` : ''}    <meta property="og:title" content="${escapedTitle}" />
     <meta property="og:description" content="${escapedDescription}" />
     <meta property="og:url" content="${escapedCanonicalUrl}" />
@@ -103,10 +104,11 @@ const renderPublicPageHead = (page: (typeof publicPages)[number]) => {
   const escapedDescription = escapeHtml(page.description)
   const escapedCanonicalUrl = escapeHtml(canonicalUrl)
   const alternateLinks = renderAlternateLinks(page)
+  const robotsMeta = page.indexable === false ? '    <meta name="robots" content="noindex, follow" />\n' : ''
 
   return `    <title>${escapedTitle}</title>
     <meta name="description" content="${escapedDescription}" />
-    <link rel="canonical" href="${escapedCanonicalUrl}" />
+${robotsMeta}    <link rel="canonical" href="${escapedCanonicalUrl}" />
 ${alternateLinks ? `${alternateLinks}\n` : ''}    <meta property="og:title" content="${escapedTitle}" />
     <meta property="og:description" content="${escapedDescription}" />
     <meta property="og:url" content="${escapedCanonicalUrl}" />
@@ -157,7 +159,8 @@ const publicSitesPlugin = (): Plugin => {
           return
         }
 
-        if (!['/en', '/pl', '/de'].includes(normalizedPathname)) {
+        const page = publicPages.find((item) => item.siteId === siteId && item.pathname === normalizedPathname)
+        if (!page) {
           if (/^\/[a-z]{2}\/?$/i.test(requestUrl.pathname)) {
             res.statusCode = 404
             res.setHeader('Content-Type', 'text/plain; charset=utf-8')
@@ -175,17 +178,14 @@ const publicSitesPlugin = (): Plugin => {
           return
         }
 
-        const pathname = normalizedPathname === '/' ? '/en' : normalizedPathname
-        const page = publicPages.find((item) => item.siteId === siteId && item.pathname === pathname)
-        if (!page) {
-          next()
-          return
-        }
         if (page.siteId === 'makeMyIdea' && !isHtmlPublicPage(page)) {
           next()
           return
         }
         res.statusCode = 200
+        if (page.indexable === false) {
+          res.setHeader('X-Robots-Tag', 'noindex, follow')
+        }
         res.setHeader('Content-Type', 'text/html; charset=utf-8')
         res.end(renderPublicPageHtml(page))
       })

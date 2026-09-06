@@ -1,6 +1,7 @@
 import type { SiteId } from './siteConfig'
 import { siteConfigs } from './siteConfig'
 import { makeMyProblemHomePages } from './makemyproblem/landing'
+import { makeMyProblemUseCasePages } from './makemyproblem/useCasePages'
 
 type PublicPageBase = {
   siteId: SiteId
@@ -8,6 +9,7 @@ type PublicPageBase = {
   lang?: 'en' | 'pl' | 'de'
   title: string
   description: string
+  indexable?: boolean
   alternateLinks?: readonly {
     hreflang: 'en' | 'pl' | 'de' | 'x-default'
     href: string
@@ -93,4 +95,5 @@ export const publicPages: readonly PublicPageDefinition[] = [
     },
   },
   ...makeMyProblemHomePages,
+  ...makeMyProblemUseCasePages,
 ] as const

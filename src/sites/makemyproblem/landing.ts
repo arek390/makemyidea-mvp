@@ -3,6 +3,8 @@ import { siteConfigs } from '../siteConfig'
 
 type LandingLang = 'en' | 'pl' | 'de'
 
+export type MakeMyProblemLandingLang = LandingLang
+
 type LandingContent = {
   lang: LandingLang
   pathname: `/${LandingLang}`
@@ -66,8 +68,12 @@ type LandingContent = {
   }
 }
 
+type MakeMyProblemHeaderContent = LandingContent['nav']
+type MakeMyProblemFooterContent = LandingContent['footer']
+
 const makeMyProblemSite = siteConfigs.makeMyProblem
 const landingTrialPrice = '$0.50'
+const publisherUrl = 'https://www.aremai.tech'
 
 const alternateLinks = [
   { hreflang: 'en', href: `${makeMyProblemSite.canonicalUrl}/en` },
@@ -81,9 +87,9 @@ const landingContent: readonly LandingContent[] = [
   {
     lang: 'en',
     pathname: '/en',
-    title: 'MakeMyProblem.Work - AI problem solving with an action plan',
+    title: 'AI Technical Problem Solving & Action Plans | MakeMyProblem',
     description:
-      'MakeMyProblem.Work helps you clarify a problem through a short AI-guided conversation and turn it into focused next actions.',
+      'MakeMyProblem.Work helps engineers and technical teams clarify technical problems through a short AI-guided conversation and turn them into focused next actions.',
     nav: {
       home: 'Home',
       howItWorks: 'How It Works',
@@ -93,10 +99,10 @@ const landingContent: readonly LandingContent[] = [
       login: 'Login',
     },
     hero: {
-      eyebrow: 'AI problem solving',
+      eyebrow: 'AI technical problem solving',
       title: 'Got a problem? Let’s work it out.',
       copy:
-        'MakeMyProblem.Work helps you clarify a problem through a short AI-guided conversation, organize what matters and move toward concrete next actions.',
+        'MakeMyProblem.Work helps engineers and technical teams clarify technical problems through a short AI-guided conversation and turn what matters into a concrete action plan.',
       cta: "Let's work on it",
       reassurance: 'Short conversation. No long briefing required.',
       aside:
@@ -181,7 +187,7 @@ const landingContent: readonly LandingContent[] = [
         body:
           "You don't need an account to see if the conversation helps.<br />Start with the problem you have now.",
         benefits: [
-          '<strong>First conversation free. No sign-up required.</strong>',
+          'First conversation free. <strong>No sign-up required.</strong>',
           'No long briefing.',
           'Sign in only if you want to save your action plan or come back to it later.',
         ],
@@ -212,9 +218,9 @@ const landingContent: readonly LandingContent[] = [
   {
     lang: 'pl',
     pathname: '/pl',
-    title: 'MakeMyProblem.Work - Rozwiązywanie problemów z AI i planem działania',
+    title: 'AI do rozwiązywania problemów technicznych | MakeMyProblem',
     description:
-      'MakeMyProblem.Work pomaga doprecyzować problem w krótkiej rozmowie wspieranej przez AI i zamienić go w konkretne kolejne działania.',
+      'MakeMyProblem.Work pomaga inżynierom i zespołom technicznym doprecyzować problemy techniczne w krótkiej rozmowie wspieranej przez AI i przejść do konkretnych działań.',
     nav: {
       home: 'Start',
       howItWorks: 'Jak to działa',
@@ -227,7 +233,7 @@ const landingContent: readonly LandingContent[] = [
       eyebrow: 'Rozwiązywanie problemów z AI',
       title: 'Masz problem? Rozwiążmy go.',
       copy:
-        'MakeMyProblem.Work pomaga doprecyzować problem w krótkiej rozmowie wspieranej przez AI, uporządkować to, co ważne, i przejść do konkretnych kolejnych działań.',
+        'MakeMyProblem.Work pomaga inżynierom i zespołom technicznym doprecyzować problem z pomocą AI w krótkiej rozmowie i zamienić to, co ważne, w konkretny plan działania.',
       cta: 'Popracujmy nad tym',
       reassurance: 'Krótka rozmowa. Nie dlugi czat.',
       aside:
@@ -344,9 +350,9 @@ const landingContent: readonly LandingContent[] = [
   {
     lang: 'de',
     pathname: '/de',
-    title: 'MakeMyProblem.Work - Problemlösung mit KI und Aktionsplan',
+    title: 'KI für technische Problemlösung | MakeMyProblem',
     description:
-      'MakeMyProblem.Work hilft, ein Problem in einem kurzen KI-gestützten Gespräch zu klären und daraus konkrete nächste Schritte abzuleiten.',
+      'MakeMyProblem.Work unterstützt Ingenieure und technische Teams dabei, technische Probleme in einem kurzen KI-gestützten Gespräch zu klären und konkrete nächste Schritte abzuleiten.',
     nav: {
       home: 'Start',
       howItWorks: 'So funktioniert es',
@@ -359,7 +365,7 @@ const landingContent: readonly LandingContent[] = [
       eyebrow: 'KI-gestützte Problemlösung',
       title: 'Hast du ein Problem? Lass es uns lösen.',
       copy:
-        'MakeMyProblem.Work hilft, ein Problem in einem kurzen KI-gestützten Gespräch zu klären, das Wesentliche zu strukturieren und konkrete nächste Schritte abzuleiten.',
+        'MakeMyProblem.Work unterstützt Ingenieure und technische Teams dabei, technische Probleme in einem kurzen KI-gestützten Gespräch zu klären und in einen konkreten Aktionsplan zu überführen.',
       cta: 'Problem lösen',
       reassurance: 'Kurzes Gespräch. Kein langes Briefing erforderlich.',
       aside:
@@ -475,7 +481,7 @@ const landingContent: readonly LandingContent[] = [
   },
 ]
 
-const styles = `
+export const makeMyProblemStyles = `
     :root {
       color-scheme: light;
       font-family:
@@ -1350,6 +1356,35 @@ const chevronIcon = `<svg class="site-header__chevron" viewBox="0 0 24 24" aria-
               <path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" />
             </svg>`
 
+const renderStructuredData = (content: LandingContent) => {
+  const data = {
+    '@context': 'https://schema.org',
+    '@type': 'WebApplication',
+    name: 'MakeMyProblem',
+    url: `${makeMyProblemSite.canonicalUrl}${content.pathname}`,
+    description: content.description,
+    inLanguage: content.lang,
+    applicationCategory: 'BusinessApplication',
+    operatingSystem: 'Web browser',
+    publisher: {
+      '@type': 'Organization',
+      name: 'Aremai',
+      url: publisherUrl,
+    },
+  }
+  const json = JSON.stringify(data).replace(/</g, '\\u003c')
+
+  return `<script type="application/ld+json">${json}</script>`
+}
+
+const makeAppLanguageStorageAttribute = (activeLang: LandingLang) => {
+  const uiLanguage = activeLang === 'pl' ? 'Polish' : 'English'
+  return `onclick="try{localStorage.setItem('makemyproblem-landing-language','${activeLang}');localStorage.setItem('ui-language','${uiLanguage}')}catch(e){}"`
+}
+
+export const renderMakeMyProblemAppLink = (className: string, activeLang: LandingLang, label: string) =>
+  `<a class="${className}" href="${makeMyProblemSite.primaryAppRoute}" ${makeAppLanguageStorageAttribute(activeLang)}>${label}</a>`
+
 const renderLanguageSwitcher = (activeLang: LandingLang) => {
   const activeLanguage = languages.find((language) => language.lang === activeLang) || languages[0]
   const options = languages
@@ -1411,10 +1446,10 @@ const renderTrialPricingSection = (content: LandingContent['trialPricing']) => `
           </div>
         </section>`
 
-const renderLandingBody = (content: LandingContent) => `
+export const renderMakeMyProblemHeader = (activeLang: LandingLang, nav: MakeMyProblemHeaderContent) => `
     <header class="site-header" aria-label="Primary navigation">
       <div class="site-header__inner">
-        <a class="site-header__logo-link" href="/${content.lang}" aria-label="MakeMyProblem.Work home">
+        <a class="site-header__logo-link" href="/${activeLang}" aria-label="MakeMyProblem.Work home">
           <img class="site-header__logo" src="/logo/logo_makemyproblemwork_transp.png" alt="MakeMyProblem.Work" />
         </a>
         <input class="site-header__toggle" id="site-header-menu-toggle" type="checkbox" />
@@ -1422,16 +1457,57 @@ const renderLandingBody = (content: LandingContent) => `
           <span></span>
         </label>
         <nav class="site-header__menu" aria-label="Primary menu">
-          <a class="site-header__link" href="#home">${content.nav.home}</a>
-          <a class="site-header__link" href="#how-it-works">${content.nav.howItWorks}</a>
-          <a class="site-header__link" href="#examples">${content.nav.examples}</a>
-          <a class="site-header__link" href="#pricing">${content.nav.pricing}</a>
-          <a class="site-header__link" href="https://www.aremai.tech">${content.nav.about}</a>
-          ${renderLanguageSwitcher(content.lang)}
-          <a class="site-header__login" href="${makeMyProblemSite.primaryAppRoute}">${content.nav.login}</a>
+          <a class="site-header__link" href="#home">${nav.home}</a>
+          <a class="site-header__link" href="#how-it-works">${nav.howItWorks}</a>
+          <a class="site-header__link" href="#examples">${nav.examples}</a>
+          <a class="site-header__link" href="#pricing">${nav.pricing}</a>
+          <a class="site-header__link" href="https://www.aremai.tech">${nav.about}</a>
+          ${renderLanguageSwitcher(activeLang)}
+          ${renderMakeMyProblemAppLink('site-header__login', activeLang, nav.login)}
         </nav>
       </div>
     </header>
+`
+
+export const renderMakeMyProblemFooter = (activeLang: LandingLang, footer: MakeMyProblemFooterContent) => `
+    <footer class="site-footer" aria-label="Aremai footer">
+      <div class="site-footer__inner">
+        <div class="site-footer__top">
+          <div class="site-footer__brand">
+            <a
+              class="site-footer__logo-link"
+              href="https://www.aremai.tech"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Aremai website"
+            >
+              <img class="site-footer__logo" src="/logo/aremai_logo_footer.webp" alt="Aremai" loading="lazy" />
+            </a>
+            <p class="site-footer__tagline">${footer.tagline}</p>
+          </div>
+        <nav class="site-footer__links" aria-label="Footer links">
+          <a class="site-footer__link" href="https://www.aremai.tech">About</a>
+          <a class="site-footer__link" href="mailto:contact@aremai.tech">Contact</a>
+          <a class="site-footer__link" href="/privacy/${activeLang}">${footer.privacy}</a>
+          <a class="site-footer__link" href="/termsandconditions/${activeLang}">${footer.terms}</a>
+          ${renderMakeMyProblemAppLink('site-footer__link', activeLang, 'Login')}
+        </nav>
+        </div>
+        <div class="site-footer__disclaimer-row">
+          <p class="site-footer__disclaimer">
+            <strong>Disclaimer:</strong> ${footer.disclaimer}
+          </p>
+        </div>
+        <div class="site-footer__copyright-row">
+          <p class="site-footer__copyright">${footer.copyright}</p>
+        </div>
+      </div>
+    </footer>
+`
+
+const renderLandingBody = (content: LandingContent) => `
+    ${renderStructuredData(content)}
+    ${renderMakeMyProblemHeader(content.lang, content.nav)}
     <div class="page">
       <main>
         <section id="home" class="hero" aria-labelledby="hero-title">
@@ -1440,7 +1516,7 @@ const renderLandingBody = (content: LandingContent) => `
             <h1 id="hero-title">${content.hero.title}</h1>
             <p class="hero-copy">${content.hero.copy}</p>
             <div class="cta-row">
-              <a class="cta" href="${makeMyProblemSite.primaryAppRoute}">${content.hero.cta}</a>
+              ${renderMakeMyProblemAppLink('cta', content.lang, content.hero.cta)}
               <p class="reassurance">${content.hero.reassurance}</p>
             </div>
           </div>
@@ -1494,43 +1570,11 @@ const renderLandingBody = (content: LandingContent) => `
         <section id="pricing" class="final-cta" aria-labelledby="final-title">
           <h2 id="final-title">${content.finalCta.title}</h2>
           <p>${content.finalCta.body}</p>
-          <a class="cta" href="${makeMyProblemSite.primaryAppRoute}">${content.finalCta.cta}</a>
+          ${renderMakeMyProblemAppLink('cta', content.lang, content.finalCta.cta)}
         </section>
       </main>
     </div>
-    <footer class="site-footer" aria-label="Aremai footer">
-      <div class="site-footer__inner">
-        <div class="site-footer__top">
-          <div class="site-footer__brand">
-            <a
-              class="site-footer__logo-link"
-              href="https://www.aremai.tech"
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="Aremai website"
-            >
-              <img class="site-footer__logo" src="/logo/aremai_logo_footer.webp" alt="Aremai" loading="lazy" />
-            </a>
-            <p class="site-footer__tagline">${content.footer.tagline}</p>
-          </div>
-        <nav class="site-footer__links" aria-label="Footer links">
-          <a class="site-footer__link" href="https://www.aremai.tech">About</a>
-          <a class="site-footer__link" href="mailto:contact@aremai.tech">Contact</a>
-          <a class="site-footer__link" href="/privacy/${content.lang}">${content.footer.privacy}</a>
-          <a class="site-footer__link" href="/termsandconditions/${content.lang}">${content.footer.terms}</a>
-          <a class="site-footer__link" href="${makeMyProblemSite.primaryAppRoute}">Login</a>
-        </nav>
-        </div>
-        <div class="site-footer__disclaimer-row">
-          <p class="site-footer__disclaimer">
-            <strong>Disclaimer:</strong> ${content.footer.disclaimer}
-          </p>
-        </div>
-        <div class="site-footer__copyright-row">
-          <p class="site-footer__copyright">${content.footer.copyright}</p>
-        </div>
-      </div>
-    </footer>
+    ${renderMakeMyProblemFooter(content.lang, content.footer)}
   `
 
 export const makeMyProblemHomePages: readonly HtmlPublicPageDefinition[] = landingContent.map(
@@ -1545,7 +1589,7 @@ export const makeMyProblemHomePages: readonly HtmlPublicPageDefinition[] = landi
       label: content.hero.cta,
       href: makeMyProblemSite.primaryAppRoute,
     },
-    styles,
+    styles: makeMyProblemStyles,
     bodyHtml: renderLandingBody(content),
   })
 )

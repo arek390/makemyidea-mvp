@@ -1,4 +1,5 @@
 import { resolveSite } from './src/sites/siteConfig.js'
+import { publicPages } from './src/sites/publicPages.js'
 
 const publicLandingLanguages = new Set(['en', 'pl', 'de'])
 const makeMyProblemNoindexPaths = [
@@ -36,6 +37,11 @@ ${languageUrls.concat(remainingUrls).join('\n\n')}
 </urlset>
 `
 }
+
+const publicSitemapUrls = (siteId: 'makeMyIdea' | 'makeMyProblem', siteOrigin: string) =>
+  publicPages
+    .filter((page) => page.siteId === siteId && page.indexable === true && !publicLandingLanguages.has(page.pathname.slice(1)))
+    .map((page) => `${siteOrigin}${page.pathname}`)
 
 const makeMyIdeaExtraSitemapUrls = [
   'https://www.makemyidea.work/login',
@@ -96,10 +102,11 @@ Sitemap: ${site.canonicalUrl}/sitemap.xml
   }
 
   if (url.pathname === '/sitemap.xml') {
+    const indexablePublicUrls = publicSitemapUrls(site.id, site.canonicalUrl)
     const sitemap =
       site.id === 'makeMyIdea'
-        ? makeSitemap(site.canonicalUrl, makeMyIdeaExtraSitemapUrls)
-        : makeSitemap(site.canonicalUrl)
+        ? makeSitemap(site.canonicalUrl, makeMyIdeaExtraSitemapUrls.concat(indexablePublicUrls))
+        : makeSitemap(site.canonicalUrl, indexablePublicUrls)
     return new Response(sitemap, {
       headers: {
         'content-type': 'application/xml; charset=utf-8',
@@ -116,15 +123,32 @@ Sitemap: ${site.canonicalUrl}/sitemap.xml
 
   if (site.id === 'makeMyIdea' || site.id === 'makeMyProblem') {
     const languageMatch = url.pathname.match(/^\/([a-z]{2})\/?$/i)
+    const normalizedPathname = url.pathname.toLowerCase().replace(/\/+$/, '') || '/'
+    const publicPage = publicPages.find((page) => page.siteId === site.id && page.pathname === normalizedPathname)
 
     if (url.pathname === '/') {
       url.pathname = '/en'
       return Response.redirect(url, 308)
     }
 
-    if (!languageMatch) return
+    if (!languageMatch && !publicPage) return
 
-    const language = languageMatch[1].toLowerCase()
+    if (publicPage) {
+      if (url.pathname !== normalizedPathname) {
+        url.pathname = normalizedPathname
+        return Response.redirect(url, 308)
+      }
+
+      const siteDir = site.id === 'makeMyIdea' ? 'makemyidea' : 'makemyproblem'
+      url.pathname = `/_sites/${siteDir}${publicPage.pathname}/index.html`
+      const response = rewriteTo(url)
+      if (publicPage.indexable === false) {
+        response.headers.set('X-Robots-Tag', 'noindex, follow')
+      }
+      return response
+    }
+
+    const language = languageMatch?.[1].toLowerCase() || ''
     const canonicalPathname = `/${language}`
 
     if (!publicLandingLanguages.has(language)) {
