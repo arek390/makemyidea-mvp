@@ -30,9 +30,12 @@ describe('MakeMyProblem language landing pages', () => {
 
   it('renders language switch links and keeps CTA pointed at Engine 2', () => {
     for (const page of makeMyProblemPages) {
+      const language = page.pathname.slice(1)
       expect(page.bodyHtml).toContain('href="/en"')
       expect(page.bodyHtml).toContain('href="/pl"')
       expect(page.bodyHtml).toContain('href="/de"')
+      expect(page.bodyHtml).toContain(`href="/privacy/${language}"`)
+      expect(page.bodyHtml).toContain(`href="/termsandconditions/${language}"`)
       expect(page.bodyHtml).toContain('href="/engine_2"')
     }
   })

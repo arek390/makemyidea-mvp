@@ -61,6 +61,8 @@ type LandingContent = {
     tagline: string
     disclaimer: string
     copyright: string
+    privacy: string
+    terms: string
   }
 }
 
@@ -203,6 +205,8 @@ const landingContent: readonly LandingContent[] = [
       tagline: 'AI-assisted web apps for problem solving.',
       disclaimer: 'AI-generated outputs require independent validation and are not production approval.',
       copyright: '© 2026 MakeMyProblemWork All rights reserved.',
+      privacy: 'Privacy Policy',
+      terms: 'Terms of Service',
     },
   },
   {
@@ -333,6 +337,8 @@ const landingContent: readonly LandingContent[] = [
       tagline: 'Aplikacje webowe wspierane przez AI do rozwiązywania problemów.',
       disclaimer: 'Wyniki generowane przez AI wymagają niezależnej walidacji i nie są zatwierdzeniem produkcyjnym.',
       copyright: '© 2026 MakeMyProblemWork Wszelkie prawa zastrzeżone.',
+      privacy: 'Polityka prywatności',
+      terms: 'Regulamin serwisu',
     },
   },
   {
@@ -463,6 +469,8 @@ const landingContent: readonly LandingContent[] = [
       tagline: 'KI-gestützte Web-Apps für Problemlösung.',
       disclaimer: 'KI-generierte Ergebnisse erfordern eine unabhängige Validierung und sind keine Produktionsfreigabe.',
       copyright: '© 2026 MakeMyProblemWork Alle Rechte vorbehalten.',
+      privacy: 'Datenschutzerklärung',
+      terms: 'Nutzungsbedingungen',
     },
   },
 ]
@@ -837,7 +845,7 @@ const styles = `
       left: 72px;
       right: 0;
       height: 1px;
-      background: rgba(29, 58, 42, 0.28);
+      background: rgb(203, 33, 127);
     }
 
     .steps li:last-child::after {
@@ -853,7 +861,7 @@ const styles = `
       align-items: center;
       justify-content: center;
       border-radius: 999px;
-      background: #1d3a2a;
+      background: rgb(203, 33, 127);
       color: #fffaf0;
       font-weight: 800;
       line-height: 1;
@@ -937,18 +945,19 @@ const styles = `
     }
 
     .trial-pricing__column li strong {
-      color: #1c3527;
+      color: rgb(203, 33, 127);
       font-weight: 800;
     }
 
     .trial-pricing__column .trial-pricing__price {
-      color: #1d3a2a;
+      color: rgb(203, 33, 127);
       font-size: clamp(2.25rem, 7vw, 3.7rem);
       font-weight: 800;
       line-height: 1;
     }
 
-    .trial-pricing__price-label {
+    .trial-pricing__column .trial-pricing__price-label {
+      color: rgb(255, 119, 208);
       font-weight: 800;
     }
 
@@ -1269,7 +1278,7 @@ const styles = `
         right: auto;
         width: 1px;
         height: auto;
-        background: rgba(29, 58, 42, 0.3);
+        background: rgb(203, 33, 127);
       }
 
       .step-number {
@@ -1507,8 +1516,8 @@ const renderLandingBody = (content: LandingContent) => `
         <nav class="site-footer__links" aria-label="Footer links">
           <a class="site-footer__link" href="https://www.aremai.tech">About</a>
           <a class="site-footer__link" href="mailto:contact@aremai.tech">Contact</a>
-          <a class="site-footer__link" href="/privacy">Privacy Policy</a>
-          <a class="site-footer__link" href="/termsandconditions">Terms and Service</a>
+          <a class="site-footer__link" href="/privacy/${content.lang}">${content.footer.privacy}</a>
+          <a class="site-footer__link" href="/termsandconditions/${content.lang}">${content.footer.terms}</a>
           <a class="site-footer__link" href="${makeMyProblemSite.primaryAppRoute}">Login</a>
         </nav>
         </div>

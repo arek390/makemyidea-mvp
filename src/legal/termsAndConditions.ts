@@ -532,3 +532,275 @@ Please refund the unused amount in accordance with the Terms and Conditions and 
 
 Date: [DATE]
 Signature: [SIGNATURE — IF THE FORM IS SUBMITTED IN PAPER FORM]`
+
+export const termsAndConditionsDe = `Version: 1.0
+Veröffentlichungsdatum: 2026-05-20
+Adresse des Dienstes: https://makemyidea.work
+
+Sprachhinweis
+Diese Nutzungsbedingungen sind eine deutschsprachige Fassung der Regeln für den Dienst MakeMyIdea.work.
+Der Dienstanbieter ist in Polen tätig, und diese Nutzungsbedingungen unterliegen polnischem Recht.
+Wenn der Dienstanbieter polnische, englische und deutsche Fassungen dieser Nutzungsbedingungen veröffentlicht, ist die polnische Fassung im Falle von Abweichungen maßgeblich, sofern der Dienstanbieter nicht ausdrücklich etwas anderes erklärt.
+
+1. Angaben zum Dienstanbieter
+Dienstanbieter und Betreiber des Dienstes MakeMyIdea.work ist eine natürliche Person, die eine nicht registrierte Tätigkeit ausübt:
+Vor- und Nachname: Arkadiusz Lupierz
+Korrespondenz- und Beschwerdeanschrift: Mickiewicza 49c/7, 58-310 Szczawno-Zdrój
+E-Mail-Adresse: makemyideawork@aremai.tech
+
+Der Dienstanbieter betreibt den Dienst im Rahmen einer nicht registrierten Tätigkeit, auch als nicht eingetragene Tätigkeit einer natürlichen Person bezeichnet, nach den Regeln des polnischen Rechts.
+Der Dienstanbieter handelt nicht in Form einer Gesellschaft und führt keine registrierte Geschäftstätigkeit im Bereich des Betriebs des Dienstes aus, sofern diese Nutzungsbedingungen nicht aktualisiert werden und etwas anderes vorsehen.
+Bei einer Änderung der Tätigkeitsform, insbesondere nach Registrierung einer Geschäftstätigkeit, wird der Dienstanbieter die Angaben in diesen Nutzungsbedingungen aktualisieren.
+
+2. Definitionen
+Dienst — der Internetdienst MakeMyIdea.work, verfügbar unter https://makemyidea.work.
+Nutzungsbedingungen — diese Nutzungsbedingungen für die Erbringung elektronischer Dienstleistungen und den Verkauf des Zugangs zu digitalen Diensten innerhalb des Dienstes.
+Dienstanbieter — die in Abschnitt 1 dieser Nutzungsbedingungen genannte natürliche Person, die den Dienst im Rahmen einer nicht registrierten Tätigkeit betreibt.
+Nutzer — eine Person, die den Dienst nutzt.
+Verbraucher — eine natürliche Person, die den Dienst zu Zwecken nutzt, die nicht unmittelbar mit ihrer gewerblichen oder beruflichen Tätigkeit zusammenhängen.
+Unternehmer mit Verbraucherrechten — eine natürliche Person, die mit dem Dienstanbieter einen Vertrag abschließt, der unmittelbar mit ihrer Geschäftstätigkeit zusammenhängt, wenn aus dem Inhalt des Vertrags hervorgeht, dass er für diese Person keinen beruflichen Charakter hat.
+Konto — ein individuelles Nutzerkonto im Dienst.
+Digitale Dienste — kostenpflichtige oder kostenlose Funktionen, die im Dienst verfügbar sind, insbesondere Funktionen zur Unterstützung der Analyse, Entwicklung, Organisation und Bewertung von Ideen, Projekten und Konzeptmaterialien, einschließlich Funktionen, die automatische Systeme oder KI verwenden.
+Dienstguthaben — dem Nutzerkonto zugeordnete Information über den Wert einer Vorauszahlung, die der Nutzer für kostenpflichtige digitale Dienste des Dienstanbieters im Dienst geleistet hat.
+Aufladung des Dienstguthabens — Erhöhung des Dienstguthabens durch eine Online-Zahlung.
+Preisliste — Information über Gebühren für einzelne digitale Dienste oder über die Methode ihrer Berechnung, die im Dienst dargestellt wird.
+Zahlungsanbieter — ein externer Anbieter für Online-Zahlungen, der Zahlungen im Dienst abwickelt, insbesondere Autopay, sofern im Dienst implementiert.
+
+3. Allgemeine Bestimmungen
+Diese Nutzungsbedingungen regeln die Nutzung des Dienstes, die Erstellung eines Kontos, die Aufladung des Dienstguthabens, die Nutzung kostenpflichtiger digitaler Dienste, das Einreichen von Beschwerden, den Rücktritt vom Vertrag und die Abrechnung nicht genutzten Dienstguthabens.
+Diese Nutzungsbedingungen werden dem Nutzer vor Vertragsschluss kostenlos und so zur Verfügung gestellt, dass sie heruntergeladen, gespeichert, wiedergegeben und ausgedruckt werden können.
+Der Dienst verkauft keine physischen Waren oder materiellen Produkte.
+Der Dienst ermöglicht die Nutzung digitaler Online-Dienste.
+Der Dienstanbieter kann einige digitale Dienste kostenlos und andere gegen Gebühr bereitstellen.
+Die Nutzung bestimmter Funktionen des Dienstes kann die Erstellung eines Kontos, die Annahme dieser Nutzungsbedingungen und ein positives Dienstguthaben erfordern.
+
+4. Status der nicht registrierten Tätigkeit
+Der Dienst wird vom Dienstanbieter als nicht registrierte Tätigkeit betrieben, d. h. als geringfügige Erwerbstätigkeit einer natürlichen Person, die keinen Eintrag im Zentralregister und in der Information über Geschäftstätigkeit erfordert, sofern die gesetzlichen Voraussetzungen erfüllt sind.
+Der Dienstanbieter überwacht die Umsatzgrenze, die für nicht registrierte Tätigkeit gilt.
+Verliert der Dienstanbieter das Recht zur Ausübung einer nicht registrierten Tätigkeit, insbesondere infolge einer Überschreitung der gesetzlichen Umsatzgrenze, kann der Dienstanbieter die Dienstleistungen nach Registrierung einer Geschäftstätigkeit fortsetzen.
+Eine Änderung der Tätigkeitsform des Dienstanbieters berührt nicht die Gültigkeit früherer Aufladungen des Dienstguthabens oder die Rechte der Nutzer aus diesen Nutzungsbedingungen und dem geltenden Recht.
+Nach Änderung der Tätigkeitsform wird der Dienstanbieter diese Nutzungsbedingungen, Identifikationsdaten und die vom Zahlungsanbieter verlangten Informationen aktualisieren.
+
+5. Technische Voraussetzungen für die Nutzung des Dienstes
+Für die Nutzung des Dienstes sind erforderlich:
+ein Gerät mit Internetzugang,
+ein aktueller Webbrowser,
+eine aktive E-Mail-Adresse,
+aktivierte Cookies oder ähnliche Technologien, sofern sie für den Betrieb des Dienstes erforderlich sind,
+ein Konto, wenn eine bestimmte Funktion eine Anmeldung erfordert.
+
+Der Nutzer ist verpflichtet, den Dienst in Übereinstimmung mit dem Recht, diesen Nutzungsbedingungen, guten Sitten und dem Zweck des Dienstes zu nutzen.
+Dem Nutzer ist es untersagt, rechtswidrige Inhalte oder Inhalte bereitzustellen, die Rechte Dritter, Rechte des geistigen Eigentums, Persönlichkeitsrechte, Geschäftsgeheimnisse oder die Sicherheit des Dienstes verletzen.
+Dem Nutzer ist es untersagt, Handlungen vorzunehmen, die den Betrieb des Dienstes stören, Sicherheitsmaßnahmen umgehen, Abrechnungsmechanismen umgehen oder unbefugten Zugriff auf Daten oder Konten anderer Nutzer ermöglichen können.
+
+6. Nutzerkonto
+Die Nutzung einiger Funktionen des Dienstes kann die Erstellung eines Kontos erfordern.
+Der Nutzer verpflichtet sich, wahrheitsgemäße, aktuelle und vollständige Daten anzugeben.
+Der Nutzer ist für die Vertraulichkeit der Zugangsdaten zum Konto verantwortlich.
+Der Nutzer sollte das Konto nicht Dritten zugänglich machen.
+Der Nutzer kann jederzeit die Löschung des Kontos verlangen, indem er den Dienstanbieter unter der in Abschnitt 1 dieser Nutzungsbedingungen angegebenen E-Mail-Adresse kontaktiert.
+Die Löschung des Kontos berührt nicht die Pflicht zur Abrechnung digitaler Dienste, die vor der Löschung des Kontos erbracht wurden.
+Bei Löschung des Kontos wird nicht genutztes Dienstguthaben gemäß diesen Nutzungsbedingungen und geltendem Recht abgerechnet.
+
+7. Umfang der digitalen Dienste
+Der Dienst ermöglicht dem Nutzer die Nutzung digitaler Werkzeuge zur Unterstützung der Arbeit an Ideen, Projekten, Analysen und Konzeptmaterialien.
+Digitale Dienste können insbesondere umfassen:
+Erstellung und Organisation von Projekten,
+Analyse von Beschreibungen von Ideen oder Projekten,
+Generierung von Empfehlungen, Zusammenfassungen, Checklisten, Berichten oder anderen Materialien,
+Nutzung von Funktionen, die durch automatische Systeme oder KI unterstützt werden,
+Speicherung von Projektdaten des Nutzers innerhalb des Kontos,
+Bereitstellung des Zugangs zur Abrechnungshistorie des Dienstguthabens.
+
+Der Dienst hat Werkzeug-, Unterstützungs- und Informationscharakter.
+Vom Dienst generierte Ergebnisse stellen keine Rechts-, Steuer-, Anlage-, medizinische, technische oder sonstige professionelle Fachberatung dar.
+Der Nutzer bewertet die Nützlichkeit der vom Dienst generierten Ergebnisse eigenständig und trägt die Verantwortung für Entscheidungen, die auf ihrer Grundlage getroffen werden.
+Der Dienstanbieter garantiert nicht, dass die vom Dienst generierten Ergebnisse vollständig, fehlerfrei, einzigartig oder für jeden konkreten Anwendungsfall geeignet sind.
+
+8. Dienstguthaben
+Der Nutzer kann eine Aufladung des Dienstguthabens in einem im Dienst angegebenen Betrag vornehmen.
+Das Dienstguthaben ist eine Information über den Wert einer Vorauszahlung des Nutzers für kostenpflichtige digitale Dienste, die der Dienstanbieter im Dienst erbringt.
+Das Dienstguthaben wird ausschließlich zur transparenten Abrechnung des Preises digitaler Dienste in polnischen Zloty ausgewiesen.
+Beispiel: Eine Aufladung in Höhe von 20 PLN erhöht das Dienstguthaben des Nutzers um 20 PLN.
+Das Dienstguthaben ist kein Zahlungskonto, keine Einlage, kein Zahlungsinstrument, kein elektronisches Geld, keine virtuelle Währung, kein Token, kein Finanzinstrument und keine Zahlungsdienstleistung.
+Das Dienstguthaben kann ausschließlich im Dienst MakeMyIdea.work für kostenpflichtige digitale Dienste des Dienstanbieters verwendet werden.
+Das Dienstguthaben darf nicht auf andere Nutzer übertragen werden.
+Das Dienstguthaben wird nicht verzinst.
+Das Dienstguthaben darf nicht für Zahlungen an Dritte verwendet werden.
+Das Dienstguthaben darf nicht in Bargeld umgetauscht werden, außer bei Rückerstattungen in den in diesen Nutzungsbedingungen oder zwingenden gesetzlichen Vorschriften vorgesehenen Fällen.
+Die Aufladung des Dienstguthabens erfolgt nach positiver Zahlungsbestätigung durch den Zahlungsanbieter.
+Die Historie der Aufladungen, Belastungen und der aktuelle Stand des Dienstguthabens können im Kontobereich verfügbar sein.
+Nicht genutztes Dienstguthaben verfällt während des Bestehens des Kontos nicht, sofern zwingende gesetzliche Vorschriften nichts anderes zulassen und der Nutzer ausdrücklich darüber informiert wird.
+
+9. Zahlungen
+Zahlungen im Dienst erfolgen über einen externen Zahlungsanbieter.
+Verfügbare Zahlungsmethoden werden dem Nutzer im Dienst vor der Zahlung angezeigt.
+Der Umfang verfügbarer Zahlungsmethoden kann vom Zahlungsanbieter und vom Status des Dienstanbieters als Person mit nicht registrierter Tätigkeit abhängen.
+Beträge für die Aufladung des Dienstguthabens werden in polnischen Zloty angegeben.
+Sofern im Dienst nicht anders angegeben, sind die dem Nutzer dargestellten Beträge Endbeträge zur Zahlung.
+Informationen zur Umsatzsteuer, sofern anwendbar, werden im Dienst gemäß den gesetzlichen Vorschriften dargestellt.
+Bei erfolgloser Zahlung wird das Dienstguthaben nicht erhöht.
+Der Dienstanbieter speichert keine Zahlungskartendaten des Nutzers.
+Detaillierte Regeln der Zahlungsabwicklung können sich aus den Geschäftsbedingungen und Richtlinien des Zahlungsanbieters ergeben.
+
+10. Vertragsschluss und Nutzung kostenpflichtiger digitaler Dienste
+Der Vertrag über die Aufladung des Dienstguthabens kommt zustande, wenn der Nutzer die Zahlung erfolgreich vornimmt und der Zahlungsanbieter die Zahlung positiv bestätigt, sofern der Dienst nicht eindeutig einen anderen Zeitpunkt des Vertragsschlusses angibt.
+Vor der Aufladung des Dienstguthabens erhält der Nutzer Informationen über den Aufladebetrag, verfügbare Zahlungsmethoden und die Zahlungspflicht.
+Die Schaltfläche zur Zahlung sollte eindeutig darauf hinweisen, dass ihre Nutzung eine Zahlungspflicht begründet, z. B. „Guthaben aufladen und zahlen“, „Jetzt zahlen“ oder „Guthaben zahlungspflichtig aufladen“.
+Einige Funktionen des Dienstes können kostenpflichtig sein.
+Die Kosten für die Nutzung eines bestimmten kostenpflichtigen digitalen Dienstes werden dem Nutzer vor dessen Start im Dienst angezeigt oder ergeben sich aus der im Dienst verfügbaren Preisliste.
+Die Preisliste kann technisch in den IT-Systemen des Dienstanbieters, einschließlich der Datenbank des Dienstes, geführt werden.
+Eine technische Abrechnungstabelle ersetzt nicht die Information für den Nutzer. Der Nutzer sollte die Möglichkeit haben, die Kosten oder die Berechnungsmethode der Gebühr vor der Nutzung einer kostenpflichtigen Funktion einzusehen.
+Nach Start eines kostenpflichtigen digitalen Dienstes wird das Dienstguthaben des Nutzers gemäß der im Dienst dargestellten Information oder gemäß der aktuellen Preisliste belastet.
+Ist das Dienstguthaben nicht ausreichend, kann die Nutzung des kostenpflichtigen digitalen Dienstes unmöglich sein.
+Der Dienstanbieter kann die Preisliste ändern, jedoch wirken sich Änderungen der Preisliste nicht auf Gebühren für digitale Dienste aus, die vor Inkrafttreten der Änderungen erbracht wurden.
+Nach Vertragsschluss kann der Dienstanbieter dem Nutzer eine Bestätigung des Vertragsschlusses an die dem Konto zugeordnete oder bei der Zahlung angegebene E-Mail-Adresse senden.
+
+11. Nutzerinhalte
+Der Nutzer kann eigene Inhalte, Daten, Beschreibungen, Ideen, Materialien, Dateien oder Prompts in den Dienst eingeben.
+Der Nutzer erklärt, dass er berechtigt ist, die an den Dienst übermittelten Inhalte zu nutzen.
+Der Nutzer sollte dem Dienst keine Inhalte bereitstellen, die er nicht offenlegen darf, insbesondere keine vertraulichen Daten Dritter, Geschäftsgeheimnisse oder personenbezogenen Daten ohne geeignete Rechtsgrundlage.
+Der Nutzer behält die Rechte an den in den Dienst eingegebenen Inhalten.
+Der Nutzer erteilt dem Dienstanbieter eine nicht ausschließliche, unentgeltliche Lizenz zur Nutzung der in den Dienst eingegebenen Inhalte ausschließlich in dem Umfang, der zur Erbringung digitaler Dienste, zur Führung des Kontos, zur technischen Betreuung, zur Bearbeitung von Beschwerden, zur Abrechnung und zur Gewährleistung der Sicherheit des Dienstes erforderlich ist.
+Der Nutzer kann die vom Dienst generierten Ergebnisse auf eigene Verantwortung nutzen, vorbehaltlich geltenden Rechts, Rechten Dritter und dieser Nutzungsbedingungen.
+
+12. Rücktrittsrecht vom Vertrag
+Ein Nutzer, der Verbraucher oder Unternehmer mit Verbraucherrechten ist, kann innerhalb von 14 Tagen von einem Fernabsatzvertrag zurücktreten, sofern das Gesetz keinen Ausschluss oder keine Einschränkung dieses Rechts vorsieht.
+Die Rücktrittsfrist für einen Vertrag über die Aufladung des Dienstguthabens beginnt am Tag des Vertragsschlusses.
+Der Rücktritt vom Vertrag kann durch Übersendung einer Erklärung an die in Abschnitt 1 dieser Nutzungsbedingungen angegebene E-Mail-Adresse des Dienstanbieters erfolgen.
+Der Nutzer kann das diesen Nutzungsbedingungen beigefügte Muster-Widerrufsformular verwenden, ist dazu aber nicht verpflichtet.
+Wenn der Nutzer das Dienstguthaben nicht genutzt hat, erstattet der Dienstanbieter den nicht genutzten Betrag gemäß dem Gesetz.
+Wenn der Nutzer den Beginn der digitalen Dienste vor Ablauf der Rücktrittsfrist verlangt und einen Teil des Dienstguthabens genutzt hat, kann die Rückerstattung nur den nicht genutzten Teil des Dienstguthabens und den nicht ausgeführten Teil gemäß dem Gesetz umfassen.
+Der Nutzer nimmt zur Kenntnis, dass der Beginn der Nutzung eines kostenpflichtigen digitalen Dienstes vor Ablauf der Rücktrittsfrist zum Verlust des Rücktrittsrechts im Umfang der bereits erbrachten Dienstleistung oder des für diese Dienstleistung genutzten Teils des Dienstguthabens führen kann, sofern die gesetzlichen Voraussetzungen erfüllt sind.
+Der sofortige Beginn kostenpflichtiger digitaler Dienste kann von einer gesonderten Zustimmung des Nutzers und der Bestätigung abhängig sein, dass der Nutzer über die Folgen dieser Zustimmung informiert wurde.
+
+13. Rückerstattung nicht genutzten Dienstguthabens
+Der Nutzer kann in folgenden Fällen eine Rückerstattung nicht genutzten Dienstguthabens verlangen:
+wirksamer Rücktritt vom Vertrag,
+Löschung des Kontos,
+Beendigung der Erbringung digitaler Dienste durch den Dienstanbieter,
+andere Fälle, die zwingende gesetzliche Vorschriften verlangen.
+Die Rückerstattung erfolgt über dieselbe Zahlungsmethode, die der Nutzer verwendet hat, sofern der Nutzer nicht ausdrücklich einer anderen Rückerstattungsmethode zustimmt oder die Verwendung derselben Methode technisch unmöglich ist.
+Die Rückerstattung umfasst nicht den Teil des Dienstguthabens, der für digitale Dienste verwendet wurde, die für den Nutzer erbracht wurden.
+Der Dienstanbieter nimmt keine Auszahlungen des Dienstguthabens an Dritte vor und überträgt kein Dienstguthaben zwischen Nutzern.
+Der Dienstanbieter kann die Abrechnung nicht genutzten Dienstguthabens in dem Umfang aussetzen, der zur Klärung einer Beschwerde, eines Missbrauchs, einer nicht autorisierten Zahlung, eines Verdachts auf Rechtsverletzung oder gesetzlicher Pflichten erforderlich ist.
+
+14. Beschwerden
+Der Nutzer kann Beschwerden über den Betrieb des Dienstes, das Konto, die Aufladung des Dienstguthabens, Belastungen des Dienstguthabens, die Verfügbarkeit digitaler Dienste oder die Erbringung digitaler Dienste einreichen.
+Beschwerden sind an die in Abschnitt 1 dieser Nutzungsbedingungen angegebene E-Mail-Adresse des Dienstanbieters zu richten.
+Eine Beschwerde sollte enthalten:
+die dem Konto zugeordnete E-Mail-Adresse,
+eine Beschreibung des Problems,
+das Datum, an dem das Problem aufgetreten ist,
+die Zahlungs- oder Vorgangskennung, falls zutreffend,
+die erwartete Art der Lösung der Angelegenheit.
+Der Dienstanbieter prüft die Beschwerde innerhalb von 14 Tagen ab Eingang.
+Die Antwort auf die Beschwerde wird an die E-Mail-Adresse des Nutzers gesendet.
+Wird die Beschwerde anerkannt, kann der Dienstanbieter insbesondere:
+das Dienstguthaben korrigieren,
+den entsprechenden Betrag erstatten,
+den digitalen Dienst erneut erbringen,
+Erläuterungen zur Abrechnung geben,
+eine andere rechtmäßige Lösung anwenden.
+Diese Nutzungsbedingungen beschränken nicht die Rechte eines Verbrauchers oder eines Unternehmers mit Verbraucherrechten aus zwingenden gesetzlichen Vorschriften, insbesondere Vorschriften über die Vertragsmäßigkeit eines digitalen Dienstes.
+
+15. Verkaufsdokumente
+Der Dienstanbieter führt Verkaufsaufzeichnungen gemäß den Vorschriften über nicht registrierte Tätigkeit.
+Auf Verlangen des Nutzers stellt der Dienstanbieter im gesetzlich erforderlichen Umfang ein Dokument aus, das den Verkauf bestätigt.
+Ein Antrag auf Ausstellung eines Verkaufsdokuments ist an die in Abschnitt 1 dieser Nutzungsbedingungen angegebene E-Mail-Adresse des Dienstanbieters zu senden.
+Der Nutzer sollte die für die Ausstellung des Verkaufsdokuments erforderlichen Daten angeben, insbesondere Vor- und Nachname oder Firmenname, Anschrift und E-Mail-Adresse für die Zustellung des Dokuments.
+Das Verkaufsdokument kann elektronisch an die E-Mail-Adresse des Nutzers gesendet werden.
+
+16. Personenbezogene Daten
+Verantwortlicher für personenbezogene Daten der Nutzer ist der in Abschnitt 1 dieser Nutzungsbedingungen genannte Dienstanbieter.
+Personenbezogene Daten werden insbesondere zu folgenden Zwecken verarbeitet:
+Führung des Kontos,
+Erbringung digitaler Dienste,
+Abwicklung von Aufladungen des Dienstguthabens,
+Abwicklung von Zahlungen,
+Bearbeitung von Beschwerden,
+Erfüllung rechtlicher Pflichten,
+Gewährleistung der Sicherheit des Dienstes,
+Geltendmachung oder Verteidigung von Ansprüchen.
+
+Detaillierte Regeln zur Verarbeitung personenbezogener Daten sind in der Datenschutzerklärung festgelegt, die im Dienst verfügbar ist.
+Der Dienstanbieter kann externe Anbieter technischer, Hosting-, Zahlungs-, Analyse- oder KI-Dienste nutzen, wenn dies für den Betrieb des Dienstes erforderlich ist.
+Wenn der Nutzer personenbezogene Daten anderer Personen in den Dienst eingibt, sollte der Nutzer über eine geeignete Rechtsgrundlage für deren Übermittlung und Verarbeitung verfügen.
+
+17. Sperrung des Kontos oder des Zugangs zu Funktionen
+Der Dienstanbieter kann das Konto, den Zugang zum Dienst oder den Zugang zu ausgewählten Funktionen vorübergehend sperren, wenn der Nutzer:
+diese Nutzungsbedingungen verletzt,
+gegen das Recht verstößt,
+rechtswidrige Inhalte bereitstellt,
+Handlungen vornimmt, die die Sicherheit des Dienstes gefährden,
+versucht, Abrechnungsmechanismen oder Sicherheitsmaßnahmen zu umgehen,
+den Dienst zweckwidrig nutzt.
+
+Der Dienstanbieter informiert den Nutzer über die Sperrung, sofern die Bereitstellung dieser Information nicht gegen das Recht, die Sicherheit des Dienstes oder Rechte Dritter verstoßen könnte.
+Die Sperrung des Kontos führt nicht zum Verlust nicht genutzten Dienstguthabens, sofern das Gesetz nichts anderes vorsieht oder der Nutzer verpflichtet ist, fällige Beträge gegenüber dem Dienstanbieter zu begleichen.
+
+18. Haftung des Dienstanbieters
+Der Dienstanbieter haftet für die ordnungsgemäße Erbringung digitaler Dienste gemäß dem Recht.
+Der Dienstanbieter haftet nicht für Folgen der Nutzung des Dienstes entgegen diesen Nutzungsbedingungen, dem Recht oder dem Zweck des Dienstes.
+Der Dienstanbieter haftet nicht für geschäftliche, finanzielle, rechtliche, organisatorische oder technische Entscheidungen, die der Nutzer auf Grundlage der vom Dienst generierten Ergebnisse trifft.
+Der Dienstanbieter haftet nicht für Unterbrechungen des Dienstbetriebs, die entstehen durch:
+technische Wartung,
+Ausfälle der Infrastruktur externer Anbieter,
+höhere Gewalt,
+Handlungen des Nutzers,
+Gründe außerhalb des Einflussbereichs des Dienstanbieters.
+
+Diese Nutzungsbedingungen beschränken nicht die Rechte eines Verbrauchers oder eines Unternehmers mit Verbraucherrechten aus zwingenden gesetzlichen Vorschriften.
+
+19. Änderungen der Nutzungsbedingungen
+Der Dienstanbieter kann diese Nutzungsbedingungen aus wichtigen Gründen ändern, insbesondere aufgrund von:
+Änderungen des Rechts,
+Änderungen der Funktionen des Dienstes,
+Änderungen des Abrechnungsmodells,
+Änderungen der Angaben des Dienstanbieters,
+Änderungen der Tätigkeitsform des Dienstanbieters,
+der Notwendigkeit, die Sicherheit des Dienstes zu verbessern,
+der Notwendigkeit, Bestimmungen dieser Nutzungsbedingungen zu präzisieren.
+
+Der Dienstanbieter informiert Nutzer über Änderungen dieser Nutzungsbedingungen über den Dienst oder per E-Mail.
+Änderungen dieser Nutzungsbedingungen wirken sich nicht auf digitale Dienste aus, die vor Inkrafttreten der Änderungen erbracht wurden.
+Akzeptiert der Nutzer Änderungen dieser Nutzungsbedingungen nicht, kann der Nutzer die Nutzung des Dienstes beenden und die Abrechnung nicht genutzten Dienstguthabens gemäß diesen Nutzungsbedingungen und geltendem Recht verlangen.
+
+20. Beendigung der Nutzung des Dienstes
+Der Nutzer kann die Nutzung des Dienstes jederzeit beenden.
+Zur Löschung des Kontos sollte der Nutzer den Dienstanbieter unter der in Abschnitt 1 dieser Nutzungsbedingungen angegebenen E-Mail-Adresse kontaktieren oder die Funktion zur Kontolöschung nutzen, sofern sie im Dienst verfügbar ist.
+Nach Löschung des Kontos rechnet der Dienstanbieter nicht genutztes Dienstguthaben gemäß diesen Nutzungsbedingungen und geltendem Recht ab.
+Der Dienstanbieter kann die Erbringung des Dienstes beenden, indem er die Nutzer mit angemessener Vorankündigung informiert, sofern die Beendigung nicht aus dringenden, rechtlichen, sicherheitsbezogenen oder vom Dienstanbieter unabhängigen Gründen erfolgt.
+
+21. Außergerichtliche Streitbeilegung
+Ein Verbraucher kann außergerichtliche Verfahren zur Bearbeitung von Beschwerden und zur Geltendmachung von Ansprüchen nutzen.
+Informationen über außergerichtliche Verfahren zur Beilegung von Verbraucherstreitigkeiten sind unter anderem auf der Website des polnischen Amtes für Wettbewerb und Verbraucherschutz verfügbar: https://polubowne.uokik.gov.pl.
+Der Dienstanbieter informiert den Verbraucher in der Antwort auf eine Beschwerde, ob der Dienstanbieter einer Teilnahme an einem außergerichtlichen Verfahren zur Beilegung einer Verbraucherstreitigkeit zustimmt, sofern eine solche Pflicht aus dem Recht folgt.
+
+22. Schlussbestimmungen
+Diese Nutzungsbedingungen gelten ab dem Veröffentlichungsdatum im Dienst.
+Diese Nutzungsbedingungen unterliegen polnischem Recht.
+In Angelegenheiten, die in diesen Nutzungsbedingungen nicht geregelt sind, gelten die einschlägigen Vorschriften des polnischen Rechts.
+Keine Bestimmung dieser Nutzungsbedingungen schließt Rechte eines Verbrauchers oder eines Unternehmers mit Verbraucherrechten aus zwingenden gesetzlichen Vorschriften aus oder beschränkt sie.
+Etwaige Streitigkeiten werden vom zuständigen ordentlichen Gericht gemäß dem Recht entschieden.
+Kontakt mit dem Dienstanbieter ist unter der in Abschnitt 1 dieser Nutzungsbedingungen angegebenen E-Mail-Adresse möglich.
+Wenn polnische, englische und deutsche Fassungen dieser Nutzungsbedingungen veröffentlicht werden, dienen die englische und deutsche Fassung dazu, Nutzern das Verständnis der Regeln des Dienstes zu erleichtern. Im Falle von Abweichungen zwischen den Fassungen ist die polnische Fassung maßgeblich, sofern zwingende gesetzliche Vorschriften oder eine ausdrückliche Erklärung des Dienstanbieters nichts anderes vorsehen.
+
+Anhang Nr. 1 — Muster-Widerrufsformular
+Adressat:
+[VOR- UND NACHNAME DES DIENSTANBIETERS]
+[KORRESPONDENZANSCHRIFT]
+[E-MAIL]
+
+Ich, der/die Unterzeichnende, teile hiermit meinen Rücktritt vom Vertrag über die Aufladung des Dienstguthabens oder über die Erbringung digitaler Dienste im Dienst MakeMyIdea.work mit.
+
+Datum des Vertragsschlusses / Zahlungsdatum: [DATUM]
+Zahlungsbetrag: [BETRAG]
+Dem Konto zugeordnete E-Mail-Adresse: [E-MAIL DES NUTZERS]
+Vor- und Nachname des Nutzers: [VOR- UND NACHNAME]
+Anschrift des Nutzers: [ANSCHRIFT, FALLS FÜR IDENTIFIKATION ODER ABRECHNUNG ERFORDERLICH]
+
+Bitte erstatten Sie den nicht genutzten Betrag gemäß den Nutzungsbedingungen und dem geltenden Recht.
+
+Datum: [DATUM]
+Unterschrift: [UNTERSCHRIFT — WENN DAS FORMULAR IN PAPIERFORM EINGEREICHT WIRD]`

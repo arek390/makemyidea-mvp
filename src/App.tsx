@@ -63,7 +63,11 @@ import { AiCostButton } from './components/AiCostButton'
 import { ActionPlanReadinessGauge } from './components/ActionPlanReadinessGauge'
 import { EngineHeader } from './components/EngineHeader'
 import { TopupPage } from './billing/TopupPage'
-import { termsAndConditionsEn, termsAndConditionsPl } from './legal/termsAndConditions'
+import {
+  termsAndConditionsDe,
+  termsAndConditionsEn,
+  termsAndConditionsPl,
+} from './legal/termsAndConditions'
 import { MobileLanding, type MobileLandingLanguage } from './mobile/MobileLanding'
 import { Engine1Container } from './engine1/Engine1Container'
 import { Engine1LegacyRoute } from './engine1/Engine1LegacyRoute'
@@ -119,6 +123,7 @@ import {
 
 export type StepId = 1 | 2 | 3 | 4
 type ExampleId = 'example-1' | 'example-2' | 'example-3'
+type LegalLanguage = 'en' | 'pl' | 'de'
 export type SpaceSlot = 'supersystem' | 'subsystem'
 export type TimeSlot = 'past' | 'now' | 'future'
 
@@ -2068,8 +2073,13 @@ const isAuthFlowInProgress = () => {
   const isBlog = normalizedPath === '/blog' || normalizedPath.startsWith('/blog/')
   const blogRoute = getBlogRouteFromPath(normalizedPath)
   const isLogin = normalizedPath === '/login'
-  const isPrivacy = normalizedPath === '/privacy'
-  const isTermsAndConditions = normalizedPath === '/termsandconditions'
+  const privacyLanguageMatch = normalizedPath.match(/^\/privacy\/(en|pl|de)$/)
+  const termsLanguageMatch = normalizedPath.match(/^\/termsandconditions\/(en|pl|de)$/)
+  const legalLanguage =
+    (privacyLanguageMatch?.[1] ?? termsLanguageMatch?.[1] ?? null) as LegalLanguage | null
+  const isPrivacy = normalizedPath === '/privacy' || Boolean(privacyLanguageMatch)
+  const isTermsAndConditions =
+    normalizedPath === '/termsandconditions' || Boolean(termsLanguageMatch)
   const isTopup =
     normalizedPath === '/topup' ||
     appPath === '/topup' ||
@@ -2571,8 +2581,11 @@ const isAuthFlowInProgress = () => {
     let target = path
     const isReportPath = path.replace(/\/+$/, '') === '/report' || path.endsWith('/report')
     const normalizedAuthPath = path.replace(/\/+$/, '')
-    const isPrivacyPath = normalizedAuthPath === '/privacy'
-    const isTermsAndConditionsPath = normalizedAuthPath === '/termsandconditions'
+    const isPrivacyPath =
+      normalizedAuthPath === '/privacy' || /^\/privacy\/(en|pl|de)$/.test(normalizedAuthPath)
+    const isTermsAndConditionsPath =
+      normalizedAuthPath === '/termsandconditions' ||
+      /^\/termsandconditions\/(en|pl|de)$/.test(normalizedAuthPath)
     const isExamplesPath = normalizedAuthPath === '/examples'
     const isBlogPath = normalizedAuthPath === '/blog' || normalizedAuthPath.startsWith('/blog/')
 
@@ -9694,7 +9707,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
   }
   if (isPrivacy) {
     const privacyCopy =
-      uiLanguage === 'Polish'
+      legalLanguage === 'de'
+        ? {
+            title: 'Datenschutzerklärung',
+            body: [
+              'Die Anwendung MakeMyIdea.work verarbeitet grundlegende Nutzerdaten, wie E-Mail-Adresse und Google-Konto-ID, ausschließlich um die Anmeldung und die Nutzung der Anwendung zu ermöglichen.',
+              'Daten können durch externe Dienstleister wie Supabase (Datenbank) und OpenAI (KI-Verarbeitung) verarbeitet werden.',
+              'Daten werden nicht verkauft und nicht zu Marketingzwecken an Dritte weitergegeben.',
+              'Kontakt: makemyideawork@aremai.tech',
+            ],
+            back: 'Zurück',
+          }
+        : legalLanguage === 'pl' || (!legalLanguage && uiLanguage === 'Polish')
         ? {
             title: 'Polityka prywatności',
             body: [
@@ -9753,7 +9777,13 @@ const isMissingLabel = (item: EngineBoardItem) => {
 
   if (isTermsAndConditions) {
     const termsCopy =
-      uiLanguage === 'Polish'
+      legalLanguage === 'de'
+        ? {
+            title: 'Nutzungsbedingungen',
+            body: termsAndConditionsDe,
+            back: 'Zurück',
+          }
+        : legalLanguage === 'pl' || (!legalLanguage && uiLanguage === 'Polish')
         ? {
             title: 'Regulamin serwisu',
             body: termsAndConditionsPl,
