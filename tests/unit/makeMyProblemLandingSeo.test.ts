@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import middleware from '../../middleware'
+import {
+  makeSiteAwareLegalText,
+  makeSiteAwarePrivacyPolicyBody,
+  termsAndConditionsDe,
+  termsAndConditionsEn,
+  termsAndConditionsPl,
+} from '../../src/legal/termsAndConditions'
 import { publicPages } from '../../src/sites/publicPages'
 
 const makeMyProblemPages = publicPages.filter((page) => page.siteId === 'makeMyProblem')
@@ -56,6 +63,45 @@ describe('MakeMyProblem language routing middleware', () => {
       expect(response?.headers.get('x-middleware-rewrite')).toBe(
         `https://www.makemyproblem.work/_sites/makemyproblem/${language}/index.html`
       )
+      expect(response?.headers.get('X-Robots-Tag')).toBeNull()
+    }
+  })
+
+  it('marks MakeMyProblem app and private SPA routes as noindex, follow', () => {
+    const noindexRoutes = [
+      '/engine_2',
+      '/login',
+      '/topup',
+      '/app',
+      '/app/session/example',
+      '/report',
+      '/sessions/example/report',
+      '/auth/callback',
+    ]
+
+    for (const route of noindexRoutes) {
+      const response = callMiddleware(`https://www.makemyproblem.work${route}`)
+
+      expect(response?.headers.get('x-middleware-next')).toBe('1')
+      expect(response?.headers.get('X-Robots-Tag')).toBe('noindex, follow')
+    }
+  })
+
+  it('marks MakeMyProblem legal pages as noindex, follow', () => {
+    const legalRoutes = [
+      '/privacy/en',
+      '/privacy/pl',
+      '/privacy/de',
+      '/termsandconditions/en',
+      '/termsandconditions/pl',
+      '/termsandconditions/de',
+    ]
+
+    for (const route of legalRoutes) {
+      const response = callMiddleware(`https://www.makemyproblem.work${route}`)
+
+      expect(response?.headers.get('x-middleware-next')).toBe('1')
+      expect(response?.headers.get('X-Robots-Tag')).toBe('noindex, follow')
     }
   })
 
@@ -115,6 +161,29 @@ describe('MakeMyProblem sitemap and robots', () => {
 
     expect(robots).toContain('Allow: /')
     expect(robots).toContain('Sitemap: https://www.makemyproblem.work/sitemap.xml')
-    expect(robots).not.toMatch(/Disallow:\s*\/(?:en|pl|de)/)
+    expect(robots).not.toMatch(/Disallow:\s*\/(?:en|pl|de|engine_2|login|topup|privacy|termsandconditions)/)
+  })
+})
+
+describe('MakeMyProblem legal site awareness', () => {
+  it('uses MakeMyProblem naming in privacy policy copy', () => {
+    for (const language of ['en', 'pl', 'de'] as const) {
+      const body = makeSiteAwarePrivacyPolicyBody(language, 'MakeMyProblem.work').join('\n')
+
+      expect(body).toContain('MakeMyProblem.work')
+      expect(body).not.toContain('MakeMyIdea.work')
+    }
+  })
+
+  it('uses MakeMyProblem naming in terms copy without changing legal structure', () => {
+    for (const terms of [termsAndConditionsEn, termsAndConditionsPl, termsAndConditionsDe]) {
+      const body = makeSiteAwareLegalText(terms, 'MakeMyProblem.work')
+
+      expect(body).toContain('MakeMyProblem.work')
+      expect(body).toContain('https://www.makemyproblem.work')
+      expect(body).not.toContain('MakeMyIdea.work')
+      expect(body).not.toContain('https://makemyidea.work')
+      expect(body).not.toContain('https://makemyproblem.work')
+    }
   })
 })

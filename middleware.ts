@@ -1,6 +1,17 @@
 import { resolveSite } from './src/sites/siteConfig.js'
 
 const publicLandingLanguages = new Set(['en', 'pl', 'de'])
+const makeMyProblemNoindexPaths = [
+  /^\/engine_2\/?$/i,
+  /^\/login\/?$/i,
+  /^\/topup\/?$/i,
+  /^\/app(?:\/.*)?$/i,
+  /^\/report(?:\/.*)?$/i,
+  /^\/.+\/report\/?$/i,
+  /^\/auth\/callback\/?$/i,
+  /^\/privacy(?:\/(?:en|pl|de))?\/?$/i,
+  /^\/termsandconditions(?:\/(?:en|pl|de))?\/?$/i,
+]
 const languageAlternates = (origin: string) =>
   ['en', 'pl', 'de']
     .map((lang) => `    <xhtml:link rel="alternate" hreflang="${lang}" href="${origin}/${lang}" />`)
@@ -49,6 +60,14 @@ const rewriteTo = (url: URL) =>
     },
   })
 
+const continueWithNoindex = () =>
+  new Response(null, {
+    headers: {
+      'x-middleware-next': '1',
+      'X-Robots-Tag': 'noindex, follow',
+    },
+  })
+
 export default function middleware(request: Request) {
   const url = new URL(request.url)
   const site = resolveSite(url.hostname)
@@ -86,6 +105,13 @@ Sitemap: ${site.canonicalUrl}/sitemap.xml
         'content-type': 'application/xml; charset=utf-8',
       },
     })
+  }
+
+  if (
+    site.id === 'makeMyProblem' &&
+    makeMyProblemNoindexPaths.some((pattern) => pattern.test(url.pathname))
+  ) {
+    return continueWithNoindex()
   }
 
   if (site.id === 'makeMyIdea' || site.id === 'makeMyProblem') {

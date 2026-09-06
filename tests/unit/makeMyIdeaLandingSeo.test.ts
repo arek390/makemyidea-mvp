@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import middleware from '../../middleware'
+import {
+  makeSiteAwareLegalText,
+  makeSiteAwarePrivacyPolicyBody,
+  termsAndConditionsEn,
+  termsAndConditionsPl,
+} from '../../src/legal/termsAndConditions'
 import { publicPages } from '../../src/sites/publicPages'
 
 const makeMyIdeaPages = publicPages.filter((page) => page.siteId === 'makeMyIdea')
@@ -61,6 +67,15 @@ describe('MakeMyIdea language routing middleware', () => {
       expect(response?.headers.get('x-middleware-rewrite')).toBe(
         `https://www.makemyidea.work/_sites/makemyidea/${language}/index.html`
       )
+      expect(response?.headers.get('X-Robots-Tag')).toBeNull()
+    }
+  })
+
+  it('does not apply MakeMyProblem noindex policy to MakeMyIdea routes', () => {
+    for (const route of ['/engine_2', '/login', '/topup', '/privacy/en', '/termsandconditions/en']) {
+      const response = callMiddleware(`https://www.makemyidea.work${route}`)
+
+      expect(response?.headers.get('X-Robots-Tag')).toBeUndefined()
     }
   })
 
@@ -107,5 +122,20 @@ describe('MakeMyIdea language routing middleware', () => {
     expect(sitemap).toContain('<loc>https://www.makemyidea.work/de</loc>')
     expect(sitemap).toContain('hreflang="x-default" href="https://www.makemyidea.work/en"')
     expect(sitemap).not.toContain('makemyproblem.work')
+  })
+})
+
+describe('MakeMyIdea legal regression', () => {
+  it('keeps MakeMyIdea naming in legal copy', () => {
+    const privacyBody = makeSiteAwarePrivacyPolicyBody('en', 'MakeMyIdea.work').join('\n')
+    const englishTerms = makeSiteAwareLegalText(termsAndConditionsEn, 'MakeMyIdea.work')
+    const polishTerms = makeSiteAwareLegalText(termsAndConditionsPl, 'MakeMyIdea.work')
+
+    expect(privacyBody).toContain('MakeMyIdea.work')
+    expect(englishTerms).toContain('MakeMyIdea.work')
+    expect(polishTerms).toContain('MakeMyIdea.work')
+    expect(englishTerms).toContain('https://makemyidea.work')
+    expect(polishTerms).toContain('https://makemyidea.work')
+    expect(`${privacyBody}\n${englishTerms}\n${polishTerms}`).not.toContain('MakeMyProblem.work')
   })
 })

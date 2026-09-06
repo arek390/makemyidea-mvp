@@ -64,9 +64,12 @@ import { ActionPlanReadinessGauge } from './components/ActionPlanReadinessGauge'
 import { EngineHeader } from './components/EngineHeader'
 import { TopupPage } from './billing/TopupPage'
 import {
+  makeSiteAwareLegalText,
+  makeSiteAwarePrivacyPolicyBody,
   termsAndConditionsDe,
   termsAndConditionsEn,
   termsAndConditionsPl,
+  type LegalSiteBrand,
 } from './legal/termsAndConditions'
 import { MobileLanding, type MobileLandingLanguage } from './mobile/MobileLanding'
 import { Engine1Container } from './engine1/Engine1Container'
@@ -351,6 +354,8 @@ const site = resolveSite(
 const CANONICAL_URL = site.canonicalUrl
 const CANONICAL_HOST = site.canonicalHost
 const CANONICAL_DISPLAY_HOST = site.canonicalDisplayHost
+const LEGAL_SITE_BRAND: LegalSiteBrand =
+  site.id === 'makeMyProblem' ? 'MakeMyProblem.work' : 'MakeMyIdea.work'
 const postAuthDefaultPath = site.primaryAppRoute
 
 const getTranslations = createTranslationResolver({
@@ -9710,33 +9715,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
       legalLanguage === 'de'
         ? {
             title: 'Datenschutzerklärung',
-            body: [
-              'Die Anwendung MakeMyIdea.work verarbeitet grundlegende Nutzerdaten, wie E-Mail-Adresse und Google-Konto-ID, ausschließlich um die Anmeldung und die Nutzung der Anwendung zu ermöglichen.',
-              'Daten können durch externe Dienstleister wie Supabase (Datenbank) und OpenAI (KI-Verarbeitung) verarbeitet werden.',
-              'Daten werden nicht verkauft und nicht zu Marketingzwecken an Dritte weitergegeben.',
-              'Kontakt: makemyideawork@aremai.tech',
-            ],
+            body: makeSiteAwarePrivacyPolicyBody('de', LEGAL_SITE_BRAND),
             back: 'Zurück',
           }
         : legalLanguage === 'pl' || (!legalLanguage && uiLanguage === 'Polish')
         ? {
             title: 'Polityka prywatności',
-            body: [
-              'Aplikacja MakeMyIdea.work zbiera podstawowe dane użytkownika, takie jak adres email oraz identyfikator konta Google, wyłącznie w celu umożliwienia logowania i korzystania z aplikacji.',
-              'Dane mogą być przetwarzane przez zewnętrznych dostawców usług, takich jak Supabase (baza danych) oraz OpenAI (przetwarzanie AI).',
-              'Dane nie są sprzedawane ani udostępniane osobom trzecim w celach marketingowych.',
-              'Kontakt: makemyideawork@aremai.tech',
-            ],
+            body: makeSiteAwarePrivacyPolicyBody('pl', LEGAL_SITE_BRAND),
             back: 'Wróć',
           }
         : {
             title: 'Privacy Policy',
-            body: [
-              'The MakeMyIdea.work application collects basic user data, such as email address and Google account identifier, solely to enable login and use of the application.',
-              'Data may be processed by external service providers such as Supabase (database) and OpenAI (AI processing).',
-              'Data is not sold or shared with third parties for marketing purposes.',
-              'Contact: makemyideawork@aremai.tech',
-            ],
+            body: makeSiteAwarePrivacyPolicyBody('en', LEGAL_SITE_BRAND),
             back: 'Back',
           }
 
@@ -9744,7 +9734,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       <div className="app privacy-page">
         <section className="privacy-panel">
           <div className="privacy-header">
-            <img className="privacy-logo" src={landingLogoUrl} alt="MakeMyIdea.work" />
+            <img className="privacy-logo" src={landingLogoUrl} alt={LEGAL_SITE_BRAND} />
           </div>
           <h1>{privacyCopy.title}</h1>
           <div className="privacy-sections">
@@ -9780,18 +9770,18 @@ const isMissingLabel = (item: EngineBoardItem) => {
       legalLanguage === 'de'
         ? {
             title: 'Nutzungsbedingungen',
-            body: termsAndConditionsDe,
+            body: makeSiteAwareLegalText(termsAndConditionsDe, LEGAL_SITE_BRAND),
             back: 'Zurück',
           }
         : legalLanguage === 'pl' || (!legalLanguage && uiLanguage === 'Polish')
         ? {
             title: 'Regulamin serwisu',
-            body: termsAndConditionsPl,
+            body: makeSiteAwareLegalText(termsAndConditionsPl, LEGAL_SITE_BRAND),
             back: 'Wróć',
           }
         : {
             title: 'Service Terms and Conditions',
-            body: termsAndConditionsEn,
+            body: makeSiteAwareLegalText(termsAndConditionsEn, LEGAL_SITE_BRAND),
             back: 'Back',
           }
 
@@ -9799,7 +9789,7 @@ const isMissingLabel = (item: EngineBoardItem) => {
       <div className="app privacy-page">
         <section className="privacy-panel">
           <div className="privacy-header">
-            <img className="privacy-logo" src={landingLogoUrl} alt="MakeMyIdea.work" />
+            <img className="privacy-logo" src={landingLogoUrl} alt={LEGAL_SITE_BRAND} />
           </div>
           <h1>{termsCopy.title}</h1>
           <div className="terms-content">{termsCopy.body}</div>

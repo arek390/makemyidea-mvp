@@ -804,3 +804,43 @@ Bitte erstatten Sie den nicht genutzten Betrag gemäß den Nutzungsbedingungen u
 
 Datum: [DATUM]
 Unterschrift: [UNTERSCHRIFT — WENN DAS FORMULAR IN PAPIERFORM EINGEREICHT WIRD]`
+
+export type LegalSiteBrand = 'MakeMyIdea.work' | 'MakeMyProblem.work'
+export type LegalContentLanguage = 'en' | 'pl' | 'de'
+
+export const makeSiteAwareLegalText = (text: string, brand: LegalSiteBrand) => {
+  if (brand === 'MakeMyIdea.work') return text
+  return text
+    .replaceAll('https://makemyidea.work', 'https://www.makemyproblem.work')
+    .replaceAll('MakeMyIdea.work', brand)
+}
+
+export const makeSiteAwarePrivacyPolicyBody = (
+  language: LegalContentLanguage,
+  brand: LegalSiteBrand
+) => {
+  if (language === 'de') {
+    return [
+      `Die Anwendung ${brand} verarbeitet grundlegende Nutzerdaten, wie E-Mail-Adresse und Google-Konto-ID, ausschließlich um die Anmeldung und die Nutzung der Anwendung zu ermöglichen.`,
+      'Daten können durch externe Dienstleister wie Supabase (Datenbank) und OpenAI (KI-Verarbeitung) verarbeitet werden.',
+      'Daten werden nicht verkauft und nicht zu Marketingzwecken an Dritte weitergegeben.',
+      'Kontakt: makemyideawork@aremai.tech',
+    ]
+  }
+
+  if (language === 'pl') {
+    return [
+      `Aplikacja ${brand} zbiera podstawowe dane użytkownika, takie jak adres email oraz identyfikator konta Google, wyłącznie w celu umożliwienia logowania i korzystania z aplikacji.`,
+      'Dane mogą być przetwarzane przez zewnętrznych dostawców usług, takich jak Supabase (baza danych) oraz OpenAI (przetwarzanie AI).',
+      'Dane nie są sprzedawane ani udostępniane osobom trzecim w celach marketingowych.',
+      'Kontakt: makemyideawork@aremai.tech',
+    ]
+  }
+
+  return [
+    `The ${brand} application collects basic user data, such as email address and Google account identifier, solely to enable login and use of the application.`,
+    'Data may be processed by external service providers such as Supabase (database) and OpenAI (AI processing).',
+    'Data is not sold or shared with third parties for marketing purposes.',
+    'Contact: makemyideawork@aremai.tech',
+  ]
+}
